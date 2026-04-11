@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "bash .github/hooks/session-start.sh"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "bash .github/hooks/simplify-ignore.sh"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "bash .github/hooks/simplify-ignore.sh"
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "bash .github/hooks/simplify-ignore.sh"
+      }
+    ]
+  }
+}
