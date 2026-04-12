@@ -354,7 +354,7 @@ jobs:
 
           echo "has_sources=true" >> "${GITHUB_OUTPUT}"
           {
-            echo "sources<<'EOF'"
+            echo "sources<<EOF"
             printf '%s\n' "${source_paths[@]}"
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
@@ -503,7 +503,7 @@ jobs:
           mapfile -t changed_paths < <(printf '%s\n' "${changed_paths[@]}" | sed '/^$/d' | sort -u)
           echo "has_changes=true" >> "${GITHUB_OUTPUT}"
           {
-            echo "changed_paths<<'EOF'"
+            echo "changed_paths<<EOF"
             printf '%s\n' "${changed_paths[@]}"
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"

@@ -262,6 +262,12 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "extract_json_field must read piped JSON and return requested fields",
         )
 
+    def test_github_output_multiline_delimiters_are_unquoted(self) -> None:
+        self.assertIn('echo "sources<<EOF"', self.workflow_text)
+        self.assertIn('echo "changed_paths<<EOF"', self.workflow_text)
+        self.assertNotIn('sources<<\'EOF\'', self.workflow_text)
+        self.assertNotIn('changed_paths<<\'EOF\'', self.workflow_text)
+
 
 if __name__ == "__main__":
     unittest.main()
