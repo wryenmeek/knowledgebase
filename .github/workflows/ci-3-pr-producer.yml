@@ -1,0 +1,572 @@
+name: CI-3 PR Producer Write Path
+
+on:
+  workflow_run:
+    workflows:
+      - CI-1 Gatekeeper Trusted Handoff
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      maintainer_approved:
+        description: Explicit maintainer approval to run CI-3 write-capable automation.
+        required: true
+        type: boolean
+      source_path:
+        description: Optional single source path under raw/inbox/** for manual runs.
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+
+concurrency:
+  group: kb-write-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: CI-3 preflight (tp-pr-producer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CI_ID: CI-3
+      TOKEN_PROFILE: tp-pr-producer
+      WRITE_ALLOWLIST: wiki/**,wiki/index.md,wiki/log.md,raw/processed/**
+      FALLBACK_MANUAL_INSTRUCTIONS: Follow SPEC.md fallback/manual execution path and open a PR through required checks.
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout workflow context
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert CI-3 preflight prerequisites
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_APPROVED: ${{ github.event.inputs.maintainer_approved || 'false' }}
+          WORKFLOW_RUN_NAME: ${{ github.event.workflow_run.name || '' }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event || '' }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          WORKFLOW_FILE: .github/workflows/ci-3-pr-producer.yml
+        run: |
+          set -euo pipefail
+
+          reason_list=()
+          prereq_ghaw_readiness="PASS"
+          prereq_trusted_trigger_model="PASS"
+          prereq_permissions_scope="PASS"
+          prereq_concurrency_guard="PASS"
+          prereq_fallback_manual_path="PASS"
+
+          if [[ "${CI_ID}" != "CI-3" ]] || [[ "${TOKEN_PROFILE}" != "tp-pr-producer" ]]; then
+            reason_list+=("reject:permissions_scope:token_profile_mismatch")
+            prereq_permissions_scope="FAIL"
+          fi
+
+          if ! command -v python3 >/dev/null 2>&1; then
+            reason_list+=("prereq_missing:ghaw_readiness:python3_unavailable")
+            prereq_ghaw_readiness="FAIL"
+          fi
+
+          if ! command -v gh >/dev/null 2>&1; then
+            reason_list+=("prereq_missing:ghaw_readiness:gh_cli_unavailable")
+            prereq_ghaw_readiness="FAIL"
+          fi
+
+          for required_file in scripts/kb/ingest.py scripts/kb/update_index.py scripts/kb/lint_wiki.py scripts/kb/persist_query.py "${WORKFLOW_FILE}"; do
+            if [[ ! -f "${required_file}" ]]; then
+              reason_list+=("prereq_missing:ghaw_readiness:missing_${required_file//\//_}")
+              prereq_ghaw_readiness="FAIL"
+            fi
+          done
+
+          if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
+            if [[ "${WORKFLOW_RUN_NAME}" != "CI-1 Gatekeeper Trusted Handoff" ]]; then
+              reason_list+=("reject:trusted_trigger_model:unexpected_handoff_workflow")
+              prereq_trusted_trigger_model="FAIL"
+            fi
+            if [[ "${WORKFLOW_RUN_EVENT}" != "push" ]]; then
+              reason_list+=("reject:trusted_trigger_model:workflow_run_event_not_push")
+              prereq_trusted_trigger_model="FAIL"
+            fi
+            if [[ "${WORKFLOW_RUN_CONCLUSION}" != "success" ]]; then
+              reason_list+=("reject:trusted_trigger_model:upstream_ci1_not_success")
+              prereq_trusted_trigger_model="FAIL"
+            fi
+          elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${MANUAL_APPROVED}" != "true" ]]; then
+              reason_list+=("reject:trusted_trigger_model:manual_approval_required")
+              prereq_trusted_trigger_model="FAIL"
+            fi
+          else
+            reason_list+=("reject:trusted_trigger_model:event_not_allowed")
+            prereq_trusted_trigger_model="FAIL"
+          fi
+
+          mapfile -t permissions_contract_errors < <(python3 - "${WORKFLOW_FILE}" <<'PY'
+import sys
+from pathlib import Path
+
+workflow_file = Path(sys.argv[1])
+expected_top_level_permissions = {
+    "actions": "read",
+    "checks": "read",
+    "contents": "read",
+}
+expected_pr_producer_permissions = {
+    "actions": "read",
+    "checks": "read",
+    "contents": "write",
+    "pull-requests": "write",
+}
+
+workflow_lines = workflow_file.read_text(encoding="utf-8").splitlines()
+errors = []
+
+
+def parse_mapping_block(block_start: int, indent: int, scope: str) -> dict[str, str]:
+    entries = []
+    expected_prefix = " " * indent
+    nested_prefix = expected_prefix + "  "
+    for candidate in workflow_lines[block_start + 1 :]:
+        stripped = candidate.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            continue
+        if not candidate.startswith(expected_prefix) or candidate.startswith(nested_prefix):
+            break
+        if ":" not in stripped:
+            errors.append(f"reject:permissions_scope:permissions_entry_malformed:{scope}")
+            continue
+        map_key, map_value = stripped.split(":", 1)
+        entries.append((map_key.strip(), map_value.strip()))
+
+    mapping: dict[str, str] = {}
+    duplicate_keys = set()
+    for map_key, map_value in entries:
+        if map_key in mapping:
+            duplicate_keys.add(map_key)
+        mapping[map_key] = map_value
+
+    for duplicate_key in sorted(duplicate_keys):
+        errors.append(f"reject:permissions_scope:permissions_key_duplicated:{scope}:{duplicate_key}")
+
+    return mapping
+
+
+def validate_permissions(actual: dict[str, str], expected: dict[str, str], scope: str) -> None:
+    missing_keys = sorted(set(expected) - set(actual))
+    unexpected_keys = sorted(set(actual) - set(expected))
+    mismatched_values = sorted(
+        map_key
+        for map_key, expected_value in expected.items()
+        if map_key in actual and actual[map_key] != expected_value
+    )
+
+    for missing_key in missing_keys:
+        errors.append(f"reject:permissions_scope:permissions_key_missing:{scope}:{missing_key}")
+    for unexpected_key in unexpected_keys:
+        errors.append(f"reject:permissions_scope:permissions_key_unexpected:{scope}:{unexpected_key}")
+    for mismatched_key in mismatched_values:
+        errors.append(
+            "reject:permissions_scope:permissions_value_mismatch:"
+            f"{scope}:{mismatched_key}:expected_{expected[mismatched_key]}:"
+            f"actual_{actual[mismatched_key]}"
+        )
+
+
+top_level_permissions_indices = [
+    index
+    for index, workflow_line in enumerate(workflow_lines)
+    if workflow_line.strip() == "permissions:" and not workflow_line.startswith(" ")
+]
+if not top_level_permissions_indices:
+    errors.append("reject:permissions_scope:permissions_block_missing:top_level")
+elif len(top_level_permissions_indices) > 1:
+    errors.append("reject:permissions_scope:permissions_block_duplicated:top_level")
+else:
+    top_level_permissions = parse_mapping_block(
+        top_level_permissions_indices[0],
+        indent=2,
+        scope="top_level",
+    )
+    validate_permissions(top_level_permissions, expected_top_level_permissions, "top_level")
+
+pr_producer_job_indices = [
+    index
+    for index, workflow_line in enumerate(workflow_lines)
+    if workflow_line.strip() == "pr-producer:"
+    and workflow_line.startswith("  ")
+    and not workflow_line.startswith("    ")
+]
+if not pr_producer_job_indices:
+    errors.append("reject:permissions_scope:pr_producer_job_missing")
+elif len(pr_producer_job_indices) > 1:
+    errors.append("reject:permissions_scope:pr_producer_job_duplicated")
+else:
+    job_start = pr_producer_job_indices[0]
+    job_permissions_indices = []
+    for index in range(job_start + 1, len(workflow_lines)):
+        candidate = workflow_lines[index]
+        stripped = candidate.strip()
+        if not stripped:
+            continue
+        if not candidate.startswith("    "):
+            break
+        if stripped == "permissions:" and candidate.startswith("    ") and not candidate.startswith("      "):
+            job_permissions_indices.append(index)
+
+    if not job_permissions_indices:
+        errors.append("reject:permissions_scope:permissions_block_missing:pr_producer")
+    elif len(job_permissions_indices) > 1:
+        errors.append("reject:permissions_scope:permissions_block_duplicated:pr_producer")
+    else:
+        pr_producer_permissions = parse_mapping_block(
+            job_permissions_indices[0],
+            indent=6,
+            scope="pr_producer",
+        )
+        validate_permissions(
+            pr_producer_permissions,
+            expected_pr_producer_permissions,
+            "pr_producer",
+        )
+
+if errors:
+    print("\n".join(errors))
+PY
+          )
+          if [[ "${#permissions_contract_errors[@]}" -gt 0 ]]; then
+            reason_list+=("reject:permissions_scope:minimum_permissions_mismatch")
+            for permissions_contract_error in "${permissions_contract_errors[@]}"; do
+              reason_list+=("${permissions_contract_error}")
+            done
+            prereq_permissions_scope="FAIL"
+          fi
+
+          if grep -Eiq '^[[:space:]][[:space:]](issues|packages|id-token|security-events|statuses|attestations|deployments)[[:space:]]*:[[:space:]]*write[[:space:]]*$' "${WORKFLOW_FILE}"; then
+            reason_list+=("reject:permissions_scope:forbidden_write_scope_declared")
+            prereq_permissions_scope="FAIL"
+          fi
+
+          if ! grep -Eq 'WRITE_ALLOWLIST:[[:space:]]*wiki/\*\*,wiki/index\.md,wiki/log\.md,raw/processed/\*\*' "${WORKFLOW_FILE}"; then
+            reason_list+=("reject:permissions_scope:write_allowlist_mismatch")
+            prereq_permissions_scope="FAIL"
+          fi
+
+          if ! grep -Eq '^[[:space:]][[:space:]]group:[[:space:]]*kb-write-\$\{\{ github\.repository \}\}-\$\{\{ github\.ref \}\}[[:space:]]*$' "${WORKFLOW_FILE}"; then
+            reason_list+=("prereq_missing:concurrency_guard:missing_kb_write_group")
+            prereq_concurrency_guard="FAIL"
+          fi
+
+          if ! grep -Eq '^[[:space:]][[:space:]]cancel-in-progress:[[:space:]]*false[[:space:]]*$' "${WORKFLOW_FILE}"; then
+            reason_list+=("prereq_missing:concurrency_guard:cancel_in_progress_mismatch")
+            prereq_concurrency_guard="FAIL"
+          fi
+
+          if [[ -z "${FALLBACK_MANUAL_INSTRUCTIONS}" ]]; then
+            reason_list+=("prereq_missing:fallback_manual_path")
+            prereq_fallback_manual_path="FAIL"
+          fi
+
+          {
+            echo "ghaw_readiness=${prereq_ghaw_readiness}"
+            echo "trusted_trigger_model=${prereq_trusted_trigger_model}"
+            echo "permissions_scope=${prereq_permissions_scope}"
+            echo "concurrency_guard=${prereq_concurrency_guard}"
+            echo "fallback_manual_path=${prereq_fallback_manual_path}"
+          }
+
+          if [[ "${#reason_list[@]}" -gt 0 ]]; then
+            for reason in "${reason_list[@]}"; do
+              echo "::error::CI-3 preflight rejection reason=${reason}" >&2
+            done
+            exit 1
+          fi
+
+          echo "CI-3 preflight PASS: trusted handoff/manual approval + tp-pr-producer checks satisfied."
+
+  pr-producer:
+    name: CI-3 produce/update PR (tp-pr-producer)
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      checks: read
+      contents: write
+      pull-requests: write
+    env:
+      CI_ID: CI-3
+      TOKEN_PROFILE: tp-pr-producer
+      WRITE_ALLOWLIST: wiki/**,wiki/index.md,wiki/log.md,raw/processed/**
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout trusted source revision
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve CI-3 source inputs
+        id: sources
+        env:
+          MANUAL_SOURCE_PATH: ${{ github.event.inputs.source_path || '' }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t source_paths < <(find raw/inbox -type f | sort)
+
+          if [[ -n "${MANUAL_SOURCE_PATH}" ]]; then
+            if [[ "${MANUAL_SOURCE_PATH}" != raw/inbox/* ]]; then
+              echo "::error::reject:path_filter:outside_raw_inbox:${MANUAL_SOURCE_PATH}" >&2
+              exit 1
+            fi
+            if [[ ! -f "${MANUAL_SOURCE_PATH}" ]]; then
+              echo "::error::reject:path_filter:missing_manual_source:${MANUAL_SOURCE_PATH}" >&2
+              exit 1
+            fi
+            source_paths=("${MANUAL_SOURCE_PATH}")
+          fi
+
+          if [[ "${#source_paths[@]}" -eq 0 ]]; then
+            echo "has_sources=false" >> "${GITHUB_OUTPUT}"
+            echo "No raw/inbox sources found; CI-3 write path is a no-op."
+            exit 0
+          fi
+
+          for source_path in "${source_paths[@]}"; do
+            if [[ "${source_path}" != raw/inbox/* ]]; then
+              echo "::error::reject:path_filter:outside_raw_inbox:${source_path}" >&2
+              exit 1
+            fi
+          done
+
+          echo "has_sources=true" >> "${GITHUB_OUTPUT}"
+          {
+            echo "sources<<'EOF'"
+            printf '%s\n' "${source_paths[@]}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Run CI-3 required checks and write path
+        id: write-path
+        if: steps.sources.outputs.has_sources == 'true'
+        env:
+          SOURCE_LIST: ${{ steps.sources.outputs.sources }}
+        run: |
+          set -euo pipefail
+
+          extract_json_field() {
+            local field_name="$1"
+            python3 -c 'import json, sys
+field = sys.argv[1]
+payload = sys.stdin.read().strip()
+try:
+    value = json.loads(payload).get(field, "")
+except Exception:
+    value = ""
+print("" if value is None else value)
+' "${field_name}"
+          }
+
+          while IFS= read -r source_path; do
+            [[ -z "${source_path}" ]] && continue
+
+            echo "[CI-3] ingest source=${source_path}"
+            set +e
+            ingest_json="$(python3 scripts/kb/ingest.py \
+              --source "${source_path}" \
+              --batch-policy continue_and_report_per_source \
+              --wiki-root wiki \
+              --schema AGENTS.md \
+              --report-json)"
+            ingest_exit=$?
+            set -e
+
+            echo "${ingest_json}"
+            if [[ "${ingest_exit}" -ne 0 ]]; then
+              ingest_reason="$(printf '%s' "${ingest_json}" | extract_json_field reason_code)"
+              if [[ "${ingest_reason}" == "lock_unavailable" ]]; then
+                echo "::error::CI-3 ingest failed closed (reason_code=lock_unavailable)." >&2
+              else
+                echo "::error::CI-3 ingest failed closed (exit=${ingest_exit}, reason_code=${ingest_reason:-unknown})." >&2
+              fi
+              exit 1
+            fi
+          done <<< "${SOURCE_LIST}"
+
+          echo "[CI-3] update_index --write (locked)"
+          set +e
+          index_output="$(python3 - <<'PY'
+import sys
+from scripts.kb import update_index, write_utils
+
+try:
+    with write_utils.exclusive_write_lock("."):
+        raise SystemExit(update_index.main(["--wiki-root", "wiki", "--write"]))
+except write_utils.LockUnavailableError as exc:
+    print(exc.failure_reason)
+    raise SystemExit(1)
+PY
+)"
+          index_exit=$?
+          set -e
+
+          if [[ -n "${index_output}" ]]; then
+            echo "${index_output}"
+          fi
+          if [[ "${index_exit}" -ne 0 ]]; then
+            if [[ "${index_output}" == *"lock_unavailable"* ]]; then
+              echo "::error::CI-3 index update failed closed (reason_code=lock_unavailable)." >&2
+            else
+              echo "::error::CI-3 index update failed closed (exit=${index_exit})." >&2
+            fi
+            exit 1
+          fi
+
+          echo "[CI-3] lint_wiki --strict"
+          python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
+
+          echo "[CI-3] persist_query policy gate"
+          set +e
+          persist_json="$(python3 scripts/kb/persist_query.py \
+            --query "ci3 required-check policy probe" \
+            --confidence 3 \
+            --wiki-root wiki \
+            --schema AGENTS.md \
+            --result-json)"
+          persist_exit=$?
+          set -e
+
+          echo "${persist_json}"
+          if [[ "${persist_exit}" -ne 0 ]]; then
+            persist_reason="$(printf '%s' "${persist_json}" | extract_json_field reason_code)"
+            if [[ "${persist_reason}" == "lock_unavailable" ]]; then
+              echo "::error::CI-3 persist_query failed closed (reason_code=lock_unavailable)." >&2
+            else
+              echo "::error::CI-3 persist_query failed closed (exit=${persist_exit}, reason_code=${persist_reason:-unknown})." >&2
+            fi
+            exit 1
+          fi
+
+          persist_status="$(printf '%s' "${persist_json}" | extract_json_field status)"
+          if [[ "${persist_status}" != "written" ]] && [[ "${persist_status}" != "no_write_policy" ]]; then
+            echo "::error::CI-3 persist_query returned disallowed status=${persist_status:-unknown}; expected written|no_write_policy." >&2
+            exit 1
+          fi
+
+          rm -f wiki/.kb_write.lock
+
+          mapfile -t status_lines < <(git status --porcelain=v1 --untracked-files=all)
+          if [[ "${#status_lines[@]}" -eq 0 ]]; then
+            echo "has_changes=false" >> "${GITHUB_OUTPUT}"
+            echo "No repository changes detected after CI-3 write path."
+            exit 0
+          fi
+
+          changed_paths=()
+          allowlist_failures=()
+          for status_line in "${status_lines[@]}"; do
+            status_code="${status_line:0:2}"
+            changed_path="${status_line:3}"
+            if [[ "${changed_path}" == *" -> "* ]]; then
+              changed_path="${changed_path##* -> }"
+            fi
+            [[ -z "${changed_path}" ]] && continue
+
+            changed_paths+=("${changed_path}")
+
+            if [[ "${status_code}" == *D* ]] && [[ "${changed_path}" == raw/inbox/* ]]; then
+              continue
+            fi
+
+            case "${changed_path}" in
+              wiki/*|raw/processed/*)
+                ;;
+              *)
+                allowlist_failures+=("${status_code}:${changed_path}")
+                ;;
+            esac
+          done
+
+          if [[ "${#allowlist_failures[@]}" -gt 0 ]]; then
+            for rejected_path in "${allowlist_failures[@]}"; do
+              echo "::error::reject:permissions_scope:out_of_allowlist_write:${rejected_path}" >&2
+            done
+            echo "::error::CI-3 write allowlist is restricted to ${WRITE_ALLOWLIST}." >&2
+            exit 1
+          fi
+
+          mapfile -t changed_paths < <(printf '%s\n' "${changed_paths[@]}" | sed '/^$/d' | sort -u)
+          echo "has_changes=true" >> "${GITHUB_OUTPUT}"
+          {
+            echo "changed_paths<<'EOF'"
+            printf '%s\n' "${changed_paths[@]}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Create or update CI-3 PR
+        if: steps.write-path.outputs.has_changes == 'true'
+        env:
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          CHANGED_PATHS: ${{ steps.write-path.outputs.changed_paths }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          base_branch="${BASE_BRANCH:-main}"
+          safe_branch="$(printf '%s' "${base_branch}" | sed 's#[^A-Za-z0-9._-]#-#g')"
+          if [[ -z "${safe_branch}" ]]; then
+            safe_branch="default"
+          fi
+          pr_branch="ci3/pr-producer-${safe_branch}"
+
+          mapfile -t changed_paths < <(printf '%s\n' "${CHANGED_PATHS}" | sed '/^$/d')
+          if [[ "${#changed_paths[@]}" -eq 0 ]]; then
+            echo "No changed paths passed from CI-3 write-path step; skipping PR update."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "${pr_branch}"
+          git add -- "${changed_paths[@]}"
+
+          if git diff --cached --quiet; then
+            echo "No staged diff after allowlist staging; skipping PR update."
+            exit 0
+          fi
+
+          git commit -m "CI-3: apply deterministic knowledgebase updates"
+          git push --force-with-lease origin "${pr_branch}"
+
+          pr_number="$({
+            gh pr list --head "${pr_branch}" --base "${base_branch}" --state open --json number --jq '.[0].number // ""'
+          } || true)"
+
+          pr_title="CI-3: deterministic knowledgebase updates"
+          pr_body=$'Automated by CI-3 PR producer.\n\n- Profile: tp-pr-producer\n- Allowlist: wiki/**, wiki/index.md, wiki/log.md, raw/processed/**\n- Merge remains gated by required checks and approvals.'
+
+          if [[ -n "${pr_number}" ]]; then
+            gh pr edit "${pr_number}" --title "${pr_title}" --body "${pr_body}"
+          else
+            gh pr create --base "${base_branch}" --head "${pr_branch}" --title "${pr_title}" --body "${pr_body}"
+          fi
+
+      - name: Record CI-3 no-op state
+        if: steps.sources.outputs.has_sources != 'true' || steps.write-path.outputs.has_changes != 'true'
+        run: |
+          set -euo pipefail
+          echo "CI-3 completed with no PR update."

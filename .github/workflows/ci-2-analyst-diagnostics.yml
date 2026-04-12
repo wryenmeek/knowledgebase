@@ -1,0 +1,89 @@
+name: CI-2 Analyst Read-Only Diagnostics
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+
+concurrency:
+  group: kb-readonly-ci2-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyst-diagnostics:
+    name: CI-2 diagnostics (tp-analyst-readonly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI_ID: CI-2
+      TOKEN_PROFILE: tp-analyst-readonly
+    steps:
+      - name: Checkout repository snapshot (read-only token)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Assert CI-2 read-only profile context
+        run: |
+          set -euo pipefail
+          test "${CI_ID}" = "CI-2"
+          test "${TOKEN_PROFILE}" = "tp-analyst-readonly"
+          mkdir -p diagnostics
+          {
+            echo "ci_id=${CI_ID}"
+            echo "token_profile=${TOKEN_PROFILE}"
+            echo "permission_contract=actions:read,checks:read,contents:read"
+            echo "event=${GITHUB_EVENT_NAME}"
+            echo "sha=${GITHUB_SHA}"
+          } | tee diagnostics/context.log
+
+      - name: Run analyst diagnostics (lint + unit tests)
+        id: diagnostics
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p diagnostics
+          : > diagnostics/diagnostics.log
+
+          echo "[CI-2] lint_wiki --strict" | tee -a diagnostics/diagnostics.log
+          python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict 2>&1 | tee -a diagnostics/diagnostics.log
+          lint_exit="${PIPESTATUS[0]}"
+
+          echo "[CI-2] unittest discover" | tee -a diagnostics/diagnostics.log
+          python3 -m unittest discover -s tests -p 'test_*.py' 2>&1 | tee -a diagnostics/diagnostics.log
+          tests_exit="${PIPESTATUS[0]}"
+
+          diagnostics_exit=0
+          if [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then
+            diagnostics_exit=1
+          fi
+
+          echo "[CI-2] lint_exit=${lint_exit} tests_exit=${tests_exit} diagnostics_exit=${diagnostics_exit}" | tee -a diagnostics/diagnostics.log
+          echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"
+          exit 0
+
+      - name: Upload diagnostics artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci2-analyst-diagnostics-${{ github.run_id }}
+          path: diagnostics/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Fail explicitly when diagnostics fail
+        if: steps.diagnostics.outputs.exit_code != '0'
+        run: |
+          set -euo pipefail
+          echo "::error::CI-2 diagnostics failed (profile=${TOKEN_PROFILE}, ci_id=${CI_ID}). Review diagnostics artifacts." >&2
+          exit 1
