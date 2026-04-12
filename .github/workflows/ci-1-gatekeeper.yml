@@ -94,6 +94,7 @@ jobs:
           fi
           if [[ "${REF_PROTECTED}" != "true" ]]; then
             reason_list+=("reject:trusted_trigger_model:ref_not_protected")
+            reason_list+=("action_required:trusted_trigger_model:enable_branch_protection")
             prereq_trusted_trigger_model="FAIL"
           fi
 

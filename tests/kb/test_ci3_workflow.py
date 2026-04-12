@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import subprocess
+import textwrap
 import unittest
 
 
@@ -188,6 +190,77 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             self.workflow_text,
         )
         self.assertNotIn("gh pr merge", self.workflow_text)
+
+    def test_embedded_python_snippets_compile(self) -> None:
+        snippets: list[str] = []
+        current_snippet_lines: list[str] = []
+        collecting = False
+
+        for workflow_line in self.workflow_text.splitlines():
+            if not collecting and "<<'PY'" in workflow_line:
+                collecting = True
+                current_snippet_lines = []
+                continue
+            if not collecting:
+                continue
+            if workflow_line.strip() == "PY":
+                snippet = textwrap.dedent("\n".join(current_snippet_lines)).strip()
+                snippets.append(snippet)
+                collecting = False
+                current_snippet_lines = []
+                continue
+            current_snippet_lines.append(workflow_line)
+
+        self.assertFalse(
+            collecting,
+            "Unterminated embedded python heredoc block found in CI-3 workflow",
+        )
+        self.assertGreaterEqual(
+            len(snippets),
+            2,
+            "Expected at least two embedded python snippets in CI-3 workflow",
+        )
+        for index, snippet in enumerate(snippets, start=1):
+            with self.subTest(snippet=index):
+                self.assertNotEqual(snippet, "", "Embedded python snippet must not be empty")
+                try:
+                    compile(snippet, f"<ci3-workflow-python-{index}>", "exec")
+                except SyntaxError as error:
+                    self.fail(f"Embedded python snippet {index} is invalid: {error}")
+
+    def test_extract_json_field_handles_piped_json_payloads(self) -> None:
+        function_match = re.search(
+            r"(?ms)^\s*extract_json_field\(\)\s*\{\n.*?^\s*\}",
+            self.workflow_text,
+        )
+        self.assertIsNotNone(function_match, "CI-3 workflow missing extract_json_field helper")
+
+        extract_function = textwrap.dedent(function_match.group(0))
+        payload = '{"status":"written","reason_code":"lock_unavailable"}'
+        script = "\n".join(
+            [
+                "set -euo pipefail",
+                extract_function,
+                f"printf '%s' '{payload}' | extract_json_field status",
+                f"printf '%s' '{payload}' | extract_json_field reason_code",
+            ]
+        )
+        result = subprocess.run(
+            ["bash", "-c", script],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"extract_json_field helper failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}",
+        )
+        self.assertEqual(
+            result.stdout.splitlines(),
+            ["written", "lock_unavailable"],
+            "extract_json_field must read piped JSON and return requested fields",
+        )
 
 
 if __name__ == "__main__":

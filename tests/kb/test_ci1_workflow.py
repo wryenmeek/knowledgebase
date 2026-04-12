@@ -81,6 +81,7 @@ class Ci1WorkflowContractTests(unittest.TestCase):
             "reject:trusted_trigger_model:event_not_push",
             "reject:trusted_trigger_model:not_default_branch",
             "reject:trusted_trigger_model:ref_not_protected",
+            "action_required:trusted_trigger_model:enable_branch_protection",
             "reject:path_filter:no_changed_paths_detected",
             "reject:path_filter:outside_raw_inbox:",
             "reject:permissions_scope:token_profile_mismatch",

@@ -58,6 +58,13 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - **Persist policy envelope:** `persist_query.py` can return exit `0` with `status=no_write_policy` (expected no-write outcome) or `status=written`; both are valid automation outcomes.
 - **No-write envelope contract:** `no_write_policy` must not mutate repo files (`analysis_path=null`, `index_updated=false`, `log_appended=false`).
 
+## CI-1 governance prerequisites (trusted-trigger model)
+
+- **Protected default branch is required:** CI-1 checks `github.ref_protected` and rejects with `reject:trusted_trigger_model:ref_not_protected` when false.
+- **Strict inbox-only scope is required:** pushes that include `raw/inbox/**` plus non-inbox paths are rejected with `reject:path_filter:outside_raw_inbox:*`.
+- **Operational guidance:** keep CI-1-triggering commits scoped to `raw/inbox/**`; apply broader repository changes in separate commits/PRs.
+- **If branch protection is not yet available:** use the documented fallback/manual path until branch protection is configured.
+
 ## CI fallback/manual path summary (CI-1..CI-3)
 
 | CI | Normal role | If automation is unavailable/fails |

@@ -33,6 +33,22 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Validate workflow YAML syntax
+        run: |
+          set -euo pipefail
+          ruby -e '
+            require "psych"
+
+            Dir.glob(".github/workflows/*.yml").sort.each do |workflow_path|
+              begin
+                Psych.parse_file(workflow_path)
+              rescue Psych::SyntaxError => err
+                warn "::error file=#{workflow_path}::#{err.message}"
+                exit 1
+              end
+            end
+          '
+
       - name: Assert CI-2 read-only profile context
         run: |
           set -euo pipefail

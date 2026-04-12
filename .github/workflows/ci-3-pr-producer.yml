@@ -108,138 +108,138 @@ jobs:
           fi
 
           mapfile -t permissions_contract_errors < <(python3 - "${WORKFLOW_FILE}" <<'PY'
-import sys
-from pathlib import Path
+          import sys
+          from pathlib import Path
 
-workflow_file = Path(sys.argv[1])
-expected_top_level_permissions = {
-    "actions": "read",
-    "checks": "read",
-    "contents": "read",
-}
-expected_pr_producer_permissions = {
-    "actions": "read",
-    "checks": "read",
-    "contents": "write",
-    "pull-requests": "write",
-}
+          workflow_file = Path(sys.argv[1])
+          expected_top_level_permissions = {
+              "actions": "read",
+              "checks": "read",
+              "contents": "read",
+          }
+          expected_pr_producer_permissions = {
+              "actions": "read",
+              "checks": "read",
+              "contents": "write",
+              "pull-requests": "write",
+          }
 
-workflow_lines = workflow_file.read_text(encoding="utf-8").splitlines()
-errors = []
-
-
-def parse_mapping_block(block_start: int, indent: int, scope: str) -> dict[str, str]:
-    entries = []
-    expected_prefix = " " * indent
-    nested_prefix = expected_prefix + "  "
-    for candidate in workflow_lines[block_start + 1 :]:
-        stripped = candidate.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("#"):
-            continue
-        if not candidate.startswith(expected_prefix) or candidate.startswith(nested_prefix):
-            break
-        if ":" not in stripped:
-            errors.append(f"reject:permissions_scope:permissions_entry_malformed:{scope}")
-            continue
-        map_key, map_value = stripped.split(":", 1)
-        entries.append((map_key.strip(), map_value.strip()))
-
-    mapping: dict[str, str] = {}
-    duplicate_keys = set()
-    for map_key, map_value in entries:
-        if map_key in mapping:
-            duplicate_keys.add(map_key)
-        mapping[map_key] = map_value
-
-    for duplicate_key in sorted(duplicate_keys):
-        errors.append(f"reject:permissions_scope:permissions_key_duplicated:{scope}:{duplicate_key}")
-
-    return mapping
+          workflow_lines = workflow_file.read_text(encoding="utf-8").splitlines()
+          errors = []
 
 
-def validate_permissions(actual: dict[str, str], expected: dict[str, str], scope: str) -> None:
-    missing_keys = sorted(set(expected) - set(actual))
-    unexpected_keys = sorted(set(actual) - set(expected))
-    mismatched_values = sorted(
-        map_key
-        for map_key, expected_value in expected.items()
-        if map_key in actual and actual[map_key] != expected_value
-    )
+          def parse_mapping_block(block_start: int, indent: int, scope: str) -> dict[str, str]:
+              entries = []
+              expected_prefix = " " * indent
+              nested_prefix = expected_prefix + "  "
+              for candidate in workflow_lines[block_start + 1 :]:
+                  stripped = candidate.strip()
+                  if not stripped:
+                      continue
+                  if stripped.startswith("#"):
+                      continue
+                  if not candidate.startswith(expected_prefix) or candidate.startswith(nested_prefix):
+                      break
+                  if ":" not in stripped:
+                      errors.append(f"reject:permissions_scope:permissions_entry_malformed:{scope}")
+                      continue
+                  map_key, map_value = stripped.split(":", 1)
+                  entries.append((map_key.strip(), map_value.strip()))
 
-    for missing_key in missing_keys:
-        errors.append(f"reject:permissions_scope:permissions_key_missing:{scope}:{missing_key}")
-    for unexpected_key in unexpected_keys:
-        errors.append(f"reject:permissions_scope:permissions_key_unexpected:{scope}:{unexpected_key}")
-    for mismatched_key in mismatched_values:
-        errors.append(
-            "reject:permissions_scope:permissions_value_mismatch:"
-            f"{scope}:{mismatched_key}:expected_{expected[mismatched_key]}:"
-            f"actual_{actual[mismatched_key]}"
-        )
+              mapping: dict[str, str] = {}
+              duplicate_keys = set()
+              for map_key, map_value in entries:
+                  if map_key in mapping:
+                      duplicate_keys.add(map_key)
+                  mapping[map_key] = map_value
+
+              for duplicate_key in sorted(duplicate_keys):
+                  errors.append(f"reject:permissions_scope:permissions_key_duplicated:{scope}:{duplicate_key}")
+
+              return mapping
 
 
-top_level_permissions_indices = [
-    index
-    for index, workflow_line in enumerate(workflow_lines)
-    if workflow_line.strip() == "permissions:" and not workflow_line.startswith(" ")
-]
-if not top_level_permissions_indices:
-    errors.append("reject:permissions_scope:permissions_block_missing:top_level")
-elif len(top_level_permissions_indices) > 1:
-    errors.append("reject:permissions_scope:permissions_block_duplicated:top_level")
-else:
-    top_level_permissions = parse_mapping_block(
-        top_level_permissions_indices[0],
-        indent=2,
-        scope="top_level",
-    )
-    validate_permissions(top_level_permissions, expected_top_level_permissions, "top_level")
+          def validate_permissions(actual: dict[str, str], expected: dict[str, str], scope: str) -> None:
+              missing_keys = sorted(set(expected) - set(actual))
+              unexpected_keys = sorted(set(actual) - set(expected))
+              mismatched_values = sorted(
+                  map_key
+                  for map_key, expected_value in expected.items()
+                  if map_key in actual and actual[map_key] != expected_value
+              )
 
-pr_producer_job_indices = [
-    index
-    for index, workflow_line in enumerate(workflow_lines)
-    if workflow_line.strip() == "pr-producer:"
-    and workflow_line.startswith("  ")
-    and not workflow_line.startswith("    ")
-]
-if not pr_producer_job_indices:
-    errors.append("reject:permissions_scope:pr_producer_job_missing")
-elif len(pr_producer_job_indices) > 1:
-    errors.append("reject:permissions_scope:pr_producer_job_duplicated")
-else:
-    job_start = pr_producer_job_indices[0]
-    job_permissions_indices = []
-    for index in range(job_start + 1, len(workflow_lines)):
-        candidate = workflow_lines[index]
-        stripped = candidate.strip()
-        if not stripped:
-            continue
-        if not candidate.startswith("    "):
-            break
-        if stripped == "permissions:" and candidate.startswith("    ") and not candidate.startswith("      "):
-            job_permissions_indices.append(index)
+              for missing_key in missing_keys:
+                  errors.append(f"reject:permissions_scope:permissions_key_missing:{scope}:{missing_key}")
+              for unexpected_key in unexpected_keys:
+                  errors.append(f"reject:permissions_scope:permissions_key_unexpected:{scope}:{unexpected_key}")
+              for mismatched_key in mismatched_values:
+                  errors.append(
+                      "reject:permissions_scope:permissions_value_mismatch:"
+                      f"{scope}:{mismatched_key}:expected_{expected[mismatched_key]}:"
+                      f"actual_{actual[mismatched_key]}"
+                  )
 
-    if not job_permissions_indices:
-        errors.append("reject:permissions_scope:permissions_block_missing:pr_producer")
-    elif len(job_permissions_indices) > 1:
-        errors.append("reject:permissions_scope:permissions_block_duplicated:pr_producer")
-    else:
-        pr_producer_permissions = parse_mapping_block(
-            job_permissions_indices[0],
-            indent=6,
-            scope="pr_producer",
-        )
-        validate_permissions(
-            pr_producer_permissions,
-            expected_pr_producer_permissions,
-            "pr_producer",
-        )
 
-if errors:
-    print("\n".join(errors))
-PY
+          top_level_permissions_indices = [
+              index
+              for index, workflow_line in enumerate(workflow_lines)
+              if workflow_line.strip() == "permissions:" and not workflow_line.startswith(" ")
+          ]
+          if not top_level_permissions_indices:
+              errors.append("reject:permissions_scope:permissions_block_missing:top_level")
+          elif len(top_level_permissions_indices) > 1:
+              errors.append("reject:permissions_scope:permissions_block_duplicated:top_level")
+          else:
+              top_level_permissions = parse_mapping_block(
+                  top_level_permissions_indices[0],
+                  indent=2,
+                  scope="top_level",
+              )
+              validate_permissions(top_level_permissions, expected_top_level_permissions, "top_level")
+
+          pr_producer_job_indices = [
+              index
+              for index, workflow_line in enumerate(workflow_lines)
+              if workflow_line.strip() == "pr-producer:"
+              and workflow_line.startswith("  ")
+              and not workflow_line.startswith("    ")
+          ]
+          if not pr_producer_job_indices:
+              errors.append("reject:permissions_scope:pr_producer_job_missing")
+          elif len(pr_producer_job_indices) > 1:
+              errors.append("reject:permissions_scope:pr_producer_job_duplicated")
+          else:
+              job_start = pr_producer_job_indices[0]
+              job_permissions_indices = []
+              for index in range(job_start + 1, len(workflow_lines)):
+                  candidate = workflow_lines[index]
+                  stripped = candidate.strip()
+                  if not stripped:
+                      continue
+                  if not candidate.startswith("    "):
+                      break
+                  if stripped == "permissions:" and candidate.startswith("    ") and not candidate.startswith("      "):
+                      job_permissions_indices.append(index)
+
+              if not job_permissions_indices:
+                  errors.append("reject:permissions_scope:permissions_block_missing:pr_producer")
+              elif len(job_permissions_indices) > 1:
+                  errors.append("reject:permissions_scope:permissions_block_duplicated:pr_producer")
+              else:
+                  pr_producer_permissions = parse_mapping_block(
+                      job_permissions_indices[0],
+                      indent=6,
+                      scope="pr_producer",
+                  )
+                  validate_permissions(
+                      pr_producer_permissions,
+                      expected_pr_producer_permissions,
+                      "pr_producer",
+                  )
+
+          if errors:
+              print("\n".join(errors))
+          PY
           )
           if [[ "${#permissions_contract_errors[@]}" -gt 0 ]]; then
             reason_list+=("reject:permissions_scope:minimum_permissions_mismatch")
@@ -369,15 +369,7 @@ PY
 
           extract_json_field() {
             local field_name="$1"
-            python3 -c 'import json, sys
-field = sys.argv[1]
-payload = sys.stdin.read().strip()
-try:
-    value = json.loads(payload).get(field, "")
-except Exception:
-    value = ""
-print("" if value is None else value)
-' "${field_name}"
+            python3 -c $'import json, sys\nfield = sys.argv[1]\npayload = sys.stdin.read().strip()\ntry:\n    value = json.loads(payload).get(field, "")\nexcept Exception:\n    value = ""\nprint("" if value is None else value)' "${field_name}"
           }
 
           while IFS= read -r source_path; do
@@ -409,17 +401,17 @@ print("" if value is None else value)
           echo "[CI-3] update_index --write (locked)"
           set +e
           index_output="$(python3 - <<'PY'
-import sys
-from scripts.kb import update_index, write_utils
+          import sys
+          from scripts.kb import update_index, write_utils
 
-try:
-    with write_utils.exclusive_write_lock("."):
-        raise SystemExit(update_index.main(["--wiki-root", "wiki", "--write"]))
-except write_utils.LockUnavailableError as exc:
-    print(exc.failure_reason)
-    raise SystemExit(1)
-PY
-)"
+          try:
+              with write_utils.exclusive_write_lock("."):
+                  raise SystemExit(update_index.main(["--wiki-root", "wiki", "--write"]))
+          except write_utils.LockUnavailableError as exc:
+              print(exc.failure_reason)
+              raise SystemExit(1)
+          PY
+          )"
           index_exit=$?
           set -e
 

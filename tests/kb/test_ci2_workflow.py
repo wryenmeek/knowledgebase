@@ -65,6 +65,18 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             "Workflow must not request write token scopes",
         )
 
+    def test_workflow_yaml_syntax_validation_is_explicit(self) -> None:
+        required_controls = (
+            "Validate workflow YAML syntax",
+            'require "psych"',
+            'Dir.glob(".github/workflows/*.yml").sort.each do |workflow_path|',
+            "Psych.parse_file(workflow_path)",
+            "rescue Psych::SyntaxError => err",
+            'warn "::error file=#{workflow_path}::#{err.message}"',
+        )
+        for control in required_controls:
+            self.assertIn(control, self.workflow_text)
+
     def test_workflow_is_diagnostics_only_with_explicit_failures(self) -> None:
         self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
         self.assertIn("python3 -m unittest discover -s tests -p 'test_*.py'", self.workflow_text)
