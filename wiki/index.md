@@ -3,8 +3,7 @@ type: process
 title: Knowledgebase Index
 status: active
 sources: []
-open_questions:
-  - "Seed source, entity, concept, and analysis pages."
+open_questions: []
 confidence: 1
 sensitivity: internal
 updated_at: "1970-01-01T00:00:00Z"
@@ -15,13 +14,16 @@ tags:
 
 # Knowledgebase Index
 
-Catalog anchor for discoverability across the wiki corpus.
+Catalog generated deterministically from wiki content.
 
-## Expected sections
+## Sources
+- [Source: Spec](sources/SPEC.md) _(status: active; confidence: 5; updated_at: 1970-01-01T00:00:00Z)_
 
-- Sources: `wiki/sources/`
-- Entities: `wiki/entities/`
-- Concepts: `wiki/concepts/`
-- Analyses: `wiki/analyses/`
+## Entities
+- _None_
 
-`scripts/kb/update_index.py` will maintain deterministic ordering/content in later tasks.
+## Concepts
+- _None_
+
+## Analyses
+- _None_
