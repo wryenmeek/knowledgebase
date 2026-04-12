@@ -377,7 +377,7 @@ jobs:
 
             echo "[CI-3] ingest source=${source_path}"
             set +e
-            ingest_json="$(python3 scripts/kb/ingest.py \
+            ingest_json="$(python3 -m scripts.kb.ingest \
               --source "${source_path}" \
               --batch-policy continue_and_report_per_source \
               --wiki-root wiki \
@@ -432,7 +432,7 @@ jobs:
 
           echo "[CI-3] persist_query policy gate"
           set +e
-          persist_json="$(python3 scripts/kb/persist_query.py \
+          persist_json="$(python3 -m scripts.kb.persist_query \
             --query "ci3 required-check policy probe" \
             --confidence 3 \
             --wiki-root wiki \

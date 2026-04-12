@@ -189,6 +189,8 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "persist_query returned disallowed status",
             self.workflow_text,
         )
+        self.assertIn("python3 -m scripts.kb.ingest", self.workflow_text)
+        self.assertIn("python3 -m scripts.kb.persist_query", self.workflow_text)
         self.assertNotIn("gh pr merge", self.workflow_text)
 
     def test_embedded_python_snippets_compile(self) -> None:
