@@ -325,7 +325,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t source_paths < <(find raw/inbox -type f | sort)
+          mapfile -t source_paths < <(find raw/inbox -type f ! -name '.gitkeep' | sort)
 
           if [[ -n "${MANUAL_SOURCE_PATH}" ]]; then
             if [[ "${MANUAL_SOURCE_PATH}" != raw/inbox/* ]]; then
