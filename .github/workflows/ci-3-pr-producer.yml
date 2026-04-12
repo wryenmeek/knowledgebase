@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       maintainer_approved:
-        description: Explicit maintainer approval to run CI-3 write-capable automation.
+        description: Manual attestation flag for write-capable CI-3 dispatch; workflow does not verify actor role.
         required: true
         type: boolean
       source_path:
