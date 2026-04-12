@@ -79,8 +79,8 @@ python3 -m unittest discover -s tests -p "test_*.py"
 
 | Gate | Concrete evidence in this repo |
 |---|---|
-| **M0: terminology/assumptions freeze** | `SPEC.md` (Assumptions/Terminology sections) + `tests/kb/test_contracts.py` (canonical policy IDs, token profiles, reason/envelope constants). |
+| **M0: terminology/assumptions freeze** | `raw/inbox/SPEC.md` (Assumptions/Terminology sections) + `tests/kb/test_contracts.py` (canonical policy IDs, token profiles, reason/envelope constants). |
 | **M1: interface executability** | `scripts/kb/ingest.py`, `update_index.py`, `lint_wiki.py`, `qmd_preflight.py`, `persist_query.py`; validated by `tests/kb/test_ingest.py`, `test_update_index.py`, `test_lint_wiki.py`, `test_qmd_preflight.py`, `test_persist_query.py`. |
 | **M2: security/automation enforcement** | `.github/workflows/ci-1-gatekeeper.yml`, `ci-2-analyst-diagnostics.yml`, `ci-3-pr-producer.yml`; enforced by `tests/kb/test_ci1_workflow.py`, `test_ci2_workflow.py`, `test_ci3_workflow.py`, `test_ci_permission_asserts.py`. |
-| **M3: verification readiness** | `SPEC.md` Verification Matrix + `tests/kb/test_unit_verification_matrix.py`, `test_integration_verification_matrix.py`, `test_regression_verification_matrix.py`. |
-| **M4: pre-implementation go/no-go** | `SPEC.md` Implementation-ready milestone gates + Final Pre-Implementation Ambiguity Review Checklist, plus this runbook (`docs/mvp-runbook.md`) as executable operator evidence. |
+| **M3: verification readiness** | `raw/inbox/SPEC.md` Verification Matrix + `tests/kb/test_unit_verification_matrix.py`, `test_integration_verification_matrix.py`, `test_regression_verification_matrix.py`. |
+| **M4: pre-implementation go/no-go** | `raw/inbox/SPEC.md` Implementation-ready milestone gates + Final Pre-Implementation Ambiguity Review Checklist, plus this runbook (`docs/mvp-runbook.md`) as executable operator evidence. |
