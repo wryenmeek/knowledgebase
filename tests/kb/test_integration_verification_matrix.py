@@ -11,7 +11,7 @@ import sys
 import textwrap
 import unittest
 
-from scripts.kb import ingest, persist_query, write_utils
+from scripts.kb import ingest, lint_wiki, persist_query, update_index, write_utils
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -212,6 +212,62 @@ class IntegrationVerificationMatrixTests(unittest.TestCase):
         self.assertEqual(payload["sources"], sorted([source_a, source_b]))
         self.assertIn("lock_unavailable", completed.stderr)
         self.assertEqual(before, self._snapshot_workspace())
+
+    def test_ci3_spaced_path_flow_ingest_index_lint_passes(self) -> None:
+        (self.workspace / "raw" / "inbox" / "source with spaces.md").write_text(
+            "# spaced source\n\nBody.\n",
+            encoding="utf-8",
+        )
+        (self.wiki_root / "log.md").write_text(
+            textwrap.dedent(
+                """\
+                ---
+                type: process
+                title: Knowledgebase Log
+                status: active
+                sources: []
+                open_questions: []
+                confidence: 1
+                sensitivity: internal
+                updated_at: "1970-01-01T00:00:00Z"
+                tags:
+                  - log
+                ---
+
+                # Knowledgebase Log
+                """
+            ),
+            encoding="utf-8",
+        )
+
+        ingest_exit, ingest_payload, ingest_stderr = self._run_ingest(
+            "--source",
+            "raw/inbox/source with spaces.md",
+            "--batch-policy",
+            "continue_and_report_per_source",
+            "--wiki-root",
+            "wiki",
+            "--schema",
+            "AGENTS.md",
+            "--report-json",
+        )
+
+        self.assertEqual(ingest_exit, 0)
+        self.assertEqual(ingest_stderr, "")
+        self.assertEqual(ingest_payload["status"], "written")
+        self.assertIn(
+            "raw/processed/source with spaces.md",
+            ingest_payload["sources"][0],
+        )
+
+        index_exit = update_index.main(["--wiki-root", str(self.wiki_root), "--write"])
+        self.assertEqual(index_exit, 0)
+
+        index_text = (self.wiki_root / "index.md").read_text(encoding="utf-8")
+        self.assertIn("(sources/source with spaces.md)", index_text)
+
+        lint_exit = lint_wiki.main(["--wiki-root", str(self.wiki_root), "--strict"])
+        self.assertEqual(lint_exit, 0)
 
     @staticmethod
     def _parse_top_level_event_block(text: str) -> set[str]:

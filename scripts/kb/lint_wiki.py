@@ -22,6 +22,7 @@ REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
 
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:")
 _MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
+_MARKDOWN_LINK_TITLE_RE = re.compile(r"^(?P<url>\S+)\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\))$")
 _CONTRADICTION_MARKER_RE = re.compile(
     r"(\[\s*CONTRADICTION\s*]|\{\{\s*contradiction\s*}}|UNRESOLVED_CONTRADICTION|<!--\s*CONTRADICTION\b[^>]*-->)",
     re.IGNORECASE,
@@ -77,8 +78,9 @@ def _normalize_link_target(raw_target: str) -> str | None:
     if target.startswith("<") and target.endswith(">"):
         target = target[1:-1].strip()
 
-    if " " in target:
-        target = target.split(" ", 1)[0]
+    title_match = _MARKDOWN_LINK_TITLE_RE.match(target)
+    if title_match:
+        target = title_match.group("url")
 
     lower_target = target.lower()
     if lower_target.startswith(_EXTERNAL_LINK_PREFIXES) or "://" in target:

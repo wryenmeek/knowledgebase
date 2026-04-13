@@ -71,9 +71,9 @@ python3 -m unittest discover -s tests -p "test_*.py"
 |---|---|---|
 | **CI-1** (`.github/workflows/ci-1-gatekeeper.yml`) | trusted-trigger gatekeeper/handoff for `raw/inbox/**` | run local ingest → update_index → lint; open/update PR manually; keep fail-closed behavior and required checks. |
 | **CI-2** (`.github/workflows/ci-2-analyst-diagnostics.yml`) | read-only diagnostics (`lint_wiki --strict` + test suite) | run the same diagnostics locally (`lint_wiki`, `unittest discover`), attach findings to PR/issue; no repo-write automation needed. |
-| **CI-3** (`.github/workflows/ci-3-pr-producer.yml`) | write-capable PR producer after trusted handoff/manual approval | execute the local sequence in this runbook, commit only allowlisted paths (`wiki/**`, `raw/processed/**`), and open/update PR manually through normal approvals/checks. |
+| **CI-3** (`.github/workflows/ci-3-pr-producer.yml`) | write-capable PR producer after trusted handoff/manual approval | execute the local sequence in this runbook, commit only allowlisted paths (`wiki/**`, `raw/processed/**`), and open/update PR manually through normal approvals/checks. Manual dispatch runs additionally require protected-environment reviewer approval (`ci3-manual-approval`). |
 
-- **CI-3 manual dispatch note:** `maintainer_approved` is an attestation input for `workflow_dispatch`. The workflow does not verify actor role; authoritative approval must come from repository permissions and/or protected environment controls.
+- **CI-3 manual dispatch note:** `maintainer_approved` remains a required attestation input for `workflow_dispatch`, and manual runs are gated by protected-environment reviewer approval (`ci3-manual-approval`) for authoritative control.
 
 ## Milestone evidence mapping (M0..M4)
 
