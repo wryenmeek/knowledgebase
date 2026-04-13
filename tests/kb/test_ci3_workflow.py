@@ -65,6 +65,95 @@ def _parse_top_level_mapping_block(text: str, key: str) -> dict[str, str]:
     raise AssertionError(f"Top-level '{key}' block is missing from {WORKFLOW_PATH}")
 
 
+def _find_top_level_block_start(lines: list[str], key: str) -> int:
+    target = f"{key}:"
+    block_indices = [
+        index
+        for index, line in enumerate(lines)
+        if line.strip() == target and not line.startswith(" ")
+    ]
+
+    if not block_indices:
+        raise AssertionError(f"Top-level '{key}' block is missing from {WORKFLOW_PATH}")
+    if len(block_indices) > 1:
+        raise AssertionError(
+            f"Top-level '{key}' block is duplicated in {WORKFLOW_PATH}; found {len(block_indices)} copies"
+        )
+
+    return block_indices[0]
+
+
+def _find_child_block_start(
+    lines: list[str],
+    *,
+    parent_start: int,
+    parent_indent: int,
+    key: str,
+    context: str,
+) -> int:
+    target = f"{key}:"
+    child_indent = parent_indent + 2
+    block_indices: list[int] = []
+
+    for index in range(parent_start + 1, len(lines)):
+        candidate = lines[index]
+        stripped = candidate.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            continue
+
+        candidate_indent = len(candidate) - len(candidate.lstrip(" "))
+        if candidate_indent <= parent_indent:
+            break
+        if candidate_indent != child_indent:
+            continue
+        if stripped == target:
+            block_indices.append(index)
+
+    if not block_indices:
+        raise AssertionError(f"{context} is missing '{key}' block in {WORKFLOW_PATH}")
+    if len(block_indices) > 1:
+        raise AssertionError(
+            f"{context} has duplicated '{key}' blocks in {WORKFLOW_PATH}; found {len(block_indices)} copies"
+        )
+
+    return block_indices[0]
+
+
+def _parse_workflow_dispatch_input_mapping_block(text: str, input_name: str) -> dict[str, str]:
+    lines = text.splitlines()
+    on_block_index = _find_top_level_block_start(lines, "on")
+    workflow_dispatch_index = _find_child_block_start(
+        lines,
+        parent_start=on_block_index,
+        parent_indent=0,
+        key="workflow_dispatch",
+        context="top-level 'on' block",
+    )
+    inputs_index = _find_child_block_start(
+        lines,
+        parent_start=workflow_dispatch_index,
+        parent_indent=2,
+        key="inputs",
+        context="'workflow_dispatch' block",
+    )
+    input_index = _find_child_block_start(
+        lines,
+        parent_start=inputs_index,
+        parent_indent=4,
+        key=input_name,
+        context="'workflow_dispatch.inputs' block",
+    )
+
+    return _parse_mapping_block(
+        lines,
+        input_index,
+        indent=8,
+        context=f"workflow_dispatch input '{input_name}' block",
+    )
+
+
 def _parse_job_mapping_block(text: str, job_name: str, key: str) -> dict[str, str]:
     lines = text.splitlines()
     job_target = f"{job_name}:"
@@ -120,7 +209,19 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertIn("- CI-1 Gatekeeper Trusted Handoff", self.workflow_text)
         self.assertIn("workflow_dispatch:", self.workflow_text)
         self.assertIn("maintainer_approved:", self.workflow_text)
+        self.assertEqual(
+            _parse_workflow_dispatch_input_mapping_block(
+                self.workflow_text,
+                "maintainer_approved",
+            )["description"],
+            (
+                "Manual attestation flag for write-capable CI-3 dispatch; "
+                "protected-environment reviewers enforce authoritative approval."
+            ),
+        )
         self.assertIn("source_path:", self.workflow_text)
+        self.assertIn("manual-approval:", self.workflow_text)
+        self.assertIn("name: ci3-manual-approval", self.workflow_text)
 
     def test_permissions_and_concurrency_match_ci3_requirements(self) -> None:
         self.assertEqual(
@@ -163,6 +264,10 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "reject:trusted_trigger_model:workflow_run_event_not_push",
             "reject:trusted_trigger_model:upstream_ci1_not_success",
             "reject:permissions_scope:minimum_permissions_mismatch",
+            "repos/${GITHUB_REPOSITORY}/actions/permissions/workflow",
+            "prereq_missing:permissions_scope:actions_permissions_unreadable",
+            "reject:permissions_scope:actions_pr_creation_not_permitted",
+            "action_required:permissions_scope:enable_actions_create_prs",
             "reject:permissions_scope:permissions_block_missing:top_level",
             "reject:permissions_scope:permissions_block_duplicated:top_level",
             "reject:permissions_scope:permissions_block_missing:pr_producer",
@@ -183,7 +288,13 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             self.assertIn(expected, self.workflow_text)
 
     def test_pr_updates_are_gated_by_preflight_and_required_checks(self) -> None:
-        self.assertIn("needs: preflight", self.workflow_text)
+        self.assertIn("needs:", self.workflow_text)
+        self.assertIn("- preflight", self.workflow_text)
+        self.assertIn("- manual-approval", self.workflow_text)
+        self.assertIn(
+            "needs.manual-approval.result == 'success'",
+            self.workflow_text,
+        )
         self.assertIn("if: steps.write-path.outputs.has_changes == 'true'", self.workflow_text)
         self.assertIn(
             "persist_query returned disallowed status",

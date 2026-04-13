@@ -4,7 +4,7 @@ Repository-level operational rules for maintaining the knowledgebase.
 
 ## Mission
 
-Keep wiki content deterministic, provenance-first, and policy-aligned with `SPEC.md`.
+Keep wiki content deterministic, provenance-first, and policy-aligned with `raw/inbox/SPEC.md`.
 
 ## Repository zones
 
