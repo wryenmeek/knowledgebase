@@ -124,6 +124,8 @@ def parse_sourceref(value: str) -> SourceRef:
 
 def validate_sourceref(value: str) -> SourceRef:
     """Validate and return parsed SourceRef components."""
+    if not isinstance(value, str):
+        _raise(SourceRefReasonCode.INVALID_STRUCTURE, "SourceRef must be a non-empty string")
     if not value.strip():
         _raise(SourceRefReasonCode.INVALID_FORMAT, "Value cannot be empty.")
     return parse_sourceref(value)

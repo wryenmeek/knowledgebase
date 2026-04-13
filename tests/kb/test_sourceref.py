@@ -87,7 +87,6 @@ class SourceRefValidatorTests(unittest.TestCase):
                     validate_sourceref(value)
                 self.assertEqual(ctx.exception.reason_code, SourceRefReasonCode.INVALID_FORMAT)
 
-
     def test_validate_source_path_invalid(self) -> None:
         cases = (
             ("/", SourceRefReasonCode.INVALID_PATH),
@@ -127,6 +126,13 @@ class SourceRefValidatorTests(unittest.TestCase):
             _validate_source_path("")
         self.assertEqual(ctx.exception.reason_code, SourceRefReasonCode.INVALID_PATH)
 
+    def test_non_string_input(self) -> None:
+        cases = (None, 123)
+        for value in cases:
+            with self.subTest(value=value):
+                with self.assertRaises(SourceRefValidationError) as ctx:
+                    validate_sourceref(value)  # type: ignore[arg-type]
+                self.assertEqual(ctx.exception.reason_code, SourceRefReasonCode.INVALID_STRUCTURE)
 
 if __name__ == "__main__":
     unittest.main()
