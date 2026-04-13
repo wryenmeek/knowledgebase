@@ -34,6 +34,7 @@ class SourceRefReasonCode(StrEnum):
     INVALID_ANCHOR = "invalid_anchor"
     MISSING_CHECKSUM = "missing_checksum"
     INVALID_CHECKSUM = "invalid_checksum"
+    INVALID_FORMAT = "invalid_format"
 
 
 class SourceRefValidationError(ValueError):
@@ -123,6 +124,8 @@ def parse_sourceref(value: str) -> SourceRef:
 
 def validate_sourceref(value: str) -> SourceRef:
     """Validate and return parsed SourceRef components."""
+    if not value.strip():
+        _raise(SourceRefReasonCode.INVALID_FORMAT, "Value cannot be empty.")
     return parse_sourceref(value)
 
 
