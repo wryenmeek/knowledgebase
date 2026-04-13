@@ -29,6 +29,15 @@ class PersistQueryInputError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class _PersistenceOutcome:
+    """Grouped persistence result fields."""
+
+    analysis_path: str | None = None
+    index_updated: bool = False
+    log_appended: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class PersistRequest:
     """Normalized, validated persist-query inputs."""
 
@@ -324,19 +333,17 @@ def _envelope(
     *,
     status: contracts.ResultStatus | str,
     reason_code: contracts.ReasonCode | str,
-    analysis_path: str | None = None,
-    index_updated: bool = False,
-    log_appended: bool = False,
-    sources: Sequence[str] = (),
+    request: PersistRequest | None = None,
+    outcome: _PersistenceOutcome | None = None,
 ) -> contracts.ResultEnvelope:
     return contracts.ResultEnvelope(
         status=status,
         reason_code=reason_code,
         policy=_POLICY_IDS,
-        analysis_path=analysis_path,
-        index_updated=index_updated,
-        log_appended=log_appended,
-        sources=tuple(sources),
+        analysis_path=outcome.analysis_path if outcome else None,
+        index_updated=outcome.index_updated if outcome else False,
+        log_appended=outcome.log_appended if outcome else False,
+        sources=request.sources if request else (),
     )
 
 
@@ -359,7 +366,7 @@ def _execute(args: argparse.Namespace, repo_root: Path) -> tuple[contracts.Resul
             _envelope(
                 status=contracts.ResultStatus.NO_WRITE_POLICY,
                 reason_code=policy_reason,
-                sources=request.sources,
+                request=request,
             ),
             0,
             None,
@@ -398,7 +405,7 @@ def _execute(args: argparse.Namespace, repo_root: Path) -> tuple[contracts.Resul
             _envelope(
                 status=contracts.ResultStatus.FAILED,
                 reason_code=contracts.ReasonCode.LOCK_UNAVAILABLE,
-                sources=request.sources,
+                request=request,
             ),
             1,
             exc.failure_reason,
@@ -408,7 +415,7 @@ def _execute(args: argparse.Namespace, repo_root: Path) -> tuple[contracts.Resul
             _envelope(
                 status=contracts.ResultStatus.FAILED,
                 reason_code=contracts.ReasonCode.WRITE_FAILED,
-                sources=request.sources,
+                request=request,
             ),
             1,
             str(exc),
@@ -418,10 +425,12 @@ def _execute(args: argparse.Namespace, repo_root: Path) -> tuple[contracts.Resul
         _envelope(
             status=contracts.ResultStatus.WRITTEN,
             reason_code=contracts.ReasonCode.OK,
-            analysis_path=analysis_relative.as_posix(),
-            index_updated=index_updated,
-            log_appended=log_appended,
-            sources=request.sources,
+            request=request,
+            outcome=_PersistenceOutcome(
+                analysis_path=analysis_relative.as_posix(),
+                index_updated=index_updated,
+                log_appended=log_appended,
+            ),
         ),
         0,
         None,
