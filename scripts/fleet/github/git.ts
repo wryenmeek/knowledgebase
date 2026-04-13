@@ -15,7 +15,9 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 
-const execFileAsync = promisify(execFile);
+export const gitCommands = {
+  execFileAsync: promisify(execFile)
+};
 
 export interface GitRepoInfo {
   owner: string;
@@ -37,7 +39,7 @@ export interface GitRepoInfo {
  * console.log(repo.fullName); // "owner/repo"
  */
 export async function getGitRepoInfo(remoteName = "origin"): Promise<GitRepoInfo> {
-  const { stdout } = await execFileAsync("git", ["remote", "get-url", remoteName]);
+  const { stdout } = await gitCommands.execFileAsync("git", ["remote", "get-url", "--", remoteName]);
   const remoteUrl = stdout.trim();
   
   return parseGitRemoteUrl(remoteUrl);
@@ -86,6 +88,6 @@ export function parseGitRemoteUrl(remoteUrl: string): GitRepoInfo {
  * @throws Error if not in a git repository
  */
 export async function getCurrentBranch(): Promise<string> {
-  const { stdout } = await execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+  const { stdout } = await gitCommands.execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
   return stdout.trim();
 }
