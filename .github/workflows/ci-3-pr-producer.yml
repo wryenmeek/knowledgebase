@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       maintainer_approved:
-        description: Manual attestation flag for write-capable CI-3 dispatch; workflow does not verify actor role.
+        description: Manual attestation flag for write-capable CI-3 dispatch; protected-environment reviewers enforce authoritative approval.
         required: true
         type: boolean
       source_path:
@@ -39,7 +39,7 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout workflow context
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -75,6 +75,23 @@ jobs:
           if ! command -v gh >/dev/null 2>&1; then
             reason_list+=("prereq_missing:ghaw_readiness:gh_cli_unavailable")
             prereq_ghaw_readiness="FAIL"
+          fi
+
+          if [[ "${prereq_ghaw_readiness}" == "PASS" ]]; then
+            actions_permissions_payload=""
+            if ! actions_permissions_payload="$(gh api "repos/${GITHUB_REPOSITORY}/actions/permissions/workflow" 2>/dev/null)"; then
+              reason_list+=("prereq_missing:permissions_scope:actions_permissions_unreadable")
+              prereq_permissions_scope="FAIL"
+            else
+              actions_can_create_prs="$(
+                printf '%s' "${actions_permissions_payload}" | python3 -c 'import json, sys; payload = json.load(sys.stdin); print("true" if payload.get("can_approve_pull_request_reviews") else "false")'
+              )"
+              if [[ "${actions_can_create_prs}" != "true" ]]; then
+                reason_list+=("reject:permissions_scope:actions_pr_creation_not_permitted")
+                reason_list+=("action_required:permissions_scope:enable_actions_create_prs")
+                prereq_permissions_scope="FAIL"
+              fi
+            fi
           fi
 
           for required_file in scripts/kb/ingest.py scripts/kb/update_index.py scripts/kb/lint_wiki.py scripts/kb/persist_query.py "${WORKFLOW_FILE}"; do
@@ -291,9 +308,26 @@ jobs:
 
           echo "CI-3 preflight PASS: trusted handoff/manual approval + tp-pr-producer checks satisfied."
 
+  manual-approval:
+    name: CI-3 manual protected-environment approval
+    if: github.event_name == 'workflow_dispatch'
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: ci3-manual-approval
+    steps:
+      - name: Confirm protected-environment approval
+        run: |
+          set -euo pipefail
+          echo "CI-3 manual dispatch approved via protected environment reviewers."
+
   pr-producer:
     name: CI-3 produce/update PR (tp-pr-producer)
-    needs: preflight
+    needs:
+      - preflight
+      - manual-approval
+    if: ${{ always() && needs.preflight.result == 'success' && (github.event_name != 'workflow_dispatch' || needs.manual-approval.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -308,13 +342,13 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout trusted source revision
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
 

@@ -214,9 +214,14 @@ class Ci3WorkflowContractTests(unittest.TestCase):
                 self.workflow_text,
                 "maintainer_approved",
             )["description"],
-            "Manual attestation flag for write-capable CI-3 dispatch; workflow does not verify actor role.",
+            (
+                "Manual attestation flag for write-capable CI-3 dispatch; "
+                "protected-environment reviewers enforce authoritative approval."
+            ),
         )
         self.assertIn("source_path:", self.workflow_text)
+        self.assertIn("manual-approval:", self.workflow_text)
+        self.assertIn("name: ci3-manual-approval", self.workflow_text)
 
     def test_permissions_and_concurrency_match_ci3_requirements(self) -> None:
         self.assertEqual(
@@ -259,6 +264,10 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "reject:trusted_trigger_model:workflow_run_event_not_push",
             "reject:trusted_trigger_model:upstream_ci1_not_success",
             "reject:permissions_scope:minimum_permissions_mismatch",
+            "repos/${GITHUB_REPOSITORY}/actions/permissions/workflow",
+            "prereq_missing:permissions_scope:actions_permissions_unreadable",
+            "reject:permissions_scope:actions_pr_creation_not_permitted",
+            "action_required:permissions_scope:enable_actions_create_prs",
             "reject:permissions_scope:permissions_block_missing:top_level",
             "reject:permissions_scope:permissions_block_duplicated:top_level",
             "reject:permissions_scope:permissions_block_missing:pr_producer",
@@ -279,7 +288,13 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             self.assertIn(expected, self.workflow_text)
 
     def test_pr_updates_are_gated_by_preflight_and_required_checks(self) -> None:
-        self.assertIn("needs: preflight", self.workflow_text)
+        self.assertIn("needs:", self.workflow_text)
+        self.assertIn("- preflight", self.workflow_text)
+        self.assertIn("- manual-approval", self.workflow_text)
+        self.assertIn(
+            "needs.manual-approval.result == 'success'",
+            self.workflow_text,
+        )
         self.assertIn("if: steps.write-path.outputs.has_changes == 'true'", self.workflow_text)
         self.assertIn(
             "persist_query returned disallowed status",
