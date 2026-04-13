@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 import sys
+import concurrent.futures
+import itertools
 
 
 REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
@@ -67,7 +69,9 @@ def _strip_quotes(value: str) -> str:
 def _extract_frontmatter(markdown_text: str, page_path: Path) -> str:
     lines = markdown_text.splitlines()
     if not lines or lines[0].strip() != "---":
-        raise IndexGenerationError(f"{page_path}: missing YAML frontmatter start delimiter")
+        raise IndexGenerationError(
+            f"{page_path}: missing YAML frontmatter start delimiter"
+        )
 
     for line_number in range(1, len(lines)):
         if lines[line_number].strip() == "---":
@@ -79,7 +83,9 @@ def _extract_frontmatter(markdown_text: str, page_path: Path) -> str:
 def _require_frontmatter_key(frontmatter: str, key: str, page_path: Path) -> str:
     key_match = re.search(rf"(?m)^{re.escape(key)}:\s*(.*)$", frontmatter)
     if key_match is None:
-        raise IndexGenerationError(f"{page_path}: missing required frontmatter key '{key}'")
+        raise IndexGenerationError(
+            f"{page_path}: missing required frontmatter key '{key}'"
+        )
     return key_match.group(1).strip()
 
 
@@ -109,15 +115,33 @@ def _parse_page_summary(page_path: Path, wiki_root: Path) -> PageSummary:
     )
 
 
-def _collect_section_entries(wiki_root: Path, section_directory: str) -> list[PageSummary]:
+def _collect_section_entries(
+    wiki_root: Path,
+    section_directory: str,
+    executor: concurrent.futures.ProcessPoolExecutor | None = None,
+) -> list[PageSummary]:
     section_root = wiki_root / section_directory
     if not section_root.exists():
         return []
 
-    entries = [
-        _parse_page_summary(page_path, wiki_root)
-        for page_path in sorted(section_root.rglob("*.md"))
-    ]
+    page_paths = sorted(section_root.rglob("*.md"))
+    if not page_paths:
+        return []
+
+    if executor:
+        entries = list(
+            executor.map(
+                _parse_page_summary,
+                page_paths,
+                itertools.repeat(wiki_root),
+                chunksize=100,
+            )
+        )
+    else:
+        entries = [
+            _parse_page_summary(page_path, wiki_root) for page_path in page_paths
+        ]
+
     entries.sort(key=lambda entry: (entry.title.casefold(), entry.relative_path))
     return entries
 
@@ -125,7 +149,9 @@ def _collect_section_entries(wiki_root: Path, section_directory: str) -> list[Pa
 def generate_index_content(wiki_root: Path) -> str:
     """Build deterministic index markdown content from wiki pages."""
     if not wiki_root.is_dir():
-        raise IndexGenerationError(f"{wiki_root}: wiki root does not exist or is not a directory")
+        raise IndexGenerationError(
+            f"{wiki_root}: wiki root does not exist or is not a directory"
+        )
 
     lines: list[str] = [
         INDEX_FRONTMATTER,
@@ -136,19 +162,40 @@ def generate_index_content(wiki_root: Path) -> str:
         "",
     ]
 
-    for section_title, section_directory in SECTION_LAYOUT:
-        entries = _collect_section_entries(wiki_root, section_directory)
-        lines.append(f"## {section_title}")
-        if entries:
-            for entry in entries:
-                lines.append(
-                    f"- [{entry.title}]({entry.relative_path}) "
-                    f"_(status: {entry.status}; confidence: {entry.confidence}; "
-                    f"updated_at: {entry.updated_at})_"
+    total_files = sum(1 for p in wiki_root.rglob("*.md") if p.is_file())
+    use_pool = total_files > 50
+
+    if use_pool:
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            for section_title, section_directory in SECTION_LAYOUT:
+                entries = _collect_section_entries(
+                    wiki_root, section_directory, executor
                 )
-        else:
-            lines.append("- _None_")
-        lines.append("")
+                lines.append(f"## {section_title}")
+                if entries:
+                    for entry in entries:
+                        lines.append(
+                            f"- [{entry.title}]({entry.relative_path}) "
+                            f"_(status: {entry.status}; confidence: {entry.confidence}; "
+                            f"updated_at: {entry.updated_at})_"
+                        )
+                else:
+                    lines.append("- _None_")
+                lines.append("")
+    else:
+        for section_title, section_directory in SECTION_LAYOUT:
+            entries = _collect_section_entries(wiki_root, section_directory)
+            lines.append(f"## {section_title}")
+            if entries:
+                for entry in entries:
+                    lines.append(
+                        f"- [{entry.title}]({entry.relative_path}) "
+                        f"_(status: {entry.status}; confidence: {entry.confidence}; "
+                        f"updated_at: {entry.updated_at})_"
+                    )
+            else:
+                lines.append("- _None_")
+            lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -188,9 +235,14 @@ def main(argv: list[str] | None = None) -> int:
 
     index_path = wiki_root / "index.md"
     try:
-        existing_content = index_path.read_text(encoding="utf-8") if index_path.exists() else ""
+        existing_content = (
+            index_path.read_text(encoding="utf-8") if index_path.exists() else ""
+        )
     except OSError as exc:
-        print(f"error: {index_path}: unable to read existing index ({exc})", file=sys.stderr)
+        print(
+            f"error: {index_path}: unable to read existing index ({exc})",
+            file=sys.stderr,
+        )
         return 1
 
     if existing_content == generated_content:
