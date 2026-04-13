@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from scripts.kb.sourceref import SourceRefValidationError, parse_sourceref
+from scripts.kb.sourceref import SourceRefValidationError, parse_sourceref, _validate_source_path, SourceRefReasonCode
 
 
 class SourceRefValidatorTests(unittest.TestCase):
@@ -58,12 +58,12 @@ class SourceRefValidatorTests(unittest.TestCase):
             (
                 "repo://owner/repo/raw/other/source.md@abc1234"
                 f"#L1-L2?sha256={self.checksum}",
-                "path_not_allowlisted",
+                SourceRefReasonCode.PATH_NOT_ALLOWLISTED,
             ),
             (
                 "repo://owner/repo/raw/inbox/../secrets.md@abc1234"
                 f"#L1-L2?sha256={self.checksum}",
-                "path_traversal",
+                SourceRefReasonCode.PATH_TRAVERSAL,
             ),
         )
 
@@ -72,6 +72,49 @@ class SourceRefValidatorTests(unittest.TestCase):
                 with self.assertRaises(SourceRefValidationError) as ctx:
                     parse_sourceref(value)
                 self.assertEqual(ctx.exception.reason_code, expected_reason)
+
+
+
+    def test_validate_source_path_invalid(self) -> None:
+        cases = (
+            ("/", SourceRefReasonCode.INVALID_PATH),
+            ("/raw/inbox/file.md", SourceRefReasonCode.INVALID_PATH),
+            ("raw/inbox/file.md/", SourceRefReasonCode.INVALID_PATH),
+            ("raw/inbox/file\\md", SourceRefReasonCode.INVALID_PATH),
+            ("raw//inbox/file.md", SourceRefReasonCode.INVALID_PATH),
+            ("raw/inbox/.", SourceRefReasonCode.PATH_TRAVERSAL),
+            ("raw/inbox/./file.md", SourceRefReasonCode.PATH_TRAVERSAL),
+            ("raw/inbox/..", SourceRefReasonCode.PATH_TRAVERSAL),
+            ("raw/inbox/../file.md", SourceRefReasonCode.PATH_TRAVERSAL),
+            ("raw/other/file.md", SourceRefReasonCode.PATH_NOT_ALLOWLISTED),
+            ("something/else", SourceRefReasonCode.PATH_NOT_ALLOWLISTED),
+            ("raw", SourceRefReasonCode.PATH_NOT_ALLOWLISTED),
+        )
+        for value, expected_reason in cases:
+            with self.subTest(value=value):
+                with self.assertRaises(SourceRefValidationError) as ctx:
+                    _validate_source_path(value)
+                self.assertEqual(ctx.exception.reason_code, expected_reason)
+
+
+
+    def test_validate_source_path_valid(self) -> None:
+        valid_paths = (
+            "raw/inbox/file.md",
+            "raw/processed/some/dir/file.md",
+            "raw/assets/image.png",
+        )
+        for path in valid_paths:
+            with self.subTest(path=path):
+                # Should not raise any exception
+                _validate_source_path(path)
+
+
+
+    def test_validate_source_path_empty(self) -> None:
+        with self.assertRaises(SourceRefValidationError) as ctx:
+            _validate_source_path("")
+        self.assertEqual(ctx.exception.reason_code, SourceRefReasonCode.INVALID_FORMAT)
 
 
 if __name__ == "__main__":

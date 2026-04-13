@@ -22,6 +22,7 @@ _ALLOWED_PREFIXES: tuple[tuple[str, str], ...] = (
 class SourceRefReasonCode(StrEnum):
     """Stable reason codes for SourceRef validation failures."""
 
+    INVALID_FORMAT = "invalid_format"
     INVALID_SCHEME = "invalid_scheme"
     INVALID_STRUCTURE = "invalid_structure"
     INVALID_OWNER = "invalid_owner"
@@ -149,6 +150,8 @@ def _parse_locator(locator: str) -> tuple[str, str, str]:
 
 
 def _validate_source_path(source_path: str) -> None:
+    if not source_path:
+        raise SourceRefValidationError(SourceRefReasonCode.INVALID_FORMAT, "Path cannot be empty.")
     if source_path.startswith("/") or source_path.endswith("/") or "\\" in source_path:
         _raise(
             SourceRefReasonCode.INVALID_PATH,
