@@ -114,7 +114,7 @@ class SourceRefValidatorTests(unittest.TestCase):
     def test_validate_source_path_empty(self) -> None:
         with self.assertRaises(SourceRefValidationError) as ctx:
             _validate_source_path("")
-        self.assertEqual(ctx.exception.reason_code, SourceRefReasonCode.INVALID_FORMAT)
+        self.assertEqual(ctx.exception.reason_code, SourceRefReasonCode.INVALID_PATH)
 
 
 if __name__ == "__main__":
