@@ -94,6 +94,26 @@ class PersistQueryCliTests(unittest.TestCase):
             },
         )
 
+    def _assert_envelope_values(
+        self,
+        payload: dict[str, object],
+        *,
+        status: str,
+        reason_code: str,
+        analysis_path: str | None = None,
+        index_updated: bool = False,
+        log_appended: bool = False,
+        sources: list[str] | None = None,
+    ) -> None:
+        self._assert_required_envelope_keys(payload)
+        self.assertEqual(payload["status"], status)
+        self.assertEqual(payload["reason_code"], reason_code)
+        self.assertEqual(payload["analysis_path"], analysis_path)
+        self.assertEqual(payload["index_updated"], index_updated)
+        self.assertEqual(payload["log_appended"], log_appended)
+        if sources is not None:
+            self.assertEqual(payload["sources"], sources)
+
     def test_policy_pass_writes_once_and_converges_on_equivalent_rerun(self) -> None:
         source_a = self._source("source-a", "a")
         source_b = self._source("source-b", "b")
@@ -118,14 +138,14 @@ class PersistQueryCliTests(unittest.TestCase):
         )
 
         self.assertEqual(first_exit_code, 0)
-        self._assert_required_envelope_keys(first_payload)
-        self.assertEqual(first_payload["status"], "written")
-        self.assertEqual(first_payload["reason_code"], "ok")
-        self.assertTrue(first_payload["index_updated"])
-        self.assertTrue(first_payload["log_appended"])
-        self.assertEqual(
-            first_payload["sources"],
-            sorted([source_a, source_b]),
+        self._assert_envelope_values(
+            first_payload,
+            status="written",
+            reason_code="ok",
+            index_updated=True,
+            log_appended=True,
+            sources=sorted([source_a, source_b]),
+            analysis_path=first_payload["analysis_path"],  # type: ignore
         )
         first_analysis_path = first_payload["analysis_path"]
         self.assertIsInstance(first_analysis_path, str)
@@ -153,12 +173,14 @@ class PersistQueryCliTests(unittest.TestCase):
         )
 
         self.assertEqual(second_exit_code, 0)
-        self._assert_required_envelope_keys(second_payload)
-        self.assertEqual(second_payload["status"], "written")
-        self.assertEqual(second_payload["reason_code"], "ok")
-        self.assertEqual(second_payload["analysis_path"], first_analysis_path)
-        self.assertFalse(second_payload["index_updated"])
-        self.assertFalse(second_payload["log_appended"])
+        self._assert_envelope_values(
+            second_payload,
+            status="written",
+            reason_code="ok",
+            analysis_path=first_analysis_path,  # type: ignore
+            index_updated=False,
+            log_appended=False,
+        )
         self.assertEqual(
             (self.wiki_root / "log.md").read_text(encoding="utf-8"),
             log_after_first_run,
@@ -185,12 +207,14 @@ class PersistQueryCliTests(unittest.TestCase):
         )
 
         self.assertEqual(exit_code, 0)
-        self._assert_required_envelope_keys(payload)
-        self.assertEqual(payload["status"], "no_write_policy")
-        self.assertEqual(payload["reason_code"], "policy_confidence_below_min")
-        self.assertIsNone(payload["analysis_path"])
-        self.assertFalse(payload["index_updated"])
-        self.assertFalse(payload["log_appended"])
+        self._assert_envelope_values(
+            payload,
+            status="no_write_policy",
+            reason_code="policy_confidence_below_min",
+            analysis_path=None,
+            index_updated=False,
+            log_appended=False,
+        )
         self.assertEqual(before, self._snapshot_workspace())
 
     def test_policy_sources_below_min_returns_no_write_policy_without_mutation(self) -> None:
@@ -212,12 +236,14 @@ class PersistQueryCliTests(unittest.TestCase):
         )
 
         self.assertEqual(exit_code, 0)
-        self._assert_required_envelope_keys(payload)
-        self.assertEqual(payload["status"], "no_write_policy")
-        self.assertEqual(payload["reason_code"], "policy_sources_below_min")
-        self.assertIsNone(payload["analysis_path"])
-        self.assertFalse(payload["index_updated"])
-        self.assertFalse(payload["log_appended"])
+        self._assert_envelope_values(
+            payload,
+            status="no_write_policy",
+            reason_code="policy_sources_below_min",
+            analysis_path=None,
+            index_updated=False,
+            log_appended=False,
+        )
         self.assertEqual(before, self._snapshot_workspace())
 
     def test_policy_unresolved_contradiction_returns_no_write_policy_without_mutation(self) -> None:
@@ -243,12 +269,14 @@ class PersistQueryCliTests(unittest.TestCase):
         )
 
         self.assertEqual(exit_code, 0)
-        self._assert_required_envelope_keys(payload)
-        self.assertEqual(payload["status"], "no_write_policy")
-        self.assertEqual(payload["reason_code"], "policy_unresolved_contradiction")
-        self.assertIsNone(payload["analysis_path"])
-        self.assertFalse(payload["index_updated"])
-        self.assertFalse(payload["log_appended"])
+        self._assert_envelope_values(
+            payload,
+            status="no_write_policy",
+            reason_code="policy_unresolved_contradiction",
+            analysis_path=None,
+            index_updated=False,
+            log_appended=False,
+        )
         self.assertEqual(before, self._snapshot_workspace())
 
     def test_invalid_input_returns_failed_envelope_and_non_zero_exit(self) -> None:
@@ -269,12 +297,14 @@ class PersistQueryCliTests(unittest.TestCase):
         )
 
         self.assertEqual(exit_code, 1)
-        self._assert_required_envelope_keys(payload)
-        self.assertEqual(payload["status"], "failed")
-        self.assertEqual(payload["reason_code"], "invalid_input")
-        self.assertIsNone(payload["analysis_path"])
-        self.assertFalse(payload["index_updated"])
-        self.assertFalse(payload["log_appended"])
+        self._assert_envelope_values(
+            payload,
+            status="failed",
+            reason_code="invalid_input",
+            analysis_path=None,
+            index_updated=False,
+            log_appended=False,
+        )
         self.assertEqual(before, self._snapshot_workspace())
 
     def test_index_failure_after_analysis_write_rolls_back_workspace_state(self) -> None:
@@ -311,13 +341,37 @@ class PersistQueryCliTests(unittest.TestCase):
             )
 
         self.assertEqual(exit_code, 1)
-        self._assert_required_envelope_keys(payload)
-        self.assertEqual(payload["status"], "failed")
-        self.assertEqual(payload["reason_code"], "write_failed")
-        self.assertIsNone(payload["analysis_path"])
-        self.assertFalse(payload["index_updated"])
-        self.assertFalse(payload["log_appended"])
+        self._assert_envelope_values(
+            payload,
+            status="failed",
+            reason_code="write_failed",
+            analysis_path=None,
+            index_updated=False,
+            log_appended=False,
+        )
         self.assertEqual(before, self._snapshot_workspace())
+
+    def test_default_envelope_wiring_on_invalid_input(self) -> None:
+        """Verify envelope defaults when PersistRequest/Outcome are absent."""
+        # Query is empty -> PersistRequest won't be created
+        exit_code, payload = self._run_cli(
+            "--query",
+            "",
+            "--confidence",
+            "5",
+            "--result-json",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self._assert_envelope_values(
+            payload,
+            status="failed",
+            reason_code="invalid_input",
+            analysis_path=None,
+            index_updated=False,
+            log_appended=False,
+            sources=[],
+        )
 
 
 if __name__ == "__main__":
