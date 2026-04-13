@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -140,72 +141,80 @@ def lint_wiki(wiki_root: Path) -> list[Violation]:
     violations: list[Violation] = []
     referenced_by: dict[Path, set[Path]] = {page: set() for page in pages}
 
-    for page in pages:
-        text = page.read_text(encoding="utf-8")
-        frontmatter, _body = _extract_frontmatter(text)
+    def _read_page(p: Path) -> str:
+        return p.read_text(encoding="utf-8")
 
-        if frontmatter is None:
-            violations.append(
-                Violation(
-                    page=page,
-                    code="missing-frontmatter",
-                    message="missing YAML frontmatter block",
-                )
-            )
-        else:
-            present_keys = _extract_frontmatter_keys(frontmatter)
-            missing_keys = sorted(
-                key for key in REQUIRED_FRONTMATTER_KEYS if key not in present_keys
-            )
-            for key in missing_keys:
+    with ThreadPoolExecutor() as executor:
+        # Avoid buffering all contents into a list; map returns an iterator.
+        # This keeps peak memory low by only having one file's text loaded at a time per thread,
+        # plus the small number of results held in memory waiting to be yielded.
+        pages_content_iterator = executor.map(_read_page, pages)
+
+        for page, text in zip(pages, pages_content_iterator):
+            frontmatter, _body = _extract_frontmatter(text)
+
+            if frontmatter is None:
                 violations.append(
                     Violation(
                         page=page,
-                        code="missing-frontmatter-key",
-                        message=f"required key '{key}' is missing",
+                        code="missing-frontmatter",
+                        message="missing YAML frontmatter block",
                     )
                 )
+            else:
+                present_keys = _extract_frontmatter_keys(frontmatter)
+                missing_keys = sorted(
+                    key for key in REQUIRED_FRONTMATTER_KEYS if key not in present_keys
+                )
+                for key in missing_keys:
+                    violations.append(
+                        Violation(
+                            page=page,
+                            code="missing-frontmatter-key",
+                            message=f"required key '{key}' is missing",
+                        )
+                    )
 
-        for match in _MARKDOWN_LINK_RE.finditer(text):
-            target_path = _resolve_internal_markdown_target(page, match.group(1), wiki_root)
-            if target_path is None:
-                continue
+            for match in _MARKDOWN_LINK_RE.finditer(text):
+                target_path = _resolve_internal_markdown_target(page, match.group(1), wiki_root)
+                if target_path is None:
+                    continue
 
-            if not _is_within(target_path, wiki_root):
+                if not _is_within(target_path, wiki_root):
+                    violations.append(
+                        Violation(
+                            page=page,
+                            code="out-of-bounds-link",
+                            message=f"internal link leaves wiki root: {match.group(1)}",
+                        )
+                    )
+                    continue
+
+                if not target_path.exists() or not target_path.is_file():
+                    violations.append(
+                        Violation(
+                            page=page,
+                            code="missing-link-target",
+                            message=(
+                                "internal markdown link target does not exist: "
+                                f"{_display_path(target_path, wiki_root)}"
+                            ),
+                        )
+                    )
+                    continue
+
+                resolved_target = target_path.resolve()
+                if resolved_target in referenced_by and resolved_target != page:
+                    referenced_by[resolved_target].add(page)
+
+            if _CONTRADICTION_MARKER_RE.search(text):
                 violations.append(
                     Violation(
                         page=page,
-                        code="out-of-bounds-link",
-                        message=f"internal link leaves wiki root: {match.group(1)}",
+                        code="unresolved-contradiction-marker",
+                        message="unresolved contradiction marker requires escalation",
                     )
                 )
-                continue
-
-            if not target_path.exists() or not target_path.is_file():
-                violations.append(
-                    Violation(
-                        page=page,
-                        code="missing-link-target",
-                        message=(
-                            "internal markdown link target does not exist: "
-                            f"{_display_path(target_path, wiki_root)}"
-                        ),
-                    )
-                )
-                continue
-
-            resolved_target = target_path.resolve()
-            if resolved_target in referenced_by and resolved_target != page:
-                referenced_by[resolved_target].add(page)
-
-        if _CONTRADICTION_MARKER_RE.search(text):
-            violations.append(
-                Violation(
-                    page=page,
-                    code="unresolved-contradiction-marker",
-                    message="unresolved contradiction marker requires escalation",
-                )
-            )
 
     exempt_from_orphan_check = {
         (wiki_root / "index.md").resolve(),

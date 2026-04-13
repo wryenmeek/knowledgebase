@@ -233,6 +233,18 @@ class LintWikiCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("Found", result.stdout)
 
+
+    def test_read_failure_handled_in_thread_pool(self) -> None:
+        self._seed_valid_wiki()
+
+        from scripts.kb.lint_wiki import lint_wiki
+        from unittest.mock import patch
+
+        with patch("pathlib.Path.read_text") as mock_read:
+            mock_read.side_effect = PermissionError("Simulated unreadable file")
+            with self.assertRaises(PermissionError):
+                lint_wiki(self.wiki_root)
+
     def test_lint_command_does_not_mutate_wiki_files(self) -> None:
         self._seed_valid_wiki()
         before_snapshot = self._snapshot_wiki_files()
