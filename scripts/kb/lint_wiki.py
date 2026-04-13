@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -140,8 +141,13 @@ def lint_wiki(wiki_root: Path) -> list[Violation]:
     violations: list[Violation] = []
     referenced_by: dict[Path, set[Path]] = {page: set() for page in pages}
 
-    for page in pages:
-        text = page.read_text(encoding="utf-8")
+    def _read_page(p: Path) -> str:
+        return p.read_text(encoding="utf-8")
+
+    with ThreadPoolExecutor() as executor:
+        pages_content = list(executor.map(_read_page, pages))
+
+    for page, text in zip(pages, pages_content):
         frontmatter, _body = _extract_frontmatter(text)
 
         if frontmatter is None:
