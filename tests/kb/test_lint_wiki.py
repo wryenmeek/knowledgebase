@@ -138,6 +138,42 @@ class LintWikiCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("Found 0 violation(s).", result.stdout)
 
+    def test_strict_mode_accepts_internal_links_with_spaces_in_target(self) -> None:
+        self._write_page(
+            "index.md",
+            self._build_page(
+                "Knowledgebase Index",
+                '- [Source With Spaces](sources/source with spaces.md)',
+            ),
+        )
+        self._write_page(
+            "sources/source with spaces.md",
+            self._build_page("Source With Spaces", "- [Index](../index.md)"),
+        )
+
+        result = self._run_lint(strict=True)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Found 0 violation(s).", result.stdout)
+
+    def test_strict_mode_accepts_internal_links_with_optional_title(self) -> None:
+        self._write_page(
+            "index.md",
+            self._build_page(
+                "Knowledgebase Index",
+                '- [Source A](sources/source-a.md "Source A title")',
+            ),
+        )
+        self._write_page(
+            "sources/source-a.md",
+            self._build_page("Source A", '- [Index](../index.md "Back to index")'),
+        )
+
+        result = self._run_lint(strict=True)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Found 0 violation(s).", result.stdout)
+
     def test_strict_mode_fails_for_wiki_violations(self) -> None:
         self._seed_invalid_wiki()
 
