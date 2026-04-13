@@ -162,9 +162,29 @@ def generate_index_content(wiki_root: Path) -> str:
         "",
     ]
 
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    total_files = sum(1 for p in wiki_root.rglob("*.md") if p.is_file())
+    use_pool = total_files > 50
+
+    if use_pool:
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            for section_title, section_directory in SECTION_LAYOUT:
+                entries = _collect_section_entries(
+                    wiki_root, section_directory, executor
+                )
+                lines.append(f"## {section_title}")
+                if entries:
+                    for entry in entries:
+                        lines.append(
+                            f"- [{entry.title}]({entry.relative_path}) "
+                            f"_(status: {entry.status}; confidence: {entry.confidence}; "
+                            f"updated_at: {entry.updated_at})_"
+                        )
+                else:
+                    lines.append("- _None_")
+                lines.append("")
+    else:
         for section_title, section_directory in SECTION_LAYOUT:
-            entries = _collect_section_entries(wiki_root, section_directory, executor)
+            entries = _collect_section_entries(wiki_root, section_directory)
             lines.append(f"## {section_title}")
             if entries:
                 for entry in entries:

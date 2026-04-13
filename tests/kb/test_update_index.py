@@ -23,16 +23,24 @@ class UpdateIndexCommandTests(unittest.TestCase):
             (self.wiki_root / directory).mkdir(parents=True, exist_ok=True)
 
         (self.workspace / "raw").mkdir(parents=True, exist_ok=True)
-        (self.workspace / "raw" / "sentinel.txt").write_text("raw-is-immutable\n", encoding="utf-8")
+        (self.workspace / "raw" / "sentinel.txt").write_text(
+            "raw-is-immutable\n", encoding="utf-8"
+        )
 
         (self.wiki_root / "index.md").write_text("stale-index\n", encoding="utf-8")
-        (self.wiki_root / "log.md").write_text("log-should-not-change\n", encoding="utf-8")
+        (self.wiki_root / "log.md").write_text(
+            "log-should-not-change\n", encoding="utf-8"
+        )
 
         self._write_page("sources/zeta-source.md", "Zeta Source", "source", "2")
         self._write_page("sources/alpha-source.md", "Alpha Source", "source", "4")
         self._write_page("entities/beneficiary.md", "Beneficiary", "entity", "5")
-        self._write_page("concepts/network-adequacy.md", "Network Adequacy", "concept", "3")
-        self._write_page("analyses/prior-auth-review.md", "Prior Auth Review", "analysis", "4")
+        self._write_page(
+            "concepts/network-adequacy.md", "Network Adequacy", "concept", "3"
+        )
+        self._write_page(
+            "analyses/prior-auth-review.md", "Prior Auth Review", "analysis", "4"
+        )
 
     def tearDown(self) -> None:
         if self.workspace.exists():
@@ -80,9 +88,9 @@ Fixture page.
         for file_path in sorted(self.workspace.rglob("*")):
             if not file_path.is_file():
                 continue
-            digest_map[file_path.relative_to(self.workspace).as_posix()] = hashlib.sha256(
-                file_path.read_bytes()
-            ).hexdigest()
+            digest_map[file_path.relative_to(self.workspace).as_posix()] = (
+                hashlib.sha256(file_path.read_bytes()).hexdigest()
+            )
         return digest_map
 
     def test_preview_is_deterministic_and_read_only(self) -> None:
@@ -102,7 +110,9 @@ Fixture page.
         self.assertEqual(first_stderr, "")
         self.assertEqual(second_stderr, "")
         self.assertEqual(first_stdout, second_stdout)
-        self.assertEqual(first_stdout, update_index.generate_index_content(self.wiki_root))
+        self.assertEqual(
+            first_stdout, update_index.generate_index_content(self.wiki_root)
+        )
         self.assertEqual(before, self._snapshot_hashes())
 
     def test_write_updates_only_index_file_when_needed(self) -> None:
@@ -153,6 +163,52 @@ Fixture page.
         self.assertEqual(first_stdout, "unchanged\n")
         self.assertEqual(second_stdout, "unchanged\n")
         self.assertEqual(before, self._snapshot_hashes())
+
+    def test_pool_parse_error(self) -> None:
+        wiki_root = self.workspace / "test_wiki_root"
+        wiki_root.mkdir(exist_ok=True)
+
+        source_root = wiki_root / "sources"
+        source_root.mkdir(exist_ok=True)
+
+        # trigger threshold
+        for i in range(55):
+            page = source_root / f"good{i}.md"
+            page.write_text(
+                f"""---
+type: source
+title: "Good {i}"
+status: active
+sources: []
+open_questions: []
+confidence: 1
+sensitivity: internal
+updated_at: "2024-01-01T00:00:00Z"
+tags:
+  - test
+---""",
+                encoding="utf-8",
+            )
+
+        page = source_root / "bad.md"
+        page.write_text("---bad", encoding="utf-8")
+
+        with self.assertRaises(update_index.IndexGenerationError):
+            update_index.generate_index_content(wiki_root)
+
+        exit_code, stdout, stderr = self._run_command(
+            "--wiki-root",
+            str(wiki_root),
+            "--write",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn(
+            "sources/bad.md: missing YAML frontmatter start delimiter", stderr
+        )
+
+        index_path = wiki_root / "index.md"
+        self.assertFalse(index_path.exists())
 
 
 if __name__ == "__main__":
