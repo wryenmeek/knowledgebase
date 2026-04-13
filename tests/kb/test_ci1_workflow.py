@@ -14,6 +14,10 @@ import unittest
 WORKFLOW_PATH = Path(".github/workflows/ci-1-gatekeeper.yml")
 
 
+def _leading_spaces(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
 def _parse_top_level_mapping_block(text: str, key: str) -> dict[str, str]:
     lines = text.splitlines()
     target = f"{key}:"
@@ -47,33 +51,35 @@ def _extract_ci1_preflight_script(workflow_text: str) -> str:
     )
     if step_start is None:
         raise AssertionError("Unable to locate CI-1 trusted-trigger preflight step")
+    step_indent = _leading_spaces(lines[step_start])
 
     run_index = next(
         (
             index
             for index in range(step_start + 1, len(lines))
-            if lines[index].strip() == "run: |"
+            if lines[index].strip() == "run: |" and _leading_spaces(lines[index]) > step_indent
         ),
         None,
     )
     if run_index is None:
         raise AssertionError("Unable to locate run block for CI-1 trusted-trigger preflight step")
+    run_indent = _leading_spaces(lines[run_index])
 
-    script_lines: list[str] = []
+    raw_script_lines: list[str] = []
     for line in lines[run_index + 1 :]:
-        if line.startswith("      - name: "):
+        if line.strip() and _leading_spaces(line) <= run_indent:
             break
-        if line.startswith("          "):
-            script_lines.append(line[10:])
-            continue
         if line.strip() == "":
-            script_lines.append("")
+            raw_script_lines.append("")
             continue
-        break
+        raw_script_lines.append(line)
 
-    if not script_lines:
+    non_empty_lines = [line for line in raw_script_lines if line.strip()]
+    if not non_empty_lines:
         raise AssertionError("CI-1 trusted-trigger preflight run block is empty")
 
+    script_indent = min(_leading_spaces(line) for line in non_empty_lines)
+    script_lines = [line[script_indent:] if line.strip() else "" for line in raw_script_lines]
     return "\n".join(script_lines)
 
 
@@ -249,6 +255,33 @@ class Ci1WorkflowContractTests(unittest.TestCase):
         combined_output = f"{result.stdout}\n{result.stderr}"
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("CI-1 gatekeeper preflight PASS", combined_output)
+
+    def test_preflight_script_extraction_handles_alternate_indentation(self) -> None:
+        workflow_text = textwrap.dedent(
+            """\
+            name: CI-1 Gatekeeper Trusted Handoff
+            jobs:
+              gatekeeper:
+                runs-on: ubuntu-latest
+                steps:
+                    - name: Run CI-1 trusted-trigger preflight checks
+                      run: |
+                        set -euo pipefail
+                        echo "ok"
+                    - name: Next step
+                      run: echo "done"
+            """
+        )
+        script = _extract_ci1_preflight_script(workflow_text)
+        self.assertEqual(
+            script,
+            textwrap.dedent(
+                """\
+                set -euo pipefail
+                echo "ok"
+                """
+            ).strip(),
+        )
 
     def test_preflight_behavior_rejects_non_push_events(self) -> None:
         result = _run_ci1_preflight_script(
