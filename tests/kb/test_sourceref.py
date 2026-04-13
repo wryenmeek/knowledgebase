@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from scripts.kb.sourceref import SourceRefValidationError, parse_sourceref
+from scripts.kb.sourceref import SourceRefValidationError, parse_sourceref, validate_sourceref, SourceRefReasonCode
 
 
 class SourceRefValidatorTests(unittest.TestCase):
@@ -73,6 +73,22 @@ class SourceRefValidatorTests(unittest.TestCase):
                     parse_sourceref(value)
                 self.assertEqual(ctx.exception.reason_code, expected_reason)
 
+    def test_empty_string(self) -> None:
+        cases = ("", "   ")
+        for value in cases:
+            with self.subTest(value=value):
+                with self.assertRaises(SourceRefValidationError) as ctx:
+                    validate_sourceref(value)
+                self.assertEqual(ctx.exception.reason_code, SourceRefReasonCode.INVALID_FORMAT)
+
+
+    def test_non_string_input(self) -> None:
+        cases = (None, 123)
+        for value in cases:
+            with self.subTest(value=value):
+                with self.assertRaises(SourceRefValidationError) as ctx:
+                    validate_sourceref(value)  # type: ignore[arg-type]
+                self.assertEqual(ctx.exception.reason_code, SourceRefReasonCode.INVALID_STRUCTURE)
 
 if __name__ == "__main__":
     unittest.main()

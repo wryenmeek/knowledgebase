@@ -98,13 +98,13 @@ jobs:
             prereq_trusted_trigger_model="FAIL"
           fi
 
-          mapfile -t changed_paths < <(
-            if [[ -n "${BEFORE_SHA}" ]] && [[ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]]; then
-              git diff --name-only "${BEFORE_SHA}" "${CURRENT_SHA}"
-            else
-              git diff-tree --no-commit-id --name-only -r "${CURRENT_SHA}"
+          if [[ -n "${BEFORE_SHA}" ]] && [[ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]]; then
+            # Attempt to fetch BEFORE_SHA if it's missing (helps with some force pushes)
+            if ! git cat-file -t "${BEFORE_SHA}" >/dev/null 2>&1; then
+               git fetch origin "${BEFORE_SHA}" || true
             fi
-          )
+          fi
+          mapfile -t changed_paths < <(git diff-tree --no-commit-id --name-only -r "${CURRENT_SHA}" || true)
 
           if [[ "${#changed_paths[@]}" -eq 0 ]]; then
             reason_list+=("reject:path_filter:no_changed_paths_detected")
