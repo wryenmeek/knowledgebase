@@ -63,6 +63,19 @@ class WriteUtilitiesTests(unittest.TestCase):
 
         return json.loads(completed.stdout.strip().splitlines()[-1])
 
+    def test_lock_unavailable_reason_returns_deterministic_string(self) -> None:
+        # Default path
+        self.assertEqual(
+            write_utils.lock_unavailable_reason(),
+            f"{contracts.ReasonCode.LOCK_UNAVAILABLE.value}:{contracts.WRITE_LOCK_PATH}",
+        )
+        # Custom path
+        custom_path = "custom/lock.path"
+        self.assertEqual(
+            write_utils.lock_unavailable_reason(custom_path),
+            f"{contracts.ReasonCode.LOCK_UNAVAILABLE.value}:{custom_path}",
+        )
+
     def test_exclusive_write_lock_uses_spec_lock_path(self) -> None:
         with write_utils.exclusive_write_lock(self.workspace_root) as lock_path:
             self.assertEqual(lock_path, self.workspace_root / contracts.WRITE_LOCK_PATH)
