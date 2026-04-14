@@ -10,7 +10,6 @@ import sys
 import concurrent.futures
 import itertools
 
-
 REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
     "type",
     "title",
@@ -118,17 +117,16 @@ def _parse_page_summary(page_path: Path, wiki_root: Path) -> PageSummary:
 def _collect_section_entries(
     wiki_root: Path,
     section_directory: str,
-    executor: concurrent.futures.ProcessPoolExecutor | None = None,
+    executor: concurrent.futures.Executor | None = None,
 ) -> list[PageSummary]:
     section_root = wiki_root / section_directory
     if not section_root.exists():
         return []
 
-    page_paths = sorted(section_root.rglob("*.md"))
-    if not page_paths:
-        return []
+    page_paths = section_root.rglob("*.md")
 
     if executor:
+        # We process files efficiently by passing chunksize
         entries = list(
             executor.map(
                 _parse_page_summary,
@@ -162,29 +160,9 @@ def generate_index_content(wiki_root: Path) -> str:
         "",
     ]
 
-    total_files = sum(1 for p in wiki_root.rglob("*.md") if p.is_file())
-    use_pool = total_files > 50
-
-    if use_pool:
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            for section_title, section_directory in SECTION_LAYOUT:
-                entries = _collect_section_entries(
-                    wiki_root, section_directory, executor
-                )
-                lines.append(f"## {section_title}")
-                if entries:
-                    for entry in entries:
-                        lines.append(
-                            f"- [{entry.title}]({entry.relative_path}) "
-                            f"_(status: {entry.status}; confidence: {entry.confidence}; "
-                            f"updated_at: {entry.updated_at})_"
-                        )
-                else:
-                    lines.append("- _None_")
-                lines.append("")
-    else:
+    with concurrent.futures.ProcessPoolExecutor() as executor:
         for section_title, section_directory in SECTION_LAYOUT:
-            entries = _collect_section_entries(wiki_root, section_directory)
+            entries = _collect_section_entries(wiki_root, section_directory, executor)
             lines.append(f"## {section_title}")
             if entries:
                 for entry in entries:
