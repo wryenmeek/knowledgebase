@@ -8,3 +8,8 @@
 - Established baseline: ~0.22s
 - Improved time: ~0.18s
 - Impact: 18% execution time reduction and lower peak memory allocations because generators `rglob` are now streamed continuously in parallel chunks into `ProcessPoolExecutor` without materializing in memory just to be sorted. On larger wikis, the impact of avoiding `N log N` operations and an entire secondary `N` OS stat traversal scales highly.
+
+## 🧪 test coverage for sourceref whitespace inputs
+
+- Learned that `scripts/kb/sourceref.py` implements input validation.
+- Enhanced boundary conditions tests by ensuring various types of whitespace are handled correctly by the parser in `validate_sourceref`.
