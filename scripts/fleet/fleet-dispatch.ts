@@ -14,15 +14,25 @@
 
 import path from "node:path";
 import { findUpSync } from "find-up";
+import { Octokit } from "octokit";
 import type { IssueAnalysis } from "./types.js";
+import { jules } from "@google/jules-sdk";
 import { getGitRepoInfo, getCurrentBranch } from "./github/git.js";
 
 const JULES_API_KEY = process.env.JULES_API_KEY;
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 if (!JULES_API_KEY) {
   console.error("❌ JULES_API_KEY environment variable is required.");
   process.exit(1);
 }
+
+if (!GITHUB_TOKEN) {
+  console.error("❌ GITHUB_TOKEN environment variable is required.");
+  process.exit(1);
+}
+
+const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
 const date = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" })
   .format(new Date())
@@ -58,12 +68,42 @@ function validateOwnership(analysis: IssueAnalysis): void {
 validateOwnership(analysis);
 console.log(`✅ Ownership validated: ${analysis.tasks.length} tasks, no conflicts.`);
 
+console.log(`🚀 Dispatching ${tasks.length} parallel Jules sessions...`);
+
+const sessions = await jules.all(tasks, task => ({
+  prompt: task.prompt,
+  source: {
+    github: repoInfo.fullName,
+    baseBranch,
+  }
+}))
+
 const sessionResults: Array<{ taskId: string; sessionId: string }> = [];
-for (let i = 0; i < tasks.length; i++) {
-  const taskId = tasks[i].id;
-  const sessionId = "mock-session-id-" + i;
-  sessionResults.push({ taskId, sessionId });
-  console.log(`Task ${taskId} → Session ${sessionId}`);
+let taskIndex = 0;
+
+for await (const session of sessions) {
+  const task = tasks[taskIndex];
+  const taskId = task?.id ?? "unknown";
+  sessionResults.push({ taskId, sessionId: session.id });
+  console.log(`Task ${taskId} → Session ${session.id}`);
+
+  // Update associated GitHub issues
+  if (task && task.issues.length > 0) {
+    console.log(`  💬 Updating ${task.issues.length} issue(s) for task ${taskId}...`);
+    for (const issueNumber of task.issues) {
+      try {
+        await octokit.rest.issues.createComment({
+          owner: repoInfo.owner,
+          repo: repoInfo.repo,
+          issue_number: issueNumber,
+          body: `🚀 This issue is being handled by parallel fleet task **${task.title}**.\n\nTrack progress in Jules session: [${session.id}](https://jules.google.com/task/${session.id})`,
+        });
+      } catch (error) {
+        console.error(`  ❌ Failed to update issue #${issueNumber}:`, error);
+      }
+    }
+  }
+  taskIndex++;
 }
 
 // Write session mapping for fleet-merge.ts
