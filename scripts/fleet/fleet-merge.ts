@@ -70,15 +70,37 @@ async function findFleetPRs() {
   const pulls = (await res.json()) as GitHubPR[];
 
   const prMap = new Map<string, GitHubPR>();
-  for (const session of sessions) {
-    const matchingPR = pulls.find((pr: GitHubPR) =>
-      pr.head.ref.includes(session.sessionId) ||
-      pr.body?.includes(session.sessionId)
-    );
-    if (matchingPR) {
-      prMap.set(session.taskId, matchingPR);
+  if (sessions.length === 0 || pulls.length === 0) return prMap;
+
+  // Build a map of session ID to task ID and create a combined regex for efficient search
+  const sessionMap = new Map<string, string>();
+  const patterns: string[] = [];
+  for (const s of sessions) {
+    // Escape regex special characters in sessionId
+    const escaped = s.sessionId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    sessionMap.set(s.sessionId, s.taskId);
+    patterns.push(escaped);
+  }
+
+  const sessionRegex = new RegExp(`(${patterns.join("|")})`, "g");
+
+  for (const pr of pulls) {
+    const textToSearch = `${pr.head.ref} ${pr.body ?? ""}`;
+    let match: RegExpExecArray | null;
+
+    // Reset regex lastIndex for each PR search
+    sessionRegex.lastIndex = 0;
+
+    // A PR might match multiple sessions if their IDs are both present
+    while ((match = sessionRegex.exec(textToSearch)) !== null) {
+      const sessionId = match[1];
+      const taskId = sessionMap.get(sessionId);
+      if (taskId && !prMap.has(taskId)) {
+        prMap.set(taskId, pr);
+      }
     }
   }
+
   return prMap;
 }
 
