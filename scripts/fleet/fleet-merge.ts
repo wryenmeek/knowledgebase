@@ -17,6 +17,7 @@ import { findUpSync } from "find-up";
 import type { IssueAnalysis, Task } from "./types.js";
 import { getGitRepoInfo, getCurrentBranch } from "./github/git.js";
 import { jules } from "@google/jules-sdk";
+import { redactToken } from "./github/logging.js";
 
 const repoInfo = await getGitRepoInfo();
 const OWNER = repoInfo.owner;
@@ -244,7 +245,7 @@ for (const task of analysis.tasks) {
           retryCount++;
           continue;
         }
-        throw new Error(`Update branch failed (${updateRes.status}): ${body}`);
+        throw new Error(`Update branch failed (${updateRes.status}): ${redactToken(body)}`);
       }
       // Wait for the update to propagate
       await new Promise(r => setTimeout(r, 5_000));
@@ -267,7 +268,7 @@ for (const task of analysis.tasks) {
     });
     if (!mergeRes.ok) {
       const body = await mergeRes.text();
-      console.error(`  ❌ Failed to merge PR #${pr!.number}: ${body}`);
+      console.error(`  ❌ Failed to merge PR #${pr!.number}: ${redactToken(body)}`);
       process.exit(1);
     }
     console.log(`  🎉 PR #${pr!.number} merged successfully.`);

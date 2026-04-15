@@ -17,6 +17,13 @@ import { analyzeIssuesPrompt } from './prompts/analyze-issues.js'
 import { getIssuesAsMarkdown } from './github/markdown.js'
 import { getGitRepoInfo, getCurrentBranch } from './github/git.js'
 
+const JULES_API_KEY = process.env.JULES_API_KEY;
+
+if (!JULES_API_KEY) {
+  console.error("❌ JULES_API_KEY environment variable is required.");
+  process.exit(1);
+}
+
 const repoInfo = await getGitRepoInfo()
 const baseBranch = process.env.FLEET_BASE_BRANCH ?? await getCurrentBranch()
 const issuesMarkdown = await getIssuesAsMarkdown()

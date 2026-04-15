@@ -18,6 +18,13 @@ import type { IssueAnalysis } from "./types.js";
 import { jules } from "@google/jules-sdk";
 import { getGitRepoInfo, getCurrentBranch } from "./github/git.js";
 
+const JULES_API_KEY = process.env.JULES_API_KEY;
+
+if (!JULES_API_KEY) {
+  console.error("❌ JULES_API_KEY environment variable is required.");
+  process.exit(1);
+}
+
 const date = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" })
   .format(new Date())
   .replaceAll("-", "_");

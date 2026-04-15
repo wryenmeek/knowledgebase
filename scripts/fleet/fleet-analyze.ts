@@ -13,13 +13,25 @@
 // limitations under the License.
 
 import { getIssuesAsMarkdown } from "./github/markdown.js";
+import { redactToken } from "./github/logging.js";
+
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+
+if (!GITHUB_TOKEN) {
+  console.error("❌ GITHUB_TOKEN environment variable is required.");
+  process.exit(1);
+}
 
 async function main() {
   try {
     const markdown = await getIssuesAsMarkdown();
     console.log(markdown);
   } catch (error) {
-    console.error("Error fetching issues:", error);
+    if (error instanceof Error) {
+        console.error("Error fetching issues:", redactToken(error.message));
+    } else {
+        console.error("Error fetching issues:", redactToken(String(error)));
+    }
     process.exit(1);
   }
 }
