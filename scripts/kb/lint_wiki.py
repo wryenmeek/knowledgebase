@@ -127,16 +127,17 @@ def _resolve_internal_markdown_target(
 
 
 def _display_path(path: Path, wiki_root: Path) -> str:
-    try:
+    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
+    if path.is_relative_to(wiki_root):
         return str(path.relative_to(wiki_root))
-    except ValueError:
-        return str(path)
+    return str(path)
 
 
 def lint_wiki(wiki_root: Path) -> list[Violation]:
     """Run lint checks over markdown pages under wiki_root."""
     wiki_root = wiki_root.resolve()
-    pages = sorted(path.resolve() for path in wiki_root.rglob("*.md") if path.is_file())
+    # ⚡ Bolt Optimization: Avoid eager resolve() in hot loop to save OS stat calls
+    pages = sorted(path for path in wiki_root.rglob("*.md") if path.is_file())
 
     violations: list[Violation] = []
     referenced_by: dict[Path, set[Path]] = {page: set() for page in pages}
