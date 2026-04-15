@@ -171,7 +171,7 @@ Fixture page.
         source_root = wiki_root / "sources"
         source_root.mkdir(exist_ok=True)
 
-        # trigger threshold
+        # simulate multiple files to test executor parsing
         for i in range(55):
             page = source_root / f"good{i}.md"
             page.write_text(

@@ -80,7 +80,7 @@ class SourceRefValidatorTests(unittest.TestCase):
                 self.assertEqual(ctx.exception.reason_code, expected_reason)
 
     def test_empty_string(self) -> None:
-        cases = ("", "   ")
+        cases = ("", "   ", "\n", "\t", "\r\n")
         for value in cases:
             with self.subTest(value=value):
                 with self.assertRaises(SourceRefValidationError) as ctx:
