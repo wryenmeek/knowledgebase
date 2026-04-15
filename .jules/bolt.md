@@ -19,3 +19,9 @@
 **💡 Learning:** Eager `pathlib.Path.resolve()` calls inside hot loops (like `Path.rglob()`) cause a severe performance bottleneck due to excessive and expensive OS stat calls. Additionally, using `try/except Path.relative_to()` for bounds checking is slower and less pythonic than `Path.is_relative_to()`.
 
 **🎯 Action:** Remove eager `.resolve()` calls in hot loops when iterating over paths, resolving only when strictly necessary. Use `.is_relative_to()` for bounds checking instead of `try/except ValueError` with `.relative_to()`.
+
+## ⚡ Bolt: scripts/kb/lint_wiki.py performance anti-pattern
+
+**💡 Learning:** `Path.resolve()` is significantly slower than building and asserting paths, and `Path.is_relative_to()` is much faster than `Path.relative_to()`. When validating large amounts of files, defer resolving to absolute paths if not necessary.
+
+**🎯 Action:** Replace `Path.relative_to(root)` in try/except blocks with `Path.is_relative_to(root)`. Avoid unnecessary `Path.resolve()` calls in hot paths like link target resolution in the wiki linter.
