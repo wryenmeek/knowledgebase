@@ -135,10 +135,9 @@ def _resolve_within_repo(repo_root: Path, raw_path: str, *, label: str) -> Path:
     if not candidate.is_absolute():
         candidate = repo_root / candidate
     resolved = candidate.resolve()
-    try:
-        resolved.relative_to(repo_root)
-    except ValueError as exc:
-        raise PersistQueryInputError(f"{label} escapes repository boundary: {raw_path}") from exc
+    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
+    if not resolved.is_relative_to(repo_root):
+        raise PersistQueryInputError(f"{label} escapes repository boundary: {raw_path}")
     return resolved
 
 

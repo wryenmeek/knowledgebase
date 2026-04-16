@@ -356,14 +356,13 @@ def _resolve_path_within_repo(repo_root: Path, raw_path: str) -> tuple[Path, str
     resolved = (candidate if candidate.is_absolute() else (repo_root / candidate)).resolve(
         strict=False
     )
-    try:
-        relative = resolved.relative_to(repo_root)
-    except ValueError as exc:
+    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
+    if not resolved.is_relative_to(repo_root):
         raise IngestError(
             contracts.ReasonCode.INVALID_INPUT.value,
             f"path escapes repository boundary: {raw_path}",
-        ) from exc
-    return resolved, relative.as_posix()
+        )
+    return resolved, resolved.relative_to(repo_root).as_posix()
 
 
 def _resolve_inbox_path(repo_root: Path, raw_path: str) -> tuple[Path, str]:

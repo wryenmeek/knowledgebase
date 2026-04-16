@@ -225,9 +225,8 @@ def _resolve_resource_path(repo_root: Path, resource: str) -> Path | None:
     if not candidate.is_absolute():
         candidate = repo_root / candidate
     resolved_candidate = candidate.resolve()
-    try:
-        resolved_candidate.relative_to(repo_root)
-    except ValueError:
+    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
+    if not resolved_candidate.is_relative_to(repo_root):
         return None
     return resolved_candidate
 

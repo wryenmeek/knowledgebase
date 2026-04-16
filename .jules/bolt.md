@@ -25,3 +25,6 @@
 **💡 Learning:** `Path.resolve()` is significantly slower than building and asserting paths, and `Path.is_relative_to()` is much faster than `Path.relative_to()`. When validating large amounts of files, defer resolving to absolute paths if not necessary.
 
 **🎯 Action:** Replace `Path.relative_to(root)` in try/except blocks with `Path.is_relative_to(root)`. Avoid unnecessary `Path.resolve()` calls in hot paths like link target resolution in the wiki linter.
+## 2026-04-15 - [Path bounds checking optimization]
+**Learning:** Using `try/except Path.relative_to()` is slower than the natively implemented string comparison under the hood of `Path.is_relative_to()` for bounds checking. This is an anti-pattern that slows down path validation logic.
+**Action:** Replace `try/except Path.relative_to()` with `Path.is_relative_to()` for performance gains across the python codebase.
