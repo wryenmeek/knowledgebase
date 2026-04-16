@@ -17,7 +17,6 @@ import { findUpSync } from "find-up";
 import type { IssueAnalysis, Task } from "./types.js";
 import { getGitRepoInfo, getCurrentBranch } from "./github/git.js";
 import { jules } from "@google/jules-sdk";
-import { redactToken } from "./github/logging.js";
 
 const repoInfo = await getGitRepoInfo();
 const OWNER = repoInfo.owner;
@@ -77,37 +76,15 @@ async function findFleetPRs() {
   const pulls = (await res.json()) as GitHubPR[];
 
   const prMap = new Map<string, GitHubPR>();
-  if (sessions.length === 0 || pulls.length === 0) return prMap;
-
-  // Build a map of session ID to task ID and create a combined regex for efficient search
-  const sessionMap = new Map<string, string>();
-  const patterns: string[] = [];
-  for (const s of sessions) {
-    // Escape regex special characters in sessionId
-    const escaped = s.sessionId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    sessionMap.set(s.sessionId, s.taskId);
-    patterns.push(escaped);
-  }
-
-  const sessionRegex = new RegExp(`(${patterns.join("|")})`, "g");
-
-  for (const pr of pulls) {
-    const textToSearch = `${pr.head.ref} ${pr.body ?? ""}`;
-    let match: RegExpExecArray | null;
-
-    // Reset regex lastIndex for each PR search
-    sessionRegex.lastIndex = 0;
-
-    // A PR might match multiple sessions if their IDs are both present
-    while ((match = sessionRegex.exec(textToSearch)) !== null) {
-      const sessionId = match[1];
-      const taskId = sessionMap.get(sessionId);
-      if (taskId && !prMap.has(taskId)) {
-        prMap.set(taskId, pr);
-      }
+  for (const session of sessions) {
+    const matchingPR = pulls.find((pr: GitHubPR) =>
+      pr.head.ref.includes(session.sessionId) ||
+      pr.body?.includes(session.sessionId)
+    );
+    if (matchingPR) {
+      prMap.set(session.taskId, matchingPR);
     }
   }
-
   return prMap;
 }
 
@@ -251,7 +228,7 @@ for (const task of analysis.tasks) {
           retryCount++;
           continue;
         }
-        throw new Error(`Update branch failed (${updateRes.status}): ${redactToken(body)}`);
+        throw new Error(`Update branch failed (${updateRes.status}): ${body}`);
       }
       // Wait for the update to propagate
       await new Promise(r => setTimeout(r, 5_000));
@@ -274,7 +251,7 @@ for (const task of analysis.tasks) {
     });
     if (!mergeRes.ok) {
       const body = await mergeRes.text();
-      console.error(`  ❌ Failed to merge PR #${pr!.number}: ${redactToken(body)}`);
+      console.error(`  ❌ Failed to merge PR #${pr!.number}: ${body}`);
       process.exit(1);
     }
     console.log(`  🎉 PR #${pr!.number} merged successfully.`);

@@ -34,13 +34,20 @@ if (!GITHUB_TOKEN) {
 
 const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
-const date = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" })
+const dateArg = process.argv[2];
+const date = dateArg || new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" })
   .format(new Date())
   .replaceAll("-", "_");
 
 const root = path.dirname(findUpSync(".git", { type: "directory" })!);
 const fleetDir = path.join(root, ".fleet", date);
 const tasksPath = path.join(fleetDir, "issue_tasks.json");
+
+if (!(await Bun.file(tasksPath).exists())) {
+  console.error("❌ Manifest not found: " + tasksPath);
+  process.exit(1);
+}
+
 const analysis = await Bun.file(tasksPath).json() as IssueAnalysis;
 const { tasks } = analysis;
 
@@ -57,7 +64,7 @@ function validateOwnership(analysis: IssueAnalysis): void {
       const existing = claimed.get(file);
       if (existing) {
         throw new Error(
-          `Ownership conflict: "${file}" claimed by both "${existing}" and "${task.id}". These tasks must be merged.`
+          "Ownership conflict: \"" + file + "\" claimed by both \"" + existing + "\" and \"" + task.id + "\". These tasks must be merged."
         );
       }
       claimed.set(file, task.id);
@@ -66,9 +73,9 @@ function validateOwnership(analysis: IssueAnalysis): void {
 }
 
 validateOwnership(analysis);
-console.log(`✅ Ownership validated: ${analysis.tasks.length} tasks, no conflicts.`);
+console.log("✅ Ownership validated: " + analysis.tasks.length + " tasks, no conflicts.");
 
-console.log(`🚀 Dispatching ${tasks.length} parallel Jules sessions...`);
+console.log("🚀 Dispatching " + tasks.length + " parallel Jules sessions for " + date + "...");
 
 const sessions = await jules.all(tasks, task => ({
   prompt: task.prompt,
@@ -85,21 +92,21 @@ for await (const session of sessions) {
   const task = tasks[taskIndex];
   const taskId = task?.id ?? "unknown";
   sessionResults.push({ taskId, sessionId: session.id });
-  console.log(`Task ${taskId} → Session ${session.id}`);
+  console.log("Task " + taskId + " → Session " + session.id);
 
   // Update associated GitHub issues
   if (task && task.issues.length > 0) {
-    console.log(`  💬 Updating ${task.issues.length} issue(s) for task ${taskId}...`);
+    console.log("  💬 Updating " + task.issues.length + " issue(s) for task " + taskId + "...");
     for (const issueNumber of task.issues) {
       try {
         await octokit.rest.issues.createComment({
           owner: repoInfo.owner,
           repo: repoInfo.repo,
           issue_number: issueNumber,
-          body: `🚀 This issue is being handled by parallel fleet task **${task.title}**.\n\nTrack progress in Jules session: [${session.id}](https://jules.google.com/task/${session.id})`,
+          body: "🚀 This issue is being handled by parallel fleet task **" + task.title + "**.\n\nTrack progress in Jules session: [" + session.id + "](https://jules.google.com/task/" + session.id + ")",
         });
       } catch (error) {
-        console.error(`  ❌ Failed to update issue #${issueNumber}:`, error);
+        console.error("  ❌ Failed to update issue #" + issueNumber + ":", error);
       }
     }
   }
@@ -109,4 +116,4 @@ for await (const session of sessions) {
 // Write session mapping for fleet-merge.ts
 const sessionsPath = path.join(fleetDir, "sessions.json");
 await Bun.write(sessionsPath, JSON.stringify(sessionResults, null, 2));
-console.log(`📝 Session mapping written to ${sessionsPath}`);
+console.log("📝 Session mapping written to " + sessionsPath);
