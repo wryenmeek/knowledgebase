@@ -1,4 +1,10 @@
 export function redactToken(str: string): string {
-  if (!process.env.GITHUB_TOKEN) return str;
-  return str.replaceAll(process.env.GITHUB_TOKEN, '***REDACTED***');
+  let redacted = str;
+  if (process.env.GITHUB_TOKEN) {
+    redacted = redacted.replaceAll(process.env.GITHUB_TOKEN, '***REDACTED***');
+  }
+  if (process.env.JULES_API_KEY) {
+    redacted = redacted.replaceAll(process.env.JULES_API_KEY, '***REDACTED***');
+  }
+  return redacted;
 }
