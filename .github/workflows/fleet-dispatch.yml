@@ -53,5 +53,6 @@ jobs:
         working-directory: scripts/fleet
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
         run: bun fleet-plan.ts
