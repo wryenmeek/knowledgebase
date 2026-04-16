@@ -29,6 +29,8 @@ SECTION_LAYOUT: tuple[tuple[str, str], ...] = (
     ("Analyses", "analyses"),
 )
 
+_FRONTMATTER_BLOCK_RE = re.compile(r"^\s*---\s*\n(.*?)(?:\n)?\s*---\s*(?:\n|$)", re.DOTALL)
+
 INDEX_FRONTMATTER = """---
 type: process
 title: Knowledgebase Index
@@ -66,17 +68,19 @@ def _strip_quotes(value: str) -> str:
 
 
 def _extract_frontmatter(markdown_text: str, page_path: Path) -> str:
-    lines = markdown_text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        raise IndexGenerationError(
-            f"{page_path}: missing YAML frontmatter start delimiter"
-        )
+    # ⚡ Bolt Optimization: regex prevents an O(N) memory allocation and splitlines computation
+    # on large file bodies, reading only up to the second delimiter instead.
+    match = _FRONTMATTER_BLOCK_RE.match(markdown_text)
+    if not match:
+        # Check if the start delimiter is missing for a more specific error message
+        lines = markdown_text.splitlines()
+        if not lines or lines[0].strip() != "---":
+            raise IndexGenerationError(
+                f"{page_path}: missing YAML frontmatter start delimiter"
+            )
+        raise IndexGenerationError(f"{page_path}: missing YAML frontmatter end delimiter")
 
-    for line_number in range(1, len(lines)):
-        if lines[line_number].strip() == "---":
-            return "\n".join(lines[1:line_number])
-
-    raise IndexGenerationError(f"{page_path}: missing YAML frontmatter end delimiter")
+    return match.group(1)
 
 
 def _require_frontmatter_key(frontmatter: str, key: str, page_path: Path) -> str:
