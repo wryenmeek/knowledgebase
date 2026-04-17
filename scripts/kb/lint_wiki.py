@@ -29,6 +29,7 @@ REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
 
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:")
 _MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
+_FRONTMATTER_BLOCK_RE = re.compile(r"^\s*---\s*\n(.*?)(?:\n)?\s*---\s*(?:\n|$)", re.DOTALL)
 _MARKDOWN_LINK_TITLE_RE = re.compile(r"^(?P<url>\S+)\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\))$")
 _CONTRADICTION_MARKER_RE = re.compile(
     r"(\[\s*CONTRADICTION\s*]|\{\{\s*contradiction\s*}}|UNRESOLVED_CONTRADICTION|<!--\s*CONTRADICTION\b[^>]*-->)",
@@ -48,16 +49,11 @@ class Violation:
 
 
 def _extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return None, text
-
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            frontmatter = "\n".join(lines[1:index])
-            body = "\n".join(lines[index + 1 :])
-            return frontmatter, body
-
+    # ⚡ Bolt Optimization: regex prevents an O(N) memory allocation and splitlines computation
+    # on large file bodies, reading only up to the second delimiter instead.
+    match = _FRONTMATTER_BLOCK_RE.match(text)
+    if match:
+        return match.group(1), text[match.end() :]
     return None, text
 
 

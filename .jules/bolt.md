@@ -28,3 +28,7 @@
 ## 2026-04-15 - [Path bounds checking optimization]
 **Learning:** Using `try/except Path.relative_to()` is slower than the natively implemented string comparison under the hood of `Path.is_relative_to()` for bounds checking. This is an anti-pattern that slows down path validation logic.
 **Action:** Replace `try/except Path.relative_to()` with `Path.is_relative_to()` for performance gains across the python codebase.
+
+## 2026-04-16 - [Frontmatter Parsing Optimization]
+**Learning:** Using `text.splitlines()` to extract frontmatter from a markdown file is an O(N) memory allocation and execution time operation that unnecessarily evaluates the entire file body. For large files, this leads to significant performance degradation.
+**Action:** Use a pre-compiled Regular Expression (`re.compile(r"^\s*---\s*\n(.*?)\n\s*---\s*(?:\n|$)", re.DOTALL)`) to match and extract frontmatter. This stops evaluating the string after the second delimiter, making execution time practically constant regardless of body size.
