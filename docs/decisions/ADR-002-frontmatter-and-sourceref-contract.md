@@ -50,4 +50,4 @@ Require `sources` entries to be canonical SourceRef values with:
 
 ## References
 
-- `raw/inbox/SPEC.md` (Assumptions and Defaults; Terminology; Frontmatter Contract; Security and Trust Model)
+- `raw/processed/SPEC.md` (Assumptions and Defaults; Terminology; Frontmatter Contract; Security and Trust Model)

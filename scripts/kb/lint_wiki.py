@@ -9,6 +9,12 @@ from pathlib import Path
 import re
 import sys
 
+try:
+    from scripts.kb import sourceref
+except ModuleNotFoundError:  # pragma: no cover - direct script execution path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from scripts.kb import sourceref
+
 REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
     "type",
     "title",
@@ -29,6 +35,7 @@ _CONTRADICTION_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 _EXTERNAL_LINK_PREFIXES = ("http://", "https://", "mailto:", "tel:", "ftp://")
+_TOPICAL_NAMESPACES: tuple[str, ...] = ("sources", "entities", "concepts", "analyses")
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +68,35 @@ def _extract_frontmatter_keys(frontmatter: str) -> set[str]:
         if match:
             keys.add(match.group(1))
     return keys
+
+
+def _extract_frontmatter_source_refs(frontmatter: str) -> list[str]:
+    lines = frontmatter.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("sources:"):
+            continue
+        inline_value = stripped[len("sources:") :].strip()
+        if inline_value == "[]":
+            return []
+        if inline_value:
+            return [_normalize_frontmatter_scalar(inline_value)]
+        sources: list[str] = []
+        for candidate in lines[index + 1 :]:
+            if not candidate.startswith("  "):
+                break
+            candidate = candidate.strip()
+            if not candidate.startswith("- "):
+                continue
+            sources.append(_normalize_frontmatter_scalar(candidate[2:].strip()))
+        return sources
+    return []
+
+
+def _normalize_frontmatter_scalar(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        return value[1:-1]
+    return value
 
 
 def _is_within(path: Path, root: Path) -> bool:
@@ -135,13 +171,49 @@ def _display_path(path: Path, wiki_root: Path) -> str:
     return str(path)
 
 
-def lint_wiki(wiki_root: Path) -> list[Violation]:
+def _is_nested_topical_page(page: Path, wiki_root: Path) -> bool:
+    relative_parts = page.relative_to(wiki_root).parts
+    return (
+        len(relative_parts) > 2
+        and relative_parts[0] in _TOPICAL_NAMESPACES
+    )
+
+
+def lint_wiki(
+    wiki_root: Path,
+    *,
+    skip_orphan_check: bool = False,
+    authoritative_sourcerefs: bool = False,
+    repo_owner: str | None = None,
+    repo_name: str | None = None,
+) -> list[Violation]:
     """Run lint checks over markdown pages under wiki_root."""
     wiki_root = wiki_root.resolve()
-    # ⚡ Bolt Optimization: Avoid eager resolve() in hot loop to save OS stat calls
-    pages = sorted(path for path in wiki_root.rglob("*.md") if path.is_file())
-
     violations: list[Violation] = []
+    pages: list[Path] = []
+    for path in sorted(wiki_root.rglob("*.md")):
+        if not path.is_file():
+            continue
+        if path.is_symlink():
+            violations.append(
+                Violation(
+                    page=path,
+                    code="symlinked-page",
+                    message="symlinked markdown pages are not allowed",
+                )
+            )
+            continue
+        resolved_path = path.resolve()
+        if not _is_within(resolved_path, wiki_root):
+            violations.append(
+                Violation(
+                    page=path,
+                    code="out-of-bounds-page",
+                    message="markdown page escapes wiki root",
+                )
+            )
+            continue
+        pages.append(path)
     referenced_by: dict[Path, set[Path]] = {page: set() for page in pages}
 
     def _read_page(p: Path) -> str:
@@ -154,6 +226,17 @@ def lint_wiki(wiki_root: Path) -> list[Violation]:
         pages_content_iterator = executor.map(_read_page, pages)
 
         for page, text in zip(pages, pages_content_iterator):
+            if _is_nested_topical_page(page, wiki_root):
+                violations.append(
+                    Violation(
+                        page=page,
+                        code="nested-topical-page",
+                        message=(
+                            "nested topical markdown pages are not allowed in MVP flat namespaces"
+                        ),
+                    )
+                )
+
             frontmatter, _body = _extract_frontmatter(text)
 
             if frontmatter is None:
@@ -175,8 +258,26 @@ def lint_wiki(wiki_root: Path) -> list[Violation]:
                             page=page,
                             code="missing-frontmatter-key",
                             message=f"required key '{key}' is missing",
+                            )
                         )
-                    )
+                if authoritative_sourcerefs and "sources" in present_keys:
+                    for source_value in _extract_frontmatter_source_refs(frontmatter):
+                        try:
+                            sourceref.validate_sourceref(
+                                source_value,
+                                authoritative=True,
+                                repo_root=wiki_root.parent,
+                                expected_owner=repo_owner,
+                                expected_repo=repo_name,
+                            )
+                        except sourceref.SourceRefValidationError as exc:
+                            violations.append(
+                                Violation(
+                                    page=page,
+                                    code="invalid-sourceref",
+                                    message=f"invalid SourceRef '{source_value}': {exc}",
+                                )
+                            )
 
             for match in _MARKDOWN_LINK_RE.finditer(text):
                 target_path = _resolve_internal_markdown_target(page, match.group(1), wiki_root)
@@ -219,23 +320,24 @@ def lint_wiki(wiki_root: Path) -> list[Violation]:
                     )
                 )
 
-    exempt_from_orphan_check = {
-        (wiki_root / "index.md").resolve(),
-        (wiki_root / "log.md").resolve(),
-    }
+    if not skip_orphan_check:
+        exempt_from_orphan_check = {
+            (wiki_root / "index.md").resolve(),
+            (wiki_root / "log.md").resolve(),
+        }
 
-    for page in pages:
-        if page in exempt_from_orphan_check:
-            continue
+        for page in pages:
+            if page in exempt_from_orphan_check:
+                continue
 
-        if not referenced_by.get(page):
-            violations.append(
-                Violation(
-                    page=page,
-                    code="orphan-page",
-                    message="page is not referenced from index or any other page",
+            if not referenced_by.get(page):
+                violations.append(
+                    Violation(
+                        page=page,
+                        code="orphan-page",
+                        message="page is not referenced from index or any other page",
+                    )
                 )
-            )
 
     return sorted(
         violations,
@@ -255,6 +357,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Exit non-zero when lint violations are found",
     )
+    parser.add_argument(
+        "--skip-orphan-check",
+        action="store_true",
+        help="Skip orphan-page detection for staged index-refresh validation.",
+    )
+    parser.add_argument(
+        "--authoritative-sourcerefs",
+        action="store_true",
+        help="Require commit-bound authoritative SourceRef validation for frontmatter sources.",
+    )
+    parser.add_argument(
+        "--repo-owner",
+        help="Expected repository owner for authoritative SourceRef validation.",
+    )
+    parser.add_argument(
+        "--repo-name",
+        help="Expected repository name for authoritative SourceRef validation.",
+    )
     return parser.parse_args(argv)
 
 
@@ -265,8 +385,20 @@ def main(argv: list[str] | None = None) -> int:
     if not wiki_root.exists() or not wiki_root.is_dir():
         print(f"ERROR: wiki root does not exist or is not a directory: {wiki_root}", file=sys.stderr)
         return 2
+    if args.authoritative_sourcerefs and (not args.repo_owner or not args.repo_name):
+        print(
+            "ERROR: --authoritative-sourcerefs requires --repo-owner and --repo-name",
+            file=sys.stderr,
+        )
+        return 2
 
-    violations = lint_wiki(wiki_root)
+    violations = lint_wiki(
+        wiki_root,
+        skip_orphan_check=bool(args.skip_orphan_check),
+        authoritative_sourcerefs=bool(args.authoritative_sourcerefs),
+        repo_owner=args.repo_owner,
+        repo_name=args.repo_name,
+    )
     for violation in violations:
         print(
             f"{_display_path(violation.page, wiki_root.resolve())}: "

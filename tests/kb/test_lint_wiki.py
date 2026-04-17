@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -56,7 +57,15 @@ class LintWikiCliTests(unittest.TestCase):
         page.parent.mkdir(parents=True, exist_ok=True)
         page.write_text(content, encoding="utf-8")
 
-    def _run_lint(self, *, strict: bool) -> subprocess.CompletedProcess[str]:
+    def _run_lint(
+        self,
+        *,
+        strict: bool,
+        skip_orphan_check: bool = False,
+        authoritative_sourcerefs: bool = False,
+        repo_owner: str | None = None,
+        repo_name: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         command = [
             sys.executable,
             str(SCRIPT_PATH),
@@ -65,6 +74,14 @@ class LintWikiCliTests(unittest.TestCase):
         ]
         if strict:
             command.append("--strict")
+        if skip_orphan_check:
+            command.append("--skip-orphan-check")
+        if authoritative_sourcerefs:
+            command.append("--authoritative-sourcerefs")
+        if repo_owner is not None:
+            command.extend(["--repo-owner", repo_owner])
+        if repo_name is not None:
+            command.extend(["--repo-name", repo_name])
 
         return subprocess.run(
             command,
@@ -73,6 +90,25 @@ class LintWikiCliTests(unittest.TestCase):
             text=True,
             check=False,
         )
+
+    def _git(self, *args: str, capture_output: bool = False) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            cwd=self.workspace,
+            check=True,
+            capture_output=capture_output,
+            text=True,
+        )
+
+    def _init_git_repo(self) -> None:
+        self._git("init")
+        self._git("config", "user.name", "Test User")
+        self._git("config", "user.email", "test@example.com")
+
+    def _commit_all(self, message: str) -> str:
+        self._git("add", ".")
+        self._git("commit", "-m", message)
+        return self._git("rev-parse", "HEAD", capture_output=True).stdout.strip()
 
     def _seed_valid_wiki(self) -> None:
         self._write_page(
@@ -232,6 +268,233 @@ class LintWikiCliTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         self.assertIn("Found", result.stdout)
+
+    def test_skip_orphan_check_allows_stale_index_validation(self) -> None:
+        self._seed_invalid_wiki()
+
+        result = self._run_lint(strict=True, skip_orphan_check=True)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            self._extract_violation_codes(result.stdout),
+            [
+                "missing-link-target",
+                "unresolved-contradiction-marker",
+            ],
+        )
+
+    def test_strict_mode_rejects_symlinked_markdown_page(self) -> None:
+        self._write_page(
+            "index.md",
+            self._build_page(
+                "Knowledgebase Index",
+                "- [Log](log.md)\n- [Linked](sources/linked.md)",
+            ),
+        )
+        self._write_page(
+            "log.md",
+            self._build_page("Knowledgebase Log", "- state changes appear here"),
+        )
+        outside_page = self.workspace / "outside.md"
+        outside_page.write_text(
+            self._build_page("Outside Page", "- external content"),
+            encoding="utf-8",
+        )
+        linked_page = self.wiki_root / "sources" / "linked.md"
+        linked_page.parent.mkdir(parents=True, exist_ok=True)
+        linked_page.symlink_to(outside_page)
+
+        result = self._run_lint(strict=True)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("symlinked-page", self._extract_violation_codes(result.stdout))
+
+    def test_strict_mode_rejects_nested_topical_page_paths(self) -> None:
+        self._write_page(
+            "index.md",
+            self._build_page(
+                "Knowledgebase Index",
+                "- [Log](log.md)\n- [Nested Concept](concepts/coverage/nested-concept.md)",
+            ),
+        )
+        self._write_page(
+            "log.md",
+            self._build_page("Knowledgebase Log", "- state changes appear here"),
+        )
+        self._write_page(
+            "concepts/coverage/nested-concept.md",
+            "\n".join(
+                [
+                    "---",
+                    "type: concept",
+                    'title: "Nested Concept"',
+                    "status: active",
+                    "sources: []",
+                    "open_questions: []",
+                    "confidence: 3",
+                    "sensitivity: internal",
+                    'updated_at: "2024-01-01T00:00:00Z"',
+                    "tags: [test]",
+                    "---",
+                    "",
+                    "# Nested Concept",
+                    "",
+                    "- [Index](../../index.md)",
+                    "",
+                ]
+            ),
+        )
+
+        self._assert_strict_violation_codes(["nested-topical-page"])
+
+    def test_authoritative_sourceref_mode_rejects_placeholder_source_refs(self) -> None:
+        self._seed_valid_wiki()
+        self._write_page(
+            "sources/source-a.md",
+            "\n".join(
+                [
+                    "---",
+                    "type: source",
+                    'title: "Source A"',
+                    "status: active",
+                    "sources:",
+                    '  - "repo://local/repo/raw/processed/source-a.md@0000000000000000000000000000000000000000#asset?sha256='
+                    + ("a" * 64)
+                    + '"',
+                    "open_questions: []",
+                    "confidence: 5",
+                    "sensitivity: internal",
+                    'updated_at: "2024-01-01T00:00:00Z"',
+                    "tags: [source]",
+                    "---",
+                    "",
+                    "# Source A",
+                    "",
+                    "- [Index](../index.md)",
+                    "",
+                ]
+            ),
+        )
+
+        result = self._run_lint(
+            strict=True,
+            authoritative_sourcerefs=True,
+            repo_owner="local",
+            repo_name="repo",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("invalid-sourceref", self._extract_violation_codes(result.stdout))
+        self.assertIn("placeholder_git_sha", result.stdout)
+
+    def test_authoritative_sourceref_mode_accepts_commit_bound_source_refs(self) -> None:
+        self._init_git_repo()
+        self._write_page(
+            "index.md",
+            self._build_page(
+                "Knowledgebase Index",
+                "- [Log](log.md)\n- [Source A](sources/source-a.md)",
+            ),
+        )
+        self._write_page(
+            "log.md",
+            self._build_page("Knowledgebase Log", "- state changes appear here"),
+        )
+        artifact_path = self.workspace / "raw" / "processed" / "source-a.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("commit-bound bytes\n", encoding="utf-8")
+        checksum = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+        commit_sha = self._commit_all("seed authoritative source artifact")
+        self._write_page(
+            "sources/source-a.md",
+            "\n".join(
+                [
+                    "---",
+                    "type: source",
+                    'title: "Source A"',
+                    "status: active",
+                    "sources:",
+                    f'  - "repo://local/repo/raw/processed/source-a.md@{commit_sha}#asset?sha256={checksum}"',
+                    "open_questions: []",
+                    "confidence: 5",
+                    "sensitivity: internal",
+                    'updated_at: "2024-01-01T00:00:00Z"',
+                    "tags: [source]",
+                    "---",
+                    "",
+                    "# Source A",
+                    "",
+                    "- [Index](../index.md)",
+                    "",
+                ]
+            ),
+        )
+        self._commit_all("seed authoritative source page")
+
+        result = self._run_lint(
+            strict=True,
+            authoritative_sourcerefs=True,
+            repo_owner="local",
+            repo_name="repo",
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+        self.assertIn("Found 0 violation(s).", result.stdout)
+
+    def test_authoritative_sourceref_mode_rejects_foreign_repo_identity(self) -> None:
+        self._init_git_repo()
+        self._write_page(
+            "index.md",
+            self._build_page(
+                "Knowledgebase Index",
+                "- [Log](log.md)\n- [Source A](sources/source-a.md)",
+            ),
+        )
+        self._write_page(
+            "log.md",
+            self._build_page("Knowledgebase Log", "- state changes appear here"),
+        )
+        artifact_path = self.workspace / "raw" / "processed" / "source-a.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("commit-bound bytes\n", encoding="utf-8")
+        checksum = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+        commit_sha = self._commit_all("seed authoritative source artifact")
+        self._write_page(
+            "sources/source-a.md",
+            "\n".join(
+                [
+                    "---",
+                    "type: source",
+                    'title: "Source A"',
+                    "status: active",
+                    "sources:",
+                    f'  - "repo://foreign/repo/raw/processed/source-a.md@{commit_sha}#asset?sha256={checksum}"',
+                    "open_questions: []",
+                    "confidence: 5",
+                    "sensitivity: internal",
+                    'updated_at: "2024-01-01T00:00:00Z"',
+                    "tags: [source]",
+                    "---",
+                    "",
+                    "# Source A",
+                    "",
+                    "- [Index](../index.md)",
+                    "",
+                ]
+            ),
+        )
+        self._commit_all("seed authoritative source page")
+
+        result = self._run_lint(
+            strict=True,
+            authoritative_sourcerefs=True,
+            repo_owner="local",
+            repo_name="repo",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("invalid-sourceref", self._extract_violation_codes(result.stdout))
+        self.assertIn("invalid_repo", result.stdout)
 
 
     def test_read_failure_handled_in_thread_pool(self) -> None:

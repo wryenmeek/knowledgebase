@@ -51,4 +51,4 @@ Require machine-readable JSON envelopes on automation paths with stable fields:
 
 ## References
 
-- `raw/inbox/SPEC.md` (Assumptions and Defaults; Machine-readable result envelopes; Interface contract matrix; Final Ambiguity Checklist)
+- `raw/processed/SPEC.md` (Assumptions and Defaults; Machine-readable result envelopes; Interface contract matrix; Final Ambiguity Checklist)

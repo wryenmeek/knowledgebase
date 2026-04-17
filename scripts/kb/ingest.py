@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -26,7 +28,32 @@ _APPLIED_POLICIES = (
     contracts.PolicyId.CONTINUE_AND_REPORT_PER_SOURCE.value,
     contracts.PolicyId.LOG_ONLY_STATE_CHANGES.value,
 )
-_FIXED_GIT_SHA = "0" * 40
+# Ingest runs before a commit exists for newly written raw/processed artifacts, so
+# it emits a canonical-shape provisional git SHA. Workflows must not treat this as
+# authoritative until a later commit-bound reconciliation step replaces it.
+_PROVISIONAL_GIT_SHA = "0" * 40
+
+
+@dataclass(frozen=True, slots=True)
+class SourceProvenance:
+    """Structured provenance status for machine-readable ingest outputs."""
+
+    status: str
+    authoritative: bool
+    review_mode: str
+    reconciliation: str
+    git_sha: str
+    git_sha_kind: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "authoritative": self.authoritative,
+            "review_mode": self.review_mode,
+            "reconciliation": self.reconciliation,
+            "git_sha": self.git_sha,
+            "git_sha_kind": self.git_sha_kind,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,8 +67,9 @@ class SourceOutcome:
     source_page: str | None = None
     processed_path: str | None = None
     source_ref: str | None = None
+    provenance: SourceProvenance | None = None
 
-    def to_dict(self) -> dict[str, str | None]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "source": self.source,
             "status": self.status,
@@ -50,6 +78,7 @@ class SourceOutcome:
             "source_page": self.source_page,
             "processed_path": self.processed_path,
             "source_ref": self.source_ref,
+            "provenance": None if self.provenance is None else self.provenance.to_dict(),
         }
 
 
@@ -77,6 +106,7 @@ class IngestResult:
     exit_code: int
     outcomes: tuple[SourceOutcome, ...]
     source_refs: tuple[str, ...]
+    source_provenance: tuple[SourceProvenance, ...]
     index_updated: bool
     log_appended: bool
     message: str | None = None
@@ -92,6 +122,9 @@ class IngestResult:
             sources=self.source_refs,
         ).to_dict()
         envelope["per_source"] = [outcome.to_dict() for outcome in self.outcomes]
+        envelope["source_provenance"] = [
+            provenance.to_dict() for provenance in self.source_provenance
+        ]
         if self.message:
             envelope["message"] = self.message
         return envelope
@@ -148,6 +181,7 @@ def run_cli(
             exit_code=1,
             outcomes=tuple(),
             source_refs=tuple(),
+            source_provenance=tuple(),
             index_updated=False,
             log_appended=False,
             message=str(exc),
@@ -159,6 +193,7 @@ def run_cli(
             exit_code=1,
             outcomes=tuple(),
             source_refs=tuple(),
+            source_provenance=tuple(),
             index_updated=False,
             log_appended=False,
             message=exc.failure_reason,
@@ -285,6 +320,7 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
                     )
                 ),
                 source_refs=tuple(),
+                source_provenance=tuple(),
                 index_updated=False,
                 log_appended=False,
                 message=failure_message,
@@ -294,6 +330,11 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
         outcome.source_ref
         for outcome in successful_outcomes
         if outcome.source_ref is not None
+    )
+    source_provenance = tuple(
+        outcome.provenance
+        for outcome in successful_outcomes
+        if outcome.provenance is not None
     )
     failures = [
         outcome for outcome in outcomes if outcome.status == contracts.ResultStatus.FAILED.value
@@ -306,6 +347,7 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
             exit_code=2,
             outcomes=tuple(outcomes),
             source_refs=source_refs,
+            source_provenance=source_provenance,
             index_updated=index_updated,
             log_appended=log_appended,
             message=f"{len(failures)} source(s) failed",
@@ -317,6 +359,7 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
         exit_code=0,
         outcomes=tuple(outcomes),
         source_refs=source_refs,
+        source_provenance=source_provenance,
         index_updated=index_updated,
         log_appended=log_appended,
     )
@@ -366,6 +409,15 @@ def _resolve_path_within_repo(repo_root: Path, raw_path: str) -> tuple[Path, str
 
 
 def _resolve_inbox_path(repo_root: Path, raw_path: str) -> tuple[Path, str]:
+    requested_path = Path(raw_path)
+    lexical_path = requested_path if requested_path.is_absolute() else repo_root / requested_path
+    try:
+        _ensure_not_symlink(lexical_path)
+    except OSError as exc:
+        raise IngestError(
+            contracts.ReasonCode.INVALID_INPUT.value,
+            f"path must not use symlinks: {raw_path} ({exc})",
+        ) from exc
     resolved, relative = _resolve_path_within_repo(repo_root, raw_path)
     relative_path = Path(relative)
     if not _is_under_inbox(relative_path):
@@ -429,7 +481,20 @@ def _ingest_source(repo_root: Path, wiki_root: Path, source_input: str) -> _Sour
     inbox_suffix = Path(*source_relative_path.parts[2:])
     processed_relative = (Path("raw/processed") / inbox_suffix).as_posix()
     processed_path = repo_root / processed_relative
-    if processed_path.exists():
+    try:
+        _ensure_not_symlink(source_path)
+        _ensure_not_symlink(processed_path)
+    except OSError as exc:
+        return _SourceIngestAttempt(
+            outcome=SourceOutcome(
+                source=source_relative,
+                status=contracts.ResultStatus.FAILED.value,
+                reason_code=contracts.ReasonCode.WRITE_FAILED.value,
+                message=f"unsafe ingest path: {source_relative} ({exc})",
+                processed_path=processed_relative,
+            )
+        )
+    if processed_path.exists() or processed_path.is_symlink():
         return _SourceIngestAttempt(
             outcome=SourceOutcome(
                 source=source_relative,
@@ -457,11 +522,13 @@ def _ingest_source(repo_root: Path, wiki_root: Path, source_input: str) -> _Sour
                 processed_path=processed_relative,
             )
         )
+    provenance = _build_provisional_source_provenance()
 
     source_page_content = _render_source_page(
         source_relative=source_relative,
         processed_relative=processed_relative,
         source_ref=source_ref,
+        provenance=provenance,
         source_bytes=source_bytes,
         checksum=checksum,
     )
@@ -478,6 +545,7 @@ def _ingest_source(repo_root: Path, wiki_root: Path, source_input: str) -> _Sour
                 source_page=source_page_relative,
                 processed_path=processed_relative,
                 source_ref=source_ref,
+                provenance=provenance,
             )
         )
 
@@ -501,6 +569,7 @@ def _ingest_source(repo_root: Path, wiki_root: Path, source_input: str) -> _Sour
                         source_page=source_page_relative,
                         processed_path=processed_relative,
                         source_ref=source_ref,
+                        provenance=provenance,
                     )
                 )
 
@@ -513,6 +582,7 @@ def _ingest_source(repo_root: Path, wiki_root: Path, source_input: str) -> _Sour
                 source_page=source_page_relative,
                 processed_path=processed_relative,
                 source_ref=source_ref,
+                provenance=provenance,
             )
         )
 
@@ -525,6 +595,7 @@ def _ingest_source(repo_root: Path, wiki_root: Path, source_input: str) -> _Sour
             source_page=source_page_relative,
             processed_path=processed_relative,
             source_ref=source_ref,
+            provenance=provenance,
         ),
         mutation=_SourceMutation(
             source=source_relative,
@@ -539,11 +610,22 @@ def _ingest_source(repo_root: Path, wiki_root: Path, source_input: str) -> _Sour
 def _build_source_ref(repo_root: Path, processed_relative: str, checksum: str) -> str:
     repo_name = re.sub(r"[^A-Za-z0-9_.-]", "-", repo_root.name) or "repo"
     source_ref = (
-        f"repo://local/{repo_name}/{processed_relative}@{_FIXED_GIT_SHA}"
+        f"repo://local/{repo_name}/{processed_relative}@{_PROVISIONAL_GIT_SHA}"
         f"#asset?sha256={checksum}"
     )
     validate_sourceref(source_ref)
     return source_ref
+
+
+def _build_provisional_source_provenance() -> SourceProvenance:
+    return SourceProvenance(
+        status="provisional",
+        authoritative=False,
+        review_mode="authoritative_review_required",
+        reconciliation="commit_bound_pending",
+        git_sha=_PROVISIONAL_GIT_SHA,
+        git_sha_kind="placeholder",
+    )
 
 
 def _render_source_page(
@@ -551,6 +633,7 @@ def _render_source_page(
     source_relative: str,
     processed_relative: str,
     source_ref: str,
+    provenance: SourceProvenance,
     source_bytes: bytes,
     checksum: str,
 ) -> str:
@@ -578,6 +661,11 @@ def _render_source_page(
         f"- inbox_path: `{source_relative}`",
         f"- processed_path: `{processed_relative}`",
         f"- sourceref: `{source_ref}`",
+        f"- provenance_status: `{provenance.status}`",
+        f"- provenance_authoritative: `{str(provenance.authoritative).lower()}`",
+        f"- provenance_review_mode: `{provenance.review_mode}`",
+        f"- provenance_reconciliation: `{provenance.reconciliation}`",
+        f"- provenance_git_sha_kind: `{provenance.git_sha_kind}`",
         f"- checksum_sha256: `{checksum}`",
         f"- bytes: {len(source_bytes)}",
         "",
@@ -591,31 +679,69 @@ def _escape_quotes(value: str) -> str:
 
 def _write_text_if_changed(path: Path, content: str) -> tuple[bool, str | None]:
     previous_content: str | None = None
-    if path.exists():
+    if path.exists() or path.is_symlink():
+        _ensure_not_symlink(path)
         previous_content = path.read_text(encoding="utf-8")
         if previous_content == content:
             return False, previous_content
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(content)
+    _write_text_atomically(path, content)
     return True, previous_content
 
 
 def _restore_previous_content(path: Path, previous_content: str | None) -> None:
     if previous_content is None:
-        if path.exists():
+        if path.exists() or path.is_symlink():
+            _ensure_not_symlink(path)
             path.unlink()
         return
 
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(previous_content)
+    _write_text_atomically(path, previous_content)
 
 
 def _read_optional_text(path: Path) -> str | None:
+    if path.is_symlink():
+        _ensure_not_symlink(path)
     if not path.exists():
         return None
     return path.read_text(encoding="utf-8")
+
+
+def _ensure_not_symlink(path: Path) -> None:
+    current = path
+    while True:
+        if current.is_symlink():
+            raise OSError(f"symlinked path component is not allowed: {current}")
+        if current.parent == current:
+            return
+        current = current.parent
+
+
+def _write_text_atomically(path: Path, content: str) -> None:
+    _ensure_not_symlink(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    temp_path = path.with_name(f"{path.name}.tmp")
+    temp_created = False
+    try:
+        with _open_temp_text_path(temp_path) as handle:
+            temp_created = True
+            handle.write(content)
+        _ensure_not_symlink(path)
+        os.replace(temp_path, path)
+    except OSError:
+        if temp_created:
+            with contextlib.suppress(OSError):
+                temp_path.unlink()
+        raise
+
+
+def _open_temp_text_path(temp_path: Path):
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(temp_path, flags, 0o600)
+    return os.fdopen(fd, "w", encoding="utf-8", newline="\n")
 
 
 def _rollback_ingest_mutations(
@@ -635,9 +761,15 @@ def _rollback_ingest_mutations(
         source_path = repo_root / mutation.source
         processed_path = repo_root / mutation.processed_path
         try:
+            _ensure_not_symlink(source_path)
+            _ensure_not_symlink(processed_path)
             source_path.parent.mkdir(parents=True, exist_ok=True)
-            if source_path.exists():
+            if source_path.exists() or source_path.is_symlink():
                 raise OSError(f"source path already exists during rollback: {mutation.source}")
+            if processed_path.is_symlink():
+                raise OSError(
+                    f"processed path must not be symlinked during rollback: {mutation.processed_path}"
+                )
             if not processed_path.exists():
                 raise OSError(
                     f"processed file missing during rollback: {mutation.processed_path}"
@@ -705,6 +837,7 @@ def _mark_written_outcomes_rolled_back(
                 source_page=outcome.source_page,
                 processed_path=outcome.processed_path,
                 source_ref=outcome.source_ref,
+                provenance=outcome.provenance,
             )
         )
     return rewritten
@@ -721,7 +854,11 @@ def _write_index_if_changed(wiki_root: Path) -> bool:
 
     index_path = wiki_root / "index.md"
     try:
-        existing_content = index_path.read_text(encoding="utf-8") if index_path.exists() else ""
+        if index_path.exists() or index_path.is_symlink():
+            _ensure_not_symlink(index_path)
+            existing_content = index_path.read_text(encoding="utf-8")
+        else:
+            existing_content = ""
     except OSError as exc:
         raise IngestError(
             contracts.ReasonCode.WRITE_FAILED.value,
@@ -732,9 +869,7 @@ def _write_index_if_changed(wiki_root: Path) -> bool:
         return False
 
     try:
-        index_path.parent.mkdir(parents=True, exist_ok=True)
-        with index_path.open("w", encoding="utf-8", newline="\n") as handle:
-            handle.write(generated_content)
+        _write_text_atomically(index_path, generated_content)
     except OSError as exc:
         raise IngestError(
             contracts.ReasonCode.WRITE_FAILED.value,

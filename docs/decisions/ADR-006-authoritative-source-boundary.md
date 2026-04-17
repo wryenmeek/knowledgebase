@@ -44,4 +44,4 @@ context in MVP (not authoritative ingest input).
 
 ## References
 
-- `raw/inbox/SPEC.md` (Assumptions and Defaults; Scope; Canonical sources format; Security and Trust Model; Threat model mapping)
+- `raw/processed/SPEC.md` (Assumptions and Defaults; Scope; Canonical sources format; Security and Trust Model; Threat model mapping)

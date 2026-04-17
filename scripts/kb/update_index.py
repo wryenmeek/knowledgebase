@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import concurrent.futures
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
 import sys
-import concurrent.futures
 import itertools
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from scripts.kb.write_utils import LockUnavailableError, exclusive_write_lock
 
 REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
     "type",
@@ -28,6 +35,7 @@ SECTION_LAYOUT: tuple[tuple[str, str], ...] = (
     ("Concepts", "concepts"),
     ("Analyses", "analyses"),
 )
+_TOPICAL_NAMESPACES = {section_directory for _, section_directory in SECTION_LAYOUT}
 
 INDEX_FRONTMATTER = """---
 type: process
@@ -123,7 +131,11 @@ def _collect_section_entries(
     if not section_root.exists():
         return []
 
-    page_paths = section_root.rglob("*.md")
+    page_paths = [
+        _validate_section_page_path(page_path, wiki_root)
+        for page_path in section_root.rglob("*.md")
+        if page_path.is_file()
+    ]
 
     if executor:
         # We process files efficiently by passing chunksize
@@ -142,6 +154,25 @@ def _collect_section_entries(
 
     entries.sort(key=lambda entry: (entry.title.casefold(), entry.relative_path))
     return entries
+
+
+def _validate_section_page_path(page_path: Path, wiki_root: Path) -> Path:
+    relative_parts = page_path.relative_to(wiki_root).parts
+    if len(relative_parts) > 2 and relative_parts[0] in _TOPICAL_NAMESPACES:
+        raise IndexGenerationError(
+            f"{page_path.relative_to(wiki_root).as_posix()}: "
+            "nested topical markdown pages are not allowed in MVP flat namespaces"
+        )
+    if page_path.is_symlink():
+        raise IndexGenerationError(
+            f"{page_path.relative_to(wiki_root).as_posix()}: symlinked markdown pages are not allowed"
+        )
+    resolved_path = page_path.resolve()
+    if not resolved_path.is_relative_to(wiki_root):
+        raise IndexGenerationError(
+            f"{page_path.relative_to(wiki_root).as_posix()}: page escapes wiki root"
+        )
+    return page_path
 
 
 def generate_index_content(wiki_root: Path) -> str:
@@ -189,6 +220,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to the wiki root directory (for example: wiki).",
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Exit non-zero when wiki/index.md differs from generated content.",
+    )
+    parser.add_argument(
         "--write",
         action="store_true",
         help="Write generated content to wiki/index.md only when content differs.",
@@ -199,7 +235,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint for deterministic index generation."""
     args = _build_parser().parse_args(argv)
-    wiki_root = args.wiki_root
+    wiki_root = args.wiki_root.resolve()
 
     try:
         generated_content = generate_index_content(wiki_root)
@@ -207,10 +243,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    if not args.write:
+    if not args.write and not args.check:
         print(generated_content, end="")
         return 0
 
+    if args.check:
+        return _check_index_drift(wiki_root, generated_content)
+
+    try:
+        with exclusive_write_lock(wiki_root.parent):
+            return _write_index_if_changed(wiki_root, generated_content)
+    except LockUnavailableError as exc:
+        print(f"error: {exc.failure_reason}", file=sys.stderr)
+        return 1
+
+
+def _check_index_drift(wiki_root: Path, generated_content: str) -> int:
     index_path = wiki_root / "index.md"
     try:
         existing_content = (
@@ -227,15 +275,51 @@ def main(argv: list[str] | None = None) -> int:
         print("unchanged")
         return 0
 
+    print("drifted")
+    return 1
+
+
+def _write_index_if_changed(wiki_root: Path, generated_content: str) -> int:
+    index_path = wiki_root / "index.md"
     try:
-        with index_path.open("w", encoding="utf-8", newline="\n") as handle:
-            handle.write(generated_content)
+        existing_content = (
+            index_path.read_text(encoding="utf-8") if index_path.exists() else ""
+        )
     except OSError as exc:
+        print(
+            f"error: {index_path}: unable to read existing index ({exc})",
+            file=sys.stderr,
+        )
+        return 1
+
+    if existing_content == generated_content:
+        print("unchanged")
+        return 0
+
+    temp_index_path = index_path.with_name(f"{index_path.name}.tmp")
+    temp_created = False
+    try:
+        with _open_temp_index_path(temp_index_path) as handle:
+            temp_created = True
+            handle.write(generated_content)
+        os.replace(temp_index_path, index_path)
+    except OSError as exc:
+        if temp_created:
+            with contextlib.suppress(OSError):
+                temp_index_path.unlink()
         print(f"error: {index_path}: unable to write index ({exc})", file=sys.stderr)
         return 1
 
     print("written")
     return 0
+
+
+def _open_temp_index_path(temp_index_path: Path):
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(temp_index_path, flags, 0o600)
+    return os.fdopen(fd, "w", encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,12 @@
 # Wiki Page Template
 
-Use this contract for pages in `wiki/sources/`, `wiki/entities/`, `wiki/concepts/`, and `wiki/analyses/`.
+Use this contract for pages in `wiki/sources/`, `wiki/entities/`, `wiki/concepts/`, and `wiki/analyses/`, plus reserved root-level process pages such as `wiki/index.md` and `wiki/log.md`.
+
+Companion authoritative contracts:
+
+- [`taxonomy-contract.md`](taxonomy-contract.md)
+- [`ontology-entity-contract.md`](ontology-entity-contract.md)
+- [`metadata-schema-contract.md`](metadata-schema-contract.md)
 
 ```md
 ---
@@ -29,3 +35,19 @@ tags:
 ## Open Questions
 - <unresolved contradiction or follow-up>
 ```
+
+Required frontmatter keys above remain the blocking baseline used by current
+deterministic tooling.
+
+Optional extension keys may be added when needed and must follow the companion
+contracts:
+
+- `browse_path`: ordered taxonomy segments excluding namespace and page title
+- `aliases`: normalized alternate names for the page subject
+- `entity_id`: stable identity key for entity pages once ratified
+- `schema_version`: explicit schema version when a page opts into a newer schema
+
+Optional body sections:
+
+- `## Aliases`
+- `## Relationships`

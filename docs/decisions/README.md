@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
 This directory captures durable architecture and governance decisions derived from
-[`raw/inbox/SPEC.md`](../../raw/inbox/SPEC.md).
+[`raw/processed/SPEC.md`](../../raw/processed/SPEC.md).
 
 ## ADR index
 
@@ -13,3 +13,4 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-004](ADR-004-split-ci-workflow-governance.md) | Split CI governance into gatekeeper, analyst, and PR-producing workflows | Accepted |
 | [ADR-005](ADR-005-write-concurrency-guards.md) | Enforce write concurrency with workflow group and local file lock | Accepted |
 | [ADR-006](ADR-006-authoritative-source-boundary.md) | Restrict authoritative ingestion scope to repository-local inputs | Accepted |
+| [ADR-007](ADR-007-control-plane-layering-and-packaging.md) | Layer the wiki-curation control plane over deterministic scripts | Accepted |

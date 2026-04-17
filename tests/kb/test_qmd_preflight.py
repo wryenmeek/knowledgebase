@@ -71,6 +71,71 @@ class QmdPreflightTests(unittest.TestCase):
         self.assertEqual(payload["reason_code"], "prereq_missing:qmd_runtime")
         self.assertEqual(payload["message"], "required runtime/tool unavailable: qmd")
 
+    def test_preflight_rejects_blank_qmd_binary(self) -> None:
+        report = qmd_preflight.run_preflight(
+            repo_root=Path("/repo"),
+            qmd_binary="   ",
+            which_fn=lambda _binary: "/usr/local/bin/qmd",
+            path_exists_fn=lambda _path: True,
+        )
+
+        payload = report.to_dict()
+        self.assertEqual(payload["status"], "fail")
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertEqual(payload["checks"][0]["reason_code"], "invalid_input")
+
+    def test_preflight_rejects_required_resource_that_escapes_repo_root(self) -> None:
+        report = qmd_preflight.run_preflight(
+            repo_root=Path("/repo"),
+            required_resources=("../outside",),
+            which_fn=lambda _binary: "/usr/local/bin/qmd",
+            path_exists_fn=lambda _path: True,
+        )
+
+        payload = report.to_dict()
+        self.assertEqual(payload["status"], "fail")
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertEqual(payload["checks"][1]["target"], "../outside")
+
+    def test_preflight_deduplicates_required_resources(self) -> None:
+        report = qmd_preflight.run_preflight(
+            repo_root=Path("/repo"),
+            required_resources=(".qmd/index", "wiki", ".qmd/index", "wiki"),
+            which_fn=lambda _binary: "/usr/local/bin/qmd",
+            path_exists_fn=lambda _path: True,
+        )
+
+        payload = report.to_dict()
+        self.assertEqual(
+            [check["check_id"] for check in payload["checks"]],
+            ["runtime:qmd", "resource:.qmd/index", "resource:wiki"],
+        )
+
+    def test_preflight_rejects_blank_required_resource(self) -> None:
+        report = qmd_preflight.run_preflight(
+            repo_root=Path("/repo"),
+            required_resources=("",),
+            which_fn=lambda _binary: "/usr/local/bin/qmd",
+            path_exists_fn=lambda _path: True,
+        )
+
+        payload = report.to_dict()
+        self.assertEqual(payload["status"], "fail")
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertEqual(payload["checks"][0]["check_id"], "resource:input")
+
+    def test_preflight_rejects_whitespace_only_required_resource(self) -> None:
+        report = qmd_preflight.run_preflight(
+            repo_root=Path("/repo"),
+            required_resources=("   ",),
+            which_fn=lambda _binary: "/usr/local/bin/qmd",
+            path_exists_fn=lambda _path: True,
+        )
+
+        payload = report.to_dict()
+        self.assertEqual(payload["status"], "fail")
+        self.assertEqual(payload["reason_code"], "invalid_input")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -74,7 +74,22 @@ def run_preflight(
     """Run deterministic qmd prerequisite checks without side effects."""
     exists = path_exists_fn or (lambda path: path.exists())
     normalized_repo_root = Path(repo_root).resolve()
-    normalized_resources = _normalize_required_resources(required_resources)
+    try:
+        normalized_resources = _normalize_required_resources(required_resources)
+    except ValueError as exc:
+        return PreflightReport(
+            status=STATUS_FAIL,
+            reason_code=REASON_CODE_INVALID_INPUT,
+            message=str(exc),
+            checks=(
+                PreflightCheck(
+                    check_id="resource:input",
+                    status=STATUS_FAIL,
+                    reason_code=REASON_CODE_INVALID_INPUT,
+                    message=str(exc),
+                ),
+            ),
+        )
     checks: list[PreflightCheck] = []
 
     if not qmd_binary.strip():
@@ -207,7 +222,12 @@ def _normalize_required_resources(required_resources: Sequence[str] | None) -> t
     seen: set[str] = set()
 
     for value in values:
-        resource = Path(value).as_posix()
+        resource = str(value).strip()
+        if not resource:
+            if required_resources is not None:
+                raise ValueError("required-resource values must be non-empty strings")
+            continue
+        resource = Path(resource).as_posix()
         if not resource:
             continue
         if resource in seen:

@@ -2,11 +2,42 @@
 
 ## Executive Summary
 
-This repository should model wiki curation as a **small control plane plus specialized worker agents**, not as one monolithic "wiki maintainer" prompt.[^1][^3] The control plane belongs in `AGENTS.md` and should hold only stable guardrails such as write boundaries, provenance rules, append-only logging, and schema compliance, while deterministic operational work should move into on-demand skills so the system stays inside the instruction budget described in the research.[^3][^4][^8] For this knowledgebase, the minimum viable roster is: **Knowledgebase Orchestrator, Source Intake Steward, Synthesis Curator, Query Synthesist, Evidence Verifier, Policy Arbiter, Topology Librarian, Maintenance Auditor, Change Patrol, and Quality Analyst**, with a **Human Steward** retained as the escalation point for contradictions, deletions, and policy arbitration.[^7][^9][^10][^11][^13]
+This repository should model wiki curation as a **small control plane plus specialized worker agents**, not as one monolithic "wiki maintainer" prompt.[^1][^3] The control plane belongs in `AGENTS.md` and should hold only stable guardrails such as write boundaries, provenance rules, append-only logging, and schema compliance, while deterministic operational work should move into on-demand skills so the system stays inside the instruction budget described in the research.[^3][^4][^8] For this knowledgebase, the minimum viable roster is: **Knowledgebase Orchestrator, Source Intake Steward, Evidence Verifier, Policy Arbiter, Synthesis Curator, Query Synthesist, Topology Librarian, Maintenance Auditor, Change Patrol, and Quality Analyst**, with a **Human Steward** retained as the escalation point for contradictions, deletions, and policy arbitration.[^7][^9][^10][^11][^13]
 
 The main update I would make to this framework is at the **skill layer, not the role layer**: knowledge-structure decisions should no longer remain implicit inside synthesis or topology work. The framework should add first-class skills for **information architecture and taxonomy governance**, **ontology and entity modeling**, and **knowledge-schema and metadata governance**, with **entity resolution and canonicalization** plus **search and discovery optimization** as secondary follow-on skills.[^2][^5][^6][^13][^21]
 
-The dependency order should be **intake -> synthesis -> verification -> policy -> topology -> maintenance -> analytics**, because the wiki only becomes safe to scale once raw materials are immutable, claims are verified, and output pages conform to the page schema and SourceRef rules before maintenance or KPI automation runs on top of them.[^2][^4][^5][^10][^14] That sequencing also matches the repository's planning guidance: build foundations first, keep tasks vertically sliced, and make each stage leave the system in a valid state.[^20]
+The dependency order should be **intake -> verification -> policy -> synthesis/query/topology -> maintenance -> analytics**, because the wiki only becomes safe to scale once raw materials are immutable, claims are verified, and policy gates clear before any downstream drafting or topology work proceeds.[^2][^4][^5][^10][^14] No durable save, topology mutation, or publication path should open before that governance sequence succeeds, and any content-changing follow-up from audit/review roles should route back through the orchestrator rather than writing directly.[^4][^7][^10][^14] That sequencing also matches the repository's planning guidance: build foundations first, keep tasks vertically sliced, and make each stage leave the system in a valid state.[^20]
+
+## Ratified MVP implementation boundary
+
+This framework should now be implemented as a **scaffolding-first MVP**. The
+goal of the MVP is to make the control plane concrete without replacing the
+repository's existing deterministic Python execution surface.
+
+### In scope now
+
+| MVP slice | What lands in this repository |
+|---|---|
+| Agent scaffolding | Persona files under `.github/agents/` with mission, handoff, and stop-condition contracts. |
+| Skill scaffolding | Skill directories under `.github/skills/` with discovery metadata, procedural `SKILL.md` files, references, and narrow wrapper logic where needed. |
+| Thin wrapper integration | Wrapper entrypoints that delegate to existing `scripts/kb/ingest.py`, `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, and `scripts/kb/persist_query.py` instead of re-implementing those flows. |
+| Boundary documentation | Architecture and ADR updates that state where policy, personas, skills, wrappers, scripts, and tests belong. |
+
+### Deferred follow-on work
+
+- Porting the broader script-adaptation backlog into new `scripts/validation/`,
+  `scripts/reporting/`, `scripts/context/`, `scripts/maintenance/`, or
+  `scripts/ingest/` trees.
+- Replacing or bypassing `scripts/kb/**` with agent-local implementations.
+- Mixing heavy repository crawlers, batch reporting, baseline snapshots, or
+  external-service integrations into the initial scaffolding milestone.
+
+### Where the packaging rule now lives
+
+- [`docs/architecture.md`](../architecture.md#wiki-curation-framework-mvp-boundary)
+  summarizes the implementation boundary.
+- [`docs/decisions/ADR-007-control-plane-layering-and-packaging.md`](../decisions/ADR-007-control-plane-layering-and-packaging.md)
+  records the accepted control-plane layering and packaging rule.
 
 ## Recommended control-plane model
 
@@ -38,15 +69,21 @@ This split is the key architectural choice for the framework: **personas stay co
 │  Orchestrator         │                           │  + validators/scripts  │
 └───────┬───────────────┘                           └───────────────────────┘
         │
-        ├────────▶ Source Intake Steward ───────▶ Synthesis Curator ───────▶ Evidence Verifier
-        │                    │                           │                           │
-        │                    └──────────────log──────────┴──────────────log──────────┘
-        │
-        ├────────▶ Query Synthesist ───────────▶ Evidence Verifier ───────▶ save synthesis?
+        ├────────▶ Source Intake Steward ───────▶ Evidence Verifier ───────▶ Policy Arbiter
+        │                                                                     │
+        │                                                                     ├────────▶ Synthesis Curator
+        │                                                                     │                │
+        │                                                                     │                └──▶ Evidence Verifier ─▶ Policy Arbiter ─▶ Topology Librarian
+        │                                                                     │
+        │                                                                     ├────────▶ Query Synthesist
+        │                                                                     │                │
+        │                                                                     │                └──▶ Knowledgebase Orchestrator for any durable follow-up
+        │                                                                     │
+        │                                                                     └────────▶ Topology Librarian
         │
         └────────▶ Maintenance Auditor ────────▶ Change Patrol ───────────▶ Quality Analyst
-                                 │
-                                 └────────────▶ Topology Librarian
+                                 │                       │                         │
+                                 └───────────────────────┴─────────────────────────┴──▶ Knowledgebase Orchestrator for content-changing follow-up
 ```
 
 The orchestrator should choose the path, but every worker should still be bounded by the same repository-wide constraints: no writes outside allowlisted paths, no mutation of raw sources, append-only log behavior, and page outputs that match the frontmatter template.[^4][^5]
@@ -130,20 +167,20 @@ This agent turns source material into wiki pages and updates, which is the core 
 
 ### 4. Query Synthesist
 
-The research treats query answering as a distinct workflow that should read the wiki first, answer with citations, and optionally persist high-value analyses back into the knowledgebase so the repository compounds over time.[^1][^9] That makes query synthesis a separate role from page drafting: it is optimized for retrieval, comparison, and reusable synthesis rather than raw-source intake.[^9]
+The research treats query answering as a distinct workflow that should read the wiki first, answer with citations, and optionally prepare high-value analyses for governed persistence so the repository compounds over time without bypassing its control plane.[^1][^9] That makes query synthesis a separate role from page drafting: it is optimized for retrieval, comparison, and reusable synthesis rather than raw-source intake.[^9]
 
 **Jobs**
 
 1. Consult the index and relevant wiki pages.
 2. Synthesize an answer with inline citations.
-3. Decide whether the answer should become a durable page.
-4. Route durable outputs back through verification and policy review.[^9]
+3. Decide whether the answer merits governed durable follow-up.
+4. Route any durable candidate back through `knowledgebase-orchestrator`, verification, and policy review before a write-capable publication path opens.[^9]
 
 **Skills**
 
 - `retrieve-from-index`
 - `synthesize-cited-answer`
-- `persist-high-value-synthesis`
+- `prepare-high-value-synthesis-handoff`
 - `handoff-query-derived-page`[^9]
 
 ### 5. Evidence Verifier
@@ -209,7 +246,7 @@ This agent owns findability and discoverability, which the research treats as fo
 
 ### 8. Maintenance Auditor
 
-The research treats linting as a semantic maintenance pipeline, not a formatting nicety.[^11] This agent should sweep for orphan pages, stale operational content, broken cross-reference symmetry, and status drift, then propose or execute safe maintenance actions that preserve history and surface anything requiring arbitration.[^11]
+The research treats linting as a semantic maintenance pipeline, not a formatting nicety.[^11] This agent should sweep for orphan pages, stale operational content, broken cross-reference symmetry, and status drift, then surface governed maintenance follow-up packages that preserve history and send any content-changing remediation back through the control plane.[^11]
 
 **Jobs**
 
@@ -228,20 +265,20 @@ The research treats linting as a semantic maintenance pipeline, not a formatting
 
 ### 9. Change Patrol
 
-This agent exists for environments where humans can edit the wiki directly and those edits must be screened quickly against policy and structural rules.[^11] It should review diffs, detect citation removal, style violations, or namespace breaches, and either revert or escalate based on severity.[^11]
+This agent exists for environments where humans can edit the wiki directly and those edits must be screened quickly against policy and structural rules.[^11] It should review diffs, detect citation removal, style violations, or namespace breaches, and route destructive or policy-relevant follow-up back through the control plane rather than reverting content directly.[^11]
 
 **Jobs**
 
 1. Review incoming human edits.
 2. Compare edits against policy and style constraints.
-3. Revert destructive or non-compliant changes when permitted.
+3. Return destructive or non-compliant changes to governed review for explicit disposition.
 4. Log warnings and raise incidents for review.[^11]
 
 **Skills**
 
 - `patrol-human-edits`
 - `policy-diff-review`
-- `revert-noncompliant-edit`
+- `route-noncompliant-edit-for-review`
 - `log-patrol-incident`[^11]
 
 ### 10. Quality Analyst
@@ -272,12 +309,14 @@ The framework still needs a human steward because the research explicitly keeps 
 
 1. **Orchestrator** classifies the request as ingest and confirms the run can only touch allowlisted repository zones.[^4]
 2. **Source Intake Steward** validates the asset, registers provenance, and preserves immutability by moving or recording the source without rewriting it.[^2][^4]
-3. **Synthesis Curator** extracts entities and claims, then creates or updates pages that already match the page template and source-array requirements.[^5][^6][^9]
-4. **Evidence Verifier** inventories claims, checks citations, and runs deterministic validators until the draft passes or is rejected.[^10][^14]
-5. **Policy Arbiter** applies NPOV, prevents original research, and escalates contradictions instead of silently merging them.[^7]
-6. **Topology Librarian** updates indexes, links, tags, and redirects so the new content becomes discoverable immediately.[^2][^6][^9]
-7. **Maintenance Auditor** can pick up the new page in later sweeps for freshness and symmetry checks.[^11]
-8. **Quality Analyst** updates page quality signals and backlog priorities.[^13]
+3. **Evidence Verifier** checks the intake package and provenance record before any downstream drafting lane opens.[^10][^14]
+4. **Policy Arbiter** decides whether the request may advance into policy-cleared drafting or must stop/escalate.[^7]
+5. **Synthesis Curator** drafts the cleared create/update package so it matches the page template and source-array requirements.[^5][^6][^9]
+6. **Evidence Verifier** re-checks the draft's claims and citations before durable publication.[^10][^14]
+7. **Policy Arbiter** performs the final governance decision and escalates contradictions instead of silently merging them.[^7]
+8. **Topology Librarian** updates indexes, links, tags, and redirects only after the governed wiki change is cleared.[^2][^6][^9]
+9. **Maintenance Auditor** can pick up the new page in later sweeps for freshness and symmetry checks.[^11]
+10. **Quality Analyst** updates page quality signals and backlog priorities.[^13]
 
 This is the primary vertical slice to build first because every later workflow depends on the guarantees established here.[^20]
 
@@ -285,9 +324,10 @@ This is the primary vertical slice to build first because every later workflow d
 
 1. **Orchestrator** classifies the request as query.[^15]
 2. **Query Synthesist** starts from the wiki index and relevant pages rather than the raw source layer, then produces an answer with inline citations.[^9]
-3. **Evidence Verifier** checks any newly composed comparative claims before they are persisted.[^10]
-4. **Policy Arbiter** decides whether the answer is still a faithful synthesis instead of new analysis that exceeds the source evidence.[^7]
-5. If the answer is valuable and policy-safe, **Synthesis Curator** or **Query Synthesist** saves it as a durable synthesis page and **Topology Librarian** links it into the graph.[^9]
+3. If the answer appears valuable enough for durable reuse, it returns to **Knowledgebase Orchestrator** as a governed follow-up request instead of saving directly.[^9]
+4. **Evidence Verifier** checks any newly composed comparative claims before a durable draft is allowed.[^10]
+5. **Policy Arbiter** decides whether the answer is still a faithful synthesis instead of new analysis that exceeds the source evidence.[^7]
+6. If the answer is valuable and policy-safe, **Synthesis Curator** drafts the durable artifact, then **Evidence Verifier** and **Policy Arbiter** clear publication before **Topology Librarian** links it into the graph.[^9]
 
 This workflow lets the repository compound from usage, not just from ingestion.[^1][^9]
 
@@ -295,8 +335,9 @@ This workflow lets the repository compound from usage, not just from ingestion.[
 
 1. **Maintenance Auditor** runs periodic semantic sweeps for orphans, stale content, and contradictory pages.[^11]
 2. **Change Patrol** reviews human edits or hook-triggered changes for policy, citation, and namespace violations.[^11]
-3. **Policy Arbiter** or the **Human Steward** handles anything that cannot be resolved automatically.[^7][^11]
-4. **Quality Analyst** updates metrics so the next maintenance cycle targets the highest-risk parts of the corpus first.[^13]
+3. **Quality Analyst** updates metrics so the next maintenance cycle targets the highest-risk parts of the corpus first.[^13]
+4. Any content-changing follow-up returns to **Knowledgebase Orchestrator** so the evidence/policy lane is reopened before synthesis or topology work begins.[^4][^7][^11]
+5. **Policy Arbiter** or the **Human Steward** handles anything that cannot be resolved automatically.[^7][^11]
 
 This workflow is what prevents long-term entropy, which the research identifies as the default failure mode of large knowledge repositories.[^1][^11]
 
@@ -311,7 +352,7 @@ I recommend organizing the skill inventory into four bands:
 | **Knowledge-structure skills** | `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, `knowledge-schema-and-metadata-governance`, `entity-resolution-and-canonicalization`, `search-and-discovery-optimization` | These define the shape of the knowledge system itself: taxonomy, canonical entities, metadata contracts, aliases, and discovery feedback loops should be explicit design workflows rather than incidental byproducts of page creation.[^2][^5][^6][^13][^21] |
 | **Foundation skills** | `enforce-repository-boundaries`, `enforce-page-template`, `write-sourceref-citations`, `append-log-entry`, `run-deterministic-validators` | Shared by almost every agent; encode non-negotiable repository contracts.[^4][^5][^14] |
 | **Pipeline skills** | `validate-inbox-source`, `extract-entities-and-claims`, `verify-citations`, `enforce-npov`, `update-index`, `semantic-wiki-lint`, `patrol-human-edits`, `compute-kpis` | Map one-to-one to the repeatable jobs identified in the research.[^7][^9][^10][^11][^13] |
-| **Escalation/documentation skills** | `record-open-questions`, `log-policy-conflict`, `propose-supersede-or-archive`, `persist-high-value-synthesis` | Preserve why a decision was deferred or why a state changed, which matters for future humans and agents.[^5][^7][^21] |
+| **Escalation/documentation skills** | `record-open-questions`, `log-policy-conflict`, `propose-supersede-or-archive`, `prepare-high-value-synthesis-handoff` | Preserve why a decision was deferred or why a state changed, which matters for future humans and agents.[^5][^7][^21] |
 
 The key design correction here is that **Topology Librarian and Synthesis Curator should consume these knowledge-structure skills, not substitute for them**. Without that separation, taxonomy, ontology, and schema decisions will keep being made implicitly during ingest or maintenance, which is exactly how large knowledgebases drift into inconsistent naming, duplicate concepts, and metadata sprawl.[^2][^5][^6]
 
@@ -424,52 +465,52 @@ If I were converting this evaluation into an implementation queue, I would start
 
 ## Footnotes
 
-[^1]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:5-11`
-[^2]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:15-35`
-[^3]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:37-46`
-[^4]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/AGENTS.md:5-25`
-[^5]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/schema/page-template.md:1-31`
-[^6]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:57-67`
-[^7]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:69-87`
-[^8]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:89-107`
-[^9]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:109-121`
-[^10]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:123-137`
-[^11]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:139-156`
-[^12]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:158-172`
-[^13]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/raw/inbox/LLMwiki-best practices-research.md:174-199`
-[^14]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/docs/ideas/spec.md:4-21`
-[^15]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/.github/skills/using-agent-skills/SKILL.md:14-37`
-[^16]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/.github/skills/using-agent-skills/SKILL.md:123-149`
-[^17]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/.github/agents/code-reviewer.md:1-92`
-[^18]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/.github/agents/test-engineer.md:1-90`
-[^19]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/.github/agents/security-auditor.md:1-96`
-[^20]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/.github/skills/planning-and-task-breakdown/SKILL.md:22-223`
-[^21]: `/Users/wryen/Documents/GitHub/Medicare Coverage Tools/knowledgebase/.github/skills/documentation-and-adrs/SKILL.md:8-27,240-278`
-[^22]: `/Users/wryen/Documents/GitHub/vscode-genai/.github/README.md:7,34,52,65`
-[^23]: `/Users/wryen/Documents/GitHub/vscode-genai/.github/agents/repo-orchestrator.agent.md:25,35,51,61`
-[^24]: `/Users/wryen/Documents/GitHub/vscode-genai/.github/agents/memory-manager.agent.md:27-52`; `/Users/wryen/Documents/GitHub/vscode-genai/.github/skills/project-management-memory-sync/SKILL.md:1-39`
-[^25]: `/Users/wryen/Documents/GitHub/vscode-genai/.github/skills/documentation-validation/SKILL.md:85,113,117,122`
-[^26]: `/Users/wryen/Documents/GitHub/vscode-genai/.github/workflows/validate-context-links.yml:61,67,73,75`
-[^27]: `/Users/wryen/Documents/GitHub/vscode-genai/.github/workflows/documentation-freshness.yml:7,69,70,107-110`
-[^28]: `/Users/wryen/Documents/GitHub/Scribe/.github/agents/qa.md:23,28,32,40`
-[^29]: `/Users/wryen/Documents/GitHub/Scribe/.github/skills/agent-orchestration-patterns/SKILL.md:741,808,822,828`; `/Users/wryen/Documents/GitHub/Scribe/.github/skills/quality-validation-workflow/SKILL.md:127-131,185,423,430,433`
-[^30]: `/Users/wryen/Documents/GitHub/Scribe/.github/skills/protocol-based-testing/SKILL.md:17,90,125,132,146,150`
-[^31]: `/Users/wryen/Documents/GitHub/Scribe/.github/skills/infrastructure-analysis/SKILL.md:141,169,171,180,526`
-[^32]: `/Users/wryen/Documents/GitHub/Scribe/.github/skills/docs-agent-orchestrator/SKILL.md:24-29`
-[^33]: `/Users/wryen/Documents/GitHub/hot-springs-island/.github/skills/audit-workspace/SKILL.md:57,60,62,72,82,92`
-[^34]: `/Users/wryen/Documents/GitHub/hot-springs-island/.github/prompts/review-plan.prompt.md:7,12,19,27,33,36`
-[^35]: `/Users/wryen/Documents/GitHub/hot-springs-island/.github/skills/verify-extraction-quality/SKILL.md:21,27,30,88`
-[^36]: `/Users/wryen/Documents/GitHub/hot-springs-island/.github/instructions/operational-reliability.instructions.md:10,19,27`
-[^37]: `/Users/wryen/Documents/GitHub/hot-springs-island/.github/instructions/documentation_standards.instructions.md:29,33`
-[^38]: `/Users/wryen/Documents/GitHub/vscode-genai/.github/skills/documentation-validation/logic/validate_context_imports.py:21,37,57,67,75,131`; `/Users/wryen/Documents/GitHub/vscode-genai/scripts/utils/context_import_contract.py:90,134,151,159`
-[^39]: `/Users/wryen/Documents/GitHub/vscode-genai/.github/skills/documentation-validation/logic/validate_wiki_health.py:21-22,122,136,166-178,195,211`; `/Users/wryen/Documents/GitHub/vscode-genai/.github/skills/documentation-validation/logic/validate-see-also.py:10,46,49`
-[^40]: `/Users/wryen/Documents/GitHub/vscode-genai/.github/skills/documentation-validation/logic/validate-external-sources.py:8,51,54,56,66,93`
-[^41]: `/Users/wryen/Documents/GitHub/vscode-genai/scripts/utils/remediate_docs.py:19,24,30,45-47,63,87`; `/Users/wryen/Documents/GitHub/vscode-genai/scripts/utils/align_tables.py:6,41,52,82,90`
-[^42]: `/Users/wryen/Documents/GitHub/Scribe/.github/skills/validate-documentation/logic/wrapper.py:20-21,45,51,55-56,61`; `/Users/wryen/Documents/GitHub/Scribe/scripts/validation/validate_links.py:23,52-58,61,64,72-73`
-[^43]: `/Users/wryen/Documents/GitHub/vscode-genai/.github/skills/documentation-validation/logic/analyze-documentation-freshness.py:34,243,257,272,283,286,288,291,352-357,367,377-407`; `/Users/wryen/Documents/GitHub/Scribe/scripts/validation/check_doc_freshness.py:4,27,66-67,70,75,88,99`; `/Users/wryen/Documents/GitHub/hot-springs-island/scripts/validation/check_doc_freshness.py:190,236,317,390,579,657,662,665,668,671,677,891`
-[^44]: `/Users/wryen/Documents/GitHub/Scribe/scripts/maintenance/generate_docs.py:82,86,90,94`
-[^45]: `/Users/wryen/Documents/GitHub/Scribe/scripts/manage_gemini_md.py:58,69,77,94`; `/Users/wryen/Documents/GitHub/hot-springs-island/scripts/context/manage_gemini_md.py:42,69,163,180,327,383,503,587,666,680-681`
-[^46]: `/Users/wryen/Documents/GitHub/Scribe/scripts/maintenance/orchestrate_gemini_md_content_fill.py:4,32-33,41,46,67-68,75,80,84,128`; `/Users/wryen/Documents/GitHub/hot-springs-island/scripts/context/orchestrate_gemini_md_content_fill.py:50,176,190,203,250,319,366,376,378,445,453,457`
-[^47]: `/Users/wryen/Documents/GitHub/hot-springs-island/scripts/validation/snapshot_dataset.py:94,129,244,273,373,379,415,435,494,500`
-[^48]: `/Users/wryen/Documents/GitHub/hot-springs-island/scripts/reporting/extraction_quality_report.py:537,607,648,735,777,869,934,951-955,1010-1015`
-[^49]: `/Users/wryen/Documents/GitHub/hot-springs-island/scripts/generators/convert_pdfs_to_md.py:1,3-5,27,35,70,97,105,124,131`
+[^1]: `raw/inbox/LLMwiki-best practices-research.md:5-11`
+[^2]: `raw/inbox/LLMwiki-best practices-research.md:15-35`
+[^3]: `raw/inbox/LLMwiki-best practices-research.md:37-46`
+[^4]: `AGENTS.md:5-25`
+[^5]: `schema/page-template.md:1-31`
+[^6]: `raw/inbox/LLMwiki-best practices-research.md:57-67`
+[^7]: `raw/inbox/LLMwiki-best practices-research.md:69-87`
+[^8]: `raw/inbox/LLMwiki-best practices-research.md:89-107`
+[^9]: `raw/inbox/LLMwiki-best practices-research.md:109-121`
+[^10]: `raw/inbox/LLMwiki-best practices-research.md:123-137`
+[^11]: `raw/inbox/LLMwiki-best practices-research.md:139-156`
+[^12]: `raw/inbox/LLMwiki-best practices-research.md:158-172`
+[^13]: `raw/inbox/LLMwiki-best practices-research.md:174-199`
+[^14]: `docs/ideas/spec.md:4-21`
+[^15]: `.github/skills/using-agent-skills/SKILL.md:14-37`
+[^16]: `.github/skills/using-agent-skills/SKILL.md:123-149`
+[^17]: `.github/agents/code-reviewer.md:1-92`
+[^18]: `.github/agents/test-engineer.md:1-90`
+[^19]: `.github/agents/security-auditor.md:1-96`
+[^20]: `.github/skills/planning-and-task-breakdown/SKILL.md:22-223`
+[^21]: `.github/skills/documentation-and-adrs/SKILL.md:8-27,240-278`
+[^22]: `vscode-genai/.github/README.md:7,34,52,65`
+[^23]: `vscode-genai/.github/agents/repo-orchestrator.agent.md:25,35,51,61`
+[^24]: `vscode-genai/.github/agents/memory-manager.agent.md:27-52`; `vscode-genai/.github/skills/project-management-memory-sync/SKILL.md:1-39`
+[^25]: `vscode-genai/.github/skills/documentation-validation/SKILL.md:85,113,117,122`
+[^26]: `vscode-genai/.github/workflows/validate-context-links.yml:61,67,73,75`
+[^27]: `vscode-genai/.github/workflows/documentation-freshness.yml:7,69,70,107-110`
+[^28]: `Scribe/.github/agents/qa.md:23,28,32,40`
+[^29]: `Scribe/.github/skills/agent-orchestration-patterns/SKILL.md:741,808,822,828`; `Scribe/.github/skills/quality-validation-workflow/SKILL.md:127-131,185,423,430,433`
+[^30]: `Scribe/.github/skills/protocol-based-testing/SKILL.md:17,90,125,132,146,150`
+[^31]: `Scribe/.github/skills/infrastructure-analysis/SKILL.md:141,169,171,180,526`
+[^32]: `Scribe/.github/skills/docs-agent-orchestrator/SKILL.md:24-29`
+[^33]: `hot-springs-island/.github/skills/audit-workspace/SKILL.md:57,60,62,72,82,92`
+[^34]: `hot-springs-island/.github/prompts/review-plan.prompt.md:7,12,19,27,33,36`
+[^35]: `hot-springs-island/.github/skills/verify-extraction-quality/SKILL.md:21,27,30,88`
+[^36]: `hot-springs-island/.github/instructions/operational-reliability.instructions.md:10,19,27`
+[^37]: `hot-springs-island/.github/instructions/documentation_standards.instructions.md:29,33`
+[^38]: `vscode-genai/.github/skills/documentation-validation/logic/validate_context_imports.py:21,37,57,67,75,131`; `vscode-genai/scripts/utils/context_import_contract.py:90,134,151,159`
+[^39]: `vscode-genai/.github/skills/documentation-validation/logic/validate_wiki_health.py:21-22,122,136,166-178,195,211`; `vscode-genai/.github/skills/documentation-validation/logic/validate-see-also.py:10,46,49`
+[^40]: `vscode-genai/.github/skills/documentation-validation/logic/validate-external-sources.py:8,51,54,56,66,93`
+[^41]: `vscode-genai/scripts/utils/remediate_docs.py:19,24,30,45-47,63,87`; `vscode-genai/scripts/utils/align_tables.py:6,41,52,82,90`
+[^42]: `Scribe/.github/skills/validate-documentation/logic/wrapper.py:20-21,45,51,55-56,61`; `Scribe/scripts/validation/validate_links.py:23,52-58,61,64,72-73`
+[^43]: `vscode-genai/.github/skills/documentation-validation/logic/analyze-documentation-freshness.py:34,243,257,272,283,286,288,291,352-357,367,377-407`; `Scribe/scripts/validation/check_doc_freshness.py:4,27,66-67,70,75,88,99`; `hot-springs-island/scripts/validation/check_doc_freshness.py:190,236,317,390,579,657,662,665,668,671,677,891`
+[^44]: `Scribe/scripts/maintenance/generate_docs.py:82,86,90,94`
+[^45]: `Scribe/scripts/manage_gemini_md.py:58,69,77,94`; `hot-springs-island/scripts/context/manage_gemini_md.py:42,69,163,180,327,383,503,587,666,680-681`
+[^46]: `Scribe/scripts/maintenance/orchestrate_gemini_md_content_fill.py:4,32-33,41,46,67-68,75,80,84,128`; `hot-springs-island/scripts/context/orchestrate_gemini_md_content_fill.py:50,176,190,203,250,319,366,376,378,445,453,457`
+[^47]: `hot-springs-island/scripts/validation/snapshot_dataset.py:94,129,244,273,373,379,415,435,494,500`
+[^48]: `hot-springs-island/scripts/reporting/extraction_quality_report.py:537,607,648,735,777,869,934,951-955,1010-1015`
+[^49]: `hot-springs-island/scripts/generators/convert_pdfs_to_md.py:1,3-5,27,35,70,97,105,124,131`

@@ -47,4 +47,4 @@ allowlisted write paths, and prerequisite readiness before write-capable steps.
 
 ## References
 
-- `raw/inbox/SPEC.md` (gh-aw Automation Model; Token permission profiles; Runtime prerequisite checks; CI quality gate requirements; Security and Trust Model)
+- `raw/processed/SPEC.md` (gh-aw Automation Model; Token permission profiles; Runtime prerequisite checks; CI quality gate requirements; Security and Trust Model)

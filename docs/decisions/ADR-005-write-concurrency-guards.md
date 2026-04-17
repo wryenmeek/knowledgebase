@@ -45,4 +45,4 @@ Lock contention must fail closed, return non-zero, and emit
 
 ## References
 
-- `raw/inbox/SPEC.md` (Assumptions and Defaults; Concurrency controls; Runtime prerequisite checks; CI quality gate requirements)
+- `raw/processed/SPEC.md` (Assumptions and Defaults; Concurrency controls; Runtime prerequisite checks; CI quality gate requirements)

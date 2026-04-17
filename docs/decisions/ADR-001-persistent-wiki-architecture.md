@@ -51,4 +51,4 @@ Adopt a persistent repository-scoped wiki model with these structural boundaries
 
 ## References
 
-- `raw/inbox/SPEC.md` (Objective; Scope; Architecture and Repository Structure; Decision Log)
+- `raw/processed/SPEC.md` (Objective; Scope; Architecture and Repository Structure; Decision Log)
