@@ -21,7 +21,8 @@ REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
     "tags",
 )
 
-_FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:")
+_FRONTMATTER_BLOCK_RE = re.compile(r"^[ \t]*---[ \t]*\n(.*?)\n?[ \t]*---[ \t]*(?:\n|$)", re.DOTALL)
+_FRONTMATTER_KEY_RE = re.compile(r"(?m)^([A-Za-z_][A-Za-z0-9_-]*)\s*:")
 _MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 _MARKDOWN_LINK_TITLE_RE = re.compile(r"^(?P<url>\S+)\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\))$")
 _CONTRADICTION_MARKER_RE = re.compile(
@@ -41,26 +42,23 @@ class Violation:
 
 
 def _extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    # ⚡ Bolt Optimization: Fast path check without evaluating the whole file content
+    first_newline = text.find('\n')
+    first_line = text if first_newline == -1 else text[:first_newline]
+
+    if first_line.strip() != "---":
         return None, text
 
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            frontmatter = "\n".join(lines[1:index])
-            body = "\n".join(lines[index + 1 :])
-            return frontmatter, body
+    match = _FRONTMATTER_BLOCK_RE.match(text)
+    if match:
+        return match.group(1), text[match.end():]
 
     return None, text
 
 
 def _extract_frontmatter_keys(frontmatter: str) -> set[str]:
-    keys: set[str] = set()
-    for line in frontmatter.splitlines():
-        match = _FRONTMATTER_KEY_RE.match(line)
-        if match:
-            keys.add(match.group(1))
-    return keys
+    # ⚡ Bolt Optimization: Extract all matches using re.findall instead of splitlines
+    return set(_FRONTMATTER_KEY_RE.findall(frontmatter))
 
 
 def _is_within(path: Path, root: Path) -> bool:

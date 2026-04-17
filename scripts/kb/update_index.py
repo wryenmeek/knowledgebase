@@ -65,16 +65,22 @@ def _strip_quotes(value: str) -> str:
     return value
 
 
+_FRONTMATTER_BLOCK_RE = re.compile(r"^[ \t]*---[ \t]*\n(.*?)\n?[ \t]*---[ \t]*(?:\n|$)", re.DOTALL)
+
+
 def _extract_frontmatter(markdown_text: str, page_path: Path) -> str:
-    lines = markdown_text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    # ⚡ Bolt Optimization: Fast path check without evaluating the whole file content
+    first_newline = markdown_text.find('\n')
+    first_line = markdown_text if first_newline == -1 else markdown_text[:first_newline]
+
+    if first_line.strip() != "---":
         raise IndexGenerationError(
             f"{page_path}: missing YAML frontmatter start delimiter"
         )
 
-    for line_number in range(1, len(lines)):
-        if lines[line_number].strip() == "---":
-            return "\n".join(lines[1:line_number])
+    match = _FRONTMATTER_BLOCK_RE.match(markdown_text)
+    if match:
+        return match.group(1)
 
     raise IndexGenerationError(f"{page_path}: missing YAML frontmatter end delimiter")
 
