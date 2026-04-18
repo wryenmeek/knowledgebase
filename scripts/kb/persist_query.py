@@ -12,7 +12,7 @@ from typing import Sequence, TextIO
 
 from scripts.kb import contracts, sourceref, update_index, write_utils
 from scripts.kb.path_utils import RepoRelativePathError, resolve_within_repo
-from scripts.kb.write_utils import read_optional_text, write_text_if_changed
+from scripts.kb.write_utils import read_optional_text, rollback_file_state, write_text_if_changed
 
 
 DEFAULT_MIN_CONFIDENCE = 4
@@ -282,30 +282,6 @@ def _update_index_if_changed(wiki_root: Path) -> bool:
     return write_text_if_changed(wiki_root / "index.md", generated_index)
 
 
-def _restore_optional_text(path: Path, previous_content: str | None) -> None:
-    if previous_content is None:
-        if path.exists():
-            path.unlink()
-        return
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(previous_content)
-
-
-def _rollback_file_state(snapshots: Sequence[tuple[Path, str | None]]) -> None:
-    rollback_errors: list[str] = []
-    for path, previous_content in reversed(tuple(snapshots)):
-        try:
-            _restore_optional_text(path, previous_content)
-        except OSError as exc:
-            rollback_errors.append(f"{path}: {exc}")
-
-    if rollback_errors:
-        joined_errors = "; ".join(rollback_errors)
-        raise OSError(f"rollback failed: {joined_errors}")
-
-
 def _build_log_entry(analysis_path: str) -> str:
     return f"- persist_query: {analysis_path}"
 
@@ -377,7 +353,7 @@ def _execute(args: argparse.Namespace, repo_root: Path) -> tuple[contracts.Resul
                 )
             except (OSError, update_index.IndexGenerationError) as exc:
                 try:
-                    _rollback_file_state(snapshots)
+                    rollback_file_state(snapshots)
                 except OSError as rollback_exc:
                     raise OSError(f"{exc}; {rollback_exc}") from rollback_exc
                 raise

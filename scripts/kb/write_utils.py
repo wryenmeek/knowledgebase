@@ -8,7 +8,7 @@ import fcntl
 import os
 from os import PathLike
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Sequence
 
 from . import contracts
 from . import path_utils
@@ -167,6 +167,34 @@ def write_text_if_changed(path: Path, content: str) -> bool:
     return True
 
 
+def _restore_optional_text(path: Path, previous_content: str | None) -> None:
+    """Restore path to previous_content, or delete it if previous_content is None."""
+    if previous_content is None:
+        if path.exists():
+            path.unlink()
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(previous_content)
+
+
+def rollback_file_state(snapshots: Sequence[tuple[Path, str | None]]) -> None:
+    """Restore a sequence of (path, previous_content) snapshots in reverse order.
+
+    Iterates snapshots in reverse so the most recent mutation is undone first.
+    Collects all OSError failures and raises a single combined OSError at the end
+    so every snapshot gets an attempted restore.
+    """
+    rollback_errors: list[str] = []
+    for path, previous_content in reversed(tuple(snapshots)):
+        try:
+            _restore_optional_text(path, previous_content)
+        except OSError as exc:
+            rollback_errors.append(f"{path}: {exc}")
+    if rollback_errors:
+        raise OSError(f"rollback failed: {'; '.join(rollback_errors)}")
+
+
 def validate_log_entry(entry: str) -> str:
     """Validate a wiki/log.md bullet and return its stripped form.
 
@@ -194,6 +222,7 @@ __all__ = [
     "open_atomic_temp_file",
     "append_log_only_state_changes",
     "read_optional_text",
+    "rollback_file_state",
     "validate_log_entry",
     "write_text_if_changed",
 ]
