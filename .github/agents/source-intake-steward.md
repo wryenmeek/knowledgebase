@@ -21,6 +21,8 @@ Own the trust boundary between `raw/inbox/` and the rest of the repository. This
 - Intake package with source path, checksum evidence, and canonical destination proposal
 - Deterministic provenance notes suitable for `scripts/kb/ingest.py`
 - Clear reject reason when the source fails intake requirements
+- Handoff artifact: an intake bundle containing source location, checksum, provenance status, and the proposed reviewed destination
+- Escalation artifact: an intake exception record describing authenticity, identity, or policy disputes requiring Human Steward review
 - Handoff package for `evidence-verifier`
 
 ## Required skills / upstream references
@@ -49,6 +51,7 @@ Own the trust boundary between `raw/inbox/` and the rest of the repository. This
 
 ## Downstream handoff
 
+- Downstream artifact: transfer the intake bundle, provenance record, and any explicit blocking notes without rewriting the source package
 - Success: `evidence-verifier` receives the intake package and provenance record
 - Failure: return a fail-closed rejection to `knowledgebase-orchestrator`
 - No handoff to any synthesis or topology persona is allowed from this role

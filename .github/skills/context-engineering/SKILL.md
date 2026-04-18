@@ -17,6 +17,25 @@ Feed agents the right information at the right time. Context is the single bigge
 - Setting up a new project for AI-assisted development
 - The agent is not following project conventions
 
+## Knowledgebase helper surface
+
+For this repository's deterministic knowledgebase work, this skill also owns
+the read-only context import helpers that keep structured context manifests
+typed, bounded, and fail-closed:
+
+- `validate-context-imports`
+- `normalize-context-imports`
+
+These helpers stay inside skill-local `logic/` files rather than opening a new
+repo-level runtime.
+
+## Commands
+
+```bash
+python3 .github/skills/context-engineering/logic/validate_context_imports.py --path .github/skills/example/context-imports.json
+python3 .github/skills/context-engineering/logic/normalize_context_imports.py --path .github/skills/example/context-imports.json
+```
+
 ## The Context Hierarchy
 
 Structure context from most persistent to most transient:
@@ -287,3 +306,9 @@ After setting up context, confirm:
 - [ ] Agent output follows the patterns shown in the rules file
 - [ ] Agent references actual project files and APIs (not hallucinated ones)
 - [ ] Context is refreshed when switching between major tasks
+
+## References
+
+- `AGENTS.md`
+- `docs/architecture.md`
+- `docs/ideas/wiki-curation-agent-framework.md`

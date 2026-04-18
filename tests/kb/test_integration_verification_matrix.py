@@ -5,49 +5,23 @@ from __future__ import annotations
 import json
 from io import StringIO
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import textwrap
 import unittest
 
 from scripts.kb import ingest, lint_wiki, persist_query, update_index, write_utils
+from tests.kb.harnesses import KnowledgebaseWorkspaceTestCase
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "ci-2-analyst-diagnostics.yml"
-_RUNTIME_ROOT = Path(__file__).resolve().parent / ".runtime_verification_integration"
-
-
-class IntegrationVerificationMatrixTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.workspace = _RUNTIME_ROOT / self._testMethodName
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-
-        (self.workspace / "raw" / "inbox").mkdir(parents=True, exist_ok=True)
-        (self.workspace / "raw" / "processed").mkdir(parents=True, exist_ok=True)
-        (self.workspace / "raw" / "other").mkdir(parents=True, exist_ok=True)
-
-        self.wiki_root = self.workspace / "wiki"
-        for section in ("sources", "entities", "concepts", "analyses"):
-            (self.wiki_root / section).mkdir(parents=True, exist_ok=True)
-
-        (self.wiki_root / "log.md").write_text("\n", encoding="utf-8")
-        (self.workspace / "AGENTS.md").write_text("schema fixture\n", encoding="utf-8")
-
-    def tearDown(self) -> None:
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-        if _RUNTIME_ROOT.exists() and not any(_RUNTIME_ROOT.iterdir()):
-            _RUNTIME_ROOT.rmdir()
-
-    def _snapshot_workspace(self) -> dict[str, bytes]:
-        snapshot: dict[str, bytes] = {}
-        for file_path in sorted(self.workspace.rglob("*")):
-            if file_path.is_file():
-                snapshot[file_path.relative_to(self.workspace).as_posix()] = file_path.read_bytes()
-        return snapshot
+class IntegrationVerificationMatrixTests(KnowledgebaseWorkspaceTestCase):
+    RUNTIME_ROOT_NAME = ".runtime_verification_integration"
+    RAW_DIRS = ("raw/inbox", "raw/processed", "raw/other")
+    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")
+    AGENTS_TEXT = "schema fixture\n"
+    LOG_TEXT = "\n"
 
     def _source(self, name: str, checksum_char: str) -> str:
         return (
@@ -117,7 +91,7 @@ class IntegrationVerificationMatrixTests(unittest.TestCase):
     def test_ingest_rejects_non_inbox_source_path_fail_closed(self) -> None:
         source_rel = "raw/other/non-inbox.md"
         (self.workspace / source_rel).write_text("untrusted\n", encoding="utf-8")
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         exit_code, payload, stderr = self._run_ingest(
             "--source",
@@ -134,11 +108,11 @@ class IntegrationVerificationMatrixTests(unittest.TestCase):
         self.assertEqual(payload["status"], "failed")
         self.assertEqual(payload["reason_code"], "invalid_input")
         self.assertIn("raw/inbox/**", payload["message"])
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assert_workspace_unchanged(before)
 
     def test_query_persistence_policy_gate_returns_no_write_envelope_shape(self) -> None:
         source_ref = self._source("source-a", "a")
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         exit_code, payload, stderr = self._run_persist(
             "--query",
@@ -173,7 +147,7 @@ class IntegrationVerificationMatrixTests(unittest.TestCase):
         self.assertIsNone(payload["analysis_path"])
         self.assertFalse(payload["index_updated"])
         self.assertFalse(payload["log_appended"])
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assert_workspace_unchanged(before)
 
     def test_query_persistence_lock_contention_fails_closed(self) -> None:
         source_a = self._source("source-a", "a")
@@ -181,7 +155,7 @@ class IntegrationVerificationMatrixTests(unittest.TestCase):
 
         with write_utils.exclusive_write_lock(self.workspace):
             pass
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         with write_utils.exclusive_write_lock(self.workspace):
             completed = self._run_persist_subprocess(
@@ -211,7 +185,7 @@ class IntegrationVerificationMatrixTests(unittest.TestCase):
         self.assertFalse(payload["log_appended"])
         self.assertEqual(payload["sources"], sorted([source_a, source_b]))
         self.assertIn("lock_unavailable", completed.stderr)
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assert_workspace_unchanged(before)
 
     def test_ci3_spaced_path_flow_ingest_index_lint_passes(self) -> None:
         (self.workspace / "raw" / "inbox" / "source with spaces.md").write_text(

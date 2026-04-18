@@ -8,11 +8,37 @@ The main update I would make to this framework is at the **skill layer, not the 
 
 The dependency order should be **intake -> verification -> policy -> synthesis/query/topology -> maintenance -> analytics**, because the wiki only becomes safe to scale once raw materials are immutable, claims are verified, and policy gates clear before any downstream drafting or topology work proceeds.[^2][^4][^5][^10][^14] No durable save, topology mutation, or publication path should open before that governance sequence succeeds, and any content-changing follow-up from audit/review roles should route back through the orchestrator rather than writing directly.[^4][^7][^10][^14] That sequencing also matches the repository's planning guidance: build foundations first, keep tasks vertically sliced, and make each stage leave the system in a valid state.[^20]
 
+This document should be read in two layers:
+
+1. **Current state** — what the MVP control plane has already landed in this repository.
+2. **Target framework** — the workflow decomposition, skill map, and adaptation backlog that describe how the framework should expand within the accepted implementation boundary.
+
+Unless a subsection explicitly says otherwise, the authoritative description of
+**what is implemented today** lives in `docs/architecture.md`,
+`docs/decisions/ADR-007-control-plane-layering-and-packaging.md`, and the
+landed contracts under `.github/agents/**` and `.github/skills/**`. The role
+maps, skill labels, and backlog notes below should therefore be read as
+target-state design guidance first and current-runtime guarantees only where
+the MVP sections say they are already landed.
+
 ## Ratified MVP implementation boundary
 
 This framework should now be implemented as a **scaffolding-first MVP**. The
 goal of the MVP is to make the control plane concrete without replacing the
 repository's existing deterministic Python execution surface.
+
+### Current implementation status snapshot
+
+The current repo state is:
+
+| Layer | Current status |
+|---|---|
+| Personas | Landed as `.github/agents/**` contracts with mission, handoff, and fail-closed sections. |
+| Framework wrappers | Landed only for `validate-wiki-governance` and `sync-knowledgebase-state`. |
+| Knowledge-structure skills | Landed as active **doc-only** contract skills: `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, `knowledge-schema-and-metadata-governance`, `entity-resolution-and-canonicalization`, and `search-and-discovery-optimization`. |
+| Policy/evidence/self-audit skills | Landed as active **doc-only** workflow skills: `validate-inbox-source`, `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, and `audit-knowledgebase-workspace`. |
+| Deterministic execution | Still centered on `scripts/kb/ingest.py`, `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, and `scripts/kb/persist_query.py`. |
+| Verification | Enforced through `tests/kb/**`, especially the focused framework suites and wrapper runtime checks. |
 
 ### In scope now
 
@@ -20,7 +46,7 @@ repository's existing deterministic Python execution surface.
 |---|---|
 | Agent scaffolding | Persona files under `.github/agents/` with mission, handoff, and stop-condition contracts. |
 | Skill scaffolding | Skill directories under `.github/skills/` with discovery metadata, procedural `SKILL.md` files, references, and narrow wrapper logic where needed. |
-| Thin wrapper integration | Wrapper entrypoints that delegate to existing `scripts/kb/ingest.py`, `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, and `scripts/kb/persist_query.py` instead of re-implementing those flows. |
+| Thin wrapper integration | Wrapper entrypoints currently landed for governance validation and index/state synchronization; ingest and query persistence still run through direct `scripts/kb/**` entrypoints rather than framework-local wrappers. |
 | Boundary documentation | Architecture and ADR updates that state where policy, personas, skills, wrappers, scripts, and tests belong. |
 
 ### Deferred follow-on work
@@ -31,6 +57,21 @@ repository's existing deterministic Python execution surface.
 - Replacing or bypassing `scripts/kb/**` with agent-local implementations.
 - Mixing heavy repository crawlers, batch reporting, baseline snapshots, or
   external-service integrations into the initial scaffolding milestone.
+
+### Approved post-MVP package surfaces
+
+The repository boundary is now widened for future work in:
+
+- `scripts/validation/**`
+- `scripts/reporting/**`
+- `scripts/context/**`
+- `scripts/maintenance/**`
+- `scripts/ingest/**`
+
+That approval is about **where future code may live**, not a claim that those
+paths are already implemented or that automation may write there without a
+narrower contract. Current runtime guarantees still come from
+`docs/architecture.md`, ADR-007, ADR-004, ADR-005, and ADR-006.
 
 ### Where the packaging rule now lives
 
@@ -88,19 +129,25 @@ This split is the key architectural choice for the framework: **personas stay co
 
 The orchestrator should choose the path, but every worker should still be bounded by the same repository-wide constraints: no writes outside allowlisted paths, no mutation of raw sources, append-only log behavior, and page outputs that match the frontmatter template.[^4][^5]
 
-## Knowledge-structure layer the framework should add explicitly
+## Knowledge-structure layer now explicit in the framework
 
-The previous version of this framework correctly identified roles for synthesis, topology, maintenance, and analytics, but it still treated several core design disciplines as side effects of those roles rather than as reusable expertise.[^2][^5][^6] Based on the follow-up research, I would make the framework explicitly depend on a **knowledge-structure layer** of skills that sits underneath Synthesis Curator, Topology Librarian, and Quality Analyst:
+The previous version of this framework correctly identified roles for synthesis, topology, maintenance, and analytics, but it still treated several core design disciplines as side effects of those roles rather than as reusable expertise.[^2][^5][^6] The framework now makes that dependency explicit at the contract layer through a **knowledge-structure layer** of skills that sits underneath Synthesis Curator, Topology Librarian, and Quality Analyst:
 
 1. **`information-architecture-and-taxonomy`** — owns namespace boundaries, browse paths, tag families, category specificity rules, and structural refactors that affect findability and discoverability.[^2][^6]
 2. **`ontology-and-entity-modeling`** — defines canonical entity types, relation vocabulary, merge/split criteria, alias strategy, and what kinds of concepts deserve distinct pages versus linked subsections.[^5][^6][^7]
 3. **`knowledge-schema-and-metadata-governance`** — owns the frontmatter contract, allowed field semantics, schema evolution, migration rules, and the difference between advisory and blocking validation failures for knowledge artifacts.[^4][^5][^21]
-4. **`entity-resolution-and-canonicalization`** — handles duplicate detection, synonym mapping, canonical naming, redirects, and conflict-safe merge proposals once the corpus grows.[^6][^7]
-5. **`search-and-discovery-optimization`** — closes the loop between topology and KPI signals by using missed queries, search success, and navigation weak spots to reshape titles, tags, indexes, and related-page paths.[^13]
+4. **`entity-resolution-and-canonicalization`** — in post-MVP phases, handles duplicate detection, synonym mapping, canonical naming, redirects, and conflict-safe merge proposals once the corpus grows. In today's MVP, it remains read-only assessment scaffolding that recommends keep/merge/split/escalate outcomes rather than automating rewrites.[^6][^7]
+5. **`search-and-discovery-optimization`** — in post-MVP phases, closes the loop between topology and KPI signals by using missed queries, search success, and navigation weak spots to reshape titles, tags, indexes, and related-page paths. In today's MVP, it remains a recommendation-only discovery lens rather than a telemetry or KPI runtime.[^13]
 
-This is the missing design layer that keeps the wiki from becoming a collection of locally correct pages with globally inconsistent structure.[^2][^5][^6]
+In the current repo, this layer is partly landed: taxonomy, ontology, and metadata governance are active doc-only skills, while entity resolution and search/discovery optimization remain deferred scaffolding.[^2][^5][^6]
 
-## Proposed agent roster, jobs, and required skills
+## Implemented persona roster and target job/skill map
+
+The personas named below are **landed as contract files under `.github/agents/**`**. Their job lists and named skills should be read as the intended workflow decomposition for the framework, not as proof that every listed skill already exists as executable automation in this repository.
+
+When a live persona contract is intentionally narrower than the long-term
+design, the current MVP contract takes precedence over the aspirational job
+list here.
 
 ### 1. Knowledgebase Orchestrator
 
@@ -185,17 +232,33 @@ The research treats query answering as a distinct workflow that should read the 
 
 ### 5. Evidence Verifier
 
-This agent is the hard quality gate between drafting and publication.[^10] The research is explicit that a wiki becomes unsafe without a programmatic fact-checking and citation-verification pipeline, and recommends a workflow that inventories claims, traces each one back to sources, looks for hallucination tells, and runs deterministic validators until the document passes.[^10]
+In the target end state, this agent becomes the hard quality gate between
+drafting and publication.[^10] The research is explicit that a wiki becomes
+unsafe without a programmatic fact-checking and citation-verification pipeline,
+and recommends a workflow that inventories claims, traces each one back to
+sources, looks for hallucination tells, and runs deterministic validators until
+the document passes.[^10]
+
+In today's MVP, however, the landed contract is intentionally narrower: the
+verifier remains intake-evidence-focused, checking provenance completeness,
+checksum evidence, SourceRef prerequisites, and readiness for policy review
+before any downstream drafting lane opens. Post-draft claim inventories,
+citation re-checks, and hallucination-style review are still target-state
+follow-on work rather than current runtime guarantees.
 
 **Jobs**
 
-1. Parse the draft's source inventory.
-2. Extract factual claims from prose.
-3. Cross-check each claim against the cited sources.
-4. Run deterministic validators for citation and link format.
-5. Reject or return drafts that fail evidence checks.[^10]
+1. In today's MVP, validate intake provenance, checksum evidence, and SourceRef prerequisites before policy review.
+2. Reject incomplete, provisional-only, or non-authoritative packages that cannot proceed deterministically.
+3. Hand verified intake packages to `Policy Arbiter` and fail closed when evidence remains unresolved.
+4. In a later phase, parse draft source inventories, extract factual claims, and cross-check them against cited sources before durable publication.[^10]
+5. In a later phase, run deterministic citation/link validators and return drafts that fail evidence checks.[^10]
 
 **Skills**
+
+`verify-citations` is now a landed doc-only workflow for SourceRef and
+provenance-readiness review in the current MVP. The remaining labels below
+describe the **target expanded verification lane** beyond that landed surface:
 
 - `verify-citations`
 - `claim-inventory`
@@ -216,6 +279,9 @@ This agent enforces the editorial constitution: neutral point of view, no origin
 
 **Skills**
 
+In today's MVP, `enforce-npov` and `log-policy-conflict` are landed doc-only
+workflow skills. The other labels below remain target-state follow-on slices.
+
 - `enforce-npov`
 - `detect-original-research`
 - `compare-against-existing-pages`
@@ -224,17 +290,31 @@ This agent enforces the editorial constitution: neutral point of view, no origin
 
 ### 7. Topology Librarian
 
-This agent owns findability and discoverability, which the research treats as foundational to a functioning wiki rather than optional polish.[^2] It should update indexes, maintain backlinks and redirects, repair alias paths, and keep taxonomy placement specific enough that the graph stays explorable instead of collapsing into broad buckets.[^2][^6][^9] In the updated framework, it should enforce a predeclared information architecture and taxonomy policy rather than improvising those rules during maintenance.[^2][^6]
+This agent owns findability and discoverability, which the research treats as
+foundational to a functioning wiki rather than optional polish.[^2] In the
+target end state, it can coordinate index, backlink, alias, and taxonomy
+follow-up so the graph stays explorable instead of collapsing into broad
+buckets.[^2][^6][^9]
+
+In today's MVP, its scope is narrower: it recommends topology changes within
+existing contracts, hands deterministic index refreshes to
+`sync-knowledgebase-state`, and escalates identity-sensitive alias/redirect
+pressure instead of inventing a second discovery runtime. Redirect-style
+automation, bulk alias rewrites, and broad discovery pipelines remain deferred.
 
 **Jobs**
 
-1. Update the central index or catalogs.
-2. Insert or repair cross-links and backlinks.
-3. Maintain redirects, aliases, and durable anchors.
+1. Recommend index or catalog follow-up and route approved refreshes through deterministic wrappers.
+2. Recommend cross-link and backlink follow-up within the cleared scope and existing contracts.
+3. Escalate alias or redirect pressure when canonical identity, durable anchors, or new runtime behavior would be required.
 4. Apply category, namespace, and browse-path rules from the explicit IA/taxonomy model.
-5. Validate category placement and tag specificity.[^2][^6]
+5. Validate category placement and tag specificity while deferring unsupported automation.[^2][^6]
 
 **Skills**
+
+The landed dependencies here are `sync-knowledgebase-state` plus the active
+doc-only knowledge/discovery skills. The remaining labels below are best read as
+target-state workflow slices rather than current direct-runtime capabilities:
 
 - `information-architecture-and-taxonomy`
 - `update-index`
@@ -283,16 +363,29 @@ This agent exists for environments where humans can edit the wiki directly and t
 
 ### 10. Quality Analyst
 
-This agent turns the wiki from a corpus into an observable system.[^13] It should score pages for maturity and confidence, calculate search and freshness metrics, and surface structural gaps such as missed queries or high-demand but low-quality documents so the rest of the agent fleet can prioritize work intelligently.[^13]
+This agent turns the wiki from a corpus into an observable system over
+time.[^13] In the target end state, it can score pages for maturity and
+confidence, calculate search and freshness metrics, and surface structural gaps
+such as missed queries or high-demand but low-quality documents so the rest of
+the agent fleet can prioritize work intelligently.[^13]
+
+In today's MVP, however, the landed contract is recommendation-first: it uses
+existing repository evidence to assess discoverability, coverage, and quality
+cues, then feeds governed prioritization back into the orchestrator. New
+telemetry, KPI pipelines, daemons, crawlers, or external reporting surfaces are
+deferred by ADR-007.
 
 **Jobs**
 
-1. Score page maturity and trust signals.
-2. Compute freshness, stale-content, and missed-query metrics.
-3. Identify high-value pages that need deeper curation.
-4. Feed prioritization signals back to the orchestrator.[^13]
+1. Assess page maturity and trust signals using existing repo evidence.
+2. Recommend freshness or discoverability follow-up only when the signal can be grounded in existing deterministic artifacts.
+3. Identify high-value pages or gaps that need deeper governed curation.
+4. Feed prioritized recommendations back to the orchestrator rather than updating scores directly.[^13]
 
 **Skills**
+
+The labels below are target-state workflow names, not current MVP runtime
+guarantees:
 
 - `score-page-quality`
 - `compute-kpis`
@@ -305,6 +398,11 @@ The framework still needs a human steward because the research explicitly keeps 
 
 ## End-to-end workflows
 
+The workflows below are the **target governed operating model** for the
+framework. Today, the lane order and persona contracts are landed, while
+execution still relies heavily on direct `scripts/kb/**` entrypoints plus the
+two thin wrapper skills for governance and index synchronization.
+
 ### Workflow A: Source ingest to curated page
 
 1. **Orchestrator** classifies the request as ingest and confirms the run can only touch allowlisted repository zones.[^4]
@@ -312,11 +410,11 @@ The framework still needs a human steward because the research explicitly keeps 
 3. **Evidence Verifier** checks the intake package and provenance record before any downstream drafting lane opens.[^10][^14]
 4. **Policy Arbiter** decides whether the request may advance into policy-cleared drafting or must stop/escalate.[^7]
 5. **Synthesis Curator** drafts the cleared create/update package so it matches the page template and source-array requirements.[^5][^6][^9]
-6. **Evidence Verifier** re-checks the draft's claims and citations before durable publication.[^10][^14]
+6. **Evidence Verifier** re-checks the draft's claims and citations before durable publication in the target expanded verification lane; in today's MVP, that richer post-draft review remains future-state guidance layered on top of the landed intake-evidence contract.[^10][^14]
 7. **Policy Arbiter** performs the final governance decision and escalates contradictions instead of silently merging them.[^7]
-8. **Topology Librarian** updates indexes, links, tags, and redirects only after the governed wiki change is cleared.[^2][^6][^9]
+8. **Topology Librarian** recommends index, link, tag, and alias follow-up only after the governed wiki change is cleared; deterministic index sync still delegates to `sync-knowledgebase-state`, and redirect-style automation remains deferred.[^2][^6][^9]
 9. **Maintenance Auditor** can pick up the new page in later sweeps for freshness and symmetry checks.[^11]
-10. **Quality Analyst** updates page quality signals and backlog priorities.[^13]
+10. **Quality Analyst** later updates—or, in today's MVP, recommends—page quality signals and backlog priorities based on existing repo evidence rather than a new analytics runtime.[^13]
 
 This is the primary vertical slice to build first because every later workflow depends on the guarantees established here.[^20]
 
@@ -325,9 +423,9 @@ This is the primary vertical slice to build first because every later workflow d
 1. **Orchestrator** classifies the request as query.[^15]
 2. **Query Synthesist** starts from the wiki index and relevant pages rather than the raw source layer, then produces an answer with inline citations.[^9]
 3. If the answer appears valuable enough for durable reuse, it returns to **Knowledgebase Orchestrator** as a governed follow-up request instead of saving directly.[^9]
-4. **Evidence Verifier** checks any newly composed comparative claims before a durable draft is allowed.[^10]
+4. **Evidence Verifier** can later check any newly composed comparative claims before a durable draft is allowed; until that broader verification lane lands, this remains target-state guidance layered on top of the current intake-evidence contract.[^10]
 5. **Policy Arbiter** decides whether the answer is still a faithful synthesis instead of new analysis that exceeds the source evidence.[^7]
-6. If the answer is valuable and policy-safe, **Synthesis Curator** drafts the durable artifact, then **Evidence Verifier** and **Policy Arbiter** clear publication before **Topology Librarian** links it into the graph.[^9]
+6. If the answer is valuable and policy-safe, **Synthesis Curator** drafts the durable artifact, then **Evidence Verifier** and **Policy Arbiter** clear publication before **Topology Librarian** recommends the approved graph follow-up and routes any deterministic index work through the existing surfaces.[^9]
 
 This workflow lets the repository compound from usage, not just from ingestion.[^1][^9]
 
@@ -335,15 +433,28 @@ This workflow lets the repository compound from usage, not just from ingestion.[
 
 1. **Maintenance Auditor** runs periodic semantic sweeps for orphans, stale content, and contradictory pages.[^11]
 2. **Change Patrol** reviews human edits or hook-triggered changes for policy, citation, and namespace violations.[^11]
-3. **Quality Analyst** updates metrics so the next maintenance cycle targets the highest-risk parts of the corpus first.[^13]
+3. **Quality Analyst** recommends evidence-backed priorities so the next maintenance cycle targets the highest-risk parts of the corpus first, without inventing a new telemetry runtime in MVP.[^13]
 4. Any content-changing follow-up returns to **Knowledgebase Orchestrator** so the evidence/policy lane is reopened before synthesis or topology work begins.[^4][^7][^11]
 5. **Policy Arbiter** or the **Human Steward** handles anything that cannot be resolved automatically.[^7][^11]
 
 This workflow is what prevents long-term entropy, which the research identifies as the default failure mode of large knowledge repositories.[^1][^11]
 
-## Skill framework to implement next
+## Skill framework status and next additions
 
 The report above is intentionally role-first, but the implementation unit should still be the **skill**, because the repo's skill meta-guidance says skills are workflows, can be chained, and should be invoked when a task matches their process envelope.[^15][^16] The existing custom agents in this repository are already concise persona documents with explicit scope and output contracts, which is the right pattern to reuse for wiki agents as well.[^17][^18][^19]
+
+Today, the skill layer is split across three real states, with direct
+`scripts/kb/**` commands still carrying the underlying deterministic runtime:
+
+| Current state | Skills |
+|---|---|
+| **Thin wrappers with Python logic** | `validate-wiki-governance`, `sync-knowledgebase-state` |
+| **Active doc-only skills** | `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, `knowledge-schema-and-metadata-governance`, `entity-resolution-and-canonicalization`, `search-and-discovery-optimization` |
+| **Active doc-only workflow skills** | `validate-inbox-source`, `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace` |
+
+Outside the landed wrapper/doc-only entries above, the remaining skill names in
+the next tables should be read as target-state workflow labels rather than
+current executable repository surfaces.
 
 I recommend organizing the skill inventory into four bands:
 
@@ -371,19 +482,28 @@ Following the repository's planning guidance, I would implement the framework in
 1. **Foundation**: Orchestrator, Source Intake Steward, Evidence Verifier, and the shared boundary/schema/provenance skills, plus `knowledge-schema-and-metadata-governance` so the artifact contract is explicit before large-scale page generation begins.[^4][^5][^10][^20][^21]
 2. **Knowledge structure**: `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, and `entity-resolution-and-canonicalization`, because those rules should be defined before synthesis and topology work scale out across the corpus.[^2][^5][^6]
 3. **Editorial completeness**: Synthesis Curator, Query Synthesist, Policy Arbiter, Topology Librarian, and `search-and-discovery-optimization`.[^6][^7][^9][^13]
-4. **Operational hardening**: Maintenance Auditor, Change Patrol, Quality Analyst, and KPI/reporting skills.[^11][^13][^20]
+4. **Operational hardening**: Maintenance Auditor, Change Patrol, Quality Analyst, and later KPI/reporting skills within the approved post-MVP package boundary, while keeping the current CI, concurrency, source-boundary, and deny-by-default rules intact.[^11][^13][^20]
 
 That sequence keeps the first slice small enough to verify while also correcting the most important architectural gap from the earlier draft: the wiki needs explicit knowledge-structure decisions before it can reliably automate page creation, taxonomy maintenance, and search optimization at scale.[^2][^5][^6][^20]
 
-## Cross-repository customizations worth adapting
+## Appendix A: Post-MVP cross-repository customizations to revisit
+
+This appendix is a **forward-looking adaptation backlog**, not a description of
+behavior already implemented in this repository. It is intentionally
+non-authoritative for current packaging decisions and should **not** be read as
+approval to widen runtime write permissions or bypass `docs/architecture.md` /
+ADR-007. The repo-level `scripts/validation/**`, `scripts/reporting/**`,
+`scripts/context/**`, `scripts/maintenance/**`, and `scripts/ingest/**`
+surfaces are now approved package locations, but they still inherit the
+repository's existing safety model.
 
 After reviewing the `.github/` customizations in `vscode-genai`, `Scribe`, and `hot-springs-island`, I think this framework should borrow a few patterns deliberately rather than copying their entire ecosystems wholesale. The common theme across all three repos is that they make the control plane **explicit, validated, and self-auditing**, which is exactly what this knowledgebase will need once multiple wiki workers exist.[^22][^23]
 
 - **Borrow `vscode-genai`'s orchestrator-first routing and thin-trigger discipline.** That repo keeps workflow selection concentrated in an orchestrator and preserves prompts as thin triggers instead of procedural payloads, which is a strong fit for this knowledgebase because it prevents the control plane from turning into a second, conflicting workflow layer.[^22][^23] I would make the **Knowledgebase Orchestrator** the default front door for all future wiki automations, and keep any prompts or slash-command entrypoints limited to intent classification plus skill dispatch.
 
-- **Treat state synchronization as a dedicated wiki workflow, not cleanup.** The `vscode-genai` memory manager, memory-sync sub-skill, and governance validators treat project state synchronization as an explicit maintenance concern.[^24][^25][^26] The equivalent adaptation here is a `sync-knowledgebase-state` foundation skill that updates `wiki/log.md`, backlog or status artifacts, and open-question ledgers after ingest, query persistence, archival, contradiction escalation, or policy review.
+- **Treat state synchronization as a dedicated wiki workflow, not cleanup.** The `vscode-genai` memory manager, memory-sync sub-skill, and governance validators treat project state synchronization as an explicit maintenance concern.[^24][^25][^26] The equivalent follow-on adaptation here would extend `sync-knowledgebase-state` beyond its current index-sync wrapper scope so it can later manage additional governed state such as `wiki/log.md`, backlog or status artifacts, and open-question ledgers after ingest, query persistence, archival, contradiction escalation, or policy review.
 
-- **Adopt governance gates that can run in either signal or blocking mode.** `vscode-genai` couples syntax preflights, wiki-health checks, memory-sync checks, and freshness enforcement with a useful advisory-versus-blocking split.[^25][^26][^27] This framework should grow a `validate-wiki-governance` skill or workflow that checks SourceRef shape, page-template compliance, backlink or See Also hygiene, append-only log discipline, and freshness thresholds, with `signal` mode for scheduled maintenance and `blocking` mode for merge-critical workflows.
+- **Adopt governance gates that can run in either signal or blocking mode.** `vscode-genai` couples syntax preflights, wiki-health checks, memory-sync checks, and freshness enforcement with a useful advisory-versus-blocking split.[^25][^26][^27] This framework should later expand `validate-wiki-governance` beyond its current fixed read-only wrapper so it can check SourceRef shape, page-template compliance, backlink or See Also hygiene, append-only log discipline, and freshness thresholds, with `signal` mode for scheduled maintenance and `blocking` mode for merge-critical workflows.
 
 - **Add explicit handoffs and gate checks to every worker agent.** Scribe's agents declare handoff targets, and its orchestration layer validates quality gates before the next specialist takes over.[^28][^29] I would extend each proposed wiki worker with explicit `handoff triggers`, `required deliverables`, and `stop conditions`; for example, Evidence Verifier should gate Policy Arbiter, and Policy Arbiter should either approve or emit an escalation artifact before Topology Librarian runs.
 
@@ -391,9 +511,9 @@ After reviewing the `.github/` customizations in `vscode-genai`, `Scribe`, and `
 
 - **Route documentation-like work by change analysis and prerequisite ordering.** Scribe's docs orchestration skill routes work by diff analysis, intent classification, and dependency handling rather than treating documentation as a flat editing task.[^32] The knowledgebase orchestrator should mirror that pattern and choose between ingest, synthesis, verification, topology, maintenance, and analytics paths based on the request and the changed artifacts, not just on user wording.
 
-- **Add a self-auditing maintenance layer for the agent framework itself.** HSI treats the `.github/` layer as an asset that must be audited for broken references, stale commands, and orphaned tools, with optional self-healing behavior.[^33] I would add an `audit-knowledgebase-workspace` maintenance skill that verifies agent or skill references, documented commands, and attached validators still resolve, and that flags orphaned but useful scripts or docs for integration into the framework.
+- **Add a self-auditing maintenance layer for the agent framework itself.** HSI treats the `.github/` layer as an asset that must be audited for broken references, stale commands, and orphaned tools, with optional self-healing behavior.[^33] The landed `audit-knowledgebase-workspace` skill now verifies agent or skill references, documented commands, and attached validators still resolve, and it flags orphaned but useful scripts or docs for governed integration follow-up instead of auto-healing them.
 
-- **Introduce multi-perspective plan review before execution.** HSI's plan-review flow forces a reality check and then reviews plans through TDD, protocol, QA, and docs lenses before implementation begins.[^34] A `review-wiki-plan` workflow should do the same for proposed wiki changes through at least orchestration, policy, QA, and documentation lenses before new automation or high-risk governance changes are implemented.
+- **Introduce multi-perspective plan review before execution.** HSI's plan-review flow forces a reality check and then reviews plans through TDD, protocol, QA, and docs lenses before implementation begins.[^34] The landed `review-wiki-plan` workflow now applies the same pattern to proposed wiki changes through orchestration, policy, QA, documentation, and execution-boundary lenses before new automation or high-risk governance changes are implemented.
 
 - **Require baseline capture for high-risk wiki changes.** HSI's extraction-quality workflow requires a pre-flight baseline snapshot before implementation so regressions are visible instead of anecdotal.[^35] For schema changes, mass page rewrites, or ingestion-pipeline refactors, this framework should require a baseline capture of target pages or manifests and a post-change diff review before merge.
 
@@ -405,9 +525,16 @@ If I were narrowing this to the **first three adaptations to implement**, I woul
 2. **Explicit handoff and gate contracts** for every worker agent, because they turn the proposed roster into an executable workflow instead of a descriptive taxonomy.[^28][^29]
 3. **`audit-knowledgebase-workspace` plus `review-wiki-plan`**, because they help the framework resist drift as more skills, prompts, validators, and workflows are added.[^33][^34]
 
-## Cross-repository logic and script automation worth adapting
+## Appendix B: Post-MVP script adaptation backlog
 
-Reviewing the `skills/*/logic/` surfaces alongside the repo-level `scripts/` directories makes the packaging boundary much clearer: **small deterministic validators, formatters, and contract enforcers belong with atomic skills; repository-crawling orchestration, external-service integrations, and batch generation/reporting belong in `knowledgebase/scripts/` and should be invoked by thin skills rather than embedded inside them**.[^38][^39][^40][^41]
+This appendix is also **future-facing backlog**. The candidate script paths and
+skill-local helpers listed here are proposed follow-on work; they are not
+present repository paths today unless already called out elsewhere as landed
+MVP surfaces. Nothing in this appendix overrides the current rule that
+`scripts/kb/**` remains the authoritative execution surface for the currently
+landed system.
+
+Reviewing the `skills/*/logic/` surfaces alongside the repo-level `scripts/` directories makes the packaging boundary much clearer for a **post-MVP** phase: small deterministic validators, formatters, and contract enforcers belong with atomic skills, while repository-crawling orchestration, external-service integrations, and batch generation/reporting would belong in repo-level scripts and should be invoked by thin skills rather than embedded inside them.[^38][^39][^40][^41]
 
 ### Best candidates to package with atomic skills
 
@@ -423,11 +550,14 @@ These are the pieces I would adapt as skill-local `logic/` assets because they a
 
 These atomic-skill candidates are supported by the import contract and validator pair, wiki-health and `See Also` checks, the external-source registry validator, the markdown repair utilities, and Scribe's thin validation wrapper pattern.[^38][^39][^40][^41][^42]
 
-### Best candidates to keep in `knowledgebase/scripts/`
+### Best candidates to keep in repo-level scripts after MVP
 
-These are worth adapting, but they should live as repo-level scripts because they scan broad directory trees, depend on local project conventions, call external services, or produce artifacts whose meaning is repository-specific.
+These are worth adapting after MVP, but they should live as repo-level scripts
+because they scan broad directory trees, depend on local project conventions,
+call external services, or produce artifacts whose meaning is
+repository-specific.
 
-| Candidate | Best knowledgebase adaptation | Package location | Why |
+| Candidate | Best knowledgebase adaptation | Post-MVP package location | Why |
 | --- | --- | --- | --- |
 | `analyze-documentation-freshness.py`, Scribe `check_doc_freshness.py`, HSI `check_doc_freshness.py` | `scripts/validation/check_doc_freshness.py` | `scripts/validation/` | Freshness analysis is inherently repository-aware: it needs git history, path scopes, file-role classification, and project-specific thresholds, so the skill should call it rather than own it. |
 | Scribe `generate_docs.py` | `scripts/maintenance/generate_docs.py` | `scripts/maintenance/` | Missing-file generation, API reference building, nav updates, and changelog generation are coordinated batch operations, not single atomic skill steps. |
@@ -439,21 +569,26 @@ These are worth adapting, but they should live as repo-level scripts because the
 
 These repo-level candidates are supported by the three freshness analyzers, Scribe's batch documentation generator, the two context-page management/update flows, the snapshot regression tool, the multi-module extraction quality reporter, and the PDF-to-Markdown ingest utility.[^43][^44][^45][^46][^47][^48][^49]
 
-### Packaging rule I would use for the knowledgebase
+### Packaging rule inside the approved post-MVP boundary
 
-To keep the framework coherent, I would use this rule of thumb:
+Within the approved post-MVP package boundary, I would use this rule of thumb:
 
 1. **Put it in a skill's `logic/` folder** when it is deterministic, side-effect-bounded, fast enough to run as part of a single workflow step, and reusable across multiple agents without knowledge of the whole repo state.[^38][^39][^41][^42]
-2. **Put it in `knowledgebase/scripts/`** when it walks the repository, maintains durable artifacts, computes reports, snapshots baselines, or depends on external services, credentials, or repository-specific file conventions.[^43][^44][^45][^46][^47][^48][^49]
+2. **Put it in repo-level `scripts/`** when it walks the repository, maintains durable artifacts, computes reports, snapshots baselines, or depends on external services, credentials, or repository-specific file conventions.[^43][^44][^45][^46][^47][^48][^49]
 3. **Expose repo scripts through thin atomic skills** so the orchestrator still has a clean vocabulary such as `scan-content-freshness`, `refresh-context-pages`, `fill-context-pages`, `snapshot-knowledgebase`, or `report-content-quality`, while the heavy operational logic stays testable and reusable as normal scripts.[^42][^44][^46]
 
 ### Recommended script adaptation backlog
 
-If I were converting this evaluation into an implementation queue, I would start with:
+If I were converting this evaluation into a **post-MVP** implementation queue,
+I would start with:
 
 1. **Skill-local validators/repairs**: `validate-context-imports`, `validate-wiki-topology`, `validate-source-registry`, and `repair-markdown-structure`.[^38][^39][^40][^41]
 2. **Repo-level maintenance and context automation**: `scripts/validation/check_doc_freshness.py` and `scripts/context/manage_context_pages.py` with a paired `fill_context_pages.py` orchestrator.[^43][^45][^46]
 3. **Repo-level ingest/reporting utilities**: `scripts/ingest/convert_sources_to_md.py`, `scripts/validation/snapshot_knowledgebase.py`, and `scripts/reporting/content_quality_report.py` for high-risk migrations and ongoing corpus health reporting.[^47][^48][^49]
+
+This queue is explicitly out of scope for the current landed MVP runtime even
+though its package locations are now approved by `docs/architecture.md` and
+ADR-007.
 
 ## Confidence Assessment
 

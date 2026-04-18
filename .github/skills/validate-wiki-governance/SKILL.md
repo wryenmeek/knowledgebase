@@ -7,14 +7,14 @@ description: Validates wiki governance gates with fixed read-only checks. Use wh
 
 ## Overview
 
-Run the governance gate before proposing or approving wiki changes. This skill stays inside the MVP boundary by delegating only to deterministic repo-local entrypoints under `scripts/kb/**`.
+Run the governance gate before proposing or approving wiki changes. This skill stays inside the post-MVP wrapper boundary by running only deterministic repo-local checks for SourceRef shape, page-template compliance, append-only log discipline, and approved topology hygiene.
 
 ## When to Use
 
 - Before any write-capable wiki workflow
 - When checking fail-closed governance behavior
-- When reviewing whether wiki state is safe to sync
-- When validating lint/index/preflight prerequisites without mutating repo state
+- When reviewing whether protected wiki paths are safe to mutate
+- When you need advisory `signal` mode for non-protected follow-up
 
 ## Fixed validation path
 
@@ -22,23 +22,28 @@ Run from the repository root:
 
 ```bash
 python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py
+python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --mode signal --path README.md --validator page-template
+python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --mode blocking --path wiki/index.md --validator topology-hygiene
 ```
 
-This wrapper uses fixed repo-root execution and calls only:
+Supported validators are fixed and typed:
 
-1. `python3 scripts/kb/qmd_preflight.py --repo-root <repo-root> --required-resource .qmd/index`
-2. `python3 scripts/kb/update_index.py --wiki-root wiki --check`
-3. `python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict`
+1. `sourceref-shape`
+2. `page-template`
+3. `append-only-log`
+4. `topology-hygiene`
+
+Protected/write paths default to `blocking` mode even when `--mode` is omitted. Unsupported validators, missing prerequisites, and partial results are hard failures on protected/write paths.
 
 ## Execution boundaries
 
 - No shell, `eval`, or dynamic script-path dispatch
 - Fixed repository root derived from the wrapper location
-- Typed arguments only; no free-form command forwarding
-- Read-only by default
+- Typed `signal` and `blocking` modes only; no free-form command forwarding
+- Read-only validation only
 - No network behavior
-- Fail closed on the first non-zero exit
-- No writes occur on failure
+- Fail closed on unsupported validators, missing prerequisites, and protected-path partial results
+- Approved post-MVP checks only; no freshness scoring, crawl-heavy analysis, or broad reporting runtime
 
 ## Inputs and references
 
@@ -46,9 +51,11 @@ This wrapper uses fixed repo-root execution and calls only:
 - Architecture boundary: `docs/architecture.md`
 - Packaging rule: `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`
 - Page/schema contracts: `schema/page-template.md`, `schema/ingest-checklist.md`
+- Topology contract: `schema/taxonomy-contract.md`
 
 ## Do not use this skill for
 
 - Broad reporting pipelines
-- New repo-level `scripts/validation/*`, `scripts/reporting/*`, `scripts/context/*`, or `scripts/maintenance/*` trees
+- Heavyweight freshness analysis or repo-wide maintenance crawlers
+- New repo-level `scripts/validation/*`, `scripts/reporting/*`, `scripts/context/*`, or `scripts/maintenance/*` trees before approval
 - Ad hoc shell command execution

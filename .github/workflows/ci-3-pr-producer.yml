@@ -352,6 +352,23 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Bootstrap repo-local qmd preflight shim
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-bin .qmd/index
+          cat > .ci-bin/qmd <<'EOF'
+          #!/usr/bin/env sh
+          set -eu
+          exit 0
+          EOF
+          chmod +x .ci-bin/qmd
+          printf '%s\n' "${PWD}/.ci-bin" >> "${GITHUB_PATH}"
+
+      - name: Run framework governance wrapper
+        run: |
+          set -euo pipefail
+          python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py
+
       - name: Resolve CI-3 source inputs
         id: sources
         env:

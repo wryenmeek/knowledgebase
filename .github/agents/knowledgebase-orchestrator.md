@@ -29,6 +29,8 @@ This persona is the entry gate. It does not bypass governance and does not autho
 - Lane classification (`ingest`, `query`, `maintenance`, or `review`)
 - Ordered handoff plan for the ingest-safe lane
 - Explicit go / no-go decision for downstream execution
+- Handoff artifact: a routing brief naming the next persona, allowed scope, blocking gates, and required repository references
+- Escalation artifact: a blocked-routing record capturing the failed gate, unresolved ambiguity, and required Human Steward decision
 - Escalation record when the request cannot proceed safely
 
 ## Required skills / upstream references
@@ -57,6 +59,7 @@ This persona is the entry gate. It does not bypass governance and does not autho
 
 ## Downstream handoff
 
+- Downstream artifact: pass the routing brief, scope note, and named gate status with every transfer
 - Normal ingest-safe handoff: `source-intake-steward`
 - Controlled post-governance handoff: `synthesis-curator`, `query-synthesist`, or `topology-librarian`, but only after `policy-arbiter` clearance exists for the request scope
 - If intake cannot start safely: escalate to the Human Steward

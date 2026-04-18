@@ -7,11 +7,12 @@ description: Synchronizes deterministic knowledgebase state through narrow allow
 
 ## Overview
 
-Use this skill to reconcile deterministic wiki state while staying inside the MVP control-plane boundary. The wrapper is intentionally narrow: it validates first, then optionally writes `wiki/index.md`.
+Use this skill to reconcile deterministic governed wiki state while staying inside the MVP control-plane boundary. The wrapper is intentionally narrow: it validates first, then only routes over approved governed artifacts.
 
 ## When to Use
 
 - After valid wiki content changes need an index refresh
+- When a governed state artifact staged in-repo is ready to publish under ADR-005
 - When confirming state can be synchronized without unsafe side effects
 - Before or after deterministic ingest flows that should leave index state clean
 
@@ -29,11 +30,26 @@ Write mode for index synchronization only:
 python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index
 ```
 
-The wrapper uses fixed repo-root execution and only these allowlisted entrypoints:
+Append-only log mode:
+
+```bash
+python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --append-log-entry "- state changed" --state-changed
+```
+
+Atomic publish modes for approved mutable governed artifacts:
+
+```bash
+python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-open-questions-from wiki/open-questions.next.md
+python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-backlog-from wiki/backlog.next.md
+python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-status-from wiki/status.next.md
+```
+
+The wrapper uses fixed repo-root execution and only these allowlisted entrypoints or governed helpers:
 
 - `scripts/kb/qmd_preflight.py`
 - `scripts/kb/update_index.py`
 - `scripts/kb/lint_wiki.py`
+- `scripts/kb/write_utils.py`
 
 Read-only prechecks use `python3 scripts/kb/update_index.py --wiki-root wiki --check`
 so stale `wiki/index.md` fails closed in `--check-only` mode.
@@ -43,15 +59,26 @@ it runs `qmd_preflight.py`, then `lint_wiki.py --strict --skip-orphan-check`,
 then `update_index.py --write`, then a final strict lint to prove the synced
 state is clean.
 
+Other write-capable modes are fixed to governed artifacts only:
+
+- `wiki/log.md` append-only entry append under `wiki/.kb_write.lock`
+- `wiki/open-questions.md` atomic replace under `wiki/.kb_write.lock`
+- `wiki/backlog.md` atomic replace under `wiki/.kb_write.lock`
+- `wiki/status.md` atomic replace under `wiki/.kb_write.lock`
+- unsupported artifact targets are rejected
+
 ## Execution boundaries
 
 - No shell, `eval`, or dynamic dispatch
 - No free-form command forwarding
-- Typed flags only: `--check-only` or `--write-index`
+- Typed flags only: `--check-only`, `--write-index`, `--append-log-entry`,
+  `--write-open-questions-from`, `--write-backlog-from`, or
+  `--write-status-from`
 - Read-only prechecks always run before any write
 - Default mode is read-only
 - No network behavior
-- No-write-on-failure: `wiki/index.md` is written only after prechecks pass
+- No-write-on-failure: governed artifacts mutate only after their mode-specific
+  prechecks, lock rules, and contract checks pass
 - This skill does **not** wrap new repo-level maintenance/reporting/context trees
 
 ## Out of scope in MVP

@@ -21,14 +21,19 @@ Turn a policy-cleared, evidence-backed package into a proposed wiki create/updat
 - Proposed page-create or page-update draft package with SourceRef-backed claims only
 - Explicit page identity, placement, and frontmatter recommendations tied to the named knowledge-structure skills
 - Open-questions or escalation note when evidence, identity, or schema alignment is unresolved
-- Re-review handoff package for downstream verification and policy gates before any durable write
+- Handoff artifact: a draft bundle containing proposed page changes, cited claims, identity decisions, and required re-review notes
+- Escalation artifact: a synthesis ambiguity record naming the unresolved identity, taxonomy, schema, or source conflict for Human Steward review
+- Re-review handoff package for downstream policy gates and any future expanded verification lane before any durable write
 
 ## Required skills / upstream references
 
+- `.github/skills/extract-entities-and-claims/SKILL.md`
 - `.github/skills/information-architecture-and-taxonomy/SKILL.md`
 - `.github/skills/ontology-and-entity-modeling/SKILL.md`
 - `.github/skills/knowledge-schema-and-metadata-governance/SKILL.md`
 - `.github/skills/entity-resolution-and-canonicalization/SKILL.md`
+- `.github/skills/record-open-questions/SKILL.md`
+- `.github/skills/enforce-npov/SKILL.md`
 - `.github/skills/source-driven-development/SKILL.md`
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `AGENTS.md`
@@ -56,7 +61,9 @@ Turn a policy-cleared, evidence-backed package into a proposed wiki create/updat
 
 ## Downstream handoff
 
-- Draft package: `evidence-verifier` for post-draft claim/citation review
-- Governed publication decision: `policy-arbiter` after verification succeeds
+- Downstream artifact: pass the draft bundle, cited claim set, and unresolved-question list without converting it into a direct write
+- Draft preparation remains grounded in `extract-entities-and-claims`; any durable publication or persistence candidate returns to governed review rather than bypassing the control plane
+- Draft package: `policy-arbiter` for the current MVP governed publication decision
+- Future-state expanded verification lane: `evidence-verifier` only if/when post-draft claim/citation review is intentionally added beyond the current MVP contract
 - Blocked or ambiguous cases: return to `knowledgebase-orchestrator` with the escalation record
 - No direct write, redirect, or out-of-band persistence is permitted from this persona

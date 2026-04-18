@@ -20,6 +20,24 @@ Document decisions, not just code. The most valuable documentation captures the 
 
 **When NOT to use:** Don't document obvious code. Don't add comments that restate what the code already says. Don't write docs for throwaway prototypes.
 
+## Knowledgebase helper surface
+
+For this repository's deterministic knowledgebase framework, this skill also
+owns narrow markdown helpers that stay read-only and skill-local:
+
+- `repair-markdown-structure`
+- `validate-doc-batch`
+
+They normalize and validate documentation batches without inventing a broad
+repo-level markdown runtime.
+
+## Commands
+
+```bash
+python3 .github/skills/documentation-and-adrs/logic/repair_markdown_structure.py --path docs/example.md
+python3 .github/skills/documentation-and-adrs/logic/validate_doc_batch.py --path docs/example.md
+```
+
 ## Architecture Decision Records (ADRs)
 
 ADRs capture the reasoning behind significant technical decisions. They're the highest-value documentation you can write.
@@ -276,3 +294,10 @@ After documenting:
 - [ ] Known gotchas are documented inline where they matter
 - [ ] No commented-out code remains
 - [ ] Rules files (CLAUDE.md etc.) are current and accurate
+
+## References
+
+- `AGENTS.md`
+- `docs/architecture.md`
+- `docs/ideas/wiki-curation-agent-framework.md`
+- `schema/page-template.md`

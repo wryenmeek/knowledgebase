@@ -259,6 +259,11 @@ class Ci3WorkflowContractTests(unittest.TestCase):
     def test_preflight_and_allowlist_fail_closed_controls_are_explicit(self) -> None:
         required_controls = (
             "WRITE_ALLOWLIST: wiki/**,wiki/index.md,wiki/log.md,raw/processed/**",
+            "Bootstrap repo-local qmd preflight shim",
+            "mkdir -p .ci-bin .qmd/index",
+            'printf \'%s\\n\' "${PWD}/.ci-bin" >> "${GITHUB_PATH}"',
+            "Run framework governance wrapper",
+            "python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
             "reject:trusted_trigger_model:manual_approval_required",
             "reject:trusted_trigger_model:unexpected_handoff_workflow",
             "reject:trusted_trigger_model:workflow_run_event_not_push",

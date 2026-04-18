@@ -46,6 +46,89 @@ WRITE_ALLOWLIST_PATHS: tuple[str, ...] = (
 WRITE_LOCK_PATH = "wiki/.kb_write.lock"
 
 
+class ArtifactMutability(StrEnum):
+    """Allowed mutation modes for governed state artifacts."""
+
+    APPEND_ONLY = "append_only"
+    MUTABLE = "mutable"
+
+
+class ArtifactWriteStrategy(StrEnum):
+    """Required write mechanics for governed state artifacts."""
+
+    APPEND_UNDER_LOCK = "append_under_lock"
+    ATOMIC_REPLACE_UNDER_LOCK = "atomic_replace_under_lock"
+
+
+@dataclass(frozen=True, slots=True)
+class GovernedArtifactContract:
+    """Schema-backed contract for a governed state artifact."""
+
+    artifact_id: str
+    path: str
+    schema_owner: str
+    mutability: ArtifactMutability | str
+    write_strategy: ArtifactWriteStrategy | str
+    lock_path: str | None = WRITE_LOCK_PATH
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "mutability", str(self.mutability))
+        object.__setattr__(self, "write_strategy", str(self.write_strategy))
+
+
+GOVERNED_ARTIFACT_CONTRACTS: tuple[GovernedArtifactContract, ...] = (
+    GovernedArtifactContract(
+        artifact_id="wiki-index",
+        path="wiki/index.md",
+        schema_owner="schema/taxonomy-contract.md",
+        mutability=ArtifactMutability.MUTABLE,
+        write_strategy=ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK,
+    ),
+    GovernedArtifactContract(
+        artifact_id="wiki-log",
+        path="wiki/log.md",
+        schema_owner="schema/governed-artifact-contract.md",
+        mutability=ArtifactMutability.APPEND_ONLY,
+        write_strategy=ArtifactWriteStrategy.APPEND_UNDER_LOCK,
+    ),
+    GovernedArtifactContract(
+        artifact_id="wiki-open-questions",
+        path="wiki/open-questions.md",
+        schema_owner="schema/governed-artifact-contract.md",
+        mutability=ArtifactMutability.MUTABLE,
+        write_strategy=ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK,
+    ),
+    GovernedArtifactContract(
+        artifact_id="wiki-backlog",
+        path="wiki/backlog.md",
+        schema_owner="schema/governed-artifact-contract.md",
+        mutability=ArtifactMutability.MUTABLE,
+        write_strategy=ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK,
+    ),
+    GovernedArtifactContract(
+        artifact_id="wiki-status",
+        path="wiki/status.md",
+        schema_owner="schema/governed-artifact-contract.md",
+        mutability=ArtifactMutability.MUTABLE,
+        write_strategy=ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK,
+    ),
+)
+GOVERNED_ARTIFACT_IDS: tuple[str, ...] = tuple(
+    artifact.artifact_id for artifact in GOVERNED_ARTIFACT_CONTRACTS
+)
+GOVERNED_ARTIFACT_PATHS: tuple[str, ...] = tuple(
+    artifact.path for artifact in GOVERNED_ARTIFACT_CONTRACTS
+)
+_GOVERNED_ARTIFACTS_BY_PATH = {
+    artifact.path: artifact for artifact in GOVERNED_ARTIFACT_CONTRACTS
+}
+
+
+def governed_artifact_contract(path: str) -> GovernedArtifactContract | None:
+    """Return the declared artifact contract for a repo-relative path."""
+    return _GOVERNED_ARTIFACTS_BY_PATH.get(path)
+
+
 class ResultStatus(StrEnum):
     """Machine-readable command status values."""
 
@@ -123,11 +206,18 @@ __all__ = [
     "TOKEN_PROFILE_IDS",
     "WRITE_ALLOWLIST_PATHS",
     "WRITE_LOCK_PATH",
+    "GOVERNED_ARTIFACT_CONTRACTS",
+    "GOVERNED_ARTIFACT_IDS",
+    "GOVERNED_ARTIFACT_PATHS",
     "REASON_CODES",
     "RESULT_ENVELOPE_KEYS",
+    "ArtifactMutability",
+    "ArtifactWriteStrategy",
+    "GovernedArtifactContract",
     "PolicyId",
     "TokenProfileId",
     "ResultStatus",
     "ReasonCode",
     "ResultEnvelope",
+    "governed_artifact_contract",
 ]

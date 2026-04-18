@@ -2,37 +2,20 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import shutil
 import unittest
 
 from scripts.kb import update_index, write_utils
 from scripts.kb.sourceref import SourceRefValidationError, parse_sourceref
+from tests.kb.harnesses import KnowledgebaseWorkspaceTestCase
 
 
-_RUNTIME_ROOT = Path(__file__).resolve().parent / ".runtime_verification_unit"
-
-
-class UnitVerificationMatrixTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.workspace = _RUNTIME_ROOT / self._testMethodName
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-
-        self.wiki_root = self.workspace / "wiki"
-        for section in ("sources", "entities", "concepts", "analyses"):
-            (self.wiki_root / section).mkdir(parents=True, exist_ok=True)
-
-    def tearDown(self) -> None:
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-        if _RUNTIME_ROOT.exists() and not any(_RUNTIME_ROOT.iterdir()):
-            _RUNTIME_ROOT.rmdir()
+class UnitVerificationMatrixTests(KnowledgebaseWorkspaceTestCase):
+    RUNTIME_ROOT_NAME = ".runtime_verification_unit"
+    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")
 
     def _write_page(self, relative_path: str, *, title: str, page_type: str, confidence: str) -> None:
-        page_path = self.wiki_root / relative_path
-        page_path.parent.mkdir(parents=True, exist_ok=True)
-        page_path.write_text(
+        self.write_wiki_page(
+            relative_path,
             "\n".join(
                 [
                     "---",
@@ -54,7 +37,6 @@ class UnitVerificationMatrixTests(unittest.TestCase):
                     "",
                 ]
             ),
-            encoding="utf-8",
         )
 
     def test_sourceref_round_trips_as_canonical_format(self) -> None:

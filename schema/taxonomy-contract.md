@@ -22,7 +22,7 @@ for knowledge artifacts. It complements [`page-template.md`](page-template.md),
 | `wiki/entities/` | `entity` | The subject has a stable identity across sources (person, organization, program, benefit, statute, product, named document, or other durable referent). | The subject is only an alias, a transient event, a one-off query result, or an abstract topic without a single durable referent. |
 | `wiki/concepts/` | `concept` | The page explains an abstract topic, rule, workflow, policy theme, or recurring idea that can apply to multiple entities or sources. | The content is primarily about one named referent, one source artifact, or one persisted query result. |
 | `wiki/analyses/` | `analysis` | The page is a policy-gated synthesis answering a scoped question or preserving a reusable comparison derived from multiple sources/pages. | The content should instead be normalized into evergreen entity/concept pages or is only a raw-source registration record. |
-| `wiki/index.md`, `wiki/log.md` | `process` | The page is a reserved operational artifact for deterministic discovery or append-only audit state. | The page carries topical knowledge that belongs in `sources/`, `entities/`, `concepts/`, or `analyses/`. |
+| `wiki/index.md`, `wiki/log.md`, `wiki/open-questions.md`, `wiki/backlog.md`, `wiki/status.md` | `process` | The page is a reserved operational artifact for deterministic discovery, append-only audit state, or governed maintenance ledgers/snapshots. | The page carries topical knowledge that belongs in `sources/`, `entities/`, `concepts/`, or `analyses/`. |
 
 ### Namespace rules
 

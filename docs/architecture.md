@@ -45,10 +45,14 @@ so permission scope can stay minimal for each path.
 
 ## Wiki-curation framework MVP boundary
 
-The wiki-curation agent framework is an **MVP control plane** over the existing
-knowledgebase tooling, not a replacement runtime. The accepted layering and
-packaging rule live in
-[`ADR-007`](decisions/ADR-007-control-plane-layering-and-packaging.md).
+The wiki-curation agent framework was originally ratified as an **MVP control
+plane** over the existing knowledgebase tooling, not a replacement runtime.
+That historical MVP-only boundary still defines what is implemented today. The
+accepted layering and packaging rule live in
+[`ADR-007`](decisions/ADR-007-control-plane-layering-and-packaging.md), which
+now also approves a narrow set of post-MVP package surfaces without changing
+CI permissions, source-boundary rules, concurrency guards, or deny-by-default
+write behavior.
 
 | Layer | Package location | MVP role now |
 |---|---|---|
@@ -61,9 +65,11 @@ packaging rule live in
 ### In scope for the framework MVP
 
 - Agent and skill scaffolding under `.github/agents/**` and `.github/skills/**`.
-- Thin wrapper surfaces that call existing `scripts/kb/ingest.py`,
-  `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`,
-  `scripts/kb/qmd_preflight.py`, and `scripts/kb/persist_query.py`.
+- Thin wrapper surfaces around existing `scripts/kb/**` entrypoints where they
+  are useful and MVP-safe. Current landed wrappers cover governance validation
+  and index/state synchronization; ingest and query persistence still run
+  through direct `scripts/kb/ingest.py` and `scripts/kb/persist_query.py`
+  execution today.
 - Architecture, ADR, and operator documentation that explains the boundary and
   where future extensions belong.
 
@@ -75,6 +81,22 @@ packaging rule live in
 - Adding heavy repository crawlers, external-service integrations, or batch
   reporting pipelines before the scaffolding and wrapper layer is in place.
 
+### Approved post-MVP package surfaces
+
+These surfaces are approved for future framework implementation work even
+though they are not all landed today:
+
+| Surface | Approved post-MVP use | Invariants that still apply |
+|---|---|---|
+| `scripts/validation/**` | Deterministic validators, freshness checks, and baseline/snapshot utilities | CI-1 and CI-2 stay read-only, and CI-3 may only write through explicit allowlists plus preflight. |
+| `scripts/reporting/**` | Repository-scoped quality and coverage reporting | Packaging approval does not grant new write authority; undeclared paths remain deny-by-default. |
+| `scripts/context/**` + `scripts/maintenance/**` | Context-sync and maintenance orchestration invoked by thin skills | Heavy repo-wide logic still sits behind explicit wrappers and fail-closed checks. |
+| `scripts/ingest/**` | Heavyweight ingest/conversion helpers | ADR-006 still limits authoritative ingest inputs to `raw/inbox/**` plus checksummed `raw/assets/**`. |
+
+Any future post-MVP writer that touches shared wiki artifacts must keep the
+ADR-005 workflow-concurrency plus `wiki/.kb_write.lock` model, and any
+post-MVP runtime path must preserve the CI-1/CI-2/CI-3 split from ADR-004.
+
 ## Operator lane sequencing
 
 The implemented control plane is intentionally lane-first. Operators should treat
@@ -83,7 +105,7 @@ the following order as mandatory:
 | Phase | Required order | Operator rule |
 |---|---|---|
 | Entry + ingest-safe gate | `knowledgebase-orchestrator` → `source-intake-steward` → `evidence-verifier` → `policy-arbiter` | No downstream wiki/content/topology lane opens before this sequence succeeds. |
-| Policy-cleared drafting | `synthesis-curator` | Drafting is limited to the cleared scope and returns to `evidence-verifier` + `policy-arbiter` before durable publication. |
+| Policy-cleared drafting | `synthesis-curator` | Drafting is limited to the cleared scope and remains subject to governed publication checks; any richer post-draft `evidence-verifier` lane is future-state follow-on work rather than a current MVP runtime guarantee. |
 | Policy-cleared query/discovery | `query-synthesist` or `topology-librarian` | Query answers read the curated wiki first; durable follow-up stays on governed persistence or index-sync paths. |
 | Maintenance/quality follow-up | `maintenance-auditor`, `change-patrol`, `quality-analyst` | These personas triage, audit, and recommend; any content-changing follow-up routes back through `knowledgebase-orchestrator`. |
 | Human escalation | Human Steward | Required when contradictions, deletions, identity ambiguity, or policy conflicts remain unresolved. |
@@ -114,9 +136,9 @@ prevents ADR-007 drift into a second runtime.
 
 | Skill slice | Status in MVP | Repo-local examples |
 |---|---|---|
-| Governance + wrappers | Active | `validate-wiki-governance`, `sync-knowledgebase-state`, `review-wiki-plan` |
-| Knowledge-structure contracts | Active, doc-only | `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, `knowledge-schema-and-metadata-governance` |
-| Deferred scaffolding | Present but recommendation-only | `entity-resolution-and-canonicalization`, `search-and-discovery-optimization` |
+| Governance workflows + landed wrappers | Active mix of doc-only and wrapper-backed skills | `validate-wiki-governance`, `sync-knowledgebase-state` |
+| Knowledge-structure contracts | Active, doc-only | `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, `knowledge-schema-and-metadata-governance`, `entity-resolution-and-canonicalization`, `search-and-discovery-optimization` |
+| Policy/evidence/self-audit workflows | Active, doc-only | `validate-inbox-source`, `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace` |
 
 The skill layer carries workflow procedure and thin wrapper logic while leaving
 deterministic execution in `scripts/kb/**`. No framework skill should add a new
@@ -130,19 +152,25 @@ Operators can validate the landed framework with these repo-local entrypoints:
 | Check | Command | Primary evidence |
 |---|---|---|
 | Fixed governance gate | `python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py` | Wrapper over `scripts/kb/qmd_preflight.py`, `scripts/kb/update_index.py`, and `scripts/kb/lint_wiki.py` |
-| Read-only state-sync precheck | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only` | Confirms the allowlisted index/lint path before write mode |
-| Write-capable index sync | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index` | Refreshes `wiki/index.md` only after prechecks pass |
+| Read-only state-sync precheck | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only [--artifact wiki/index.md\|wiki/log.md\|wiki/open-questions.md\|wiki/backlog.md\|wiki/status.md]` | Confirms approved governed-artifact routing; index precheck still runs the allowlisted index/lint path |
+| Write-capable governed sync | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index` (or the typed log/open-questions/backlog/status sync flags) | Mutates only approved governed artifacts after mode-specific checks and ADR-005 locking succeed |
 | Focused framework suite | `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_skill_wrappers` | `tests/kb/test_framework_contracts.py`, `test_framework_skills.py`, `test_framework_agents.py`, `test_framework_references.py`, `test_skill_wrappers.py` |
 | Full repository suite | `python3 -m unittest discover -s tests -p "test_*.py"` | End-to-end regression safety beyond framework-specific checks |
 
 ## Write and safety controls
 
 - Canonical write allowlist for automation: `wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`.
+- The current CI/runtime write allowlist above is unchanged by the approved
+  post-MVP package surfaces; those surfaces only widen where future code may
+  live, not what automation may write by default.
 - Raw immutability: `raw/processed/**` must not be mutated after ingest.
 - Ingest-time SourceRefs may use provisional placeholder git SHAs; only reconciled commit-bound SourceRefs whose `git_sha` resolves to a real revision containing the cited artifact bytes count as authoritative provenance.
 - Concurrency guard: workflow-level concurrency group plus local lock file (`wiki/.kb_write.lock`).
 - Fail-closed behavior: missing prerequisites, permission mismatches, or lock contention stop writes.
 - Policy-gated query persistence: write only when `auto_persist_when_high_value` criteria pass.
+- Paths outside the current MVP surfaces plus the approved post-MVP package
+  surfaces remain deny-by-default for framework automation unless a narrower
+  contract explicitly names them.
 
 ## Decision records
 

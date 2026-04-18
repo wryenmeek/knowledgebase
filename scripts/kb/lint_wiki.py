@@ -9,11 +9,9 @@ from pathlib import Path
 import re
 import sys
 
-try:
-    from scripts.kb import sourceref
-except ModuleNotFoundError:  # pragma: no cover - direct script execution path
+if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.kb import sourceref
+from scripts.kb import sourceref
 
 REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
     "type",

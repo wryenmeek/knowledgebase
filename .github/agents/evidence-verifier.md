@@ -22,6 +22,8 @@ Act as the hard evidence gate for the ingest-safe lane. In this slice, the verif
 - Missing-evidence list for any incomplete intake package
 - Verified handoff package for `policy-arbiter`
 - Structured note when intake evidence remains provisional rather than authoritative
+- Handoff artifact: an evidence review bundle with verdict, missing-evidence findings, SourceRef status, and policy-ready scope
+- Escalation artifact: an evidence dispute record naming the contradictory or non-authoritative provenance details that require Human Steward review
 - Fail-closed rejection when provenance cannot be established deterministically
 
 ## Required skills / upstream references
@@ -52,6 +54,7 @@ Act as the hard evidence gate for the ingest-safe lane. In this slice, the verif
 
 ## Downstream handoff
 
+- Downstream artifact: transfer the evidence review bundle and verifier verdict exactly as reviewed, including any provisional markers
 - Success: `policy-arbiter`
 - Failure: return the package to `knowledgebase-orchestrator` with a fail-closed verdict
 - This role never hands off directly to synthesis, topology, or wiki-writing automation

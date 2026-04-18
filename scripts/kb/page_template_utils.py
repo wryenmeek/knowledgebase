@@ -1,0 +1,131 @@
+"""Shared page-template parsing and validation helpers."""
+
+from __future__ import annotations
+
+from os import PathLike
+from pathlib import Path
+import re
+
+from . import path_utils
+
+
+TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
+    "entity": ("## Summary", "## Evidence", "## Open Questions"),
+    "concept": ("## Summary", "## Evidence", "## Open Questions"),
+    "source": ("## Summary", "## Evidence", "## Open Questions"),
+    "analysis": ("## Summary", "## Evidence", "## Open Questions"),
+}
+_FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
+
+
+def normalize_page_path(value: str | PathLike[str]) -> str:
+    try:
+        return path_utils.normalize_repo_relative_path(value)
+    except path_utils.RepoRelativePathError:
+        raw_value = value.as_posix() if isinstance(value, Path) else str(value)
+        if raw_value.startswith("/") or "\\" in raw_value:
+            return raw_value
+        return ""
+
+
+def validate_page_template_path(
+    page: str | PathLike[str],
+    *,
+    repo_root: str | Path,
+    required_frontmatter_keys: tuple[str, ...],
+    template_section_requirements: dict[str, tuple[str, ...]] = TEMPLATE_SECTION_REQUIREMENTS,
+) -> tuple[str, tuple[tuple[str, str], ...]]:
+    normalized_page = normalize_page_path(page)
+    violations: list[tuple[str, str]] = []
+    if not normalized_page.startswith("wiki/") or not normalized_page.endswith(".md"):
+        violations.append(
+            ("invalid-page-path", "page must be a repo-relative markdown path under wiki/**")
+        )
+        return normalized_page, tuple(violations)
+
+    page_path = Path(repo_root) / normalized_page
+    if not page_path.is_file():
+        violations.append(("missing-page", "page does not exist"))
+        return normalized_page, tuple(violations)
+
+    text = page_path.read_text(encoding="utf-8")
+    frontmatter, body = extract_frontmatter(text)
+    if frontmatter is None:
+        violations.append(("missing-frontmatter", "page must start with a YAML frontmatter block"))
+        return normalized_page, tuple(violations)
+
+    metadata = parse_frontmatter(frontmatter)
+    for key in required_frontmatter_keys:
+        if key not in metadata:
+            violations.append(("missing-frontmatter-key", f"required key '{key}' is missing"))
+
+    title = strip_quotes(metadata.get("title", ""))
+    headings = extract_headings(body)
+    if not title:
+        violations.append(("missing-frontmatter-key", "required key 'title' is missing"))
+    else:
+        expected_heading = f"# {title}"
+        if expected_heading not in headings:
+            violations.append(("title-heading-mismatch", "H1 heading must match frontmatter title exactly"))
+
+    page_type = strip_quotes(metadata.get("type", ""))
+    for required_section in template_section_requirements.get(page_type, ()):
+        if required_section not in headings:
+            violations.append(
+                ("missing-body-section", f"required section '{required_section}' is missing")
+            )
+
+    return normalized_page, tuple(violations)
+
+
+def extract_frontmatter(text: str) -> tuple[str | None, str]:
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None, text
+    for index in range(1, len(lines)):
+        if lines[index].strip() == "---":
+            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
+    return None, text
+
+
+def parse_frontmatter(frontmatter: str) -> dict[str, str]:
+    parsed: dict[str, str] = {}
+    for line in frontmatter.splitlines():
+        match = _FRONTMATTER_KEY_RE.match(line)
+        if match:
+            parsed[match.group(1)] = match.group(2).strip()
+    return parsed
+
+
+def strip_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        return value[1:-1]
+    return value
+
+
+def extract_headings(body: str) -> set[str]:
+    headings: set[str] = set()
+    in_fenced_block = False
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fenced_block = not in_fenced_block
+            continue
+        if in_fenced_block:
+            continue
+        match = _HEADING_RE.match(stripped)
+        if match:
+            headings.add(f"{match.group(1)} {match.group(2)}")
+    return headings
+
+
+__all__ = [
+    "TEMPLATE_SECTION_REQUIREMENTS",
+    "extract_frontmatter",
+    "extract_headings",
+    "normalize_page_path",
+    "parse_frontmatter",
+    "strip_quotes",
+    "validate_page_template_path",
+]

@@ -21,6 +21,8 @@ Apply the repository's editorial and operational constitution after evidence rev
 - Policy verdict: approved for downstream governed handoff, rejected, or escalated
 - Named policy findings with the blocking rule when applicable
 - Explicit statement on whether downstream synthesis/query/topology work is still prohibited
+- Handoff artifact: a policy clearance memo naming the allowed downstream lane, scope boundary, and remaining prohibitions
+- Escalation artifact: a policy exception record describing the unresolved rule conflict or Human Steward decision needed
 - Human Steward escalation record for unresolved conflicts
 
 ## Required skills / upstream references
@@ -50,6 +52,7 @@ Apply the repository's editorial and operational constitution after evidence rev
 
 ## Downstream handoff
 
+- Downstream artifact: transfer the policy clearance memo or blocked verdict with the exact allowed scope and prohibitions attached
 - On rejection or ambiguity: return to `knowledgebase-orchestrator` with a blocked verdict and Human Steward escalation as needed
 - On approval for source-backed drafting: `synthesis-curator`
 - On approval for query or discovery follow-up: `query-synthesist` or `topology-librarian`, within the cleared scope only

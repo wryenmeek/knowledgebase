@@ -12,6 +12,15 @@ accepted layering and packaging rule lives in
 and
 [`docs/decisions/ADR-007-control-plane-layering-and-packaging.md`](decisions/ADR-007-control-plane-layering-and-packaging.md).
 
+## Post-MVP rollout authority
+
+The authoritative post-MVP rollout **planning** sequence, scope classes, phase
+gates, and packaging rules now live in [`docs/ideas/spec.md`](ideas/spec.md).
+Use that spec when deciding whether work is **required**, **approval-gated**, or
+**optional later-phase**, and before promoting skill-local logic into repo-level
+script surfaces. This runbook remains the executable operator path and current
+runtime authority for the MVP and ratified framework boundary.
+
 ## Lane order and operator handoffs
 
 Maintain the landed lane order from `.github/agents/**`:
@@ -29,6 +38,40 @@ boundary is understood, and any content-changing action routes back through
 `knowledgebase-orchestrator`. Repo support personas (`code-reviewer`,
 `test-engineer`, `security-auditor`) help review changes but do not bypass the
 wiki governance lane.
+
+## Phase 0 bootstrap: runtime prerequisites
+
+Make wrapper validation runnable through the same repo-local bootstrap contract
+in local and CI environments before later phases depend on it more heavily.
+
+| Surface | Required prerequisites | Bootstrap rule |
+|---|---|---|
+| Local wrapper validation (`validate-wiki-governance`, `sync-knowledgebase-state --check-only`) | `python3`, repo checkout, `wiki/`, `qmd` on `PATH`, `.qmd/index` | Prefer the authoritative qmd runtime when available. If only wrapper validation is needed, use a repo-local validation shim plus `mkdir -p .qmd/index` so preflight stays deterministic and fail-closed without introducing non-repo state. |
+| CI-2 / CI-3 wrapper validation | `python3`, checked-out repo, repo-local `qmd` shim, `.qmd/index` directory | Bootstrap a repo-local `qmd` shim inside the workflow workspace and prepend it to `PATH`; never depend on a machine-global install. |
+| Full qmd index/query flow | Authoritative qmd runtime that supports `collection add`, `embed`, and `query` | Remains the operator/manual path below. CI bootstrap only satisfies current wrapper-preflight needs; authoritative qmd packaging/version pinning stays in the post-MVP verification story until a later phase ratifies it. |
+
+Validation-only bootstrap example (repo root):
+
+```bash
+mkdir -p .ci-bin .qmd/index
+cat > .ci-bin/qmd <<'EOF'
+#!/usr/bin/env sh
+set -eu
+exit 0
+EOF
+chmod +x .ci-bin/qmd
+
+PATH="$PWD/.ci-bin:$PATH" \
+  python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py
+
+PATH="$PWD/.ci-bin:$PATH" \
+  python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only
+```
+
+This shim is intentionally scoped to wrapper validation only. Use the
+authoritative qmd runtime for `qmd collection add`, `qmd embed`, and
+`qmd query`; do not treat the shim as a substitute for real indexing/query
+coverage.
 
 ## Local execution flow (repo root)
 
@@ -90,11 +133,11 @@ python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.p
 # read-only framework state-sync precheck
 python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only
 
-# write-capable index sync after prechecks pass
+# write-capable governed sync after mode-specific checks pass
 python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index
 
 # focused framework test suite, including wrapper-boundary coverage
-python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_skill_wrappers
+python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_framework_write_surface_matrix tests.kb.test_skill_wrappers
 ```
 
 Framework test entrypoints already present under `tests/kb/`:
@@ -105,7 +148,48 @@ Framework test entrypoints already present under `tests/kb/`:
 | `tests/kb/test_framework_skills.py` | Framework skill metadata, classifications, and wrapper-path expectations. |
 | `tests/kb/test_framework_agents.py` | Persona presence, frontmatter, handoffs, lane ordering, and fail-closed contracts. |
 | `tests/kb/test_framework_references.py` | Repo-local link/path resolution for docs, skills, agents, and wrapper entrypoints. |
+| `tests/kb/test_framework_write_surface_matrix.py` | `AGENTS.md` write-surface matrix coverage for every current skill-local logic directory and approved repo-level package family. |
 | `tests/kb/test_skill_wrappers.py` | Thin wrapper execution order, allowlists, and fail-closed wrapper behavior. |
+
+## Authoritative verification and approval entrypoints
+
+| Coverage lane | Authoritative entrypoint | Approval / operating note |
+|---|---|---|
+| Framework contract suites | `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_framework_write_surface_matrix` | Run whenever framework docs, skills, agents, or the `AGENTS.md` write-surface matrix change. |
+| Wrapper behavior suite | `python3 -m unittest tests.kb.test_skill_wrappers` | Confirms the fixed wrapper order, allowlists, and fail-closed execution envelope. |
+| Helper surface suites | `python3 -m unittest tests.kb.test_context_import_helpers tests.kb.test_documentation_helpers tests.kb.test_validate_source_registry tests.kb.test_validate_wiki_topology tests.kb.test_harnesses` | Covers skill-local helper contracts without widening repo-write authority. |
+| Repo script suites | `python3 -m unittest tests.kb.test_contracts tests.kb.test_sourceref tests.kb.test_ingest tests.kb.test_update_index tests.kb.test_lint_wiki tests.kb.test_qmd_preflight tests.kb.test_persist_query tests.kb.test_write_utils` | Required when `scripts/kb/**` or approved repo-level helper packages change. |
+| Workflow governance suites | `python3 -m unittest tests.kb.test_workflow_yaml_syntax tests.kb.test_ci1_workflow tests.kb.test_ci2_workflow tests.kb.test_ci3_workflow tests.kb.test_ci_permission_asserts` | Keep CI-1 no-write trusted handoff, CI-2 read-only diagnostics, and CI-3 allowlisted writes aligned with workflow YAML. |
+| Verification matrix suites | `python3 -m unittest tests.kb.test_unit_verification_matrix tests.kb.test_integration_verification_matrix tests.kb.test_regression_verification_matrix` | Final verification pass for unit, integration, and regression coverage expectations. |
+| Broad regression suite | `python3 -m unittest discover -s tests -p "test_*.py"` | Final merge gate after the focused lanes above stay green. |
+
+| Approval lane | Authoritative entrypoint | Required control |
+|---|---|---|
+| CI-1 no-write trusted handoff | `.github/workflows/ci-1-gatekeeper.yml` on `push` to protected default-branch `raw/inbox/**` changes | Read-only token, inbox-only scope, and handoff-only behavior. |
+| CI-2 read-only diagnostics | `.github/workflows/ci-2-analyst-diagnostics.yml` on `push`, `pull_request`, or `workflow_dispatch` | Read-only permissions plus artifact upload only; no repo mutations. |
+| CI-3 allowlisted writes | `.github/workflows/ci-3-pr-producer.yml` from CI-1 handoff or protected manual dispatch | Allowlisted writes only (`wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`) plus protected-environment approval for manual dispatch. |
+
+## Verification planning baseline
+
+The matrix in [`docs/ideas/spec.md`](ideas/spec.md#verification-matrix-and-ci-migration-rules)
+is the planning authority for post-MVP verification expansion. It does **not**
+change today's runtime or CI enforcement. Until a later phase is explicitly
+approved, keep these existing MVP suites green:
+
+- Framework contract suites:
+  `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_framework_write_surface_matrix`
+- Wrapper behavior suite:
+  `python3 -m unittest tests.kb.test_skill_wrappers`
+- Helper surface suites:
+  `python3 -m unittest tests.kb.test_context_import_helpers tests.kb.test_documentation_helpers tests.kb.test_validate_source_registry tests.kb.test_validate_wiki_topology tests.kb.test_harnesses`
+- Repo script suites:
+  `python3 -m unittest tests.kb.test_contracts tests.kb.test_sourceref tests.kb.test_ingest tests.kb.test_update_index tests.kb.test_lint_wiki tests.kb.test_qmd_preflight tests.kb.test_persist_query tests.kb.test_write_utils`
+- Workflow governance suites:
+  `python3 -m unittest tests.kb.test_workflow_yaml_syntax tests.kb.test_ci1_workflow tests.kb.test_ci2_workflow tests.kb.test_ci3_workflow tests.kb.test_ci_permission_asserts`
+- Verification matrix suites:
+  `python3 -m unittest tests.kb.test_unit_verification_matrix tests.kb.test_integration_verification_matrix tests.kb.test_regression_verification_matrix`
+- Broad regression suite:
+  `python3 -m unittest discover -s tests -p "test_*.py"`
 
 ## Exit semantics and failure handling
 
@@ -130,7 +214,7 @@ python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.p
 git --no-pager status --short --untracked-files=all -- schema wiki .github/skills .github/agents docs/architecture.md docs/decisions/ADR-007-control-plane-layering-and-packaging.md
 
 # 3) after the change, rerun the focused framework gates
-python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_skill_wrappers
+python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_framework_write_surface_matrix tests.kb.test_skill_wrappers
 python3 scripts/kb/update_index.py --wiki-root wiki
 python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 ```

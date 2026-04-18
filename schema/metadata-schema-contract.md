@@ -5,7 +5,10 @@ extension fields, schema evolution, and validation severity in `wiki/**`. It
 builds on [`page-template.md`](page-template.md), stays consistent with
 [`AGENTS.md`](../AGENTS.md), and references
 [`taxonomy-contract.md`](taxonomy-contract.md) and
-[`ontology-entity-contract.md`](ontology-entity-contract.md).
+[`ontology-entity-contract.md`](ontology-entity-contract.md). Reserved
+process/state artifacts also follow
+[`governed-artifact-contract.md`](governed-artifact-contract.md) for path
+ownership and write semantics.
 
 ## Baseline schema
 

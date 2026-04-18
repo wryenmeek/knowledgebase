@@ -6,6 +6,18 @@ Accepted
 ## Date
 2026-04-16
 
+## Historical note
+
+When accepted on 2026-04-16, ADR-007 defined an MVP-only package boundary
+limited to `.github/agents/**`, `.github/skills/**`, `scripts/kb/**`, and
+`tests/kb/**`. This amendment keeps that boundary as the statement of what is
+currently landed and additionally approves post-MVP package surfaces at
+`scripts/validation/**`, `scripts/reporting/**`, `scripts/context/**`,
+`scripts/maintenance/**`, and `scripts/ingest/**`. It does **not** change the
+CI-1/CI-2/CI-3 permission split from ADR-004, the workflow-plus-lock
+concurrency model from ADR-005, the authoritative source boundary from
+ADR-006, or deny-by-default behavior for undeclared write paths.
+
 ## Context
 
 `docs/ideas/wiki-curation-agent-framework.md` proposes a substantial control
@@ -21,6 +33,11 @@ simultaneously:
 The repository already treats `scripts/kb/**` and `tests/kb/**` as the
 implementation and verification surface for knowledgebase tooling, and
 `AGENTS.md` requires deterministic, provenance-first, fail-closed behavior.
+
+Follow-on planning now needs ratified package locations for validators,
+maintenance utilities, context-sync tooling, reporting, and ingest helpers
+without implying that those paths are current runtime entrypoints or blanket
+write-authorized surfaces.
 
 ## Decision
 
@@ -43,9 +60,14 @@ The framework MVP includes:
 
 - agent and skill scaffolding,
 - workflow documentation and references,
-- and thin wrappers around existing `scripts/kb/ingest.py`,
-  `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`,
-  `scripts/kb/qmd_preflight.py`, and `scripts/kb/persist_query.py`.
+- and thin wrappers around existing `scripts/kb/**` entrypoints where they are
+  narrow, deterministic, and justified by the MVP boundary. At present, the
+  landed wrappers cover governance validation and index/state synchronization,
+  while `scripts/kb/ingest.py`, `scripts/kb/update_index.py`,
+  `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, and
+  `scripts/kb/persist_query.py` remain the authoritative deterministic
+  execution surface, with ingest and query persistence still used directly as
+  operator/runtime entrypoints.
 
 ### Deferred beyond MVP
 
@@ -56,6 +78,38 @@ The framework MVP does **not** include:
 - replacing `scripts/kb/**` with agent-native or skill-local implementations,
 - or mixing heavyweight repository crawlers, report generators, snapshots, or
   external-service integrations into the initial scaffolding milestone.
+
+### Approved post-MVP package surfaces
+
+The repository boundary is widened for post-MVP implementation work at:
+
+- `scripts/validation/**` for deterministic validators, freshness checks, and
+  baseline/snapshot utilities,
+- `scripts/reporting/**` for repository-scoped reporting,
+- `scripts/context/**` and `scripts/maintenance/**` for context-sync and
+  maintenance orchestration invoked by thin skills,
+- `scripts/ingest/**` for heavyweight repository-local ingest/conversion
+  helpers.
+
+These are approved packaging locations, not blanket runtime write
+authorization. `scripts/kb/ingest.py`, `scripts/kb/update_index.py`,
+`scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, and
+`scripts/kb/persist_query.py` remain the authoritative deterministic execution
+surface for the currently landed system.
+
+### Preserved invariants
+
+- ADR-004 permission expectations remain intact: CI-1 and CI-2 stay read-only,
+  and CI-3 remains the only PR-producing write-capable path with explicit
+  allowlists and preflight.
+- ADR-005 still governs shared-artifact writes: post-MVP writers that touch
+  `wiki/index.md`, `wiki/log.md`, or generated pages must keep the workflow
+  concurrency group plus `wiki/.kb_write.lock`.
+- ADR-006 still governs source authority: authoritative ingest remains limited
+  to repository-local `raw/inbox/**` inputs and checksummed `raw/assets/**`.
+- Paths outside the current MVP surfaces plus the approved post-MVP package
+  surfaces remain deny-by-default unless a narrower contract explicitly names
+  them.
 
 ## Alternatives considered
 
@@ -89,8 +143,9 @@ The framework MVP does **not** include:
   scaffolding.
 - Operators still use the existing `scripts/kb/**` commands while the framework
   is being added.
-- Future script ports must be documented as later work and should not be mixed
-  into MVP by default.
+- Future script ports now have approved package locations, but each new
+  runtime-capable entrypoint must still document its narrower write scope and
+  preserve existing governance invariants.
 - Packaging decisions now have a stable home in architecture docs and ADRs.
 
 ## References

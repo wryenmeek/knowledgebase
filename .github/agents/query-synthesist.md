@@ -21,10 +21,16 @@ Answer questions from the curated knowledgebase without bypassing evidence or pe
 - Cited answer grounded in existing wiki pages and their evidence
 - Gap note when the wiki cannot answer safely or completely
 - Durable-result recommendation that explicitly says whether governed persistence should be considered
+- Handoff artifact: a query result bundle containing the cited answer, consulted pages, persistence recommendation, and any evidence gaps
+- Escalation artifact: a query escalation note describing why new evidence, new policy review, or Human Steward judgment is required
 - Escalation record when the answer would require new evidence, new policy review, or Human Steward judgment
 
 ## Required skills / upstream references
 
+- `.github/skills/retrieve-from-index/SKILL.md`
+- `.github/skills/synthesize-cited-answer/SKILL.md`
+- `.github/skills/prepare-high-value-synthesis-handoff/SKILL.md`
+- `.github/skills/handoff-query-derived-page/SKILL.md`
 - `.github/skills/source-driven-development/SKILL.md`
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `.github/skills/review-wiki-plan/SKILL.md`
@@ -54,7 +60,8 @@ Answer questions from the curated knowledgebase without bypassing evidence or pe
 
 ## Downstream handoff
 
+- Downstream artifact: transfer the query result bundle with citations, consulted scope, and persistence recommendation attached
 - Non-durable response: return the cited answer to `knowledgebase-orchestrator` or the calling workflow
-- Durable candidate: return to `knowledgebase-orchestrator` for governed persistence review through `scripts/kb/persist_query.py` and any required evidence/policy rechecks
+- Durable candidate: pass through `prepare-high-value-synthesis-handoff` and `handoff-query-derived-page`, then return to `knowledgebase-orchestrator` for governed persistence review through `scripts/kb/persist_query.py` and any required evidence/policy rechecks
 - New source material needed: restart through `source-intake-steward` instead of reading unadmitted raw inputs directly
 - No direct wiki write or persistence-side effect is permitted from this persona

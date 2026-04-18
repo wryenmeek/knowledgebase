@@ -15,7 +15,8 @@ class WorkflowPolicyExpectation:
     workflow_path: Path
     token_profile: str
     permissions: dict[str, str]
-    write_capable: bool = False
+    write_contract: str
+    requires_write_concurrency_guard: bool = False
 
 
 WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
@@ -27,7 +28,8 @@ WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
             "actions": "read",
             "contents": "read",
         },
-        write_capable=True,
+        write_contract="no-write",
+        requires_write_concurrency_guard=True,
     ),
     WorkflowPolicyExpectation(
         ci_id="CI-2",
@@ -38,6 +40,7 @@ WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
             "checks": "read",
             "contents": "read",
         },
+        write_contract="read-only",
     ),
     WorkflowPolicyExpectation(
         ci_id="CI-3",
@@ -48,7 +51,8 @@ WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
             "checks": "read",
             "contents": "read",
         },
-        write_capable=True,
+        write_contract="allowlisted-write",
+        requires_write_concurrency_guard=True,
     ),
 )
 
@@ -196,6 +200,32 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
                     ),
                 )
 
+    def test_ci_write_contracts_preserve_lane_separation(self) -> None:
+        expected_contracts = {
+            "CI-1": "no-write",
+            "CI-2": "read-only",
+            "CI-3": "allowlisted-write",
+        }
+
+        for policy in WORKFLOW_POLICY_MATRIX:
+            with self.subTest(ci_id=policy.ci_id):
+                self.assertEqual(policy.write_contract, expected_contracts[policy.ci_id])
+                workflow_text = policy.workflow_path.read_text(encoding="utf-8")
+                if policy.write_contract in {"no-write", "read-only"}:
+                    self.assertNotIn("contents: write", workflow_text)
+                    self.assertNotIn("pull-requests: write", workflow_text)
+                else:
+                    self.assertIn("WRITE_ALLOWLIST:", workflow_text)
+                    self.assertEqual(
+                        _parse_job_mapping_block(
+                            workflow_text,
+                            "pr-producer",
+                            "permissions",
+                            policy.workflow_path,
+                        ),
+                        CI3_PR_PRODUCER_JOB_PERMISSIONS,
+                    )
+
     def test_ci3_pr_producer_job_permissions_are_explicit_write_scoped(self) -> None:
         ci3_policy = next(policy for policy in WORKFLOW_POLICY_MATRIX if policy.ci_id == "CI-3")
         workflow_text = ci3_policy.workflow_path.read_text(encoding="utf-8")
@@ -214,9 +244,9 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
             ),
         )
 
-    def test_write_capable_workflows_use_required_concurrency_guard(self) -> None:
+    def test_write_guarded_workflows_use_required_concurrency_guard(self) -> None:
         for policy in WORKFLOW_POLICY_MATRIX:
-            if not policy.write_capable:
+            if not policy.requires_write_concurrency_guard:
                 continue
 
             with self.subTest(ci_id=policy.ci_id):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 import re
 import unittest
@@ -14,15 +15,34 @@ FRAMEWORK_SKILLS = (
     "knowledge-schema-and-metadata-governance",
     "entity-resolution-and-canonicalization",
     "search-and-discovery-optimization",
+    "update-index",
+    "suggest-backlinks",
+    "validate-taxonomy-placement",
+    "check-link-topology",
+    "validate-inbox-source",
+    "verify-citations",
+    "enforce-npov",
+    "record-open-questions",
+    "log-policy-conflict",
+    "policy-diff-review",
+    "log-patrol-incident",
     "validate-wiki-governance",
     "sync-knowledgebase-state",
     "review-wiki-plan",
+    "audit-knowledgebase-workspace",
+    "extract-entities-and-claims",
+    "retrieve-from-index",
+    "synthesize-cited-answer",
+    "prepare-high-value-synthesis-handoff",
+    "handoff-query-derived-page",
 )
 MARKDOWN_FILES = (
     REPO_ROOT / "docs" / "architecture.md",
     REPO_ROOT / "docs" / "decisions" / "ADR-007-control-plane-layering-and-packaging.md",
     REPO_ROOT / "docs" / "ideas" / "wiki-curation-agent-framework.md",
     REPO_ROOT / "docs" / "mvp-runbook.md",
+    REPO_ROOT / ".github" / "skills" / "context-engineering" / "SKILL.md",
+    REPO_ROOT / ".github" / "skills" / "documentation-and-adrs" / "SKILL.md",
     *(
         REPO_ROOT / ".github" / "skills" / skill_name / "SKILL.md"
         for skill_name in FRAMEWORK_SKILLS
@@ -52,6 +72,8 @@ BACKTICK_PATH_RE = re.compile(
     r"`((?:\.github|docs|schema|scripts|tests|wiki|raw)/[^`*<>]+|AGENTS\.md|README\.md)`"
 )
 PYTHON_COMMAND_RE = re.compile(r"(?:^|\s)python3\s+([./A-Za-z0-9_-]+\.py)\b", re.MULTILINE)
+UNITTEST_COMMAND_RE = re.compile(r"(?m)^python3\s+-m\s+unittest\s+([^\n]+)$")
+UNITTEST_MODULE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$")
 WRAPPER_SCRIPT_RE = re.compile(r'script_relative_path="([^"]+)"')
 DEFERRED_SCRIPT_PREFIXES = (
     "scripts/validation/",
@@ -60,6 +82,11 @@ DEFERRED_SCRIPT_PREFIXES = (
     "scripts/maintenance/",
     "scripts/ingest/",
 )
+OPTIONAL_GOVERNED_ARTIFACT_TARGETS = {
+    "wiki/open-questions.md",
+    "wiki/backlog.md",
+    "wiki/status.md",
+}
 
 
 class FrameworkReferenceAuditTests(unittest.TestCase):
@@ -80,6 +107,8 @@ class FrameworkReferenceAuditTests(unittest.TestCase):
             for target in BACKTICK_PATH_RE.findall(text):
                 if target.startswith(DEFERRED_SCRIPT_PREFIXES):
                     continue
+                if target in OPTIONAL_GOVERNED_ARTIFACT_TARGETS:
+                    continue
                 if target not in {"AGENTS.md", "README.md"} and Path(target).suffix not in {
                     ".md",
                     ".py",
@@ -98,6 +127,19 @@ class FrameworkReferenceAuditTests(unittest.TestCase):
                     command_target=command_target,
                 ):
                     self.assertTrue(resolved.is_file())
+
+    def test_python_m_unittest_commands_reference_real_modules(self) -> None:
+        for path in MARKDOWN_FILES:
+            text = path.read_text(encoding="utf-8")
+            for command_args in UNITTEST_COMMAND_RE.findall(text):
+                for token in command_args.split():
+                    if not UNITTEST_MODULE_RE.fullmatch(token):
+                        continue
+                    with self.subTest(
+                        file=path.relative_to(REPO_ROOT).as_posix(),
+                        module_target=token,
+                    ):
+                        self.assertIsNotNone(importlib.util.find_spec(token))
 
     def test_audited_markdown_avoids_absolute_filesystem_paths(self) -> None:
         forbidden_prefixes = ("/Users/", "/private/", "/var/", "/opt/", "/etc/", "/home/")

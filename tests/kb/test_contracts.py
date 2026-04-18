@@ -9,6 +9,61 @@ from scripts.kb import contracts
 
 
 class SharedContractsTests(unittest.TestCase):
+    def test_governed_artifact_contracts_cover_declared_state_targets(self) -> None:
+        self.assertEqual(
+            contracts.GOVERNED_ARTIFACT_IDS,
+            (
+                "wiki-index",
+                "wiki-log",
+                "wiki-open-questions",
+                "wiki-backlog",
+                "wiki-status",
+            ),
+        )
+        self.assertEqual(
+            contracts.GOVERNED_ARTIFACT_PATHS,
+            (
+                "wiki/index.md",
+                "wiki/log.md",
+                "wiki/open-questions.md",
+                "wiki/backlog.md",
+                "wiki/status.md",
+            ),
+        )
+
+    def test_governed_artifact_contract_details_are_explicit(self) -> None:
+        log_contract = contracts.governed_artifact_contract("wiki/log.md")
+        self.assertIsNotNone(log_contract)
+        assert log_contract is not None
+        self.assertEqual(log_contract.schema_owner, "schema/governed-artifact-contract.md")
+        self.assertEqual(
+            log_contract.mutability,
+            contracts.ArtifactMutability.APPEND_ONLY.value,
+        )
+        self.assertEqual(
+            log_contract.write_strategy,
+            contracts.ArtifactWriteStrategy.APPEND_UNDER_LOCK.value,
+        )
+        self.assertEqual(log_contract.lock_path, contracts.WRITE_LOCK_PATH)
+
+        status_contract = contracts.governed_artifact_contract("wiki/status.md")
+        self.assertIsNotNone(status_contract)
+        assert status_contract is not None
+        self.assertEqual(status_contract.schema_owner, "schema/governed-artifact-contract.md")
+        self.assertEqual(
+            status_contract.mutability,
+            contracts.ArtifactMutability.MUTABLE.value,
+        )
+        self.assertEqual(
+            status_contract.write_strategy,
+            contracts.ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK.value,
+        )
+
+        index_contract = contracts.governed_artifact_contract("wiki/index.md")
+        self.assertIsNotNone(index_contract)
+        assert index_contract is not None
+        self.assertEqual(index_contract.schema_owner, "schema/taxonomy-contract.md")
+
     def test_spec_aligned_policy_identifiers(self) -> None:
         self.assertIn(
             "continue_and_report_per_source",

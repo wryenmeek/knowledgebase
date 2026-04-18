@@ -22,3 +22,4 @@ Append-only chronology for knowledgebase state changes.
 - Record changes only when repository state changes.
 - No-op runs should not append entries.
 - ingest: processed 1 source(s): raw/inbox/SPEC.md->raw/processed/SPEC.md
+- state changed

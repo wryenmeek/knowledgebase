@@ -1,12 +1,13 @@
 # Wiki Page Template
 
-Use this contract for pages in `wiki/sources/`, `wiki/entities/`, `wiki/concepts/`, and `wiki/analyses/`, plus reserved root-level process pages such as `wiki/index.md` and `wiki/log.md`.
+Use this contract for pages in `wiki/sources/`, `wiki/entities/`, `wiki/concepts/`, and `wiki/analyses/`, plus reserved root-level process pages such as `wiki/index.md`, `wiki/log.md`, `wiki/open-questions.md`, `wiki/backlog.md`, and `wiki/status.md`.
 
 Companion authoritative contracts:
 
 - [`taxonomy-contract.md`](taxonomy-contract.md)
 - [`ontology-entity-contract.md`](ontology-entity-contract.md)
 - [`metadata-schema-contract.md`](metadata-schema-contract.md)
+- [`governed-artifact-contract.md`](governed-artifact-contract.md)
 
 ```md
 ---

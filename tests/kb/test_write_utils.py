@@ -4,30 +4,23 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import textwrap
-import unittest
+from unittest.mock import patch
 
 from scripts.kb import contracts
 from scripts.kb import write_utils
+from tests.kb.harnesses import RuntimeWorkspaceTestCase
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-class WriteUtilitiesTests(unittest.TestCase):
+class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
     def setUp(self) -> None:
-        test_name = self.id().replace(".", "_")
-        self.workspace_root = REPO_ROOT / "tests" / "kb" / ".scratch" / test_name
-        if self.workspace_root.exists():
-            shutil.rmtree(self.workspace_root)
+        super().setUp()
         (self.workspace_root / "wiki").mkdir(parents=True, exist_ok=True)
-
-    def tearDown(self) -> None:
-        if self.workspace_root.exists():
-            shutil.rmtree(self.workspace_root)
 
     def _probe_lock_attempt(self) -> dict[str, object]:
         probe_script = textwrap.dedent(
@@ -81,6 +74,14 @@ class WriteUtilitiesTests(unittest.TestCase):
             self.assertEqual(lock_path, self.workspace_root / contracts.WRITE_LOCK_PATH)
             self.assertTrue(lock_path.exists())
 
+    def test_exclusive_write_lock_treats_preexisting_unlocked_file_as_stale(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text("stale\n", encoding="utf-8")
+
+        with write_utils.exclusive_write_lock(self.workspace_root) as acquired_path:
+            self.assertEqual(acquired_path, lock_path)
+
     def test_exclusive_write_lock_contention_returns_lock_unavailable_reason(self) -> None:
         with write_utils.exclusive_write_lock(self.workspace_root):
             probe_result = self._probe_lock_attempt()
@@ -94,6 +95,46 @@ class WriteUtilitiesTests(unittest.TestCase):
             probe_result["failure_reason"],
             write_utils.lock_unavailable_reason(),
         )
+
+    def test_governed_artifact_helpers_report_append_only_log_contract(self) -> None:
+        contract = write_utils.governed_artifact_contract_for_path("wiki/log.md")
+        self.assertIsNotNone(contract)
+        assert contract is not None
+        self.assertTrue(write_utils.governed_artifact_requires_lock("wiki/log.md"))
+        self.assertFalse(write_utils.governed_artifact_requires_atomic_replace("wiki/log.md"))
+        self.assertEqual(
+            contract.write_strategy,
+            contracts.ArtifactWriteStrategy.APPEND_UNDER_LOCK.value,
+        )
+
+    def test_governed_artifact_helpers_report_atomic_replace_contracts(self) -> None:
+        contract = write_utils.governed_artifact_contract_for_path("wiki/open-questions.md")
+        self.assertIsNotNone(contract)
+        assert contract is not None
+        self.assertTrue(write_utils.governed_artifact_requires_lock("wiki/open-questions.md"))
+        self.assertTrue(
+            write_utils.governed_artifact_requires_atomic_replace("wiki/open-questions.md")
+        )
+        self.assertEqual(
+            contract.mutability,
+            contracts.ArtifactMutability.MUTABLE.value,
+        )
+
+    def test_governed_artifact_helpers_return_none_for_non_governed_paths(self) -> None:
+        self.assertIsNone(write_utils.governed_artifact_contract_for_path("wiki/entities/example.md"))
+        self.assertFalse(write_utils.governed_artifact_requires_lock("wiki/entities/example.md"))
+        self.assertFalse(
+            write_utils.governed_artifact_requires_atomic_replace("wiki/entities/example.md")
+        )
+
+    def test_governed_artifact_helpers_reject_invalid_paths(self) -> None:
+        for invalid_path in ("/wiki/log.md", "//wiki/log.md", "../wiki/log.md", "./wiki/log.md"):
+            with self.subTest(path=invalid_path):
+                self.assertIsNone(write_utils.governed_artifact_contract_for_path(invalid_path))
+                self.assertFalse(write_utils.governed_artifact_requires_lock(invalid_path))
+                self.assertFalse(
+                    write_utils.governed_artifact_requires_atomic_replace(invalid_path)
+                )
 
     def test_append_log_only_state_changes_appends_when_state_changes(self) -> None:
         log_path = self.workspace_root / "wiki" / "log.md"
@@ -137,6 +178,61 @@ class WriteUtilitiesTests(unittest.TestCase):
 
         self.assertFalse(appended)
         self.assertFalse(log_path.exists())
+
+    def test_atomic_replace_governed_artifact_rewrites_supported_snapshot(self) -> None:
+        target_path = self.workspace_root / "wiki" / "status.md"
+        target_path.write_text("before\n", encoding="utf-8")
+
+        written_path = write_utils.atomic_replace_governed_artifact(
+            self.workspace_root,
+            "wiki/status.md",
+            "after\n",
+        )
+
+        self.assertEqual(written_path, target_path)
+        self.assertEqual(target_path.read_text(encoding="utf-8"), "after\n")
+        self.assertFalse((self.workspace_root / "wiki" / ".status.md.kbtmp").exists())
+
+    def test_atomic_replace_governed_artifact_rejects_unsupported_or_append_only_paths(self) -> None:
+        for path in ("wiki/entities/example.md", "wiki/log.md"):
+            with self.subTest(path=path):
+                with self.assertRaises(ValueError):
+                    write_utils.atomic_replace_governed_artifact(
+                        self.workspace_root,
+                        path,
+                        "content\n",
+                    )
+
+    def test_atomic_replace_governed_artifact_cleans_up_temp_file_on_failure(self) -> None:
+        target_path = self.workspace_root / "wiki" / "status.md"
+        target_path.write_text("before\n", encoding="utf-8")
+
+        with patch.object(write_utils.os, "replace", side_effect=OSError("boom")):
+            with self.assertRaises(OSError):
+                write_utils.atomic_replace_governed_artifact(
+                    self.workspace_root,
+                    "wiki/status.md",
+                    "after\n",
+                )
+
+        self.assertEqual(target_path.read_text(encoding="utf-8"), "before\n")
+        self.assertFalse((self.workspace_root / "wiki" / ".status.md.kbtmp").exists())
+
+    def test_atomic_replace_governed_artifact_recovers_from_stale_temp_file(self) -> None:
+        target_path = self.workspace_root / "wiki" / "status.md"
+        temp_path = self.workspace_root / "wiki" / ".status.md.kbtmp"
+        target_path.write_text("before\n", encoding="utf-8")
+        temp_path.write_text("stale\n", encoding="utf-8")
+
+        written_path = write_utils.atomic_replace_governed_artifact(
+            self.workspace_root,
+            "wiki/status.md",
+            "after\n",
+        )
+
+        self.assertEqual(written_path, target_path)
+        self.assertEqual(target_path.read_text(encoding="utf-8"), "after\n")
+        self.assertFalse(temp_path.exists())
 
 
 if __name__ == "__main__":

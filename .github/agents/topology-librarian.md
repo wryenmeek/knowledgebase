@@ -21,6 +21,8 @@ Maintain link structure, index quality, and discoverability for policy-cleared k
 - Contract-aligned topology recommendation covering links, backlinks, aliases, browse paths, or index follow-up
 - Explicit statement of which taxonomy/IA rule justified the recommendation
 - Escalation note for ambiguous placement, alias, or identity-sensitive topology work
+- Handoff artifact: a topology bundle listing the approved structural recommendation, governing rule, and deterministic follow-up needed
+- Escalation artifact: a topology exception record naming the unresolved taxonomy, alias, or identity concern for Human Steward review
 - Governed handoff package for deterministic index synchronization or further review
 
 ## Required skills / upstream references
@@ -56,6 +58,7 @@ Maintain link structure, index quality, and discoverability for policy-cleared k
 
 ## Downstream handoff
 
+- Downstream artifact: transfer the topology bundle, governing rule citation, and cleared scope before any index-sync or governance re-entry step
 - Deterministic index refresh after approved structural changes: `sync-knowledgebase-state`
 - Identity-sensitive or policy-ambiguous topology work: return to `knowledgebase-orchestrator` for re-entry to governance or Human Steward review
 - Discovery recommendations that exceed MVP boundaries: record and defer rather than invent new automation
