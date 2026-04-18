@@ -57,7 +57,8 @@ class LockUnavailableError(RuntimeError):
     def __init__(self, lock_path: str = contracts.WRITE_LOCK_PATH) -> None:
         self.reason_code = contracts.ReasonCode.LOCK_UNAVAILABLE.value
         self.failure_reason = lock_unavailable_reason(lock_path)
-        super().__init__(self.failure_reason)
+        hint = "retry after the competing process completes, or remove the lock file if it is stale"
+        super().__init__(f"{self.failure_reason} — {hint}")
 
 
 @contextmanager

@@ -64,7 +64,7 @@ def _require_frontmatter(markdown_text: str, page_path: Path) -> str:
     lines = markdown_text.splitlines()
     if not lines or lines[0].strip() != "---":
         raise IndexGenerationError(
-            f"{page_path}: missing YAML frontmatter start delimiter"
+            f"{page_path}: missing YAML frontmatter start delimiter (ensure the file begins with '---')"
         )
     frontmatter, _ = page_template_utils.extract_frontmatter(markdown_text)
     if frontmatter is None:

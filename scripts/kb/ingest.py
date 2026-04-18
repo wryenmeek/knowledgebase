@@ -226,7 +226,7 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
     if not _is_under_wiki_root(Path(wiki_root_relative)):
         raise IngestError(
             contracts.ReasonCode.INVALID_INPUT.value,
-            f"wiki root must resolve under wiki/**: {args.wiki_root}",
+            f"wiki root must resolve under wiki/**: {args.wiki_root} (pass --wiki-root wiki)",
         )
 
     schema_path, _schema_relative = _resolve_path_within_repo(repo_root, args.schema)
@@ -403,7 +403,7 @@ def _resolve_path_within_repo(repo_root: Path, raw_path: str) -> tuple[Path, str
     except RepoRelativePathError as exc:
         raise IngestError(
             contracts.ReasonCode.INVALID_INPUT.value,
-            f"path escapes repository boundary: {raw_path}",
+            f"path escapes repository boundary: {raw_path} (use a path relative to the repo root, e.g. wiki/sources)",
         ) from exc
     return resolved, resolved.relative_to(repo_root).as_posix()
 

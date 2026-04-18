@@ -136,7 +136,10 @@ def _resolve_within_repo(repo_root: Path, raw_path: str, *, label: str) -> Path:
     try:
         return resolve_within_repo(repo_root, raw_path)
     except RepoRelativePathError:
-        raise PersistQueryInputError(f"{label} escapes repository boundary: {raw_path}")
+        raise PersistQueryInputError(
+            f"{label} escapes repository boundary: {raw_path}"
+            " (use a path relative to the repo root, e.g. wiki)"
+        )
 
 
 def _normalize_query(query: str) -> str:
@@ -170,7 +173,9 @@ def _validate_request(args: argparse.Namespace, repo_root: Path) -> PersistReque
 
     wiki_root = _resolve_within_repo(repo_root, args.wiki_root, label="wiki-root")
     if wiki_root.relative_to(repo_root).as_posix() != "wiki":
-        raise PersistQueryInputError("wiki-root must resolve to repository path 'wiki'")
+        raise PersistQueryInputError(
+            "wiki-root must resolve to repository path 'wiki' (pass --wiki-root wiki)"
+        )
     if not wiki_root.exists() or not wiki_root.is_dir():
         raise PersistQueryInputError(f"wiki-root does not exist or is not a directory: {wiki_root}")
 
