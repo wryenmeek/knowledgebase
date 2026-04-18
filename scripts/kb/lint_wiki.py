@@ -11,7 +11,7 @@ import sys
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from scripts.kb import sourceref
+from scripts.kb import page_template_utils, sourceref
 
 REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
     "type",
@@ -33,7 +33,6 @@ _CONTRADICTION_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 _EXTERNAL_LINK_PREFIXES = ("http://", "https://", "mailto:", "tel:", "ftp://")
-_TOPICAL_NAMESPACES: tuple[str, ...] = ("sources", "entities", "concepts", "analyses")
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,20 +42,6 @@ class Violation:
     page: Path
     code: str
     message: str
-
-
-def _extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return None, text
-
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            frontmatter = "\n".join(lines[1:index])
-            body = "\n".join(lines[index + 1 :])
-            return frontmatter, body
-
-    return None, text
 
 
 def _extract_frontmatter_keys(frontmatter: str) -> set[str]:
@@ -169,26 +154,13 @@ def _display_path(path: Path, wiki_root: Path) -> str:
     return str(path)
 
 
-def _is_nested_topical_page(page: Path, wiki_root: Path) -> bool:
-    relative_parts = page.relative_to(wiki_root).parts
-    return (
-        len(relative_parts) > 2
-        and relative_parts[0] in _TOPICAL_NAMESPACES
-    )
+def _read_page(p: Path) -> str:
+    return p.read_text(encoding="utf-8")
 
 
-def lint_wiki(
-    wiki_root: Path,
-    *,
-    skip_orphan_check: bool = False,
-    authoritative_sourcerefs: bool = False,
-    repo_owner: str | None = None,
-    repo_name: str | None = None,
-) -> list[Violation]:
-    """Run lint checks over markdown pages under wiki_root."""
-    wiki_root = wiki_root.resolve()
-    violations: list[Violation] = []
+def _collect_valid_pages(wiki_root: Path) -> tuple[list[Path], list[Violation]]:
     pages: list[Path] = []
+    violations: list[Violation] = []
     for path in sorted(wiki_root.rglob("*.md")):
         if not path.is_file():
             continue
@@ -212,122 +184,148 @@ def lint_wiki(
             )
             continue
         pages.append(path)
-    referenced_by: dict[Path, set[Path]] = {page: set() for page in pages}
+    return pages, violations
 
-    def _read_page(p: Path) -> str:
-        return p.read_text(encoding="utf-8")
+
+def _validate_page_content(
+    page: Path,
+    text: str,
+    wiki_root: Path,
+    referenced_by: dict[Path, set[Path]],
+    *,
+    authoritative_sourcerefs: bool,
+    repo_owner: str | None,
+    repo_name: str | None,
+) -> list[Violation]:
+    violations: list[Violation] = []
+
+    if page_template_utils.is_nested_topical_page(page, wiki_root):
+        violations.append(
+            Violation(
+                page=page,
+                code="nested-topical-page",
+                message="nested topical markdown pages are not allowed in MVP flat namespaces",
+            )
+        )
+
+    frontmatter, _body = page_template_utils.extract_frontmatter(text)
+
+    if frontmatter is None:
+        violations.append(
+            Violation(
+                page=page,
+                code="missing-frontmatter",
+                message="missing YAML frontmatter block",
+            )
+        )
+    else:
+        present_keys = _extract_frontmatter_keys(frontmatter)
+        for key in sorted(key for key in REQUIRED_FRONTMATTER_KEYS if key not in present_keys):
+            violations.append(
+                Violation(
+                    page=page,
+                    code="missing-frontmatter-key",
+                    message=f"required key '{key}' is missing",
+                )
+            )
+        if authoritative_sourcerefs and "sources" in present_keys:
+            for source_value in _extract_frontmatter_source_refs(frontmatter):
+                try:
+                    sourceref.validate_sourceref(
+                        source_value,
+                        authoritative=True,
+                        repo_root=wiki_root.parent,
+                        expected_owner=repo_owner,
+                        expected_repo=repo_name,
+                    )
+                except sourceref.SourceRefValidationError as exc:
+                    violations.append(
+                        Violation(
+                            page=page,
+                            code="invalid-sourceref",
+                            message=f"invalid SourceRef '{source_value}': {exc}",
+                        )
+                    )
+
+    for match in _MARKDOWN_LINK_RE.finditer(text):
+        target_path = _resolve_internal_markdown_target(page, match.group(1), wiki_root)
+        if target_path is None:
+            continue
+
+        resolved_target_path = target_path.resolve()
+        if not _is_within(resolved_target_path, wiki_root):
+            violations.append(
+                Violation(
+                    page=page,
+                    code="out-of-bounds-link",
+                    message=f"internal link leaves wiki root: {match.group(1)}",
+                )
+            )
+            continue
+
+        if not target_path.exists() or not target_path.is_file():
+            violations.append(
+                Violation(
+                    page=page,
+                    code="missing-link-target",
+                    message=(
+                        "internal markdown link target does not exist: "
+                        f"{_display_path(resolved_target_path, wiki_root)}"
+                    ),
+                )
+            )
+            continue
+
+        if resolved_target_path in referenced_by and resolved_target_path != page:
+            referenced_by[resolved_target_path].add(page)
+
+    if _CONTRADICTION_MARKER_RE.search(text):
+        violations.append(
+            Violation(
+                page=page,
+                code="unresolved-contradiction-marker",
+                message="unresolved contradiction marker requires escalation",
+            )
+        )
+
+    return violations
+
+
+def lint_wiki(
+    wiki_root: Path,
+    *,
+    skip_orphan_check: bool = False,
+    authoritative_sourcerefs: bool = False,
+    repo_owner: str | None = None,
+    repo_name: str | None = None,
+) -> list[Violation]:
+    """Run lint checks over markdown pages under wiki_root."""
+    wiki_root = wiki_root.resolve()
+    pages, violations = _collect_valid_pages(wiki_root)
+    referenced_by: dict[Path, set[Path]] = {page: set() for page in pages}
 
     with ThreadPoolExecutor() as executor:
         # Avoid buffering all contents into a list; map returns an iterator.
         # This keeps peak memory low by only having one file's text loaded at a time per thread,
         # plus the small number of results held in memory waiting to be yielded.
-        pages_content_iterator = executor.map(_read_page, pages)
-
-        for page, text in zip(pages, pages_content_iterator):
-            if _is_nested_topical_page(page, wiki_root):
-                violations.append(
-                    Violation(
-                        page=page,
-                        code="nested-topical-page",
-                        message=(
-                            "nested topical markdown pages are not allowed in MVP flat namespaces"
-                        ),
-                    )
+        for page, text in zip(pages, executor.map(_read_page, pages)):
+            violations.extend(
+                _validate_page_content(
+                    page, text, wiki_root, referenced_by,
+                    authoritative_sourcerefs=authoritative_sourcerefs,
+                    repo_owner=repo_owner,
+                    repo_name=repo_name,
                 )
-
-            frontmatter, _body = _extract_frontmatter(text)
-
-            if frontmatter is None:
-                violations.append(
-                    Violation(
-                        page=page,
-                        code="missing-frontmatter",
-                        message="missing YAML frontmatter block",
-                    )
-                )
-            else:
-                present_keys = _extract_frontmatter_keys(frontmatter)
-                missing_keys = sorted(
-                    key for key in REQUIRED_FRONTMATTER_KEYS if key not in present_keys
-                )
-                for key in missing_keys:
-                    violations.append(
-                        Violation(
-                            page=page,
-                            code="missing-frontmatter-key",
-                            message=f"required key '{key}' is missing",
-                            )
-                        )
-                if authoritative_sourcerefs and "sources" in present_keys:
-                    for source_value in _extract_frontmatter_source_refs(frontmatter):
-                        try:
-                            sourceref.validate_sourceref(
-                                source_value,
-                                authoritative=True,
-                                repo_root=wiki_root.parent,
-                                expected_owner=repo_owner,
-                                expected_repo=repo_name,
-                            )
-                        except sourceref.SourceRefValidationError as exc:
-                            violations.append(
-                                Violation(
-                                    page=page,
-                                    code="invalid-sourceref",
-                                    message=f"invalid SourceRef '{source_value}': {exc}",
-                                )
-                            )
-
-            for match in _MARKDOWN_LINK_RE.finditer(text):
-                target_path = _resolve_internal_markdown_target(page, match.group(1), wiki_root)
-                if target_path is None:
-                    continue
-
-                resolved_target_path = target_path.resolve()
-                if not _is_within(resolved_target_path, wiki_root):
-                    violations.append(
-                        Violation(
-                            page=page,
-                            code="out-of-bounds-link",
-                            message=f"internal link leaves wiki root: {match.group(1)}",
-                        )
-                    )
-                    continue
-
-                if not target_path.exists() or not target_path.is_file():
-                    violations.append(
-                        Violation(
-                            page=page,
-                            code="missing-link-target",
-                            message=(
-                                "internal markdown link target does not exist: "
-                                f"{_display_path(resolved_target_path, wiki_root)}"
-                            ),
-                        )
-                    )
-                    continue
-
-                if resolved_target_path in referenced_by and resolved_target_path != page:
-                    referenced_by[resolved_target_path].add(page)
-
-            if _CONTRADICTION_MARKER_RE.search(text):
-                violations.append(
-                    Violation(
-                        page=page,
-                        code="unresolved-contradiction-marker",
-                        message="unresolved contradiction marker requires escalation",
-                    )
-                )
+            )
 
     if not skip_orphan_check:
         exempt_from_orphan_check = {
             (wiki_root / "index.md").resolve(),
             (wiki_root / "log.md").resolve(),
         }
-
         for page in pages:
             if page in exempt_from_orphan_check:
                 continue
-
             if not referenced_by.get(page):
                 violations.append(
                     Violation(

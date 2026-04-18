@@ -18,6 +18,13 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
+TOPICAL_NAMESPACES: frozenset[str] = frozenset({"sources", "entities", "concepts", "analyses"})
+
+
+def is_nested_topical_page(path: Path, wiki_root: Path) -> bool:
+    parts = path.relative_to(wiki_root).parts
+    return len(parts) > 2 and parts[0] in TOPICAL_NAMESPACES
+
 
 def normalize_page_path(value: str | PathLike[str]) -> str:
     try:
@@ -122,8 +129,10 @@ def extract_headings(body: str) -> set[str]:
 
 __all__ = [
     "TEMPLATE_SECTION_REQUIREMENTS",
+    "TOPICAL_NAMESPACES",
     "extract_frontmatter",
     "extract_headings",
+    "is_nested_topical_page",
     "normalize_page_path",
     "parse_frontmatter",
     "strip_quotes",

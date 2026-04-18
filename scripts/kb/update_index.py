@@ -15,7 +15,8 @@ import itertools
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scripts.kb.write_utils import LockUnavailableError, exclusive_write_lock
+from scripts.kb import page_template_utils
+from scripts.kb.write_utils import LockUnavailableError, exclusive_write_lock, open_atomic_temp_file
 
 REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
     "type",
@@ -35,7 +36,10 @@ SECTION_LAYOUT: tuple[tuple[str, str], ...] = (
     ("Concepts", "concepts"),
     ("Analyses", "analyses"),
 )
-_TOPICAL_NAMESPACES = {section_directory for _, section_directory in SECTION_LAYOUT}
+# Fail fast if SECTION_LAYOUT and page_template_utils.TOPICAL_NAMESPACES drift out of sync.
+assert {d for _, d in SECTION_LAYOUT} == page_template_utils.TOPICAL_NAMESPACES, (
+    "SECTION_LAYOUT section directories must match page_template_utils.TOPICAL_NAMESPACES"
+)
 
 INDEX_FRONTMATTER = """---
 type: process
@@ -67,24 +71,16 @@ class PageSummary:
     updated_at: str
 
 
-def _strip_quotes(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-        return value[1:-1]
-    return value
-
-
-def _extract_frontmatter(markdown_text: str, page_path: Path) -> str:
+def _require_frontmatter(markdown_text: str, page_path: Path) -> str:
     lines = markdown_text.splitlines()
     if not lines or lines[0].strip() != "---":
         raise IndexGenerationError(
             f"{page_path}: missing YAML frontmatter start delimiter"
         )
-
-    for line_number in range(1, len(lines)):
-        if lines[line_number].strip() == "---":
-            return "\n".join(lines[1:line_number])
-
-    raise IndexGenerationError(f"{page_path}: missing YAML frontmatter end delimiter")
+    frontmatter, _ = page_template_utils.extract_frontmatter(markdown_text)
+    if frontmatter is None:
+        raise IndexGenerationError(f"{page_path}: missing YAML frontmatter end delimiter")
+    return frontmatter
 
 
 def _require_frontmatter_key(frontmatter: str, key: str, page_path: Path) -> str:
@@ -102,7 +98,7 @@ def _parse_page_summary(page_path: Path, wiki_root: Path) -> PageSummary:
     except OSError as exc:
         raise IndexGenerationError(f"{page_path}: unable to read file ({exc})") from exc
 
-    frontmatter = _extract_frontmatter(markdown_text, page_path)
+    frontmatter = _require_frontmatter(markdown_text, page_path)
     values: dict[str, str] = {}
     for key in REQUIRED_FRONTMATTER_KEYS:
         values[key] = _require_frontmatter_key(frontmatter, key, page_path)
@@ -115,10 +111,10 @@ def _parse_page_summary(page_path: Path, wiki_root: Path) -> PageSummary:
 
     return PageSummary(
         relative_path=page_path.relative_to(wiki_root).as_posix(),
-        title=_strip_quotes(values["title"]),
-        status=_strip_quotes(values["status"]),
-        confidence=_strip_quotes(values["confidence"]),
-        updated_at=_strip_quotes(values["updated_at"]),
+        title=page_template_utils.strip_quotes(values["title"]),
+        status=page_template_utils.strip_quotes(values["status"]),
+        confidence=page_template_utils.strip_quotes(values["confidence"]),
+        updated_at=page_template_utils.strip_quotes(values["updated_at"]),
     )
 
 
@@ -158,7 +154,7 @@ def _collect_section_entries(
 
 def _validate_section_page_path(page_path: Path, wiki_root: Path) -> Path:
     relative_parts = page_path.relative_to(wiki_root).parts
-    if len(relative_parts) > 2 and relative_parts[0] in _TOPICAL_NAMESPACES:
+    if len(relative_parts) > 2 and relative_parts[0] in page_template_utils.TOPICAL_NAMESPACES:
         raise IndexGenerationError(
             f"{page_path.relative_to(wiki_root).as_posix()}: "
             "nested topical markdown pages are not allowed in MVP flat namespaces"
@@ -299,7 +295,7 @@ def _write_index_if_changed(wiki_root: Path, generated_content: str) -> int:
     temp_index_path = index_path.with_name(f"{index_path.name}.tmp")
     temp_created = False
     try:
-        with _open_temp_index_path(temp_index_path) as handle:
+        with open_atomic_temp_file(temp_index_path) as handle:
             temp_created = True
             handle.write(generated_content)
         os.replace(temp_index_path, index_path)
@@ -312,14 +308,6 @@ def _write_index_if_changed(wiki_root: Path, generated_content: str) -> int:
 
     print("written")
     return 0
-
-
-def _open_temp_index_path(temp_index_path: Path):
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd = os.open(temp_index_path, flags, 0o600)
-    return os.fdopen(fd, "w", encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
