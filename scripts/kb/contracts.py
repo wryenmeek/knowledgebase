@@ -72,6 +72,9 @@ class GovernedArtifactContract:
     lock_path: str | None = WRITE_LOCK_PATH
 
     def __post_init__(self) -> None:
+        # object.__setattr__ is required to mutate fields on a frozen dataclass.
+        # Callers may pass either a StrEnum member or a plain str; normalizing to str
+        # here ensures comparisons against .value strings always work.
         object.__setattr__(self, "mutability", str(self.mutability))
         object.__setattr__(self, "write_strategy", str(self.write_strategy))
 
@@ -179,6 +182,9 @@ class ResultEnvelope:
     sources: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
+        # object.__setattr__ is required to mutate fields on a frozen dataclass.
+        # Normalizing each field to str ensures comparisons against .value strings
+        # work whether callers pass a StrEnum member or a plain string.
         object.__setattr__(self, "status", str(self.status))
         object.__setattr__(self, "reason_code", str(self.reason_code))
         object.__setattr__(self, "policy", tuple(str(policy_id) for policy_id in self.policy))

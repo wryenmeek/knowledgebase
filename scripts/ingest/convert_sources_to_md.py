@@ -190,5 +190,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     return run_cli(argv=argv)
 
 
+__all__ = [
+    "SURFACE",
+    "SUPPORTED_MODES",
+    "run_convert_sources",
+    "run_cli",
+    "main",
+]
+
 if __name__ == "__main__":
     raise SystemExit(main())

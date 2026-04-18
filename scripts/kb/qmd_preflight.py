@@ -11,6 +11,10 @@ import sys
 from typing import Callable, Sequence, TextIO
 
 
+# STATUS_PASS/FAIL and REASON_CODE_OK/INVALID_INPUT are intentionally redefined here
+# rather than imported from scripts._optional_surface_common. qmd_preflight.py is a
+# core scripts/kb/ module; optional surface scripts copy only scripts/kb/ to fixture
+# repos and cannot depend on the broader scripts/ package.
 STATUS_PASS = "pass"
 STATUS_FAIL = "fail"
 
