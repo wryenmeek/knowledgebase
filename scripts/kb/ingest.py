@@ -216,6 +216,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
+    # --- Phase 1: Validate CLI inputs ---
     if args.batch_policy != _REQUIRED_BATCH_POLICY:
         raise IngestError(
             contracts.ReasonCode.INVALID_INPUT.value,
@@ -237,6 +238,8 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
         )
 
     source_inputs = _resolve_source_inputs(args, repo_root)
+
+    # --- Phase 2: Execute per-source ingests ---
     with exclusive_write_lock(repo_root):
         _ensure_wiki_tree(wiki_root_path)
 
@@ -244,7 +247,7 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
         successful_outcomes: list[SourceOutcome] = []
         source_mutations: list[_SourceMutation] = []
         for source_input in source_inputs:
-            attempt = _ingest_source(repo_root, wiki_root_path, source_input)
+            attempt = _ingest_source(repo_root, source_input)
             outcome = attempt.outcome
             outcomes.append(outcome)
             if outcome.status == contracts.ResultStatus.WRITTEN.value:
@@ -252,6 +255,7 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
                 if attempt.mutation is not None:
                     source_mutations.append(attempt.mutation)
 
+        # --- Phase 3: Update index and append log ---
         index_updated = False
         log_appended = False
         index_path = wiki_root_path / "index.md"
@@ -442,9 +446,37 @@ def _is_under_wiki_root(relative_path: Path) -> bool:
     return parts[0] == "wiki"
 
 
-def _ingest_source(repo_root: Path, wiki_root: Path, source_input: str) -> _SourceIngestAttempt:
+def _load_source_bytes(
+    repo_root: Path, source_input: str
+) -> tuple[Path, str, bytes]:
+    """Resolve, check, and read the source file from the inbox.
+
+    Returns (source_path, source_relative, source_bytes). Raises IngestError
+    if the path is invalid, the file does not exist, or the file cannot be read.
+    """
+    source_path, source_relative = _resolve_inbox_path(repo_root, source_input)
+
+    if not source_path.exists() or not source_path.is_file():
+        raise IngestError(
+            contracts.ReasonCode.INVALID_INPUT.value,
+            f"source file does not exist: {source_relative}",
+        )
+
     try:
-        source_path, source_relative = _resolve_inbox_path(repo_root, source_input)
+        source_bytes = source_path.read_bytes()
+    except OSError as exc:
+        raise IngestError(
+            contracts.ReasonCode.WRITE_FAILED.value,
+            f"unable to read source file: {source_relative} ({exc})",
+        ) from exc
+
+    return source_path, source_relative, source_bytes
+
+
+def _ingest_source(repo_root: Path, source_input: str) -> _SourceIngestAttempt:
+    # --- Phase 1: Resolve path and read source file ---
+    try:
+        source_path, source_relative, source_bytes = _load_source_bytes(repo_root, source_input)
     except IngestError as exc:
         return _SourceIngestAttempt(
             outcome=SourceOutcome(
@@ -455,28 +487,7 @@ def _ingest_source(repo_root: Path, wiki_root: Path, source_input: str) -> _Sour
             )
         )
 
-    if not source_path.exists() or not source_path.is_file():
-        return _SourceIngestAttempt(
-            outcome=SourceOutcome(
-                source=source_relative,
-                status=contracts.ResultStatus.FAILED.value,
-                reason_code=contracts.ReasonCode.INVALID_INPUT.value,
-                message=f"source file does not exist: {source_relative}",
-            )
-        )
-
-    try:
-        source_bytes = source_path.read_bytes()
-    except OSError as exc:
-        return _SourceIngestAttempt(
-            outcome=SourceOutcome(
-                source=source_relative,
-                status=contracts.ResultStatus.FAILED.value,
-                reason_code=contracts.ReasonCode.WRITE_FAILED.value,
-                message=f"unable to read source file: {source_relative} ({exc})",
-            )
-        )
-
+    # --- Phase 2: Compute destination paths and validate ingest preconditions ---
     source_relative_path = Path(source_relative)
     inbox_suffix = Path(*source_relative_path.parts[2:])
     processed_relative = (Path("raw/processed") / inbox_suffix).as_posix()
@@ -524,6 +535,7 @@ def _ingest_source(repo_root: Path, wiki_root: Path, source_input: str) -> _Sour
         )
     provenance = _build_provisional_source_provenance()
 
+    # --- Phase 3: Write source page and move file to processed ---
     source_page_content = _render_source_page(
         source_relative=source_relative,
         processed_relative=processed_relative,
