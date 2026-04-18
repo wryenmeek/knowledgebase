@@ -6,6 +6,8 @@ from pathlib import Path
 import re
 import unittest
 
+from tests.kb.harnesses import parse_frontmatter_fields, section_body
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENTS_ROOT = REPO_ROOT / ".github" / "agents"
@@ -73,6 +75,14 @@ class FrameworkPersonaTests(unittest.TestCase):
                 self.assertRegex(self._section_body(text, "## Inputs"), r"(?m)^- ")
                 self.assertRegex(self._section_body(text, "## Outputs"), r"(?m)^- ")
                 self.assertRegex(
+                    self._section_body(text, "## Outputs"),
+                    r"(?m)^- Handoff artifact:",
+                )
+                self.assertRegex(
+                    self._section_body(text, "## Outputs"),
+                    r"(?m)^- Escalation artifact:",
+                )
+                self.assertRegex(
                     self._section_body(text, "## Required skills / upstream references"),
                     r"(?m)^- ",
                 )
@@ -87,6 +97,14 @@ class FrameworkPersonaTests(unittest.TestCase):
                 self.assertRegex(
                     self._section_body(text, "## Downstream handoff"),
                     r"(?m)^- ",
+                )
+                self.assertRegex(
+                    self._section_body(text, "## Downstream handoff"),
+                    r"(?m)^- Downstream artifact:",
+                )
+                self.assertRegex(
+                    self._section_body(text, "## Downstream handoff"),
+                    r"(?m)(`[a-z0-9-]+`|Human Steward)",
                 )
 
     def test_orchestrator_declares_explicit_safe_lane_order(self) -> None:
@@ -195,6 +213,7 @@ class FrameworkPersonaTests(unittest.TestCase):
     def test_synthesis_curator_consumes_explicit_knowledge_structure_skills(self) -> None:
         text = PERSONA_FILES["synthesis-curator"].read_text(encoding="utf-8")
         for skill in (
+            ".github/skills/extract-entities-and-claims/SKILL.md",
             ".github/skills/information-architecture-and-taxonomy/SKILL.md",
             ".github/skills/ontology-and-entity-modeling/SKILL.md",
             ".github/skills/knowledge-schema-and-metadata-governance/SKILL.md",
@@ -202,6 +221,35 @@ class FrameworkPersonaTests(unittest.TestCase):
         ):
             with self.subTest(skill=skill):
                 self.assertIn(skill, text)
+
+    def test_query_and_synthesis_personas_reference_governed_workflow_skills(self) -> None:
+        query_text = PERSONA_FILES["query-synthesist"].read_text(encoding="utf-8")
+        synthesis_text = PERSONA_FILES["synthesis-curator"].read_text(encoding="utf-8")
+
+        for skill in (
+            ".github/skills/retrieve-from-index/SKILL.md",
+            ".github/skills/synthesize-cited-answer/SKILL.md",
+            ".github/skills/prepare-high-value-synthesis-handoff/SKILL.md",
+            ".github/skills/handoff-query-derived-page/SKILL.md",
+        ):
+            with self.subTest(query_skill=skill):
+                self.assertIn(skill, query_text)
+
+        for skill in (
+            ".github/skills/record-open-questions/SKILL.md",
+            ".github/skills/enforce-npov/SKILL.md",
+        ):
+            with self.subTest(synthesis_skill=skill):
+                self.assertIn(skill, synthesis_text)
+
+        self.assertIn(
+            "pass through `prepare-high-value-synthesis-handoff` and `handoff-query-derived-page`, then return to `knowledgebase-orchestrator`",
+            query_text,
+        )
+        self.assertIn(
+            "any durable publication or persistence candidate returns to governed review rather than bypassing the control plane",
+            synthesis_text,
+        )
 
     def test_operations_personas_preserve_governed_mvp_boundary(self) -> None:
         maintenance_text = PERSONA_FILES["maintenance-auditor"].read_text(encoding="utf-8")
@@ -221,8 +269,13 @@ class FrameworkPersonaTests(unittest.TestCase):
         )
 
         self.assertIn("does not invent a broad repo crawler, daemon, webhook mesh", change_text)
+        self.assertIn("policy/citation-risk review is recommendation-first", change_text.lower())
+        self.assertIn(".github/skills/policy-diff-review/SKILL.md", change_text)
+        self.assertIn(".github/skills/log-patrol-incident/SKILL.md", change_text)
+        self.assertIn("Policy-diff review bundle", change_text)
         self.assertIn("`knowledgebase-orchestrator`", change_text)
         self.assertIn("No direct revert, silent suppression, or out-of-band write is permitted", change_text)
+        self.assertIn("no direct remediation, revert, or cleanup path opens from this persona", change_text)
         self.assertIn(
             "`knowledgebase-orchestrator` to reopen `topology-librarian` only within the approved scope",
             change_text,
@@ -235,6 +288,8 @@ class FrameworkPersonaTests(unittest.TestCase):
         self.assertIn("existing repository evidence", quality_text)
         self.assertIn("defer rather than invent dashboards, daemons, crawlers, or external reporting systems", quality_text)
         self.assertIn("No direct telemetry rollout, quality-score writeback, or out-of-band write is permitted", quality_text)
+        self.assertIn("Recommendation-only review may use repo-local prioritization evidence", quality_text)
+        self.assertIn("score-updating or reporting-backed modes stay disabled until an explicit reporting/egress approval and contract exist", quality_text)
         self.assertIn(
             "`knowledgebase-orchestrator`, which may route to `topology-librarian`",
             quality_text,
@@ -260,29 +315,10 @@ class FrameworkPersonaTests(unittest.TestCase):
                     self.assertTrue(self._resolve_doc_target(path, target).exists())
 
     def _parse_frontmatter(self, text: str) -> dict[str, str]:
-        lines = text.splitlines()
-        if len(lines) < 3 or lines[0].strip() != "---":
-            self.fail("Persona file missing YAML frontmatter")
-        result: dict[str, str] = {}
-        for line in lines[1:]:
-            if line.strip() == "---":
-                break
-            key, _, value = line.partition(":")
-            result[key.strip()] = value.strip()
-        return result
+        return parse_frontmatter_fields(text, subject="Persona file")
 
     def _section_body(self, text: str, heading: str) -> str:
-        start = text.find(heading)
-        if start == -1:
-            self.fail(f"Missing heading: {heading}")
-        start = text.find("\n", start)
-        if start == -1:
-            return ""
-        remaining = text[start + 1 :]
-        match = re.search(r"^##\s+", remaining, flags=re.MULTILINE)
-        if match is None:
-            return remaining
-        return remaining[: match.start()]
+        return section_body(text, heading)
 
     def _resolve_doc_target(self, source_path: Path, target: str) -> Path:
         if target.startswith("/"):

@@ -10,37 +10,17 @@ import tempfile
 import textwrap
 import unittest
 
+from tests.kb._workflow_yaml import (
+    leading_spaces as _leading_spaces,
+    parse_top_level_mapping_block,
+)
+
 
 WORKFLOW_PATH = Path(".github/workflows/ci-1-gatekeeper.yml")
 
 
-def _leading_spaces(line: str) -> int:
-    return len(line) - len(line.lstrip(" "))
-
-
 def _parse_top_level_mapping_block(text: str, key: str) -> dict[str, str]:
-    lines = text.splitlines()
-    target = f"{key}:"
-
-    for index, line in enumerate(lines):
-        if line.strip() != target or line.startswith(" "):
-            continue
-
-        mapping: dict[str, str] = {}
-        for candidate in lines[index + 1 :]:
-            stripped = candidate.strip()
-            if not stripped:
-                continue
-            if not candidate.startswith("  ") or candidate.startswith("    "):
-                break
-            if stripped.startswith("#") or ":" not in stripped:
-                continue
-            map_key, map_value = stripped.split(":", 1)
-            mapping[map_key.strip()] = map_value.strip()
-
-        return mapping
-
-    raise AssertionError(f"Top-level '{key}' block is missing from {WORKFLOW_PATH}")
+    return parse_top_level_mapping_block(text, key, workflow_path=WORKFLOW_PATH)
 
 
 def _extract_ci1_preflight_script(workflow_text: str) -> str:

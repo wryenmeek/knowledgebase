@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-import importlib.util
 import os
 from pathlib import Path
-import re
-import shutil
-import subprocess
-import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
+from tests.kb.harnesses import (
+    HarnessAssertionsTestCase,
+    REPO_ROOT,
+    RuntimeWrapperFixtureTestCase as _RuntimeWrapperFixture,
+    _DummyLock,
+    force_thread_pool,
+    load_module as _load_module,
+)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-RUNTIME_ROOT = Path(__file__).resolve().parent / ".runtime_skill_wrappers"
 VALIDATE_WRAPPER_PATH = (
     REPO_ROOT
     / ".github"
@@ -31,243 +33,107 @@ SYNC_WRAPPER_PATH = (
     / "logic"
     / "sync_knowledgebase_state.py"
 )
-
-
-def _load_module(module_name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise AssertionError(f"Unable to load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-class _RuntimeWrapperFixture(unittest.TestCase):
-    def setUp(self) -> None:
-        self.workspace = RUNTIME_ROOT / self._testMethodName
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-        self.workspace.mkdir(parents=True, exist_ok=True)
-        self.repo_root = self.workspace / "repo"
-        self.repo_root.mkdir(parents=True, exist_ok=True)
-
-    def tearDown(self) -> None:
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-        if RUNTIME_ROOT.exists() and not any(RUNTIME_ROOT.iterdir()):
-            RUNTIME_ROOT.rmdir()
-
-    def _git(self, *args: str, capture_output: bool = False) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", *args],
-            cwd=self.repo_root,
-            check=True,
-            capture_output=capture_output,
-            text=True,
-        )
-
-    def _init_fixture_repo(self) -> None:
-        shutil.copytree(
-            REPO_ROOT / "scripts" / "kb",
-            self.repo_root / "scripts" / "kb",
-            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-        )
-        shutil.copytree(
-            REPO_ROOT / ".github" / "skills" / "validate-wiki-governance",
-            self.repo_root / ".github" / "skills" / "validate-wiki-governance",
-            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-        )
-        shutil.copytree(
-            REPO_ROOT / ".github" / "skills" / "sync-knowledgebase-state",
-            self.repo_root / ".github" / "skills" / "sync-knowledgebase-state",
-            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-        )
-
-        qmd_path = self.repo_root / "bin" / "qmd"
-        qmd_path.parent.mkdir(parents=True, exist_ok=True)
-        qmd_path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        qmd_path.chmod(0o755)
-        self.fixture_path = os.pathsep.join((str(qmd_path.parent), os.environ.get("PATH", "")))
-
-        (self.repo_root / ".qmd" / "index").mkdir(parents=True, exist_ok=True)
-        wiki_root = self.repo_root / "wiki"
-        (wiki_root / "sources").mkdir(parents=True, exist_ok=True)
-        (self.repo_root / "raw" / "processed").mkdir(parents=True, exist_ok=True)
-
-        artifact_path = self.repo_root / "raw" / "processed" / "source-a.md"
-        artifact_path.write_text("commit-bound bytes\n", encoding="utf-8")
-
-        self._git("init")
-        self._git("config", "user.name", "Test User")
-        self._git("config", "user.email", "test@example.com")
-
-        (wiki_root / "log.md").write_text(self._build_page("Knowledgebase Log", "- state changes"), encoding="utf-8")
-        (wiki_root / "index.md").write_text(
-            self._build_page("Knowledgebase Index", "- [Log](log.md)\n- [Source A](sources/source-a.md)"),
-            encoding="utf-8",
-        )
-
-        self._git("add", ".")
-        self._git("commit", "-m", "seed authoritative artifact")
-        commit_sha = self._git("rev-parse", "HEAD", capture_output=True).stdout.strip()
-        checksum = self._sha256(artifact_path)
-        repo_name = re.sub(r"[^A-Za-z0-9_.-]", "-", self.repo_root.name) or "repo"
-        source_ref = (
-            f"repo://local/{repo_name}/raw/processed/source-a.md@{commit_sha}"
-            f"#asset?sha256={checksum}"
-        )
-
-        (wiki_root / "sources" / "source-a.md").write_text(
-            "\n".join(
-                [
-                    "---",
-                    "type: source",
-                    'title: "Source A"',
-                    "status: active",
-                    "sources:",
-                    f'  - "{source_ref}"',
-                    "open_questions: []",
-                    "confidence: 5",
-                    "sensitivity: internal",
-                    'updated_at: "2024-01-01T00:00:00Z"',
-                    "tags: [source]",
-                    "---",
-                    "",
-                    "# Source A",
-                    "",
-                    "- [Index](../index.md)",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
-        )
-
-        subprocess.run(
-            [
-                sys.executable,
-                str(self.repo_root / "scripts" / "kb" / "update_index.py"),
-                "--wiki-root",
-                "wiki",
-                "--write",
-            ],
-            cwd=self.repo_root,
-            check=True,
-        )
-
-    def _build_page(self, title: str, body: str) -> str:
-        return "\n".join(
-            [
-                "---",
-                "type: process",
-                f'title: "{title}"',
-                "status: active",
-                "sources: []",
-                "open_questions: []",
-                "confidence: 3",
-                "sensitivity: internal",
-                'updated_at: "2024-01-01T00:00:00Z"',
-                "tags: [test]",
-                "---",
-                "",
-                f"# {title}",
-                "",
-                body,
-                "",
-            ]
-        )
-
-    def _load_fixture_module(self, relative_path: str, module_name: str):
-        return _load_module(module_name, self.repo_root / relative_path)
-
-    @staticmethod
-    def _sha256(path: Path) -> str:
-        import hashlib
-
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-class ValidateWikiGovernanceWrapperTests(unittest.TestCase):
-    def test_wrapper_allowlist_matches_expected_scripts(self) -> None:
+BOUNDARY_WRAPPER_PATH = (
+    REPO_ROOT
+    / ".github"
+    / "skills"
+    / "enforce-repository-boundaries"
+    / "logic"
+    / "enforce_repository_boundaries.py"
+)
+PAGE_TEMPLATE_WRAPPER_PATH = (
+    REPO_ROOT
+    / ".github"
+    / "skills"
+    / "enforce-page-template"
+    / "logic"
+    / "enforce_page_template.py"
+)
+SOURCEREF_WRAPPER_PATH = (
+    REPO_ROOT
+    / ".github"
+    / "skills"
+    / "write-sourceref-citations"
+    / "logic"
+    / "write_sourceref_citations.py"
+)
+APPEND_LOG_WRAPPER_PATH = (
+    REPO_ROOT
+    / ".github"
+    / "skills"
+    / "append-log-entry"
+    / "logic"
+    / "append_log_entry.py"
+)
+VALIDATOR_WRAPPER_PATH = (
+    REPO_ROOT
+    / ".github"
+    / "skills"
+    / "run-deterministic-validators"
+    / "logic"
+    / "run_deterministic_validators.py"
+)
+class ValidateWikiGovernanceWrapperTests(HarnessAssertionsTestCase):
+    def test_validator_allowlist_matches_approved_post_mvp_checks(self) -> None:
         module = _load_module("validate_wiki_governance_allowlist", VALIDATE_WRAPPER_PATH)
 
         self.assertEqual(
-            tuple(command.script_relative_path for command in module.READ_ONLY_VALIDATORS),
+            tuple(validator.value for validator in module.SUPPORTED_VALIDATORS),
             (
-                "scripts/kb/qmd_preflight.py",
-                "scripts/kb/update_index.py",
-                "scripts/kb/lint_wiki.py",
+                "sourceref-shape",
+                "page-template",
+                "append-only-log",
+                "topology-hygiene",
             ),
         )
 
-    def test_wrapper_runs_fixed_read_only_validation_sequence(self) -> None:
-        module = _load_module("validate_wiki_governance", VALIDATE_WRAPPER_PATH)
-        calls: list[tuple[list[str], Path, bool]] = []
+    def test_protected_paths_default_to_blocking_mode(self) -> None:
+        module = _load_module("validate_wiki_governance_modes", VALIDATE_WRAPPER_PATH)
 
-        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
-            calls.append((command, cwd, check))
+        self.assertEqual(
+            module.resolve_validation_mode(None, ("wiki/index.md",)),
+            module.ValidationMode.BLOCKING,
+        )
+        self.assertEqual(
+            module.resolve_validation_mode(None, ("README.md",)),
+            module.ValidationMode.SIGNAL,
+        )
 
-        with patch.object(module.subprocess, "run", side_effect=fake_run):
-            exit_code = module.main([])
+    def test_unsupported_validator_hard_fails_for_protected_path(self) -> None:
+        module = _load_module("validate_wiki_governance_unsupported", VALIDATE_WRAPPER_PATH)
+
+        with patch.object(module, "print") as print_mock:
+            exit_code = module.main(
+                ["--mode", "signal", "--validator", "freshness", "--path", "wiki/index.md"]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn('"unsupported_validators": ["freshness"]', print_mock.call_args.args[0])
+
+    def test_partial_results_hard_fail_for_protected_path(self) -> None:
+        module = _load_module("validate_wiki_governance_partial", VALIDATE_WRAPPER_PATH)
+
+        with patch.object(module, "print") as print_mock:
+            exit_code = module.main(
+                ["--mode", "signal", "--validator", "page-template", "--path", "wiki/log.md"]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn('"reason_code": "partial_results"', print_mock.call_args.args[0])
+
+    def test_signal_mode_keeps_non_protected_partial_results_non_blocking(self) -> None:
+        module = _load_module("validate_wiki_governance_signal", VALIDATE_WRAPPER_PATH)
+
+        with patch.object(module, "print") as print_mock:
+            exit_code = module.main(
+                ["--mode", "signal", "--validator", "page-template", "--path", "README.md"]
+            )
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(len(calls), 3)
-        self.assertEqual(calls[0][1], REPO_ROOT)
-        self.assertTrue(all(check is True for _command, _cwd, check in calls))
-        self.assertEqual(
-            calls[0][0],
-            [
-                module.sys.executable,
-                str(REPO_ROOT / "scripts" / "kb" / "qmd_preflight.py"),
-                "--repo-root",
-                str(REPO_ROOT),
-                "--required-resource",
-                ".qmd/index",
-            ],
-        )
-        self.assertEqual(
-            calls[1][0],
-            [
-                module.sys.executable,
-                str(REPO_ROOT / "scripts" / "kb" / "update_index.py"),
-                "--wiki-root",
-                "wiki",
-                "--check",
-            ],
-        )
-        self.assertEqual(
-            calls[2][0],
-            [
-                module.sys.executable,
-                str(REPO_ROOT / "scripts" / "kb" / "lint_wiki.py"),
-                "--wiki-root",
-                "wiki",
-                "--strict",
-                "--authoritative-sourcerefs",
-                "--repo-owner",
-                "local",
-                "--repo-name",
-                "knowledgebase",
-            ],
-        )
-
-    def test_wrapper_fails_closed_on_first_precheck_error(self) -> None:
-        module = _load_module("validate_wiki_governance_fail", VALIDATE_WRAPPER_PATH)
-        calls: list[list[str]] = []
-
-        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
-            calls.append(command)
-            raise module.subprocess.CalledProcessError(returncode=7, cmd=command)
-
-        with patch.object(module.subprocess, "run", side_effect=fake_run):
-            exit_code = module.main([])
-
-        self.assertEqual(exit_code, 7)
-        self.assertEqual(len(calls), 1)
-        self.assertTrue(calls[0][1].endswith("qmd_preflight.py"))
+        self.assertIn('"effective_mode": "signal"', print_mock.call_args.args[0])
 
 
-class SyncKnowledgebaseStateWrapperTests(unittest.TestCase):
+class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
     def test_wrapper_allowlist_matches_expected_scripts(self) -> None:
         module = _load_module("sync_knowledgebase_state_allowlist", SYNC_WRAPPER_PATH)
 
@@ -283,6 +149,7 @@ class SyncKnowledgebaseStateWrapperTests(unittest.TestCase):
             module.WRITE_INDEX_COMMAND.script_relative_path,
             "scripts/kb/update_index.py",
         )
+        self.assertEqual(module.SUPPORTED_ARTIFACTS, module.contracts.GOVERNED_ARTIFACT_PATHS)
 
     def test_check_only_mode_stays_read_only(self) -> None:
         module = _load_module("sync_knowledgebase_state_check", SYNC_WRAPPER_PATH)
@@ -295,7 +162,7 @@ class SyncKnowledgebaseStateWrapperTests(unittest.TestCase):
             exit_code = module.main(["--check-only"])
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(
+        self.assert_wrapper_routing(
             calls,
             [
                 [
@@ -328,6 +195,22 @@ class SyncKnowledgebaseStateWrapperTests(unittest.TestCase):
             ],
         )
 
+    def test_check_only_rejects_unsupported_artifact(self) -> None:
+        module = _load_module("sync_knowledgebase_state_unsupported", SYNC_WRAPPER_PATH)
+
+        exit_code = module.main(["--check-only", "--artifact", "wiki/entities/example.md"])
+
+        self.assertEqual(exit_code, 1)
+
+    def test_check_only_accepts_supported_non_index_artifact_without_running_scripts(self) -> None:
+        module = _load_module("sync_knowledgebase_state_non_index_check", SYNC_WRAPPER_PATH)
+
+        with patch.object(module.subprocess, "run") as run_mock:
+            exit_code = module.main(["--check-only", "--artifact", "wiki/status.md"])
+
+        self.assertEqual(exit_code, 0)
+        run_mock.assert_not_called()
+
     def test_apply_mode_runs_validation_before_single_write_step(self) -> None:
         module = _load_module("sync_knowledgebase_state_apply", SYNC_WRAPPER_PATH)
         calls: list[list[str]] = []
@@ -339,7 +222,7 @@ class SyncKnowledgebaseStateWrapperTests(unittest.TestCase):
             exit_code = module.main(["--write-index"])
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(
+        self.assert_wrapper_routing(
             calls,
             [
                 [
@@ -454,24 +337,543 @@ class SyncKnowledgebaseStateWrapperTests(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         self.assertEqual(calls[-1][-1], "--write")
 
+    def test_append_log_mode_uses_lock_and_append_only_helper(self) -> None:
+        module = _load_module("sync_knowledgebase_state_log", SYNC_WRAPPER_PATH)
+        with patch.object(
+            module.write_utils,
+            "exclusive_write_lock",
+            return_value=_DummyLock(REPO_ROOT / "wiki" / ".kb_write.lock"),
+        ) as lock_mock, patch.object(
+            module.write_utils,
+            "append_log_only_state_changes",
+            return_value=True,
+        ) as append_mock:
+            exit_code = module.main(["--append-log-entry", "- state changed", "--state-changed"])
+
+        self.assertEqual(exit_code, 0)
+        lock_mock.assert_called_once_with(module.REPO_ROOT)
+        append_mock.assert_called_once_with(
+            module.REPO_ROOT,
+            "- state changed",
+            state_changed=True,
+        )
+
+    def test_append_log_mode_noops_without_state_change(self) -> None:
+        module = _load_module("sync_knowledgebase_state_log_noop", SYNC_WRAPPER_PATH)
+
+        with patch.object(module.write_utils, "exclusive_write_lock") as lock_mock, patch.object(
+            module.write_utils,
+            "append_log_only_state_changes",
+        ) as append_mock:
+            exit_code = module.main(["--append-log-entry", "- state changed"])
+
+        self.assertEqual(exit_code, 0)
+        lock_mock.assert_not_called()
+        append_mock.assert_not_called()
+
+    def test_snapshot_write_mode_uses_lock_and_atomic_replace(self) -> None:
+        module = _load_module("sync_knowledgebase_state_status", SYNC_WRAPPER_PATH)
+        with patch.object(module, "_read_staged_repo_file", return_value="next\n") as read_mock, patch.object(
+            module.write_utils,
+            "exclusive_write_lock",
+            return_value=_DummyLock(REPO_ROOT / "wiki" / ".kb_write.lock"),
+        ) as lock_mock, patch.object(
+            module.write_utils,
+            "atomic_replace_governed_artifact",
+            return_value=REPO_ROOT / "wiki" / "status.md",
+        ) as replace_mock:
+            exit_code = module.main(["--write-status-from", "wiki/status.next.md"])
+
+        self.assertEqual(exit_code, 0)
+        read_mock.assert_called_once_with("wiki/status.next.md")
+        lock_mock.assert_called_once_with(module.REPO_ROOT)
+        replace_mock.assert_called_once_with(module.REPO_ROOT, "wiki/status.md", "next\n")
+
+    def test_snapshot_write_mode_fails_closed_on_lock_contention(self) -> None:
+        module = _load_module("sync_knowledgebase_state_status_lock", SYNC_WRAPPER_PATH)
+
+        with patch.object(module, "_read_staged_repo_file", return_value="next\n"), patch.object(
+            module.write_utils,
+            "exclusive_write_lock",
+            side_effect=module.write_utils.LockUnavailableError(),
+        ), patch.object(module.write_utils, "atomic_replace_governed_artifact") as replace_mock:
+            exit_code = module.main(["--write-status-from", "wiki/status.next.md"])
+
+        self.assertEqual(exit_code, 1)
+        replace_mock.assert_not_called()
+
+    def test_read_staged_repo_file_rejects_symlink_before_resolution(self) -> None:
+        module = _load_module("sync_knowledgebase_state_symlink_reject", SYNC_WRAPPER_PATH)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            (repo_root / "wiki").mkdir(parents=True)
+            external_target = repo_root / "external-secret.txt"
+            external_target.write_text("secret\n", encoding="utf-8")
+            staged_link = repo_root / "wiki" / "status.next.md"
+            staged_link.symlink_to(external_target)
+
+            with patch.object(module, "REPO_ROOT", repo_root):
+                with self.assertRaises(module.SyncArgumentError) as exc:
+                    module._read_staged_repo_file("wiki/status.next.md")
+
+        self.assertEqual(
+            exc.exception.reason_code,
+            module.SyncReasonCode.INVALID_ARGUMENTS.value,
+        )
+
+    def test_read_staged_repo_file_rejects_symlinked_parent_directory(self) -> None:
+        module = _load_module("sync_knowledgebase_state_symlink_parent_reject", SYNC_WRAPPER_PATH)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            staged_root = repo_root / "staged"
+            staged_root.mkdir(parents=True)
+            (staged_root / "status.next.md").write_text("next\n", encoding="utf-8")
+            (repo_root / "wiki-link").symlink_to(staged_root, target_is_directory=True)
+
+            with patch.object(module, "REPO_ROOT", repo_root):
+                with self.assertRaises(module.SyncArgumentError) as exc:
+                    module._read_staged_repo_file("wiki-link/status.next.md")
+
+        self.assertEqual(
+            exc.exception.reason_code,
+            module.SyncReasonCode.INVALID_ARGUMENTS.value,
+        )
+
+    def test_main_surfaces_sync_argument_errors_to_stderr(self) -> None:
+        module = _load_module("sync_knowledgebase_state_error_output", SYNC_WRAPPER_PATH)
+
+        with patch.object(
+            module,
+            "run_sync",
+            side_effect=module.SyncArgumentError(
+                module.SyncReasonCode.UNSUPPORTED_ARTIFACT,
+                "unsupported governed artifact: wiki/entities/example.md",
+            ),
+        ), patch.object(module, "print") as print_mock:
+            exit_code = module.main(["--check-only", "--artifact", "wiki/entities/example.md"])
+
+        self.assertEqual(exit_code, 1)
+        print_mock.assert_called_once()
+        self.assertIn("unsupported governed artifact", print_mock.call_args.args[0])
+        self.assertEqual(print_mock.call_args.kwargs["file"], module.sys.stderr)
+
+    def test_main_surfaces_os_errors_to_stderr(self) -> None:
+        module = _load_module("sync_knowledgebase_state_oserror_output", SYNC_WRAPPER_PATH)
+
+        with patch.object(module, "run_sync", side_effect=OSError("disk full")), patch.object(
+            module, "print"
+        ) as print_mock:
+            exit_code = module.main(["--write-index"])
+
+        self.assertEqual(exit_code, 1)
+        print_mock.assert_called_once_with("disk full", file=module.sys.stderr)
+
+
+class EnforceRepositoryBoundariesWrapperTests(HarnessAssertionsTestCase):
+    def test_write_boundary_allowlist_matches_contract_paths(self) -> None:
+        module = _load_module("enforce_repository_boundaries_allowlist", BOUNDARY_WRAPPER_PATH)
+
+        self.assertEqual(module.WRITE_ALLOWLIST_GLOBS, module.contracts.WRITE_ALLOWLIST_PATHS)
+
+    def test_write_boundary_accepts_allowlisted_paths_and_rejects_others(self) -> None:
+        module = _load_module("enforce_repository_boundaries_paths", BOUNDARY_WRAPPER_PATH)
+
+        allowed = module.enforce_repository_boundary("wiki/index.md", mode=module.AccessMode.WRITE)
+        denied = module.enforce_repository_boundary(
+            "docs/architecture.md",
+            mode=module.AccessMode.WRITE,
+        )
+        traversal = module.enforce_repository_boundary(
+            "../wiki/index.md",
+            mode=module.AccessMode.WRITE,
+        )
+
+        self.assert_boundary_decision(
+            allowed,
+            allowed=True,
+            reason_code=module.BoundaryReasonCode.OK.value,
+        )
+        self.assert_boundary_decision(
+            denied,
+            allowed=False,
+            reason_code=module.BoundaryReasonCode.PATH_NOT_ALLOWLISTED.value,
+        )
+        self.assert_boundary_decision(
+            traversal,
+            allowed=False,
+            reason_code=module.BoundaryReasonCode.PATH_TRAVERSAL.value,
+        )
+
+    def test_write_boundary_rejects_non_canonical_path_forms(self) -> None:
+        module = _load_module("enforce_repository_boundaries_noncanonical", BOUNDARY_WRAPPER_PATH)
+
+        dotted = module.enforce_repository_boundary("./wiki/index.md", mode=module.AccessMode.WRITE)
+        doubled = module.enforce_repository_boundary("wiki//index.md", mode=module.AccessMode.WRITE)
+
+        self.assert_boundary_decision(
+            dotted,
+            allowed=False,
+            reason_code=module.BoundaryReasonCode.INVALID_PATH.value,
+        )
+        self.assert_boundary_decision(
+            doubled,
+            allowed=False,
+            reason_code=module.BoundaryReasonCode.INVALID_PATH.value,
+        )
+
+
+class EnforcePageTemplateWrapperTests(_RuntimeWrapperFixture):
+    INIT_FIXTURE_REPO = True
+
+    def test_wrapper_rejects_traversal_outside_wiki_root(self) -> None:
+        module = _load_module("enforce_page_template_traversal", PAGE_TEMPLATE_WRAPPER_PATH)
+        docs_path = self.repo_root / "docs"
+        docs_path.mkdir(parents=True, exist_ok=True)
+        (docs_path / "escape.md").write_text("# Escape\n", encoding="utf-8")
+
+        report = module.validate_page_template("wiki/../docs/escape.md", repo_root=self.repo_root)
+
+        self.assertFalse(report.is_valid)
+        self.assertEqual(report.violations[0].code, "invalid-page-path")
+
+    def test_wrapper_rejects_non_canonical_page_paths(self) -> None:
+        module = _load_module("enforce_page_template_noncanonical", PAGE_TEMPLATE_WRAPPER_PATH)
+
+        for candidate in ("./wiki/sources/source-a.md", "wiki//sources/source-a.md", "wiki/./sources/source-a.md"):
+            with self.subTest(candidate=candidate):
+                report = module.validate_page_template(candidate, repo_root=self.repo_root)
+                self.assertFalse(report.is_valid)
+                self.assertEqual(report.violations[0].code, "invalid-page-path")
+
+    def test_wrapper_accepts_valid_source_page(self) -> None:
+        module = _load_module("enforce_page_template_valid", PAGE_TEMPLATE_WRAPPER_PATH)
+        source_ref = (
+            "repo://local/repo/raw/processed/source-a.md@aaaaaaaa#asset"
+            "?sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        )
+        self.write_source_page(
+            sources_lines=["sources:", f'  - "{source_ref}"'],
+            body="\n".join(
+                [
+                    "## Summary",
+                    "Authoritative summary.",
+                    "",
+                    "## Evidence",
+                    f"- {source_ref}: supports Source A.",
+                    "",
+                    "## Open Questions",
+                    "- None.",
+                ]
+            ),
+        )
+
+        report = module.validate_page_template("wiki/sources/source-a.md", repo_root=self.repo_root)
+
+        self.assertTrue(report.is_valid)
+        self.assertEqual(report.violations, ())
+
+    def test_wrapper_requires_actual_section_headings_not_body_substrings(self) -> None:
+        module = _load_module("enforce_page_template_heading", PAGE_TEMPLATE_WRAPPER_PATH)
+        self.write_source_page(
+            sources_lines=["sources: []"],
+            body=(
+                "## Summary\n"
+                "This paragraph mentions ## Evidence and ## Open Questions but never defines those headings."
+            ),
+        )
+
+        report = module.validate_page_template("wiki/sources/source-a.md", repo_root=self.repo_root)
+
+        self.assertFalse(report.is_valid)
+        self.assertEqual(
+            tuple(violation.code for violation in report.violations),
+            ("missing-body-section", "missing-body-section"),
+        )
+
+    def test_wrapper_ignores_heading_like_text_inside_fenced_code_blocks(self) -> None:
+        module = _load_module("enforce_page_template_fenced", PAGE_TEMPLATE_WRAPPER_PATH)
+        self.write_source_page(
+            sources_lines=["sources: []"],
+            body="\n".join(
+                [
+                    "## Summary",
+                    "The real page omits the required sections.",
+                    "",
+                    "```md",
+                    "## Evidence",
+                    "## Open Questions",
+                    "```",
+                ]
+            ),
+        )
+
+        report = module.validate_page_template("wiki/sources/source-a.md", repo_root=self.repo_root)
+
+        self.assertFalse(report.is_valid)
+        self.assertEqual(
+            tuple(violation.code for violation in report.violations),
+            ("missing-body-section", "missing-body-section"),
+        )
+
+    def test_wrapper_reports_missing_required_sections(self) -> None:
+        module = _load_module("enforce_page_template_invalid", PAGE_TEMPLATE_WRAPPER_PATH)
+        self.write_source_page(
+            sources_lines=["sources: []"],
+            body="## Summary\nMissing the rest.",
+        )
+
+        report = module.validate_page_template("wiki/sources/source-a.md", repo_root=self.repo_root)
+
+        self.assertFalse(report.is_valid)
+        self.assertEqual(
+            tuple(violation.code for violation in report.violations),
+            ("missing-body-section", "missing-body-section"),
+        )
+
+
+class WriteSourceRefCitationsWrapperTests(_RuntimeWrapperFixture):
+    INIT_FIXTURE_REPO = True
+
+    def test_wrapper_generates_authoritative_citation_for_committed_artifact(self) -> None:
+        module = _load_module("write_sourceref_citations_runtime", SOURCEREF_WRAPPER_PATH)
+
+        result = module.build_sourceref_citation(
+            source_path="raw/processed/source-a.md",
+            anchor="asset",
+            git_ref="HEAD",
+            repo_root=self.repo_root,
+        )
+
+        self.assertTrue(result.source_ref.startswith("repo://local/repo/raw/processed/source-a.md@"))
+        self.assertIn("#asset?sha256=", result.source_ref)
+        self.assertEqual(result.source_path, "raw/processed/source-a.md")
+
+    def test_wrapper_rejects_paths_outside_raw_allowlist(self) -> None:
+        module = _load_module("write_sourceref_citations_invalid", SOURCEREF_WRAPPER_PATH)
+
+        with self.assertRaises(module.SourceRefCitationError) as exc:
+            module.build_sourceref_citation(
+                source_path="wiki/index.md",
+                anchor="asset",
+                git_ref="HEAD",
+                repo_root=self.repo_root,
+            )
+
+        self.assertEqual(
+            exc.exception.reason_code,
+            module.CitationReasonCode.PATH_NOT_ALLOWLISTED.value,
+        )
+
+    def test_wrapper_rejects_non_canonical_raw_paths(self) -> None:
+        module = _load_module("write_sourceref_citations_noncanonical", SOURCEREF_WRAPPER_PATH)
+
+        for candidate in (
+            "raw//processed/source-a.md",
+            "./raw/processed/source-a.md",
+            "raw/./processed/source-a.md",
+        ):
+            with self.subTest(candidate=candidate):
+                with self.assertRaises(module.SourceRefCitationError) as exc:
+                    module.build_sourceref_citation(
+                        source_path=candidate,
+                        anchor="asset",
+                        git_ref="HEAD",
+                        repo_root=self.repo_root,
+                    )
+
+                self.assertEqual(
+                    exc.exception.reason_code,
+                    module.CitationReasonCode.INVALID_PATH.value,
+                )
+
+
+class AppendLogEntryWrapperTests(_RuntimeWrapperFixture):
+    INIT_FIXTURE_REPO = True
+
+    def test_wrapper_appends_only_when_state_changes(self) -> None:
+        module = _load_module("append_log_entry_runtime", APPEND_LOG_WRAPPER_PATH)
+
+        result = module.append_log_entry(
+            "- state changed",
+            state_changed=True,
+            repo_root=self.repo_root,
+        )
+
+        self.assertTrue(result.appended)
+        self.assert_append_only(
+            self.repo_root / "wiki" / "log.md",
+            self._build_page("Knowledgebase Log", "- state changes"),
+            expected_suffix="- state changed\n",
+        )
+
+    def test_wrapper_noops_without_state_change(self) -> None:
+        module = _load_module("append_log_entry_noop", APPEND_LOG_WRAPPER_PATH)
+        before = (self.repo_root / "wiki" / "log.md").read_text(encoding="utf-8")
+
+        result = module.append_log_entry(
+            "- no change",
+            state_changed=False,
+            repo_root=self.repo_root,
+        )
+
+        self.assertFalse(result.appended)
+        self.assertEqual((self.repo_root / "wiki" / "log.md").read_text(encoding="utf-8"), before)
+
+    def test_wrapper_rejects_multiline_entries(self) -> None:
+        module = _load_module("append_log_entry_multiline", APPEND_LOG_WRAPPER_PATH)
+
+        with self.assertRaises(module.LogAppendError) as exc:
+            module.append_log_entry(
+                "- first line\n- second line",
+                state_changed=True,
+                repo_root=self.repo_root,
+            )
+
+        self.assertEqual(exc.exception.reason_code, module.LogReasonCode.INVALID_ENTRY.value)
+
+    def test_main_returns_deterministic_lock_unavailable_payload(self) -> None:
+        module = _load_module("append_log_entry_locked", APPEND_LOG_WRAPPER_PATH)
+        with patch.object(
+            module.write_utils,
+            "exclusive_write_lock",
+            side_effect=module.write_utils.LockUnavailableError(),
+        ), patch.object(module, "print") as print_mock:
+            exit_code = module.main(["--entry", "- state changed", "--state-changed"])
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn(module.LogReasonCode.LOCK_UNAVAILABLE.value, print_mock.call_args.args[0])
+
+
+class RunDeterministicValidatorsWrapperTests(HarnessAssertionsTestCase):
+    def test_validator_allowlist_matches_expected_scripts(self) -> None:
+        module = _load_module("run_deterministic_validators_allowlist", VALIDATOR_WRAPPER_PATH)
+
+        self.assertEqual(
+            tuple(spec.script_relative_path for spec in module.VALIDATOR_ALLOWLIST.values()),
+            (
+                "scripts/kb/qmd_preflight.py",
+                "scripts/kb/update_index.py",
+                "scripts/kb/lint_wiki.py",
+            ),
+        )
+
+    def test_wrapper_runs_selected_validator_subset_in_declared_order(self) -> None:
+        module = _load_module("run_deterministic_validators_subset", VALIDATOR_WRAPPER_PATH)
+        calls: list[list[str]] = []
+
+        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+            calls.append(command)
+
+        with patch.object(module.subprocess, "run", side_effect=fake_run):
+            exit_code = module.main(["--validator", "qmd-preflight", "--validator", "lint-strict"])
+
+        self.assertEqual(exit_code, 0)
+        self.assert_wrapper_routing(
+            calls,
+            [
+                [
+                    module.sys.executable,
+                    str(REPO_ROOT / "scripts" / "kb" / "qmd_preflight.py"),
+                    "--repo-root",
+                    str(REPO_ROOT),
+                    "--required-resource",
+                    ".qmd/index",
+                ],
+                [
+                    module.sys.executable,
+                    str(REPO_ROOT / "scripts" / "kb" / "lint_wiki.py"),
+                    "--wiki-root",
+                    "wiki",
+                    "--strict",
+                    "--authoritative-sourcerefs",
+                    "--repo-owner",
+                    "local",
+                    "--repo-name",
+                    "knowledgebase",
+                ],
+            ],
+        )
+
+    def test_wrapper_rejects_unknown_validator_names(self) -> None:
+        module = _load_module("run_deterministic_validators_invalid", VALIDATOR_WRAPPER_PATH)
+
+        exit_code = module.main(["--validator", "not-a-validator"])
+
+        self.assertEqual(exit_code, 2)
+
+    def test_wrapper_emits_failure_payload_for_validator_errors(self) -> None:
+        module = _load_module("run_deterministic_validators_failure", VALIDATOR_WRAPPER_PATH)
+
+        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+            raise module.subprocess.CalledProcessError(returncode=7, cmd=command)
+
+        with patch.object(module.subprocess, "run", side_effect=fake_run), patch.object(module, "print") as print_mock:
+            exit_code = module.main(["--validator", "qmd-preflight"])
+
+        self.assertEqual(exit_code, 7)
+        self.assertIn('"reason_code": "validator_failed"', print_mock.call_args.args[0])
+
 
 class ValidateWikiGovernanceWrapperRuntimeTests(_RuntimeWrapperFixture):
-    def test_wrapper_runs_end_to_end_with_authoritative_lint(self) -> None:
-        self._init_fixture_repo()
+    INIT_FIXTURE_REPO = True
+
+    def test_wrapper_runs_end_to_end_with_approved_checks(self) -> None:
+        self.write_valid_source_page()
         module = self._load_fixture_module(
             ".github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
             "validate_wiki_governance_runtime",
         )
 
-        with patch.dict(os.environ, {"PATH": self.fixture_path}, clear=False):
+        with force_thread_pool(module):
             exit_code = module.main([])
 
         self.assertEqual(exit_code, 0)
 
+    def test_wrapper_accepts_inline_single_source_frontmatter(self) -> None:
+        self.write_valid_source_page(inline_sources=True)
+        module = self._load_fixture_module(
+            ".github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
+            "validate_wiki_governance_inline_source",
+        )
+
+        with force_thread_pool(module):
+            exit_code = module.main(["--validator", "sourceref-shape"])
+
+        self.assertEqual(exit_code, 0)
+
+    def test_missing_log_prerequisite_hard_fails_for_protected_path(self) -> None:
+        self.write_valid_source_page()
+        (self.repo_root / "wiki" / "log.md").unlink()
+        module = self._load_fixture_module(
+            ".github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
+            "validate_wiki_governance_missing_log",
+        )
+
+        with patch.object(module, "print") as print_mock, force_thread_pool(module):
+            exit_code = module.main(["--mode", "signal", "--validator", "append-only-log", "--path", "wiki/log.md"])
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn('"reason_code": "prereq_missing"', print_mock.call_args.args[0])
+
+    def test_topology_drift_hard_fails_for_protected_path(self) -> None:
+        self.write_valid_source_page()
+        (self.repo_root / "wiki" / "index.md").write_text(self._build_page("Knowledgebase Index", "- drifted"), encoding="utf-8")
+        module = self._load_fixture_module(
+            ".github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
+            "validate_wiki_governance_drift",
+        )
+
+        with patch.object(module, "print") as print_mock, force_thread_pool(module):
+            exit_code = module.main(["--mode", "signal", "--validator", "topology-hygiene", "--path", "wiki/index.md"])
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn('wiki/index.md must match deterministic topology output', print_mock.call_args.args[0])
+
 
 class SyncKnowledgebaseStateWrapperRuntimeTests(_RuntimeWrapperFixture):
+    INIT_FIXTURE_REPO = True
+
     def test_write_index_mode_runs_end_to_end_with_authoritative_lint(self) -> None:
-        self._init_fixture_repo()
         module = self._load_fixture_module(
             ".github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py",
             "sync_knowledgebase_state_runtime",

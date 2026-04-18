@@ -6,33 +6,14 @@ from pathlib import Path
 import re
 import unittest
 
+from tests.kb._workflow_yaml import parse_top_level_mapping_block
+
 
 WORKFLOW_PATH = Path(".github/workflows/ci-2-analyst-diagnostics.yml")
 
 
 def _parse_top_level_mapping_block(text: str, key: str) -> dict[str, str]:
-    lines = text.splitlines()
-    target = f"{key}:"
-
-    for index, line in enumerate(lines):
-        if line.strip() != target or line.startswith(" "):
-            continue
-
-        mapping: dict[str, str] = {}
-        for candidate in lines[index + 1 :]:
-            stripped = candidate.strip()
-            if not stripped:
-                continue
-            if not candidate.startswith("  ") or candidate.startswith("    "):
-                break
-            if stripped.startswith("#") or ":" not in stripped:
-                continue
-            map_key, map_value = stripped.split(":", 1)
-            mapping[map_key.strip()] = map_value.strip()
-
-        return mapping
-
-    raise AssertionError(f"Top-level '{key}' block is missing from {WORKFLOW_PATH}")
+    return parse_top_level_mapping_block(text, key, workflow_path=WORKFLOW_PATH)
 
 
 class Ci2WorkflowContractTests(unittest.TestCase):
@@ -78,6 +59,13 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             self.assertIn(control, self.workflow_text)
 
     def test_workflow_is_diagnostics_only_with_explicit_failures(self) -> None:
+        self.assertIn("Bootstrap repo-local qmd preflight shim", self.workflow_text)
+        self.assertIn("mkdir -p .ci-bin .qmd/index", self.workflow_text)
+        self.assertIn('printf \'%s\\n\' "${PWD}/.ci-bin" >> "${GITHUB_PATH}"', self.workflow_text)
+        self.assertIn(
+            "python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
+            self.workflow_text,
+        )
         self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
         self.assertIn("python3 -m unittest discover -s tests -p 'test_*.py'", self.workflow_text)
         self.assertIn(
@@ -101,6 +89,14 @@ class Ci2WorkflowContractTests(unittest.TestCase):
     def test_diagnostics_step_propagates_lint_and_test_failures(self) -> None:
         self.assertIsNotNone(
             re.search(
+                r"python3 \.github/skills/validate-wiki-governance/logic/validate_wiki_governance\.py.*?wrapper_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+                self.workflow_text,
+                flags=re.DOTALL,
+            ),
+            "Wrapper command status must be captured for final diagnostics exit_code",
+        )
+        self.assertIsNotNone(
+            re.search(
                 r"python3 scripts/kb/lint_wiki\.py --wiki-root wiki --strict.*?lint_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
                 flags=re.DOTALL,
@@ -116,7 +112,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             "Test command status must be captured for final diagnostics exit_code",
         )
         self.assertIn(
-            'if [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
+            'if [ "${wrapper_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
             self.workflow_text,
         )
         self.assertIn('echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"', self.workflow_text)
