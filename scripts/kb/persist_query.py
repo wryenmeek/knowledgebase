@@ -11,6 +11,8 @@ import sys
 from typing import Sequence, TextIO
 
 from scripts.kb import contracts, sourceref, update_index, write_utils
+from scripts.kb.path_utils import RepoRelativePathError, resolve_within_repo
+from scripts.kb.write_utils import read_optional_text, write_text_if_changed
 
 
 DEFAULT_MIN_CONFIDENCE = 4
@@ -131,14 +133,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _resolve_within_repo(repo_root: Path, raw_path: str, *, label: str) -> Path:
-    candidate = Path(raw_path)
-    if not candidate.is_absolute():
-        candidate = repo_root / candidate
-    resolved = candidate.resolve()
-    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
-    if not resolved.is_relative_to(repo_root):
+    try:
+        return resolve_within_repo(repo_root, raw_path)
+    except RepoRelativePathError:
         raise PersistQueryInputError(f"{label} escapes repository boundary: {raw_path}")
-    return resolved
 
 
 def _normalize_query(query: str) -> str:
@@ -279,25 +277,9 @@ def _render_analysis_markdown(request: PersistRequest, analysis_path: str) -> st
     return "\n".join(lines)
 
 
-def _write_if_changed(path: Path, content: str) -> bool:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    existing_content = path.read_text(encoding="utf-8") if path.exists() else None
-    if existing_content == content:
-        return False
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(content)
-    return True
-
-
 def _update_index_if_changed(wiki_root: Path) -> bool:
     generated_index = update_index.generate_index_content(wiki_root)
-    return _write_if_changed(wiki_root / "index.md", generated_index)
-
-
-def _read_optional_text(path: Path) -> str | None:
-    if not path.exists():
-        return None
-    return path.read_text(encoding="utf-8")
+    return write_text_if_changed(wiki_root / "index.md", generated_index)
 
 
 def _restore_optional_text(path: Path, previous_content: str | None) -> None:
@@ -380,12 +362,12 @@ def _execute(args: argparse.Namespace, repo_root: Path) -> tuple[contracts.Resul
     try:
         with write_utils.exclusive_write_lock(repo_root):
             snapshots: tuple[tuple[Path, str | None], ...] = (
-                (analysis_absolute, _read_optional_text(analysis_absolute)),
-                (index_path, _read_optional_text(index_path)),
-                (log_path, _read_optional_text(log_path)),
+                (analysis_absolute, read_optional_text(analysis_absolute)),
+                (index_path, read_optional_text(index_path)),
+                (log_path, read_optional_text(log_path)),
             )
             try:
-                analysis_changed = _write_if_changed(analysis_absolute, analysis_markdown)
+                analysis_changed = write_text_if_changed(analysis_absolute, analysis_markdown)
                 index_updated = _update_index_if_changed(request.wiki_root)
                 state_changed = analysis_changed or index_updated
                 log_appended = write_utils.append_log_only_state_changes(

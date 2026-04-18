@@ -48,10 +48,28 @@ def normalize_repo_relative_path(path: str | PathLike[str]) -> str:
     return normalized
 
 
+def resolve_within_repo(repo_root: Path, raw_path: str) -> Path:
+    """Resolve raw_path to an absolute Path that lies within repo_root.
+
+    Handles both absolute and relative raw_path values. Raises
+    ``RepoRelativePathError`` when the resolved path would escape the repository.
+    Callers that need domain-specific errors should catch
+    ``RepoRelativePathError`` and re-raise as appropriate.
+    """
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = repo_root / candidate
+    resolved = candidate.resolve(strict=False)
+    if not resolved.is_relative_to(repo_root):
+        raise RepoRelativePathError(f"path escapes repository boundary: {raw_path}")
+    return resolved
+
+
 __all__ = [
     "ERROR_KIND_INVALID_PATH",
     "ERROR_KIND_PATH_TRAVERSAL",
     "RepoRelativePathError",
     "normalize_repo_relative_path",
+    "resolve_within_repo",
     "try_normalize_repo_relative_path",
 ]

@@ -14,12 +14,14 @@ import sys
 from typing import Sequence, TextIO
 
 from scripts.kb import contracts, update_index
+from scripts.kb.path_utils import RepoRelativePathError, resolve_within_repo
 from scripts.kb.sourceref import SourceRefValidationError, validate_sourceref
 from scripts.kb.write_utils import (
     LockUnavailableError,
     append_log_only_state_changes,
     exclusive_write_lock,
     open_atomic_temp_file,
+    read_optional_text,
 )
 
 
@@ -262,7 +264,7 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
         try:
             if successful_outcomes:
                 try:
-                    index_previous_content = _read_optional_text(index_path)
+                    index_previous_content = read_optional_text(index_path)
                 except OSError as exc:
                     raise IngestError(
                         contracts.ReasonCode.WRITE_FAILED.value,
@@ -274,7 +276,7 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
             state_changed = bool(successful_outcomes) or index_updated
             if state_changed:
                 try:
-                    log_previous_content = _read_optional_text(log_path)
+                    log_previous_content = read_optional_text(log_path)
                 except OSError as exc:
                     raise IngestError(
                         contracts.ReasonCode.WRITE_FAILED.value,
@@ -396,16 +398,13 @@ def _resolve_source_inputs(args: argparse.Namespace, repo_root: Path) -> list[st
 
 
 def _resolve_path_within_repo(repo_root: Path, raw_path: str) -> tuple[Path, str]:
-    candidate = Path(raw_path)
-    resolved = (candidate if candidate.is_absolute() else (repo_root / candidate)).resolve(
-        strict=False
-    )
-    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
-    if not resolved.is_relative_to(repo_root):
+    try:
+        resolved = resolve_within_repo(repo_root, raw_path)
+    except RepoRelativePathError as exc:
         raise IngestError(
             contracts.ReasonCode.INVALID_INPUT.value,
             f"path escapes repository boundary: {raw_path}",
-        )
+        ) from exc
     return resolved, resolved.relative_to(repo_root).as_posix()
 
 
@@ -698,14 +697,6 @@ def _restore_previous_content(path: Path, previous_content: str | None) -> None:
         return
 
     _write_text_atomically(path, previous_content)
-
-
-def _read_optional_text(path: Path) -> str | None:
-    if path.is_symlink():
-        _ensure_not_symlink(path)
-    if not path.exists():
-        return None
-    return path.read_text(encoding="utf-8")
 
 
 def _ensure_not_symlink(path: Path) -> None:

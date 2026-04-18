@@ -145,6 +145,28 @@ def append_log_only_state_changes(
     return True
 
 
+def read_optional_text(path: Path) -> str | None:
+    """Return path's text content, or None if it does not exist."""
+    if not path.exists():
+        return None
+    return path.read_text(encoding="utf-8")
+
+
+def write_text_if_changed(path: Path, content: str) -> bool:
+    """Write content to path only when it differs from the existing content.
+
+    Creates parent directories as needed. Returns True when the file was
+    written, False when the existing content already matched.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = path.read_text(encoding="utf-8") if path.exists() else None
+    if existing == content:
+        return False
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(content)
+    return True
+
+
 def validate_log_entry(entry: str) -> str:
     """Validate a wiki/log.md bullet and return its stripped form.
 
@@ -171,5 +193,7 @@ __all__ = [
     "lock_unavailable_reason",
     "open_atomic_temp_file",
     "append_log_only_state_changes",
+    "read_optional_text",
     "validate_log_entry",
+    "write_text_if_changed",
 ]
