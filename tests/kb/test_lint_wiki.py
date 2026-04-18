@@ -3,59 +3,19 @@
 from __future__ import annotations
 
 import hashlib
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 import unittest
 
+from tests.kb.harnesses import KnowledgebaseWorkspaceTestCase
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "kb" / "lint_wiki.py"
-_RUNTIME_ROOT = Path(__file__).resolve().parent / ".runtime_lint_wiki"
 
 
-class LintWikiCliTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.workspace = _RUNTIME_ROOT / self._testMethodName
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-        self.workspace.mkdir(parents=True, exist_ok=True)
-
-        self.wiki_root = self.workspace / "wiki"
-        self.wiki_root.mkdir(parents=True, exist_ok=True)
-
-    def tearDown(self) -> None:
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-        if _RUNTIME_ROOT.exists() and not any(_RUNTIME_ROOT.iterdir()):
-            _RUNTIME_ROOT.rmdir()
-
-    def _build_page(self, title: str, body: str) -> str:
-        return "\n".join(
-            [
-                "---",
-                "type: process",
-                f'title: "{title}"',
-                "status: active",
-                "sources: []",
-                "open_questions: []",
-                "confidence: 3",
-                "sensitivity: internal",
-                'updated_at: "2024-01-01T00:00:00Z"',
-                "tags: [test]",
-                "---",
-                "",
-                f"# {title}",
-                "",
-                body,
-                "",
-            ]
-        )
-
-    def _write_page(self, relative_path: str, content: str) -> None:
-        page = self.wiki_root / relative_path
-        page.parent.mkdir(parents=True, exist_ok=True)
-        page.write_text(content, encoding="utf-8")
+class LintWikiCliTests(KnowledgebaseWorkspaceTestCase):
+    RUNTIME_ROOT_NAME = ".runtime_lint_wiki"
 
     def _run_lint(
         self,
@@ -111,34 +71,34 @@ class LintWikiCliTests(unittest.TestCase):
         return self._git("rev-parse", "HEAD", capture_output=True).stdout.strip()
 
     def _seed_valid_wiki(self) -> None:
-        self._write_page(
+        self.write_wiki_page(
             "index.md",
-            self._build_page(
+            self.build_process_page(
                 "Knowledgebase Index",
                 "- [Log](log.md)\n- [Source A](sources/source-a.md)",
             ),
         )
-        self._write_page(
+        self.write_wiki_page(
             "log.md",
-            self._build_page("Knowledgebase Log", "- state changes appear here"),
+            self.build_process_page("Knowledgebase Log", "- state changes appear here"),
         )
-        self._write_page(
+        self.write_wiki_page(
             "sources/source-a.md",
-            self._build_page("Source A", "- [Index](../index.md)"),
+            self.build_process_page("Source A", "- [Index](../index.md)"),
         )
 
     def _seed_invalid_wiki(self) -> None:
-        self._write_page(
+        self.write_wiki_page(
             "index.md",
-            self._build_page("Knowledgebase Index", "- [Missing](sources/missing.md)"),
+            self.build_process_page("Knowledgebase Index", "- [Missing](sources/missing.md)"),
         )
-        self._write_page(
+        self.write_wiki_page(
             "sources/orphan.md",
-            self._build_page("Orphan", "This page is intentionally unreferenced."),
+            self.build_process_page("Orphan", "This page is intentionally unreferenced."),
         )
-        self._write_page(
+        self.write_wiki_page(
             "sources/contradiction.md",
-            self._build_page("Contradiction", "[CONTRADICTION] unresolved evidence conflict."),
+            self.build_process_page("Contradiction", "[CONTRADICTION] unresolved evidence conflict."),
         )
 
     def _snapshot_wiki_files(self) -> dict[str, bytes]:
@@ -175,16 +135,16 @@ class LintWikiCliTests(unittest.TestCase):
         self.assertIn("Found 0 violation(s).", result.stdout)
 
     def test_strict_mode_accepts_internal_links_with_spaces_in_target(self) -> None:
-        self._write_page(
+        self.write_wiki_page(
             "index.md",
-            self._build_page(
+            self.build_process_page(
                 "Knowledgebase Index",
                 '- [Source With Spaces](sources/source with spaces.md)',
             ),
         )
-        self._write_page(
+        self.write_wiki_page(
             "sources/source with spaces.md",
-            self._build_page("Source With Spaces", "- [Index](../index.md)"),
+            self.build_process_page("Source With Spaces", "- [Index](../index.md)"),
         )
 
         result = self._run_lint(strict=True)
@@ -193,16 +153,16 @@ class LintWikiCliTests(unittest.TestCase):
         self.assertIn("Found 0 violation(s).", result.stdout)
 
     def test_strict_mode_accepts_internal_links_with_optional_title(self) -> None:
-        self._write_page(
+        self.write_wiki_page(
             "index.md",
-            self._build_page(
+            self.build_process_page(
                 "Knowledgebase Index",
                 '- [Source A](sources/source-a.md "Source A title")',
             ),
         )
-        self._write_page(
+        self.write_wiki_page(
             "sources/source-a.md",
-            self._build_page("Source A", '- [Index](../index.md "Back to index")'),
+            self.build_process_page("Source A", '- [Index](../index.md "Back to index")'),
         )
 
         result = self._run_lint(strict=True)
@@ -223,20 +183,20 @@ class LintWikiCliTests(unittest.TestCase):
         )
 
     def test_strict_mode_reports_out_of_bounds_link_violation(self) -> None:
-        self._write_page(
+        self.write_wiki_page(
             "index.md",
-            self._build_page("Knowledgebase Index", "- [Escape](../outside.md)"),
+            self.build_process_page("Knowledgebase Index", "- [Escape](../outside.md)"),
         )
 
         self._assert_strict_violation_codes(["out-of-bounds-link"])
 
     def test_strict_mode_reports_missing_frontmatter_violation(self) -> None:
-        self._write_page("index.md", "# Knowledgebase Index\n\nThis page omits frontmatter.\n")
+        self.write_wiki_page("index.md", "# Knowledgebase Index\n\nThis page omits frontmatter.\n")
 
         self._assert_strict_violation_codes(["missing-frontmatter"])
 
     def test_strict_mode_reports_missing_frontmatter_key_violation(self) -> None:
-        self._write_page(
+        self.write_wiki_page(
             "index.md",
             "\n".join(
                 [
@@ -284,20 +244,20 @@ class LintWikiCliTests(unittest.TestCase):
         )
 
     def test_strict_mode_rejects_symlinked_markdown_page(self) -> None:
-        self._write_page(
+        self.write_wiki_page(
             "index.md",
-            self._build_page(
+            self.build_process_page(
                 "Knowledgebase Index",
                 "- [Log](log.md)\n- [Linked](sources/linked.md)",
             ),
         )
-        self._write_page(
+        self.write_wiki_page(
             "log.md",
-            self._build_page("Knowledgebase Log", "- state changes appear here"),
+            self.build_process_page("Knowledgebase Log", "- state changes appear here"),
         )
         outside_page = self.workspace / "outside.md"
         outside_page.write_text(
-            self._build_page("Outside Page", "- external content"),
+            self.build_process_page("Outside Page", "- external content"),
             encoding="utf-8",
         )
         linked_page = self.wiki_root / "sources" / "linked.md"
@@ -310,18 +270,18 @@ class LintWikiCliTests(unittest.TestCase):
         self.assertIn("symlinked-page", self._extract_violation_codes(result.stdout))
 
     def test_strict_mode_rejects_nested_topical_page_paths(self) -> None:
-        self._write_page(
+        self.write_wiki_page(
             "index.md",
-            self._build_page(
+            self.build_process_page(
                 "Knowledgebase Index",
                 "- [Log](log.md)\n- [Nested Concept](concepts/coverage/nested-concept.md)",
             ),
         )
-        self._write_page(
+        self.write_wiki_page(
             "log.md",
-            self._build_page("Knowledgebase Log", "- state changes appear here"),
+            self.build_process_page("Knowledgebase Log", "- state changes appear here"),
         )
-        self._write_page(
+        self.write_wiki_page(
             "concepts/coverage/nested-concept.md",
             "\n".join(
                 [
@@ -349,7 +309,7 @@ class LintWikiCliTests(unittest.TestCase):
 
     def test_authoritative_sourceref_mode_rejects_placeholder_source_refs(self) -> None:
         self._seed_valid_wiki()
-        self._write_page(
+        self.write_wiki_page(
             "sources/source-a.md",
             "\n".join(
                 [
@@ -389,23 +349,23 @@ class LintWikiCliTests(unittest.TestCase):
 
     def test_authoritative_sourceref_mode_accepts_commit_bound_source_refs(self) -> None:
         self._init_git_repo()
-        self._write_page(
+        self.write_wiki_page(
             "index.md",
-            self._build_page(
+            self.build_process_page(
                 "Knowledgebase Index",
                 "- [Log](log.md)\n- [Source A](sources/source-a.md)",
             ),
         )
-        self._write_page(
+        self.write_wiki_page(
             "log.md",
-            self._build_page("Knowledgebase Log", "- state changes appear here"),
+            self.build_process_page("Knowledgebase Log", "- state changes appear here"),
         )
         artifact_path = self.workspace / "raw" / "processed" / "source-a.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text("commit-bound bytes\n", encoding="utf-8")
         checksum = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
         commit_sha = self._commit_all("seed authoritative source artifact")
-        self._write_page(
+        self.write_wiki_page(
             "sources/source-a.md",
             "\n".join(
                 [
@@ -443,23 +403,23 @@ class LintWikiCliTests(unittest.TestCase):
 
     def test_authoritative_sourceref_mode_rejects_foreign_repo_identity(self) -> None:
         self._init_git_repo()
-        self._write_page(
+        self.write_wiki_page(
             "index.md",
-            self._build_page(
+            self.build_process_page(
                 "Knowledgebase Index",
                 "- [Log](log.md)\n- [Source A](sources/source-a.md)",
             ),
         )
-        self._write_page(
+        self.write_wiki_page(
             "log.md",
-            self._build_page("Knowledgebase Log", "- state changes appear here"),
+            self.build_process_page("Knowledgebase Log", "- state changes appear here"),
         )
         artifact_path = self.workspace / "raw" / "processed" / "source-a.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text("commit-bound bytes\n", encoding="utf-8")
         checksum = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
         commit_sha = self._commit_all("seed authoritative source artifact")
-        self._write_page(
+        self.write_wiki_page(
             "sources/source-a.md",
             "\n".join(
                 [

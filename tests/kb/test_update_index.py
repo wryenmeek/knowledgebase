@@ -7,7 +7,6 @@ import hashlib
 import io
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import unittest
@@ -16,20 +15,18 @@ from unittest.mock import patch
 from scripts.kb import update_index
 from scripts.kb import write_utils
 
+from tests.kb.harnesses import KnowledgebaseWorkspaceTestCase
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 UPDATE_INDEX_SCRIPT = REPO_ROOT / "scripts" / "kb" / "update_index.py"
 
 
-class UpdateIndexCommandTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.workspace = Path(__file__).resolve().parent / ".runtime_update_index"
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
+class UpdateIndexCommandTests(KnowledgebaseWorkspaceTestCase):
+    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")
 
-        self.wiki_root = self.workspace / "wiki"
-        for directory in ("sources", "entities", "concepts", "analyses"):
-            (self.wiki_root / directory).mkdir(parents=True, exist_ok=True)
+    def setUp(self) -> None:
+        super().setUp()
 
         (self.workspace / "raw").mkdir(parents=True, exist_ok=True)
         (self.workspace / "raw" / "sentinel.txt").write_text(
@@ -42,31 +39,18 @@ class UpdateIndexCommandTests(unittest.TestCase):
             "log-should-not-change\n", encoding="utf-8"
         )
 
-        self._write_page("sources/zeta-source.md", "Zeta Source", "source", "2")
-        self._write_page("sources/alpha-source.md", "Alpha Source", "source", "4")
-        self._write_page("entities/beneficiary.md", "Beneficiary", "entity", "5")
-        self._write_page(
-            "concepts/network-adequacy.md", "Network Adequacy", "concept", "3"
+        self.write_wiki_page("sources/zeta-source.md", self._build_page("Zeta Source", "source", "2"))
+        self.write_wiki_page("sources/alpha-source.md", self._build_page("Alpha Source", "source", "4"))
+        self.write_wiki_page("entities/beneficiary.md", self._build_page("Beneficiary", "entity", "5"))
+        self.write_wiki_page(
+            "concepts/network-adequacy.md", self._build_page("Network Adequacy", "concept", "3")
         )
-        self._write_page(
-            "analyses/prior-auth-review.md", "Prior Auth Review", "analysis", "4"
+        self.write_wiki_page(
+            "analyses/prior-auth-review.md", self._build_page("Prior Auth Review", "analysis", "4")
         )
 
-    def tearDown(self) -> None:
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-
-    def _write_page(
-        self,
-        relative_path: str,
-        title: str,
-        page_type: str,
-        confidence: str,
-    ) -> None:
-        page_path = self.wiki_root / relative_path
-        page_path.parent.mkdir(parents=True, exist_ok=True)
-        page_path.write_text(
-            f"""---
+    def _build_page(self, title: str, page_type: str, confidence: str) -> str:
+        return f"""---
 type: {page_type}
 title: "{title}"
 status: active
@@ -82,9 +66,7 @@ tags:
 # {title}
 
 Fixture page.
-""",
-            encoding="utf-8",
-        )
+"""
 
     def _run_command(self, *args: str) -> tuple[int, str, str]:
         stdout = io.StringIO()
@@ -318,11 +300,9 @@ Fixture page.
         self.assertIn("symlinked markdown pages are not allowed", str(ctx.exception))
 
     def test_generate_index_rejects_nested_topical_page(self) -> None:
-        self._write_page(
+        self.write_wiki_page(
             "concepts/coverage/nested-concept.md",
-            "Nested Concept",
-            "concept",
-            "3",
+            self._build_page("Nested Concept", "concept", "3"),
         )
 
         with self.assertRaises(update_index.IndexGenerationError) as ctx:
@@ -331,11 +311,9 @@ Fixture page.
         self.assertIn("nested topical markdown pages are not allowed", str(ctx.exception))
 
     def test_cli_check_fails_closed_for_nested_topical_page(self) -> None:
-        self._write_page(
+        self.write_wiki_page(
             "entities/medicare/beneficiary.md",
-            "Nested Beneficiary",
-            "entity",
-            "5",
+            self._build_page("Nested Beneficiary", "entity", "5"),
         )
 
         completed = self._run_cli_command("--wiki-root", "wiki", "--check")
