@@ -1,0 +1,134 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-04-18T07:15:39.376Z",
+  "root_causes": [
+    {
+      "id": "rc-1-python-tooling",
+      "title": "Python Scripts Performance, Contracts, & Security Parity",
+      "severity": "high",
+      "issues": [2, 3, 4, 5, 7, 8, 17, 18],
+      "files": [
+        "scripts/kb/ingest.py",
+        "scripts/kb/persist_query.py",
+        "scripts/kb/update_index.py",
+        "scripts/kb/lint_wiki.py",
+        "scripts/kb/write_utils.py",
+        "raw/processed/SPEC.md",
+        "docs/architecture.md"
+      ],
+      "description": "The python tools share bugs related to symlink escapes, missing locks, slow string parsing, synthetic SHAs, no-op flags, and spec drift. These are highly coupled across the scripts.",
+      "solution_summary": "Implement ensure_safe_write_path, optimize extract_frontmatter with regex, cleanup persist_query flags, get real SHAs, and fix docs."
+    },
+    {
+      "id": "rc-2-ci-3",
+      "title": "CI-3 Optimizations and Security Gaps",
+      "severity": "high",
+      "issues": [9, 11, 14, 15],
+      "files": [
+        ".github/workflows/ci-3-pr-producer.yml"
+      ],
+      "description": "CI-3 has performance issues due to per-file ingestion and multiline step outputs. It also has security issues: manual dispatch allows bypassing true authorization and manual lock deletion violates the lock lifecycle.",
+      "solution_summary": "Use `--sources-manifest` with a file handoff, add explicit env checks for dispatch, and remove lock deletion."
+    },
+    {
+      "id": "rc-3-ci-2-hygiene",
+      "title": "CI-2 Coverage & Global Repo Hygiene",
+      "severity": "medium",
+      "issues": [6, 12, 13, 16],
+      "files": [
+        ".github/workflows/ci-2-analyst-diagnostics.yml",
+        ".gitignore"
+      ],
+      "description": "Duplicate YAML syntax checks inflate CI time. Testing matrix lacks 90% coverage enforcement and tests. .gitignore is missing env files.",
+      "solution_summary": "Remove redundant inline ruby YAML step in CI-2. Instrument CI-2 unit tests with coverage, enforcing --fail-under=90. Add .gitignore items."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-python-tooling",
+      "title": "Python Tooling Enhancements",
+      "root_cause": "rc-1-python-tooling",
+      "issues": [2, 3, 4, 5, 7, 8, 17, 18],
+      "files": [
+        "scripts/kb/ingest.py",
+        "scripts/kb/persist_query.py",
+        "scripts/kb/update_index.py",
+        "scripts/kb/lint_wiki.py",
+        "scripts/kb/write_utils.py",
+        "raw/processed/SPEC.md",
+        "docs/architecture.md"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_ingest.py",
+        "tests/kb/test_persist_query.py",
+        "tests/kb/test_update_index.py",
+        "tests/kb/test_lint_wiki.py",
+        "tests/kb/test_write_utils.py"
+      ],
+      "risk": "high",
+      "prompt": "Address issues #2, #3, #4, #5, #7, #8, #17, #18 in the Python tooling. You are given a set of tightly coupled files. Here are the required changes:\n\n1. `scripts/kb/write_utils.py` and `scripts/kb/ingest.py` (Symlink escapes): Implement `def ensure_safe_write_path(path: Path, repo_root: Path) -> None:` in `write_utils.py`. The function must verify that `path.resolve()` is relative to `repo_root.resolve()`, and traverse parent paths up to `repo_root` to assert no symlinks are present. Replace `_ensure_not_symlink` in `ingest.py` with this new function, passing the `repo_root` correctly. \n\n2. `scripts/kb/update_index.py` (Update index lock): Change `with exclusive_write_lock(wiki_root.parent):` to `with exclusive_write_lock(\".\"):` to ensure the lock is acquired at the repository root.\n\n3. `scripts/kb/ingest.py` (Synthetic SHAs): Replace `_PROVISIONAL_GIT_SHA` with a function `_resolve_provenance_sha()`. This function should first check `os.environ.get(\"GITHUB_SHA\")`. If missing, fallback to `subprocess.check_output([\"git\", \"rev-parse\", \"HEAD\"])`. If both fail, raise `IngestError` and fail closed. Use this real SHA instead of the all-zero provisional one.\n\n4. `raw/processed/SPEC.md` & `docs/architecture.md` (Spec Drift): Remove references stating that the ingest process generates `wiki/entities/**` and `wiki/concepts/**` pages. It only generates `wiki/sources/**` pages.\n\n5. `scripts/kb/persist_query.py` (persist_query flags): Remove the `--result-json` flag and its parsing completely. Change `--unresolved-contradiction` to use `action=argparse.BooleanOptionalAction` (or a similar explicit boolean flag) to allow it to be truly configurable instead of always-on.\n\n6. `scripts/kb/persist_query.py` (persist_query index rebuild): Around line 404, only execute `_update_index_if_changed` if `analysis_changed` is true. E.g., `index_updated = _update_index_if_changed(request.wiki_root) if analysis_changed else False`.\n\n7. `scripts/kb/update_index.py` & `scripts/kb/lint_wiki.py` (Repeated Parse Passes): Optimize `_extract_frontmatter`. Do NOT use `lines = markdown_text.splitlines()`. Instead, use `_FRONTMATTER_RE = re.compile(r\"^---\\n(.*?)\\n---\", re.DOTALL | re.MULTILINE)` and `match.group(1)` to parse the frontmatter in O(1) memory.\n\nUpdate all corresponding tests in `tests/kb/` to reflect these changes. Validate tests run correctly. You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-ci-3",
+      "title": "CI-3 Automation Improvements",
+      "root_cause": "rc-2-ci-3",
+      "issues": [9, 11, 14, 15],
+      "files": [
+        ".github/workflows/ci-3-pr-producer.yml"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_ci3_workflow.py"
+      ],
+      "risk": "low",
+      "prompt": "Address #9, #11, #14, #15 in CI-3.\n\n1. `ci-3-pr-producer.yml` (Batching): Stop passing the source list through the multiline `echo \"sources<<EOF\"` handoff. Instead, write the paths to a workspace file `ci3_sources.manifest`. In the `Run CI-3 required checks and write path` step, remove the `while IFS= read -r source_path` bash loop. Invoke `python3 -m scripts.kb.ingest --sources-manifest ci3_sources.manifest --batch-policy continue_and_report_per_source --wiki-root wiki --schema AGENTS.md --report-json` once for the entire batch.\n\n2. `ci-3-pr-producer.yml` (Lock Deletion): Remove the ad-hoc lock deletion step (`rm -f wiki/.kb_write.lock`).\n\n3. `ci-3-pr-producer.yml` (Authoritative Approval): In the `ci3-manual-approval` job, add an explicit check to verify the triggering actor (`${{ github.actor }}`) belongs to the authorized maintainers team or hardcode an explicit exit if authorization fails (e.g. `if [[ \"${{ github.actor }}\" != \"wryenmeek\" ]]; then exit 1; fi`).\n\nUpdate `tests/kb/test_ci3_workflow.py` accordingly. You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-ci-2-hygiene",
+      "title": "CI-2 Coverage & Repo Hygiene",
+      "root_cause": "rc-3-ci-2-hygiene",
+      "issues": [6, 12, 13, 16],
+      "files": [
+        ".github/workflows/ci-2-analyst-diagnostics.yml",
+        ".gitignore"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_workflow_yaml_syntax.py",
+        "tests/kb/test_integration_verification_matrix.py",
+        "tests/kb/test_unit_verification_matrix.py"
+      ],
+      "risk": "medium",
+      "prompt": "Address #6, #12, #13, #16.\n\n1. `ci-2-analyst-diagnostics.yml` (Redundant YAML check): Remove the standalone YAML ruby validation step from CI-2, as the unittest `test_workflow_yaml_syntax.py` handles it.\n\n2. `ci-2-analyst-diagnostics.yml` (Coverage target): Change the `python3 -m unittest discover` invocation to use `coverage` (e.g., `pip install coverage && python3 -m coverage run -m unittest discover -s tests -p 'test_*.py' && python3 -m coverage report -m --fail-under=90`).\n\n3. `test_integration_verification_matrix.py` & `test_unit_verification_matrix.py`: Add explicit missing tests for mermaid preservation regression coverage, qmd index/query contract coverage, normative precedence tie-breaks, and Phase-2 deferral guards.\n\n4. `test_integration_verification_matrix.py` & `test_unit_verification_matrix.py` (#13): Add regression tests asserting symlink-safe writes fail closed, and tests ensuring workflow uses statements are SHA pinned.\n\n5. `.gitignore`: Add `.env.local`, `.env.*.local`, and `.claude/`. \n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [
+    {
+      "issue": 19,
+      "reason": "CI timing telemetry budgets require external metric stores or Github Actions dashboard configurations, not repo code.",
+      "suggested_owner": "Ops / Infra team"
+    }
+  ],
+  "file_ownership": {
+    ".github/workflows/ci-3-pr-producer.yml": "task-ci-3",
+    "tests/kb/test_ci3_workflow.py": "task-ci-3",
+    "scripts/kb/ingest.py": "task-python-tooling",
+    "scripts/kb/persist_query.py": "task-python-tooling",
+    "scripts/kb/update_index.py": "task-python-tooling",
+    "scripts/kb/lint_wiki.py": "task-python-tooling",
+    "scripts/kb/write_utils.py": "task-python-tooling",
+    "tests/kb/test_ingest.py": "task-python-tooling",
+    "tests/kb/test_persist_query.py": "task-python-tooling",
+    "tests/kb/test_update_index.py": "task-python-tooling",
+    "tests/kb/test_lint_wiki.py": "task-python-tooling",
+    "tests/kb/test_write_utils.py": "task-python-tooling",
+    "raw/processed/SPEC.md": "task-python-tooling",
+    "docs/architecture.md": "task-python-tooling",
+    ".github/workflows/ci-2-analyst-diagnostics.yml": "task-ci-2-hygiene",
+    "tests/kb/test_workflow_yaml_syntax.py": "task-ci-2-hygiene",
+    "tests/kb/test_integration_verification_matrix.py": "task-ci-2-hygiene",
+    "tests/kb/test_unit_verification_matrix.py": "task-ci-2-hygiene",
+    ".gitignore": "task-ci-2-hygiene"
+  }
+}
