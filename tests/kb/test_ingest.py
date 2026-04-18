@@ -10,6 +10,8 @@ import unittest
 from unittest.mock import patch
 
 from scripts.kb import contracts, ingest
+from scripts.kb import ingest_render
+from scripts.kb import write_utils
 from tests.kb.harnesses import RuntimeWorkspaceTestCase
 
 _RUNTIME_ROOT = Path(__file__).resolve().parent / ".runtime_ingest"
@@ -348,10 +350,10 @@ class IngestSourceRefBuilderTests(unittest.TestCase):
         repo_root = Path("/repo")
         checksum = "a" * 64
 
-        with patch.object(ingest, "validate_sourceref") as validate_mock:
+        with patch.object(ingest_render, "validate_sourceref") as validate_mock:
             source_ref = ingest._build_source_ref(repo_root, "raw/processed/source.md", checksum)
 
-        self.assertIn(f"@{ingest._PROVISIONAL_GIT_SHA}#", source_ref)
+        self.assertIn(f"@{ingest_render._PROVISIONAL_GIT_SHA}#", source_ref)
         validate_mock.assert_called_once_with(source_ref)
 
     def test_build_provisional_source_provenance_marks_placeholder_sha_structurally(self) -> None:
@@ -361,7 +363,7 @@ class IngestSourceRefBuilderTests(unittest.TestCase):
             provenance.to_dict(),
             {
                 "authoritative": False,
-                "git_sha": ingest._PROVISIONAL_GIT_SHA,
+                "git_sha": ingest_render._PROVISIONAL_GIT_SHA,
                 "git_sha_kind": "placeholder",
                 "reconciliation": "commit_bound_pending",
                 "review_mode": "authoritative_review_required",
@@ -383,7 +385,7 @@ class IngestWriteSafetyTests(unittest.TestCase):
         if _RUNTIME_ROOT.exists() and not any(_RUNTIME_ROOT.iterdir()):
             _RUNTIME_ROOT.rmdir()
 
-    def test_write_text_if_changed_rejects_symlink_target(self) -> None:
+    def test_write_text_capturing_previous_safe_rejects_symlink_target(self) -> None:
         external_target = self.workspace / "external.md"
         external_target.write_text("external target\n", encoding="utf-8")
         symlink_path = self.workspace / "wiki" / "sources" / "linked.md"
@@ -391,7 +393,7 @@ class IngestWriteSafetyTests(unittest.TestCase):
         symlink_path.symlink_to(external_target)
 
         with self.assertRaises(OSError):
-            ingest._write_text_if_changed(symlink_path, "updated\n")
+            write_utils.write_text_capturing_previous_safe(symlink_path, "updated\n")
 
         self.assertEqual(external_target.read_text(encoding="utf-8"), "external target\n")
         self.assertTrue(symlink_path.is_symlink())
@@ -409,26 +411,30 @@ class IngestWriteSafetyTests(unittest.TestCase):
         self.assertEqual(external_target.read_text(encoding="utf-8"), "external target\n")
         self.assertTrue(symlink_path.is_symlink())
 
-    def test_write_index_if_changed_rejects_preexisting_temp_symlink(self) -> None:
+    def test_write_index_if_changed_ignores_stale_old_temp_symlink(self) -> None:
+        """A symlink at the old temp path (index.md.tmp) is ignored by the new write path.
+
+        generate_and_write_index uses atomic_replace_governed_artifact which writes to
+        .index.md.kbtmp — not index.md.tmp. A stale symlink at the old path does not
+        affect the operation and is left in place.
+        """
         wiki_root = self.workspace / "wiki"
         wiki_root.mkdir(parents=True, exist_ok=True)
         index_path = wiki_root / "index.md"
         index_path.write_text("stale\n", encoding="utf-8")
         external_target = self.workspace / "external.md"
         external_target.write_text("external target\n", encoding="utf-8")
-        temp_index_path = wiki_root / "index.md.tmp"
-        temp_index_path.symlink_to(external_target)
+        old_temp_index_path = wiki_root / "index.md.tmp"
+        old_temp_index_path.symlink_to(external_target)
 
-        with (
-            patch.object(ingest.update_index, "generate_index_content", return_value="fresh\n"),
-            self.assertRaises(ingest.IngestError) as ctx,
-        ):
+        with patch.object(ingest.update_index, "generate_index_content", return_value="fresh\n"):
             ingest._write_index_if_changed(wiki_root)
 
-        self.assertEqual(ctx.exception.reason_code, contracts.ReasonCode.WRITE_FAILED.value)
-        self.assertEqual(index_path.read_text(encoding="utf-8"), "stale\n")
+        # Write succeeded — index is updated, external target is untouched.
+        self.assertEqual(index_path.read_text(encoding="utf-8"), "fresh\n")
         self.assertEqual(external_target.read_text(encoding="utf-8"), "external target\n")
-        self.assertTrue(temp_index_path.is_symlink())
+        # Old temp symlink was never touched.
+        self.assertTrue(old_temp_index_path.is_symlink())
 
 
 if __name__ == "__main__":

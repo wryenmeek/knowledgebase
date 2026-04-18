@@ -33,6 +33,15 @@ JSON to stdout and uses stable reason codes for machine-readable outcomes.
 execution (`python scripts/kb/lint_wiki.py`) and package import (`from scripts.kb import
 lint_wiki`). The guard inserts the repo root into `sys.path` only when run directly.
 
+All scripts that need this guard are nested exactly **two levels deep**
+(`scripts/<subdir>/<file>.py`), so `Path(__file__).resolve().parents[2]` always resolves
+to the repo root. If you add a script at a different nesting depth, update the `parents[N]`
+index accordingly.
+
+With `pip install -e .` (using the `pyproject.toml` at repo root), the repo root is
+already on `sys.path` and the guard fires but has no effect. This is the recommended setup
+for development and CI.
+
 ## Shared modules
 
 | Module | Purpose |

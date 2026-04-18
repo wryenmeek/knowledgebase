@@ -283,8 +283,7 @@ def _render_analysis_markdown(request: PersistRequest, analysis_path: str) -> st
 
 
 def _update_index_if_changed(wiki_root: Path) -> bool:
-    generated_index = update_index.generate_index_content(wiki_root)
-    return write_text_if_changed(wiki_root / "index.md", generated_index)
+    return update_index.generate_and_write_index(wiki_root)
 
 
 def _build_log_entry(analysis_path: str) -> str:

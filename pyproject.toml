@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "knowledgebase-scripts"
+version = "0.1.0"
+description = "Knowledgebase management scripts"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["scripts*"]
+
+[tool.setuptools.package-dir]
+"" = "."

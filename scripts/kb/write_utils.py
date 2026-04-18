@@ -8,7 +8,7 @@ import fcntl
 import os
 from os import PathLike
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Iterator, Sequence, TextIO
 
 from . import contracts
 from . import path_utils
@@ -118,7 +118,17 @@ def atomic_replace_governed_artifact(
     return target_path
 
 
-def open_atomic_temp_file(temp_path: Path):
+def open_atomic_temp_file(temp_path: Path) -> TextIO:
+    """Open *temp_path* for exclusive creation and return a writable text handle.
+
+    Uses ``O_EXCL`` so that two concurrent writers cannot both succeed on the same
+    temp path (prevents TOCTOU races).  The caller is responsible for the commit:
+
+    * **On success:** call ``os.replace(temp_path, dest)`` to atomically rename the
+      temp file into place.
+    * **On failure:** call ``temp_path.unlink()`` (or suppress ``OSError``) to avoid
+      leaving a stale temp file behind.
+    """
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -144,6 +154,73 @@ def append_log_only_state_changes(
         log_file.write(normalized_entry)
 
     return True
+
+
+def write_text_capturing_previous(path: Path, content: str) -> tuple[bool, str | None]:
+    """Write content to path and return ``(changed, previous_content)``.
+
+    Reads the existing content (if any) before writing so the caller can
+    later restore it with ``rollback_file_state``.  If the content is
+    unchanged, returns ``(False, existing_content)`` without writing.
+    Creates parent directories as needed.
+
+    Use this variant when the caller needs to accumulate rollback snapshots.
+    For write-only calls where rollback is not needed, prefer
+    ``write_text_if_changed``.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    previous_content: str | None = path.read_text(encoding="utf-8") if path.exists() else None
+    if previous_content == content:
+        return False, previous_content
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(content)
+    return True, previous_content
+
+
+def _check_no_symlink(path: Path) -> None:
+    """Raise OSError if any component of path (up to root) is a symlink."""
+    current = path
+    while True:
+        if current.is_symlink():
+            raise OSError(f"symlinked path component is not allowed: {current}")
+        if current.parent == current:
+            return
+        current = current.parent
+
+
+def write_text_capturing_previous_safe(path: Path, content: str) -> tuple[bool, str | None]:
+    """Like ``write_text_capturing_previous`` but with symlink and atomic-write guards.
+
+    Rejects symlinks anywhere in the path chain, and uses a temp-file + rename to
+    write atomically.  Use this for paths that may be security-sensitive or where
+    partial writes must be prevented.
+
+    Returns ``(changed, previous_content)`` — suitable for use with
+    ``rollback_file_state``.
+    """
+    if path.exists() or path.is_symlink():
+        _check_no_symlink(path)
+
+    previous_content: str | None = path.read_text(encoding="utf-8") if path.exists() else None
+    if previous_content == content:
+        return False, previous_content
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f"{path.name}.tmp")
+    temp_created = False
+    try:
+        with open_atomic_temp_file(temp_path) as handle:
+            temp_created = True
+            handle.write(content)
+        _check_no_symlink(path)
+        os.replace(temp_path, path)
+    except OSError:
+        if temp_created:
+            with contextlib.suppress(OSError):
+                temp_path.unlink()
+        raise
+
+    return True, previous_content
 
 
 def read_optional_text(path: Path) -> str | None:
@@ -225,5 +302,7 @@ __all__ = [
     "read_optional_text",
     "rollback_file_state",
     "validate_log_entry",
+    "write_text_capturing_previous",
+    "write_text_capturing_previous_safe",
     "write_text_if_changed",
 ]

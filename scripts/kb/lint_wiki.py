@@ -12,7 +12,11 @@ import sys
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts.kb import page_template_utils, sourceref
-from scripts.kb.page_template_utils import REQUIRED_FRONTMATTER_KEYS
+from scripts.kb.page_template_utils import (
+    REQUIRED_FRONTMATTER_KEYS,
+    extract_frontmatter_keys as _extract_frontmatter_keys,
+    strip_quotes as _normalize_frontmatter_scalar,
+)
 
 
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:")
@@ -32,15 +36,6 @@ class Violation:
     page: Path
     code: str
     message: str
-
-
-def _extract_frontmatter_keys(frontmatter: str) -> set[str]:
-    keys: set[str] = set()
-    for line in frontmatter.splitlines():
-        match = _FRONTMATTER_KEY_RE.match(line)
-        if match:
-            keys.add(match.group(1))
-    return keys
 
 
 def _extract_frontmatter_source_refs(frontmatter: str) -> list[str]:
@@ -64,12 +59,6 @@ def _extract_frontmatter_source_refs(frontmatter: str) -> list[str]:
             sources.append(_normalize_frontmatter_scalar(candidate[2:].strip()))
         return sources
     return []
-
-
-def _normalize_frontmatter_scalar(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-        return value[1:-1]
-    return value
 
 
 def _is_within(path: Path, root: Path) -> bool:
@@ -205,7 +194,7 @@ def _validate_page_content(
             Violation(
                 page=page,
                 code="missing-frontmatter",
-                message="missing YAML frontmatter block",
+                message="missing YAML frontmatter block (add --- delimiters and required frontmatter keys at the start of the file)",
             )
         )
     else:

@@ -172,9 +172,9 @@ def _parse_locator(locator: str) -> tuple[str, str, str]:
     source_path = "/".join(parts[2:])
 
     if not _OWNER_RE.fullmatch(owner):
-        _raise(SourceRefReasonCode.INVALID_OWNER, "Owner contains invalid characters")
+        _raise(SourceRefReasonCode.INVALID_OWNER, "Owner contains invalid characters (use only alphanumeric characters, hyphens, or underscores)")
     if not _REPO_RE.fullmatch(repo):
-        _raise(SourceRefReasonCode.INVALID_REPO, "Repository name contains invalid characters")
+        _raise(SourceRefReasonCode.INVALID_REPO, "Repository name contains invalid characters (use only alphanumeric characters, hyphens, underscores, or dots)")
     if not source_path:
         _raise(SourceRefReasonCode.INVALID_PATH, "Path must not be empty")
 

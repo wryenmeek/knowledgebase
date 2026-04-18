@@ -17,7 +17,12 @@ if __package__ in {None, ""}:
 
 from scripts.kb import page_template_utils
 from scripts.kb.page_template_utils import REQUIRED_FRONTMATTER_KEYS
-from scripts.kb.write_utils import LockUnavailableError, exclusive_write_lock, open_atomic_temp_file
+from scripts.kb.write_utils import (
+    LockUnavailableError,
+    atomic_replace_governed_artifact,
+    exclusive_write_lock,
+    open_atomic_temp_file,
+)
 
 SECTION_LAYOUT: tuple[tuple[str, str], ...] = (
     ("Sources", "sources"),
@@ -301,3 +306,24 @@ def _write_index_if_changed(wiki_root: Path, generated_content: str) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def generate_and_write_index(wiki_root: Path) -> bool:
+    """Generate wiki/index.md and write it atomically if the content has changed.
+
+    Uses the governed artifact contract for ``wiki/index.md`` via
+    ``atomic_replace_governed_artifact``.  The temp file is named
+    ``.index.md.kbtmp`` (governed naming convention).
+
+    **Assumes the caller already holds the wiki write lock.**
+
+    Returns ``True`` if the file was written, ``False`` if unchanged.
+    """
+    generated = generate_index_content(wiki_root)
+    index_path = wiki_root / "index.md"
+    existing = index_path.read_text(encoding="utf-8") if index_path.exists() else ""
+    if existing == generated:
+        return False
+    repo_root = wiki_root.parent
+    atomic_replace_governed_artifact(repo_root, "wiki/index.md", generated)
+    return True

@@ -9,19 +9,27 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import sys
 from typing import Sequence, TextIO
 
 from scripts.kb import contracts, update_index
+from scripts.kb.ingest_render import (
+    SourceProvenance,
+    _PROVISIONAL_GIT_SHA,
+    _build_provisional_source_provenance,
+    _build_source_ref,
+    _escape_quotes,
+    _render_source_page,
+)
 from scripts.kb.path_utils import RepoRelativePathError, resolve_within_repo
-from scripts.kb.sourceref import SourceRefValidationError, validate_sourceref
+from scripts.kb.sourceref import SourceRefValidationError
 from scripts.kb.write_utils import (
     LockUnavailableError,
     append_log_only_state_changes,
     exclusive_write_lock,
     open_atomic_temp_file,
     read_optional_text,
+    write_text_capturing_previous_safe,
 )
 
 
@@ -31,32 +39,6 @@ _APPLIED_POLICIES = (
     contracts.PolicyId.CONTINUE_AND_REPORT_PER_SOURCE.value,
     contracts.PolicyId.LOG_ONLY_STATE_CHANGES.value,
 )
-# Ingest runs before a commit exists for newly written raw/processed artifacts, so
-# it emits a canonical-shape provisional git SHA. Workflows must not treat this as
-# authoritative until a later commit-bound reconciliation step replaces it.
-_PROVISIONAL_GIT_SHA = "0" * 40
-
-
-@dataclass(frozen=True, slots=True)
-class SourceProvenance:
-    """Structured provenance status for machine-readable ingest outputs."""
-
-    status: str
-    authoritative: bool
-    review_mode: str
-    reconciliation: str
-    git_sha: str
-    git_sha_kind: str
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "status": self.status,
-            "authoritative": self.authoritative,
-            "review_mode": self.review_mode,
-            "reconciliation": self.reconciliation,
-            "git_sha": self.git_sha,
-            "git_sha_kind": self.git_sha_kind,
-        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,7 +378,7 @@ def _resolve_source_inputs(args: argparse.Namespace, repo_root: Path) -> list[st
     if not entries:
         raise IngestError(
             contracts.ReasonCode.INVALID_INPUT.value,
-            "sources manifest is empty",
+            "sources manifest is empty (add at least one source path, one per line, to the manifest file)",
         )
     return entries
 
@@ -546,7 +528,7 @@ def _ingest_source(repo_root: Path, source_input: str) -> _SourceIngestAttempt:
     )
 
     try:
-        page_changed, previous_content = _write_text_if_changed(source_page_path, source_page_content)
+        page_changed, previous_content = write_text_capturing_previous_safe(source_page_path, source_page_content)
     except OSError as exc:
         return _SourceIngestAttempt(
             outcome=SourceOutcome(
@@ -617,88 +599,6 @@ def _ingest_source(repo_root: Path, source_input: str) -> _SourceIngestAttempt:
             source_page_previous_content=previous_content,
         ),
     )
-
-
-def _build_source_ref(repo_root: Path, processed_relative: str, checksum: str) -> str:
-    repo_name = re.sub(r"[^A-Za-z0-9_.-]", "-", repo_root.name) or "repo"
-    source_ref = (
-        f"repo://local/{repo_name}/{processed_relative}@{_PROVISIONAL_GIT_SHA}"
-        f"#asset?sha256={checksum}"
-    )
-    validate_sourceref(source_ref)
-    return source_ref
-
-
-def _build_provisional_source_provenance() -> SourceProvenance:
-    return SourceProvenance(
-        status="provisional",
-        authoritative=False,
-        review_mode="authoritative_review_required",
-        reconciliation="commit_bound_pending",
-        git_sha=_PROVISIONAL_GIT_SHA,
-        git_sha_kind="placeholder",
-    )
-
-
-def _render_source_page(
-    *,
-    source_relative: str,
-    processed_relative: str,
-    source_ref: str,
-    provenance: SourceProvenance,
-    source_bytes: bytes,
-    checksum: str,
-) -> str:
-    title_token = Path(source_relative).stem.replace("_", " ").replace("-", " ").strip()
-    normalized_title = " ".join(title_token.split()).title() or Path(source_relative).name
-    page_title = f"Source: {normalized_title}"
-
-    lines = [
-        "---",
-        "type: source",
-        f'title: "{_escape_quotes(page_title)}"',
-        "status: active",
-        "sources:",
-        f'  - "{_escape_quotes(source_ref)}"',
-        "open_questions: []",
-        "confidence: 5",
-        "sensitivity: internal",
-        'updated_at: "1970-01-01T00:00:00Z"',
-        "tags:",
-        "  - source",
-        "---",
-        "",
-        f"# {page_title}",
-        "",
-        f"- inbox_path: `{source_relative}`",
-        f"- processed_path: `{processed_relative}`",
-        f"- sourceref: `{source_ref}`",
-        f"- provenance_status: `{provenance.status}`",
-        f"- provenance_authoritative: `{str(provenance.authoritative).lower()}`",
-        f"- provenance_review_mode: `{provenance.review_mode}`",
-        f"- provenance_reconciliation: `{provenance.reconciliation}`",
-        f"- provenance_git_sha_kind: `{provenance.git_sha_kind}`",
-        f"- checksum_sha256: `{checksum}`",
-        f"- bytes: {len(source_bytes)}",
-        "",
-    ]
-    return "\n".join(lines)
-
-
-def _escape_quotes(value: str) -> str:
-    return value.replace("\\", "\\\\").replace('"', '\\"')
-
-
-def _write_text_if_changed(path: Path, content: str) -> tuple[bool, str | None]:
-    previous_content: str | None = None
-    if path.exists() or path.is_symlink():
-        _ensure_not_symlink(path)
-        previous_content = path.read_text(encoding="utf-8")
-        if previous_content == content:
-            return False, previous_content
-
-    _write_text_atomically(path, content)
-    return True, previous_content
 
 
 def _restore_previous_content(path: Path, previous_content: str | None) -> None:
@@ -841,37 +741,17 @@ def _mark_written_outcomes_rolled_back(
 
 def _write_index_if_changed(wiki_root: Path) -> bool:
     try:
-        generated_content = update_index.generate_index_content(wiki_root)
+        return update_index.generate_and_write_index(wiki_root)
     except update_index.IndexGenerationError as exc:
         raise IngestError(
             contracts.ReasonCode.WRITE_FAILED.value,
             f"unable to generate index: {exc}",
         ) from exc
-
-    index_path = wiki_root / "index.md"
-    try:
-        if index_path.exists() or index_path.is_symlink():
-            _ensure_not_symlink(index_path)
-            existing_content = index_path.read_text(encoding="utf-8")
-        else:
-            existing_content = ""
     except OSError as exc:
         raise IngestError(
             contracts.ReasonCode.WRITE_FAILED.value,
-            f"unable to read existing index: {index_path} ({exc})",
+            f"unable to write index: {wiki_root / 'index.md'} ({exc})",
         ) from exc
-
-    if existing_content == generated_content:
-        return False
-
-    try:
-        _write_text_atomically(index_path, generated_content)
-    except OSError as exc:
-        raise IngestError(
-            contracts.ReasonCode.WRITE_FAILED.value,
-            f"unable to write index: {index_path} ({exc})",
-        ) from exc
-    return True
 
 
 def _render_log_entry(outcomes: list[SourceOutcome]) -> str:

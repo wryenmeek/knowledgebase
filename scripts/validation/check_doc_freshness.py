@@ -13,13 +13,14 @@ from typing import Sequence, TextIO
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts.kb import page_template_utils
-from scripts._optional_surface_common import JsonArgumentParser, looks_like_repo_root
-
-STATUS_PASS = "pass"
-STATUS_FAIL = "fail"
-
-REASON_CODE_OK = "ok"
-REASON_CODE_INVALID_INPUT = "invalid_input"
+from scripts._optional_surface_common import (
+    JsonArgumentParser,
+    STATUS_PASS,
+    STATUS_FAIL,
+    REASON_CODE_OK,
+    REASON_CODE_INVALID_INPUT,
+    looks_like_repo_root,
+)
 REASON_CODE_MISSING_UPDATED_AT = "missing_updated_at"
 REASON_CODE_INVALID_UPDATED_AT = "invalid_updated_at"
 REASON_CODE_STALE_DOCUMENT = "stale_document"

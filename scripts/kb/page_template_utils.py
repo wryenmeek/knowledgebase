@@ -123,6 +123,16 @@ def strip_quotes(value: str) -> str:
     return value
 
 
+def extract_frontmatter_keys(frontmatter: str) -> set[str]:
+    """Return the set of top-level key names present in a YAML frontmatter block."""
+    keys: set[str] = set()
+    for line in frontmatter.splitlines():
+        match = _FRONTMATTER_KEY_RE.match(line)
+        if match:
+            keys.add(match.group(1))
+    return keys
+
+
 def extract_headings(body: str) -> set[str]:
     headings: set[str] = set()
     in_fenced_block = False
@@ -144,6 +154,7 @@ __all__ = [
     "TEMPLATE_SECTION_REQUIREMENTS",
     "TOPICAL_NAMESPACES",
     "extract_frontmatter",
+    "extract_frontmatter_keys",
     "extract_headings",
     "is_nested_topical_page",
     "normalize_page_path",

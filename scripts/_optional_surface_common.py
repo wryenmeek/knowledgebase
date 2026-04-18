@@ -8,13 +8,17 @@ import hashlib
 import json
 from pathlib import Path
 import sys
-from typing import Any, Callable, Sequence, TextIO
+from typing import Any, Callable, Sequence, TextIO, TypedDict
 
 STATUS_PASS = "pass"
 STATUS_FAIL = "fail"
 
 REASON_CODE_OK = "ok"
 REASON_CODE_INVALID_INPUT = "invalid_input"
+# Note: scripts/kb/qmd_preflight.py independently defines analogous STATUS_PASS / STATUS_FAIL
+# and REASON_CODE_OK / REASON_CODE_INVALID_INPUT constants. This is intentional: qmd_preflight
+# is a core scripts/kb/ module deployed in isolation (fixture repos copy only scripts/kb/) and
+# cannot import from the broader scripts/ package. Do not "unify" across that boundary.
 REASON_CODE_PREREQ_MISSING_REPO_ROOT = "prereq_missing:repo_root"
 REASON_CODE_APPROVAL_REQUIRED = "approval_required"
 REASON_CODE_WRITE_SURFACE_NOT_DECLARED = "write_surface_not_declared"
@@ -35,6 +39,26 @@ PLACEHOLDER_MARKERS: tuple[str, ...] = (
 class JsonArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         raise ValueError(message)
+
+
+class SurfaceItem(TypedDict, total=False):
+    """Expected shape of each item in ``SurfaceResult.items``.
+
+    All items carry the four required fields; surface-specific keys are optional.
+    Callers may include additional keys — the TypedDict documents the common schema
+    without enforcing it at runtime.
+
+    Required fields (always present):
+        path:        Repo-relative path of the file being assessed.
+        status:      ``STATUS_PASS`` or ``STATUS_FAIL``.
+        reason_code: A stable machine-readable code from the surface's reason-code set.
+        message:     Human-readable description of the result.
+    """
+
+    path: str
+    status: str
+    reason_code: str
+    message: str
 
 
 @dataclass(frozen=True, slots=True)

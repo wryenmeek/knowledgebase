@@ -40,11 +40,11 @@ def try_normalize_repo_relative_path(
 def normalize_repo_relative_path(path: str | PathLike[str]) -> str:
     normalized, error_kind = try_normalize_repo_relative_path(path)
     if error_kind == ERROR_KIND_PATH_TRAVERSAL:
-        raise RepoRelativePathError("paths must not contain traversal or non-canonical segments")
+        raise RepoRelativePathError("paths must not contain traversal or non-canonical segments (remove .. components and normalize the path before passing it)")
     if error_kind == ERROR_KIND_INVALID_PATH:
         if not normalized or normalized.startswith("/") or "\\" in normalized or "//" in normalized:
-            raise RepoRelativePathError("paths must be repository-relative POSIX paths")
-        raise RepoRelativePathError("paths must not contain traversal or non-canonical segments")
+            raise RepoRelativePathError("paths must be repository-relative POSIX paths (use a forward-slash path with no leading slash, e.g. wiki/pages/my-page.md)")
+        raise RepoRelativePathError("paths must not contain traversal or non-canonical segments (remove .. components and normalize the path before passing it)")
     return normalized
 
 
