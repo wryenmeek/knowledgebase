@@ -38,6 +38,10 @@ Heavyweight maintenance automation remains deferred outside MVP. This persona st
 - `.github/skills/knowledge-schema-and-metadata-governance/SKILL.md`
 - `.github/skills/search-and-discovery-optimization/SKILL.md`
 - `.github/skills/sync-knowledgebase-state/SKILL.md`
+- `.github/skills/generate-maintenance-docs/SKILL.md`
+- `.github/skills/refresh-context-pages/SKILL.md`
+- `.github/skills/fill-context-pages/SKILL.md`
+- `.github/skills/snapshot-knowledgebase/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`

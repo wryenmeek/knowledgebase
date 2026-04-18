@@ -31,6 +31,9 @@ Act as the hard evidence gate for the ingest-safe lane. In this slice, the verif
 - `.github/skills/source-driven-development/SKILL.md`
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `.github/skills/security-and-hardening/SKILL.md`
+- `.github/skills/verify-citations/SKILL.md`
+- `.github/skills/write-sourceref-citations/SKILL.md`
+- `.github/skills/run-deterministic-validators/SKILL.md`
 - `AGENTS.md`
 - `schema/ingest-checklist.md`
 - `schema/metadata-schema-contract.md`

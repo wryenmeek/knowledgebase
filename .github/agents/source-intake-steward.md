@@ -30,6 +30,10 @@ Own the trust boundary between `raw/inbox/` and the rest of the repository. This
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `.github/skills/source-driven-development/SKILL.md`
 - `.github/skills/security-and-hardening/SKILL.md`
+- `.github/skills/validate-inbox-source/SKILL.md`
+- `.github/skills/convert-sources-to-md/SKILL.md`
+- `.github/skills/write-sourceref-citations/SKILL.md`
+- `.github/skills/append-log-entry/SKILL.md`
 - `AGENTS.md`
 - `schema/ingest-checklist.md`
 - `raw/processed/SPEC.md`

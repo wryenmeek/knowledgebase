@@ -28,12 +28,16 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 
 ### Lifecycle mapping
 
+- **Explore** → `idea-refine`
 - **Define** → `spec-driven-development`
 - **Plan** → `planning-and-task-breakdown`
 - **Build** → `incremental-implementation`, `test-driven-development`
 - **Verify** → `debugging-and-error-recovery`
 - **Review** → `code-review-and-quality`
+- **Document** → `documentation-and-adrs`
+- **Automate** → `ci-cd-and-automation`
 - **Ship** → `shipping-and-launch`
+- **Self-audit** → `audit-knowledgebase-workspace`
 
 ### Intent to skill mapping
 

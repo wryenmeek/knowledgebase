@@ -38,6 +38,8 @@ This persona is the entry gate. It does not bypass governance and does not autho
 - `.github/skills/review-wiki-plan/SKILL.md`
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `.github/skills/source-driven-development/SKILL.md`
+- `.github/skills/enforce-repository-boundaries/SKILL.md`
+- `.github/skills/run-deterministic-validators/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`

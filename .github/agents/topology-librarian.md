@@ -33,6 +33,11 @@ Maintain link structure, index quality, and discoverability for policy-cleared k
 - `.github/skills/knowledge-schema-and-metadata-governance/SKILL.md`
 - `.github/skills/sync-knowledgebase-state/SKILL.md`
 - `.github/skills/validate-wiki-governance/SKILL.md`
+- `.github/skills/check-link-topology/SKILL.md`
+- `.github/skills/append-log-entry/SKILL.md`
+- `.github/skills/update-index/SKILL.md`
+- `.github/skills/suggest-backlinks/SKILL.md`
+- `.github/skills/validate-taxonomy-placement/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`

@@ -30,6 +30,8 @@ Apply the repository's editorial and operational constitution after evidence rev
 - `.github/skills/review-wiki-plan/SKILL.md`
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `.github/skills/security-and-hardening/SKILL.md`
+- `.github/skills/log-policy-conflict/SKILL.md`
+- `.github/skills/run-deterministic-validators/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`

@@ -41,6 +41,7 @@ ADR-007 keeps telemetry-heavy observability, new runtime surfaces, and broad ana
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `.github/skills/source-driven-development/SKILL.md`
 - `.github/skills/prioritize-quality-follow-up/SKILL.md`
+- `.github/skills/report-content-quality/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`

@@ -36,6 +36,8 @@ Turn a policy-cleared, evidence-backed package into a proposed wiki create/updat
 - `.github/skills/enforce-npov/SKILL.md`
 - `.github/skills/source-driven-development/SKILL.md`
 - `.github/skills/validate-wiki-governance/SKILL.md`
+- `.github/skills/enforce-page-template/SKILL.md`
+- `.github/skills/append-log-entry/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`
