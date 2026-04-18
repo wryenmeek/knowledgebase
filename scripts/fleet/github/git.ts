@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// Wrap internal utilities in exported objects to facilitate mocking in the Bun testing environment
+export const gitCommands = {
+  execFileAsync
+};
 
 export interface GitRepoInfo {
   owner: string;
@@ -37,7 +42,8 @@ export interface GitRepoInfo {
  * console.log(repo.fullName); // "owner/repo"
  */
 export async function getGitRepoInfo(remoteName = "origin"): Promise<GitRepoInfo> {
-  const { stdout } = await execAsync(`git remote get-url ${remoteName}`);
+  // Use execFile with `--` to prevent command and option injection
+  const { stdout } = await gitCommands.execFileAsync("git", ["remote", "get-url", "--", remoteName]);
   const remoteUrl = stdout.trim();
   
   return parseGitRemoteUrl(remoteUrl);
@@ -86,6 +92,6 @@ export function parseGitRemoteUrl(remoteUrl: string): GitRepoInfo {
  * @throws Error if not in a git repository
  */
 export async function getCurrentBranch(): Promise<string> {
-  const { stdout } = await execAsync("git rev-parse --abbrev-ref HEAD");
+  const { stdout } = await gitCommands.execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
   return stdout.trim();
 }
