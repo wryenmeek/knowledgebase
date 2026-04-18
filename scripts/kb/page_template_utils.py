@@ -20,6 +20,18 @@ _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
 TOPICAL_NAMESPACES: frozenset[str] = frozenset({"sources", "entities", "concepts", "analyses"})
 
+REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
+    "type",
+    "title",
+    "status",
+    "sources",
+    "open_questions",
+    "confidence",
+    "sensitivity",
+    "updated_at",
+    "tags",
+)
+
 
 def is_nested_topical_page(path: Path, wiki_root: Path) -> bool:
     parts = path.relative_to(wiki_root).parts
@@ -128,6 +140,7 @@ def extract_headings(body: str) -> set[str]:
 
 
 __all__ = [
+    "REQUIRED_FRONTMATTER_KEYS",
     "TEMPLATE_SECTION_REQUIREMENTS",
     "TOPICAL_NAMESPACES",
     "extract_frontmatter",

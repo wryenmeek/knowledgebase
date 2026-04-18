@@ -16,19 +16,8 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.kb import page_template_utils
+from scripts.kb.page_template_utils import REQUIRED_FRONTMATTER_KEYS
 from scripts.kb.write_utils import LockUnavailableError, exclusive_write_lock, open_atomic_temp_file
-
-REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
-    "type",
-    "title",
-    "status",
-    "sources",
-    "open_questions",
-    "confidence",
-    "sensitivity",
-    "updated_at",
-    "tags",
-)
 
 SECTION_LAYOUT: tuple[tuple[str, str], ...] = (
     ("Sources", "sources"),

@@ -12,18 +12,8 @@ import sys
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts.kb import page_template_utils, sourceref
+from scripts.kb.page_template_utils import REQUIRED_FRONTMATTER_KEYS
 
-REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
-    "type",
-    "title",
-    "status",
-    "sources",
-    "open_questions",
-    "confidence",
-    "sensitivity",
-    "updated_at",
-    "tags",
-)
 
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:")
 _MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
