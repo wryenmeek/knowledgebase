@@ -19,6 +19,7 @@ from scripts.kb.write_utils import (
     LockUnavailableError,
     append_log_only_state_changes,
     exclusive_write_lock,
+    open_atomic_temp_file,
 )
 
 
@@ -724,7 +725,7 @@ def _write_text_atomically(path: Path, content: str) -> None:
     temp_path = path.with_name(f"{path.name}.tmp")
     temp_created = False
     try:
-        with _open_temp_text_path(temp_path) as handle:
+        with open_atomic_temp_file(temp_path) as handle:
             temp_created = True
             handle.write(content)
         _ensure_not_symlink(path)
@@ -734,14 +735,6 @@ def _write_text_atomically(path: Path, content: str) -> None:
             with contextlib.suppress(OSError):
                 temp_path.unlink()
         raise
-
-
-def _open_temp_text_path(temp_path: Path):
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd = os.open(temp_path, flags, 0o600)
-    return os.fdopen(fd, "w", encoding="utf-8", newline="\n")
 
 
 def _rollback_ingest_mutations(

@@ -381,7 +381,6 @@ def _run_git(
         suffix = f" ({stderr})" if stderr else ""
         _raise(reason_code, f"{error_message}{suffix}")
     return completed
-    raise AssertionError("unreachable")
 
 
 def _path_has_symlink_component(path: Path, *, stop_at: Path) -> bool:

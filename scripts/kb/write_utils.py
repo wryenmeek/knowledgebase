@@ -106,7 +106,7 @@ def atomic_replace_governed_artifact(
         temp_path.unlink()
 
     try:
-        with _open_atomic_temp_path(temp_path) as handle:
+        with open_atomic_temp_file(temp_path) as handle:
             handle.write(content)
         os.replace(temp_path, target_path)
     except OSError:
@@ -117,7 +117,7 @@ def atomic_replace_governed_artifact(
     return target_path
 
 
-def _open_atomic_temp_path(temp_path: Path):
+def open_atomic_temp_file(temp_path: Path):
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -169,6 +169,7 @@ __all__ = [
     "governed_artifact_requires_atomic_replace",
     "governed_artifact_requires_lock",
     "lock_unavailable_reason",
+    "open_atomic_temp_file",
     "append_log_only_state_changes",
     "validate_log_entry",
 ]

@@ -13,6 +13,7 @@ from typing import Sequence, TextIO
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts.kb import page_template_utils
+from scripts._optional_surface_common import JsonArgumentParser, looks_like_repo_root
 
 STATUS_PASS = "pass"
 STATUS_FAIL = "fail"
@@ -85,7 +86,7 @@ def run_freshness(
     paths: Sequence[str] | None = None,
 ) -> FreshnessReport:
     normalized_repo_root = Path(repo_root).resolve()
-    if not _looks_like_repo_root(normalized_repo_root):
+    if not looks_like_repo_root(normalized_repo_root):
         return FreshnessReport(
             status=STATUS_FAIL,
             reason_code=REASON_CODE_PREREQ_MISSING_REPO_ROOT,
@@ -178,22 +179,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     return run_cli(argv=argv)
 
 
-class _JsonArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        raise ValueError(message)
-
-
 def _build_parser() -> argparse.ArgumentParser:
-    parser = _JsonArgumentParser(description="Run deterministic freshness analysis over repo-local markdown.")
+    parser = JsonArgumentParser(description="Run deterministic freshness analysis over repo-local markdown.")
     parser.add_argument("--scope", choices=tuple(SCOPE_ROOTS), default="wiki")
     parser.add_argument("--path", action="append", default=[], help="Optional repo-relative markdown file or directory.")
     parser.add_argument("--as-of", required=True, help="Required ISO date used for deterministic age checks.")
     parser.add_argument("--max-age-days", required=True, type=int, help="Maximum allowed age in days.")
     return parser
-
-
-def _looks_like_repo_root(repo_root: Path) -> bool:
-    return repo_root.is_dir() and (repo_root / "AGENTS.md").is_file()
 
 
 def _parse_iso_date(value: str) -> date:
