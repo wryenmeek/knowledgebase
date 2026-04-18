@@ -10,32 +10,20 @@ import unittest
 from unittest.mock import patch
 
 from scripts.kb import contracts, ingest
-
+from tests.kb.harnesses import RuntimeWorkspaceTestCase
 
 _RUNTIME_ROOT = Path(__file__).resolve().parent / ".runtime_ingest"
 
 
-class IngestCliTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.workspace = _RUNTIME_ROOT / self._testMethodName
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
+class IngestCliTests(RuntimeWorkspaceTestCase):
+    RUNTIME_ROOT_NAME = ".runtime_ingest"
 
+    def setUp(self) -> None:
+        super().setUp()
         (self.workspace / "raw" / "inbox").mkdir(parents=True, exist_ok=True)
         (self.workspace / "raw" / "processed").mkdir(parents=True, exist_ok=True)
         (self.workspace / "wiki").mkdir(parents=True, exist_ok=True)
         (self.workspace / "AGENTS.md").write_text("schema fixture\n", encoding="utf-8")
-
-    def tearDown(self) -> None:
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-        if _RUNTIME_ROOT.exists() and not any(_RUNTIME_ROOT.iterdir()):
-            _RUNTIME_ROOT.rmdir()
-
-    def _write_file(self, relative_path: str, content: str) -> None:
-        path = self.workspace / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
 
     def _run_ingest(self, *args: str) -> tuple[int, str, str]:
         stdout = StringIO()
@@ -48,17 +36,10 @@ class IngestCliTests(unittest.TestCase):
         )
         return exit_code, stdout.getvalue(), stderr.getvalue()
 
-    def _snapshot_workspace(self) -> dict[str, bytes]:
-        snapshot: dict[str, bytes] = {}
-        for file_path in sorted(self.workspace.rglob("*")):
-            if file_path.is_file():
-                snapshot[file_path.relative_to(self.workspace).as_posix()] = file_path.read_bytes()
-        return snapshot
-
     def test_single_source_success_and_noop_rerun(self) -> None:
         source_rel = "raw/inbox/alpha-source.md"
         source_content = "# Alpha source\n\nDeterministic content.\n"
-        self._write_file(source_rel, source_content)
+        self.write_file(source_rel, source_content)
 
         first_code, first_stdout, first_stderr = self._run_ingest(
             "--source",
@@ -130,9 +111,9 @@ class IngestCliTests(unittest.TestCase):
         self.assertEqual(source_page.read_text(encoding="utf-8"), page_before)
 
     def test_mixed_batch_partial_failure_continues_and_reports(self) -> None:
-        self._write_file("raw/inbox/alpha.md", "alpha\n")
-        self._write_file("raw/inbox/beta.md", "beta\n")
-        self._write_file(
+        self.write_file("raw/inbox/alpha.md", "alpha\n")
+        self.write_file("raw/inbox/beta.md", "beta\n")
+        self.write_file(
             "raw/inbox/manifest.txt",
             "\n".join(
                 [
@@ -183,7 +164,7 @@ class IngestCliTests(unittest.TestCase):
         self.assertTrue((self.workspace / "wiki" / "sources" / "beta.md").exists())
 
     def test_path_traversal_is_rejected_fail_closed(self) -> None:
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         exit_code, stdout, stderr = self._run_ingest(
             "--source",
@@ -201,14 +182,14 @@ class IngestCliTests(unittest.TestCase):
         self.assertEqual(payload["status"], contracts.ResultStatus.FAILED.value)
         self.assertEqual(payload["reason_code"], contracts.ReasonCode.INVALID_INPUT.value)
         self.assertIn("path escapes repository boundary", payload["message"])
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assertEqual(before, self.snapshot_workspace())
 
     def test_symlinked_source_file_is_rejected_fail_closed(self) -> None:
         real_source = self.workspace / "raw" / "inbox" / "real.md"
         real_source.write_text("real\n", encoding="utf-8")
         linked_source = self.workspace / "raw" / "inbox" / "linked.md"
         linked_source.symlink_to(real_source)
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         exit_code, stdout, stderr = self._run_ingest(
             "--source",
@@ -226,15 +207,15 @@ class IngestCliTests(unittest.TestCase):
         self.assertEqual(payload["status"], contracts.ResultStatus.FAILED.value)
         self.assertEqual(payload["reason_code"], contracts.ReasonCode.INVALID_INPUT.value)
         self.assertIn("path must not use symlinks", payload["message"])
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assertEqual(before, self.snapshot_workspace())
 
     def test_symlinked_sources_manifest_is_rejected_fail_closed(self) -> None:
-        self._write_file("raw/inbox/alpha.md", "alpha\n")
+        self.write_file("raw/inbox/alpha.md", "alpha\n")
         manifest_target = self.workspace / "raw" / "inbox" / "manifest-target.txt"
         manifest_target.write_text("raw/inbox/alpha.md\n", encoding="utf-8")
         manifest_link = self.workspace / "raw" / "inbox" / "manifest.txt"
         manifest_link.symlink_to(manifest_target)
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         exit_code, stdout, stderr = self._run_ingest(
             "--sources-manifest",
@@ -254,13 +235,13 @@ class IngestCliTests(unittest.TestCase):
         self.assertEqual(payload["status"], contracts.ResultStatus.FAILED.value)
         self.assertEqual(payload["reason_code"], contracts.ReasonCode.INVALID_INPUT.value)
         self.assertIn("path must not use symlinks", payload["message"])
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assertEqual(before, self.snapshot_workspace())
 
     def test_index_generation_failure_rolls_back_source_mutations(self) -> None:
         source_rel = "raw/inbox/rollback.md"
         source_content = "rollback\n"
-        self._write_file(source_rel, source_content)
-        self._write_file("wiki/entities/invalid.md", "# missing frontmatter\n")
+        self.write_file(source_rel, source_content)
+        self.write_file("wiki/entities/invalid.md", "# missing frontmatter\n")
 
         exit_code, stdout, stderr = self._run_ingest(
             "--source",
@@ -299,7 +280,7 @@ class IngestCliTests(unittest.TestCase):
 
     def test_ingest_rejects_symlinked_source_page_parent(self) -> None:
         source_rel = "raw/inbox/alpha-source.md"
-        self._write_file(source_rel, "alpha\n")
+        self.write_file(source_rel, "alpha\n")
         external_sources_dir = self.workspace / "external-sources"
         external_sources_dir.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(self.workspace / "wiki")
@@ -330,7 +311,7 @@ class IngestCliTests(unittest.TestCase):
 
     def test_ingest_rejects_symlinked_processed_parent(self) -> None:
         source_rel = "raw/inbox/alpha-source.md"
-        self._write_file(source_rel, "alpha\n")
+        self.write_file(source_rel, "alpha\n")
         external_processed_dir = self.workspace / "external-processed"
         external_processed_dir.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(self.workspace / "raw" / "processed")

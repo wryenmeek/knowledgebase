@@ -5,22 +5,18 @@ from __future__ import annotations
 import json
 from io import StringIO
 from pathlib import Path
-import shutil
 import unittest
 from unittest.mock import patch
 
 from scripts.kb import persist_query
+from tests.kb.harnesses import RuntimeWorkspaceTestCase
 
 
-_RUNTIME_ROOT = Path(__file__).resolve().parent / ".runtime_persist_query"
+class PersistQueryCliTests(RuntimeWorkspaceTestCase):
+    RUNTIME_ROOT_NAME = ".runtime_persist_query"
 
-
-class PersistQueryCliTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.workspace = _RUNTIME_ROOT / self._testMethodName
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-
+        super().setUp()
         self.wiki_root = self.workspace / "wiki"
         self.wiki_root.mkdir(parents=True, exist_ok=True)
         (self.wiki_root / "index.md").write_text("stale-index\n", encoding="utf-8")
@@ -29,12 +25,6 @@ class PersistQueryCliTests(unittest.TestCase):
             encoding="utf-8",
         )
         (self.workspace / "AGENTS.md").write_text("agents contract\n", encoding="utf-8")
-
-    def tearDown(self) -> None:
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
-        if _RUNTIME_ROOT.exists() and not any(_RUNTIME_ROOT.iterdir()):
-            _RUNTIME_ROOT.rmdir()
 
     def _build_process_page(self, title: str) -> str:
         return "\n".join(
@@ -65,14 +55,6 @@ class PersistQueryCliTests(unittest.TestCase):
         )
         payload = json.loads(output.getvalue())
         return exit_code, payload
-
-    def _snapshot_workspace(self) -> dict[str, bytes]:
-        snapshot: dict[str, bytes] = {}
-        for file_path in sorted(self.workspace.rglob("*")):
-            if not file_path.is_file():
-                continue
-            snapshot[file_path.relative_to(self.workspace).as_posix()] = file_path.read_bytes()
-        return snapshot
 
     def _source(self, name: str, checksum_char: str) -> str:
         return (
@@ -190,7 +172,7 @@ class PersistQueryCliTests(unittest.TestCase):
 
     def test_policy_miss_returns_no_write_policy_and_makes_no_changes(self) -> None:
         source_a = self._source("source-a", "a")
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         exit_code, payload = self._run_cli(
             "--query",
@@ -215,11 +197,11 @@ class PersistQueryCliTests(unittest.TestCase):
             index_updated=False,
             log_appended=False,
         )
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assertEqual(before, self.snapshot_workspace())
 
     def test_policy_sources_below_min_returns_no_write_policy_without_mutation(self) -> None:
         source_a = self._source("source-a", "a")
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         exit_code, payload = self._run_cli(
             "--query",
@@ -244,12 +226,12 @@ class PersistQueryCliTests(unittest.TestCase):
             index_updated=False,
             log_appended=False,
         )
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assertEqual(before, self.snapshot_workspace())
 
     def test_policy_unresolved_contradiction_returns_no_write_policy_without_mutation(self) -> None:
         source_a = self._source("source-a", "a")
         source_b = self._source("source-b", "b")
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         exit_code, payload = self._run_cli(
             "--query",
@@ -277,10 +259,10 @@ class PersistQueryCliTests(unittest.TestCase):
             index_updated=False,
             log_appended=False,
         )
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assertEqual(before, self.snapshot_workspace())
 
     def test_invalid_input_returns_failed_envelope_and_non_zero_exit(self) -> None:
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         exit_code, payload = self._run_cli(
             "--query",
@@ -305,14 +287,14 @@ class PersistQueryCliTests(unittest.TestCase):
             index_updated=False,
             log_appended=False,
         )
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assertEqual(before, self.snapshot_workspace())
 
     def test_index_failure_after_analysis_write_rolls_back_workspace_state(self) -> None:
         source_a = self._source("source-a", "a")
         source_b = self._source("source-b", "b")
         summary = "Dialysis coverage varies by plan and service context."
         (self.wiki_root / ".kb_write.lock").write_text("", encoding="utf-8")
-        before = self._snapshot_workspace()
+        before = self.snapshot_workspace()
 
         def _fail_after_analysis_write(_wiki_root: Path) -> bool:
             self.assertEqual(len(list((self.wiki_root / "analyses").glob("*.md"))), 1)
@@ -349,7 +331,7 @@ class PersistQueryCliTests(unittest.TestCase):
             index_updated=False,
             log_appended=False,
         )
-        self.assertEqual(before, self._snapshot_workspace())
+        self.assertEqual(before, self.snapshot_workspace())
 
     def test_default_envelope_wiring_on_invalid_input(self) -> None:
         """Verify envelope defaults when PersistRequest/Outcome are absent."""
