@@ -111,12 +111,10 @@ jobs:
                 if [ -n "$SESSION_ID" ] && [ -n "$FLEET_DIR" ]; then
                   TASK_ID=$(jq -r --arg sid "$SESSION_ID" \
                     '.[] | select(.sessionId == $sid) | .taskId // empty' \
-                    "${FLEET_DIR}sessions.json" 2>/dev/null || true)
-                  if [ -n "$TASK_ID" ]; then
-                    TASK_PROMPT=$(jq -r --arg tid "$TASK_ID" \
-                      '.tasks[] | select(.id == $tid) | .prompt // empty' \
-                      "${FLEET_DIR}issue_tasks.json" 2>/dev/null || true)
-                  fi
+                    "${FLEET_DIR%/}/sessions.json" 2>/dev/null || true)
+                  [ -n "$TASK_ID" ] && TASK_PROMPT=$(jq -r --arg tid "$TASK_ID" \
+                    '.tasks[] | select(.id == $tid) | .prompt // empty' \
+                    "${FLEET_DIR%/}/issue_tasks.json" 2>/dev/null || true)
                 fi
                 # Fall back to PR body if original prompt not found
                 if [ -z "$TASK_PROMPT" ]; then
