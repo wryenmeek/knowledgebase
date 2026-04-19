@@ -1015,6 +1015,8 @@ class ManageRedirectsWrapperTests(_RuntimeWrapperFixture):
 
         self.assertEqual(result.status, "fail")
         self.assertEqual(result.reason_code, "duplicate_redirect")
+        self.assertTrue(result.lock_required)
+        self.assertEqual(result.lock_path, "wiki/.kb_write.lock")
 
     def test_slug_normalization_lowercases_and_hyphenates(self) -> None:
         result = self._run_redirects(
@@ -1174,7 +1176,7 @@ class ComputeKpisWrapperTests(_RuntimeWrapperFixture):
         # malformed file is skipped; KPIs are computed from the valid file only
         self.assertEqual(result.summary["kpis"]["page_count"], 1)
 
-    def test_findings_without_numeric_scores_returns_zero_page_count(self) -> None:
+    def test_findings_without_numeric_scores_uses_all_findings_as_page_count(self) -> None:
         import json
         # Findings exist but none have numeric "score" fields
         artifact = {"findings": [{"page_path": "wiki/p.md"}, {"page_path": "wiki/q.md"}]}
