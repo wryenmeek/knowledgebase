@@ -108,6 +108,20 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("schema/**",),
         "Hard-fail behavior": ("unsupported report checks", "undeclared artifacts", "fail closed"),
     },
+    "scripts/reporting/content_quality_report.py` — `persist` mode only": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("wiki/reports/content-quality-*.json",),
+        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
+        "Hard-fail behavior": ("schema validation failure", "lock contention", "fail closed"),
+    },
+    "scripts/reporting/quality_runtime.py` — `score-update` and `report` modes": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("wiki/reports/quality-scores-*.json", "wiki/reports/quality-report-*.json"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
+        "Hard-fail behavior": ("schema validation failure", "lock contention", "fail closed"),
+    },
     "scripts/context/**": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("None direct", "delegate"),

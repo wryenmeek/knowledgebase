@@ -43,7 +43,7 @@ fields:
 
 | Field | Type | Required | Semantics |
 |---|---|---|---|
-| `report_type` | string | yes | Identifier for the report class. Must match the filename prefix. One of: `quality-scores`, `content-quality`. |
+| `report_type` | string | yes | Identifier for the report class. Must match the filename prefix. One of: `quality-scores`, `quality-report`, `content-quality`. |
 | `generated_at` | string | yes | ISO-8601 UTC timestamp of when the report was produced (e.g., `"2026-04-19T01:23:00Z"`). |
 | `scope` | array of strings | yes | Repo-relative glob patterns or explicit paths that were analyzed (e.g., `["wiki/**/*.md"]`). |
 | `surface` | string | yes | The script surface that produced this artifact (e.g., `"scripts/reporting/quality_runtime.py"`). |
@@ -64,7 +64,7 @@ Captures computed priority scores and quality signals per wiki page.
 
 | Field | Type | Required | Semantics |
 |---|---|---|---|
-| `page_path` | string | yes | Repo-relative path to the analyzed wiki page. |
+| `path` | string | yes | Repo-relative path to the analyzed wiki page. |
 | `priority_score` | integer | yes | Computed prioritization score (higher = higher curation priority). Non-negative. |
 | `confidence` | integer or null | yes | Raw `confidence` frontmatter value, or `null` if absent. |
 | `missing_sources` | boolean | yes | Whether the page lacks a `sources` frontmatter field. |
@@ -84,7 +84,14 @@ Captures computed priority scores and quality signals per wiki page.
 | `recommendation_only` | boolean | yes | Must be `false` for `score-update` artifacts. |
 | `scoring_mode` | string | yes | Must be `"score-update"` for this report type. |
 
-### `content-quality` (from `content_quality_report.py persist`)
+### `quality-report` (from `quality_runtime.py report`)
+
+Produced by `scripts/reporting/quality_runtime.py` in `report` mode.
+Uses the same findings and summary schema as `quality-scores` (see above)
+but with `"report_type": "quality-report"` and `"scoring_mode": "report"` in
+the summary. Intended for human-readable quality review snapshots.
+
+
 
 Produced by `scripts/reporting/content_quality_report.py` in `persist` mode.
 Captures structural quality signals per wiki page.

@@ -1,8 +1,9 @@
-"""Read-only content quality reporting with explicit no-persist boundary."""
+"""Content quality reporting with approval-gated persist mode."""
 
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
 from typing import Sequence, TextIO
@@ -12,8 +13,10 @@ if __package__ in (None, ""):
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
     APPROVAL_NONE,
+    LOCK_PATH,
     JsonArgumentParser,
     REASON_CODE_OK,
+    STATUS_FAIL,
     STATUS_PASS,
     SurfaceResult,
     add_common_surface_args,
@@ -26,9 +29,10 @@ from scripts._optional_surface_common import (
     repo_relative,
     repo_root_failure,
     run_surface_cli,
-    write_surface_not_declared_result,
+    write_report_artifact,
 )
 from scripts.kb import page_template_utils
+from scripts.kb.write_utils import LockUnavailableError
 
 SURFACE = "scripts/reporting/content_quality_report.py"
 SUPPORTED_MODES: tuple[str, ...] = ("summary", "placeholder-audit", "persist")
@@ -39,7 +43,7 @@ ALLOWED_REPORT_SUFFIXES: tuple[str, ...] = (".md",)
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = JsonArgumentParser(
-        description="Summarize repo-local content quality without persisting report artifacts."
+        description="Summarize repo-local content quality; persist mode writes a governed report artifact."
     )
     add_common_surface_args(parser, modes=SUPPORTED_MODES, default_mode="summary")
     return parser
@@ -50,7 +54,7 @@ def _path_rules() -> dict[str, object]:
         allowed_roots=ALLOWED_REPORT_ROOTS,
         allowed_suffixes=ALLOWED_REPORT_SUFFIXES,
     )
-    rules["durable_report_schema_declared"] = False
+    rules["durable_report_schema_declared"] = True
     return rules
 
 
@@ -133,13 +137,55 @@ def run_quality_report(
             path_rules=path_rules,
             lock_required=True,
         )
-    return write_surface_not_declared_result(
+    artifact = {
+        "report_type": "content-quality",
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "scope": list(paths) if paths else list(ALLOWED_REPORT_ROOTS),
+        "surface": SURFACE,
+        "findings": list(items),
+        "summary": {
+            "selected_count": len(items),
+            "missing_sources_count": missing_sources,
+            "missing_updated_at_count": missing_updated_at,
+            "placeholder_file_count": placeholder_files,
+        },
+    }
+    try:
+        written_path = write_report_artifact(normalized_repo_root, "content-quality", artifact)
+    except LockUnavailableError as exc:
+        return SurfaceResult(
+            surface=SURFACE, mode=mode, status=STATUS_FAIL,
+            reason_code="lock_unavailable",
+            message=str(exc), approval=approval,
+            lock_path=LOCK_PATH, lock_required=True,
+            path_rules=path_rules, items=(),
+        )
+    except OSError as exc:
+        return SurfaceResult(
+            surface=SURFACE, mode=mode, status=STATUS_FAIL,
+            reason_code="write_failed",
+            message=f"report write failed: {exc}",
+            approval=approval, lock_path=LOCK_PATH, lock_required=True,
+            path_rules=path_rules, items=(),
+        )
+    return SurfaceResult(
         surface=SURFACE,
         mode=mode,
+        status=STATUS_PASS,
+        reason_code=REASON_CODE_OK,
+        message=f"content quality report persisted to {repo_relative(normalized_repo_root, written_path)}",
         approval=approval,
-        path_rules=path_rules,
+        lock_path=LOCK_PATH,
         lock_required=True,
-        message="scripts/reporting/** cannot persist report artifacts until a schema-backed durable output contract exists",
+        path_rules=path_rules,
+        items=tuple(items),
+        summary={
+            "selected_count": len(items),
+            "missing_sources_count": missing_sources,
+            "missing_updated_at_count": missing_updated_at,
+            "placeholder_file_count": placeholder_files,
+            "written_path": repo_relative(normalized_repo_root, written_path),
+        },
     )
 
 

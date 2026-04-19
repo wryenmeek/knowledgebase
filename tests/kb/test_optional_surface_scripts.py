@@ -406,7 +406,7 @@ class OptionalSurfaceScriptTests(RuntimeWorkspaceTestCase):
         self.assertEqual(compare_exit, 0)
         self.assertIn("wiki/page.md", compare_payload["summary"]["changed"])
 
-    def test_content_quality_report_summary_and_persist_fail_closed(self) -> None:
+    def test_content_quality_report_summary_counts_placeholders(self) -> None:
         summary_exit, summary_payload = self._run_script(
             QUALITY_REPORT_PATH,
             "--mode",
@@ -419,7 +419,21 @@ class OptionalSurfaceScriptTests(RuntimeWorkspaceTestCase):
         self.assertEqual(summary_exit, 0)
         self.assertEqual(summary_payload["summary"]["placeholder_file_count"], 2)
 
-        persist_exit, persist_payload = self._run_script(
+    def test_content_quality_persist_requires_approval(self) -> None:
+        exit_code, payload = self._run_script(
+            QUALITY_REPORT_PATH,
+            "--mode",
+            "persist",
+            "--path",
+            "wiki",
+        )
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "approval_required")
+        self.assertTrue(payload["lock_required"])
+
+    def test_content_quality_persist_writes_artifact(self) -> None:
+        before = self.snapshot_workspace()
+        exit_code, payload = self._run_script(
             QUALITY_REPORT_PATH,
             "--mode",
             "persist",
@@ -428,8 +442,55 @@ class OptionalSurfaceScriptTests(RuntimeWorkspaceTestCase):
             "--approval",
             "approved",
         )
-        self.assertEqual(persist_exit, 1)
-        self.assertEqual(persist_payload["reason_code"], "write_surface_not_declared")
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "pass")
+        self.assertIn("written_path", payload["summary"])
+        written = payload["summary"]["written_path"]
+        self.assertTrue(written.startswith("wiki/reports/content-quality-"))
+        self.assertTrue(written.endswith(".json"))
+        after = self.snapshot_workspace()
+        self.assertNotEqual(before, after)
+        self.assertIn(written, after)
+
+    def test_content_quality_persist_artifact_is_schema_conformant(self) -> None:
+        exit_code, payload = self._run_script(
+            QUALITY_REPORT_PATH,
+            "--mode",
+            "persist",
+            "--path",
+            "wiki",
+            "--approval",
+            "approved",
+        )
+        self.assertEqual(exit_code, 0)
+        written = payload["summary"]["written_path"]
+        artifact = json.loads((self.workspace / written).read_text(encoding="utf-8"))
+        for field in ("report_type", "generated_at", "scope", "surface", "findings", "summary"):
+            self.assertIn(field, artifact)
+        self.assertEqual(artifact["report_type"], "content-quality")
+        self.assertEqual(artifact["surface"], "scripts/reporting/content_quality_report.py")
+        for item in artifact["findings"]:
+            for key in ("path", "missing_sources", "missing_updated_at", "placeholder_count"):
+                self.assertIn(key, item)
+        for key in ("selected_count", "missing_sources_count", "missing_updated_at_count", "placeholder_file_count"):
+            self.assertIn(key, artifact["summary"])
+
+    def test_content_quality_persist_collision_produces_counter_suffix(self) -> None:
+        for _ in range(2):
+            exit_code, payload = self._run_script(
+                QUALITY_REPORT_PATH,
+                "--mode",
+                "persist",
+                "--path",
+                "wiki",
+                "--approval",
+                "approved",
+            )
+            self.assertEqual(exit_code, 0)
+        files = list((self.workspace / "wiki" / "reports").iterdir())
+        self.assertEqual(len(files), 2)
+        names = {f.name for f in files}
+        self.assertTrue(any("-2" in n for n in names), f"Expected counter suffix in: {names}")
 
     def test_quality_runtime_recommend_mode_prioritizes_repo_evidence_without_mutation(self) -> None:
         self.write_file(
@@ -482,31 +543,85 @@ class OptionalSurfaceScriptTests(RuntimeWorkspaceTestCase):
         self.assertGreater(payload["items"][0]["priority_score"], payload["items"][1]["priority_score"])
         self.assertEqual(before, self.snapshot_workspace())
 
-    def test_quality_runtime_score_update_and_report_modes_stay_gated(self) -> None:
-        score_exit, score_payload = self._run_script(
+    def test_quality_runtime_score_update_requires_approval(self) -> None:
+        exit_code, payload = self._run_script(
             QUALITY_RUNTIME_PATH,
             "--mode",
             "score-update",
             "--path",
             "wiki",
         )
-        self.assertEqual(score_exit, 1)
-        self.assertEqual(score_payload["reason_code"], "approval_required")
-        self.assertTrue(score_payload["lock_required"])
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "approval_required")
+        self.assertTrue(payload["lock_required"])
 
-        report_exit, report_payload = self._run_script(
+    def test_quality_runtime_score_update_writes_quality_scores_artifact(self) -> None:
+        self.write_file(
+            "wiki/high-priority.md",
+            '---\nconfidence: 2\nupdated_at: "2024-01-01T00:00:00Z"\n---\n\n# High Priority\n\nTODO\n',
+        )
+        before = self.snapshot_workspace()
+        exit_code, payload = self._run_script(
+            QUALITY_RUNTIME_PATH,
+            "--mode",
+            "score-update",
+            "--path",
+            "wiki/high-priority.md",
+            "--approval",
+            "approved",
+        )
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "pass")
+        self.assertIn("written_path", payload["summary"])
+        written = payload["summary"]["written_path"]
+        self.assertTrue(written.startswith("wiki/reports/quality-scores-"))
+        self.assertNotEqual(before, self.snapshot_workspace())
+
+    def test_quality_runtime_report_writes_quality_report_artifact(self) -> None:
+        self.write_file(
+            "wiki/page2.md",
+            '---\nsources: []\nconfidence: 4\nupdated_at: "2024-01-01T00:00:00Z"\n---\n\n# Page 2\n',
+        )
+        exit_code, payload = self._run_script(
             QUALITY_RUNTIME_PATH,
             "--mode",
             "report",
             "--path",
-            "wiki",
+            "wiki/page2.md",
             "--approval",
             "approved",
         )
-        self.assertEqual(report_exit, 1)
-        self.assertEqual(report_payload["reason_code"], "write_surface_not_declared")
-        self.assertTrue(report_payload["lock_required"])
-        self.assertIn("egress", report_payload["message"])
+        self.assertEqual(exit_code, 0)
+        written = payload["summary"]["written_path"]
+        self.assertTrue(written.startswith("wiki/reports/quality-report-"))
+
+    def test_quality_runtime_score_update_artifact_is_schema_conformant(self) -> None:
+        self.write_file(
+            "wiki/scored.md",
+            '---\nconfidence: 3\nupdated_at: "2024-01-01T00:00:00Z"\n---\n\n# Scored\n',
+        )
+        exit_code, payload = self._run_script(
+            QUALITY_RUNTIME_PATH,
+            "--mode",
+            "score-update",
+            "--path",
+            "wiki/scored.md",
+            "--approval",
+            "approved",
+        )
+        self.assertEqual(exit_code, 0)
+        written = payload["summary"]["written_path"]
+        artifact = json.loads((self.workspace / written).read_text(encoding="utf-8"))
+        for field in ("report_type", "generated_at", "scope", "surface", "findings", "summary"):
+            self.assertIn(field, artifact)
+        self.assertEqual(artifact["report_type"], "quality-scores")
+        self.assertFalse(artifact["summary"]["recommendation_only"])
+        self.assertEqual(artifact["summary"]["scoring_mode"], "score-update")
+        for item in artifact["findings"]:
+            for key in ("path", "priority_score", "confidence", "missing_sources",
+                        "missing_updated_at", "placeholder_count",
+                        "missed_query_count", "missed_query_demand", "recommended_next_step"):
+                self.assertIn(key, item)
 
     def test_content_quality_report_ignores_body_mentions_of_frontmatter_keys(self) -> None:
         self.write_file("docs/body-only.md", "# Body Only\n\nsources: body mention only\nupdated_at: body mention only\n")

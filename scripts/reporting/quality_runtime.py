@@ -1,8 +1,9 @@
-"""Recommendation-first quality prioritization with gated score/report modes."""
+"""Recommendation-first quality prioritization with approval-gated score/report write modes."""
 
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
@@ -13,8 +14,10 @@ if __package__ in (None, ""):
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
     APPROVAL_NONE,
+    LOCK_PATH,
     JsonArgumentParser,
     REASON_CODE_OK,
+    STATUS_FAIL,
     STATUS_PASS,
     SurfaceResult,
     add_common_surface_args,
@@ -27,9 +30,10 @@ from scripts._optional_surface_common import (
     repo_relative,
     repo_root_failure,
     run_surface_cli,
-    write_surface_not_declared_result,
+    write_report_artifact,
 )
 from scripts.kb import page_template_utils
+from scripts.kb.write_utils import LockUnavailableError
 
 SURFACE = "scripts/reporting/quality_runtime.py"
 SUPPORTED_MODES: tuple[str, ...] = ("recommend", "score-update", "report")
@@ -62,8 +66,8 @@ def _path_rules() -> dict[str, object]:
             "query_evidence_allowlisted_roots": list(ALLOWED_QUERY_EVIDENCE_ROOTS),
             "query_evidence_allowed_suffixes": list(ALLOWED_QUERY_EVIDENCE_SUFFIXES),
             "recommendation_mode": "read-only",
-            "score_writeback_declared": False,
-            "report_egress_declared": False,
+            "score_writeback_declared": True,
+            "report_egress_declared": True,
         }
     )
     return rules
@@ -176,17 +180,7 @@ def run_quality_runtime(
                 path_rules=path_rules,
                 lock_required=True,
             )
-        return write_surface_not_declared_result(
-            surface=SURFACE,
-            mode=mode,
-            approval=approval,
-            path_rules=path_rules,
-            lock_required=True,
-            message=(
-                "quality score updates and reporting egress remain disabled until an explicit "
-                "reporting/egress contract is declared"
-            ),
-        )
+        # Approved — fall through to compute then write.
 
     try:
         resolved_paths = expand_repo_paths(
@@ -246,22 +240,79 @@ def run_quality_runtime(
         items.append(item)
 
     items.sort(key=lambda item: (-int(item["priority_score"]), str(item["path"])))
+
+    if mode == "recommend":
+        return SurfaceResult(
+            surface=SURFACE,
+            mode=mode,
+            status=STATUS_PASS,
+            reason_code=REASON_CODE_OK,
+            message="quality recommendations computed from repo-local evidence",
+            approval=approval,
+            path_rules=path_rules,
+            items=tuple(items),
+            summary={
+                "selected_count": len(resolved_paths),
+                "prioritized_count": prioritized_count,
+                "query_evidence_count": query_evidence_count,
+                "recommendation_only": True,
+                "scoring_mode": "recommendation-only",
+                "gated_modes": list(LOCK_REQUIRED_MODES),
+            },
+        )
+
+    # score-update or report — write approved artifact to wiki/reports/
+    report_type = "quality-scores" if mode == "score-update" else "quality-report"
+    artifact = {
+        "report_type": report_type,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "scope": list(paths) if paths else list(ALLOWED_CONTENT_ROOTS),
+        "surface": SURFACE,
+        "findings": list(items),
+        "summary": {
+            "selected_count": len(resolved_paths),
+            "prioritized_count": prioritized_count,
+            "query_evidence_count": query_evidence_count,
+            "recommendation_only": False,
+            "scoring_mode": mode,
+        },
+    }
+    try:
+        written_path = write_report_artifact(normalized_repo_root, report_type, artifact)
+    except LockUnavailableError as exc:
+        return SurfaceResult(
+            surface=SURFACE, mode=mode, status=STATUS_FAIL,
+            reason_code="lock_unavailable",
+            message=str(exc), approval=approval,
+            lock_path=LOCK_PATH, lock_required=True,
+            path_rules=path_rules, items=(),
+        )
+    except OSError as exc:
+        return SurfaceResult(
+            surface=SURFACE, mode=mode, status=STATUS_FAIL,
+            reason_code="write_failed",
+            message=f"report write failed: {exc}",
+            approval=approval, lock_path=LOCK_PATH, lock_required=True,
+            path_rules=path_rules, items=(),
+        )
     return SurfaceResult(
         surface=SURFACE,
         mode=mode,
         status=STATUS_PASS,
         reason_code=REASON_CODE_OK,
-        message="quality recommendations computed from repo-local evidence",
+        message=f"quality {mode} persisted to {repo_relative(normalized_repo_root, written_path)}",
         approval=approval,
+        lock_path=LOCK_PATH,
+        lock_required=True,
         path_rules=path_rules,
         items=tuple(items),
         summary={
             "selected_count": len(resolved_paths),
             "prioritized_count": prioritized_count,
             "query_evidence_count": query_evidence_count,
-            "recommendation_only": True,
-            "scoring_mode": "recommendation-only",
-            "gated_modes": list(LOCK_REQUIRED_MODES),
+            "recommendation_only": False,
+            "scoring_mode": mode,
+            "written_path": repo_relative(normalized_repo_root, written_path),
         },
     )
 
