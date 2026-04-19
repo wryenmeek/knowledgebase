@@ -438,7 +438,11 @@ def _validate_topology_hygiene(repo_root: Path, target_paths: Sequence[str]) -> 
 def _validate_freshness_threshold(repo_root: Path, target_paths: Sequence[str]) -> list[ValidationFinding]:
     freshness_script = repo_root / "scripts" / "validation" / "check_doc_freshness.py"
     if not freshness_script.is_file():
-        return [_prereq_missing(ValidatorName.FRESHNESS_THRESHOLD, str(freshness_script.relative_to(repo_root)), "check_doc_freshness.py is required")]
+        return [_prereq_missing(
+            ValidatorName.FRESHNESS_THRESHOLD,
+            str(freshness_script.relative_to(repo_root)),
+            "check_doc_freshness.py is required",
+        )]
 
     as_of = date.today().isoformat()
     cmd = [
@@ -455,6 +459,9 @@ def _validate_freshness_threshold(repo_root: Path, target_paths: Sequence[str]) 
         for path in target_paths:
             if path.startswith("wiki/") and path.endswith(".md"):
                 cmd.extend(["--path", path])
+        # If target_paths contains no wiki-scoped .md paths, the --path filter is
+        # omitted and check_doc_freshness.py scans the full wiki scope. This is
+        # intentional: the freshness validator is wiki-only; non-wiki paths are ignored.
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(repo_root))
