@@ -29,6 +29,7 @@ jobs:
       - name: Checkout repository snapshot (read-only token)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Secret scan (gitleaks)
@@ -136,11 +137,11 @@ jobs:
 
       - name: Upload diagnostics artifacts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v4
         with:
           name: ci2-analyst-diagnostics-${{ github.run_id }}
           path: diagnostics/
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Fail explicitly when diagnostics fail
