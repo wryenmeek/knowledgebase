@@ -178,6 +178,7 @@ jobs:
                     break
                     ;;
                   *)
+                    CI_NONE_ELAPSED=0
                     echo "  ⏳ CI pending... (${ELAPSED}s/${MAX_CI_WAIT}s)"
                     sleep 30
                     ELAPSED=$((ELAPSED + 30))

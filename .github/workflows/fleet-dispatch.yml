@@ -31,6 +31,7 @@ on:
 
 permissions:
   contents: read
+  issues: read
 
 concurrency:
   group: fleet-dispatch
