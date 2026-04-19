@@ -15,6 +15,7 @@ from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
     APPROVAL_NONE,
     JsonArgumentParser,
+    LOCK_PATH,
     REASON_CODE_OK,
     STATUS_FAIL,
     STATUS_PASS,
@@ -45,7 +46,7 @@ def _normalize_slug(value: str) -> str:
 def _path_rules() -> dict[str, object]:
     return {
         "allowed_roots": [REDIRECTS_FILE],
-        "lock_path": write_utils.contracts.WRITE_LOCK_PATH,
+        "lock_path": LOCK_PATH,
         "direct_writes_declared": True,
         "output_root": REDIRECTS_FILE,
     }
@@ -151,6 +152,8 @@ def run_manage_redirects(
                         reason_code="duplicate_redirect",
                         message=f"redirect from '{norm_old}' already recorded",
                         approval=approval,
+                        lock_path=LOCK_PATH,
+                        lock_required=True,
                         path_rules=path_rules,
                         items=(),
                         summary={},
@@ -171,6 +174,8 @@ def run_manage_redirects(
             reason_code="lock_unavailable",
             message=str(exc),
             approval=approval,
+            lock_path=LOCK_PATH,
+            lock_required=True,
             path_rules=path_rules,
             items=(),
             summary={},
@@ -183,6 +188,8 @@ def run_manage_redirects(
         reason_code=REASON_CODE_OK,
         message=f"redirect recorded: {norm_old} → {norm_new}",
         approval=approval,
+        lock_path=LOCK_PATH,
+        lock_required=True,
         path_rules=path_rules,
         items=({"written_row": new_row.strip(), "old_slug": norm_old, "new_slug": norm_new},),
         summary={"old_slug": norm_old, "new_slug": norm_new, "redirected_at": today},

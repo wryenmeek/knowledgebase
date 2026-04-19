@@ -17,6 +17,7 @@ from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
     APPROVAL_NONE,
     JsonArgumentParser,
+    LOCK_PATH,
     REASON_CODE_OK,
     REASON_CODE_UNSUPPORTED_SOURCE_TYPE,
     STATUS_FAIL,
@@ -37,7 +38,6 @@ from scripts.kb.write_utils import LockUnavailableError
 
 SURFACE = "scripts/ingest/convert_sources_to_md.py"
 SUPPORTED_MODES: tuple[str, ...] = ("inspect", "preview", "apply")
-LOCK_REQUIRED_MODES: tuple[str, ...] = ("apply",)
 # inspect/preview: may enumerate any ADR-006-compliant source path including raw/assets
 ALLOWED_SOURCE_ROOTS: tuple[str, ...] = ("raw/inbox", "raw/assets")
 # apply: write mode is restricted to raw/inbox only (ADR-010)
@@ -59,6 +59,7 @@ def _path_rules() -> dict[str, object]:
         allowed_roots=ALLOWED_SOURCE_ROOTS,
         allowed_suffixes=ALLOWED_SOURCE_SUFFIXES,
     )
+    rules["lock_path"] = LOCK_PATH
     rules["direct_writes_declared"] = True
     rules["apply_source_roots"] = list(APPLY_SOURCE_ROOTS)
     rules["output_root"] = PROCESSED_OUTPUT_ROOT
@@ -282,6 +283,8 @@ def run_convert_sources(
             reason_code="lock_unavailable",
             message=str(exc),
             approval=approval,
+            lock_path=LOCK_PATH,
+            lock_required=True,
             path_rules=path_rules,
             items=(),
             summary={},
@@ -294,6 +297,8 @@ def run_convert_sources(
         reason_code=REASON_CODE_OK if not errors else "conversion_errors",
         message=f"converted {converted} source(s) to {PROCESSED_OUTPUT_ROOT}",
         approval=approval,
+        lock_path=LOCK_PATH,
+        lock_required=True,
         path_rules=path_rules,
         items=tuple(items),
         summary={"converted_count": converted, "error_count": errors},
