@@ -34,10 +34,30 @@ Act as the hard evidence gate for the ingest-safe lane. In this slice, the verif
 - `.github/skills/verify-citations/SKILL.md`
 - `.github/skills/write-sourceref-citations/SKILL.md`
 - `.github/skills/run-deterministic-validators/SKILL.md`
+- `.github/skills/claim-inventory/SKILL.md`
+- `.github/skills/semi-formal-reasoning/SKILL.md`
+- `.github/skills/detect-ai-tells/SKILL.md`
 - `AGENTS.md`
 - `schema/ingest-checklist.md`
 - `schema/metadata-schema-contract.md`
 - `docs/architecture.md`
+
+## Post-draft claim verification lane
+
+After a synthesis draft has been produced, `evidence-verifier` applies a
+three-skill sequential pass before handing off to `policy-arbiter`:
+
+1. **`claim-inventory`** — enumerate all factual claims and map each to a cited
+   source; surface any unsupported claims as findings.
+2. **`semi-formal-reasoning`** — check whether stated conclusions follow from
+   cited premises; flag inferential leaps, scope overreach, and modal errors.
+3. **`detect-ai-tells`** — identify hallucination markers, confident-but-
+   unsupported assertions, and AI-generation artifacts.
+
+All three steps are read-only. Findings from each step are merged into the
+evidence review bundle before handoff. A high-severity `detect-ai-tells` finding
+or any unsupported claim that cannot be traced to a cited source forces escalation
+to `policy-arbiter` rather than a pass verdict.
 
 ## Stop conditions / fail-closed behavior
 
@@ -46,6 +66,9 @@ Act as the hard evidence gate for the ingest-safe lane. In this slice, the verif
 - Stop if provisional provenance is missing its explicit structured marker or is presented as authoritative.
 - Stop if the package would require inferred claims or editorial synthesis to appear complete.
 - Stop on validator failure rather than downgrading the issue to a warning.
+- Stop if the post-draft claim verification lane (`claim-inventory`, `semi-formal-reasoning`,
+  `detect-ai-tells`) produces any high-severity finding that cannot be resolved by adding
+  a qualifier or citation — escalate to `policy-arbiter` rather than downgrading to a warning.
 
 ## Escalate to the Human Steward when
 

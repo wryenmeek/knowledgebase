@@ -65,6 +65,9 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     "synthesize-entity-page": {"logic": False, "classification": "Doc-only workflow"},
     "synthesize-concept-page": {"logic": False, "classification": "Doc-only workflow"},
     "claim-inventory": {"logic": False, "classification": "Doc-only workflow"},
+    # G4b — post-draft claim verification (evidence-verifier)
+    "semi-formal-reasoning": {"logic": False, "classification": "Doc-only workflow"},
+    "detect-ai-tells": {"logic": False, "classification": "Doc-only workflow"},
     # G3a Wave 3 — maintenance arm (maintenance-auditor, change-patrol, policy-arbiter, topology-librarian)
     "semantic-wiki-lint": {"logic": False, "classification": "Doc-only workflow"},
     "freshness-audit": {"logic": False, "classification": "Doc-only workflow"},
