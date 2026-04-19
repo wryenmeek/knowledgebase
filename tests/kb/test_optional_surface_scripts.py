@@ -379,6 +379,81 @@ class OptionalSurfaceScriptTests(RuntimeWorkspaceTestCase):
         self.assertIn("# Source", text_item["preview_markdown"])
         self.assertEqual(pdf_item["reason_code"], "unsupported_source_type")
 
+    def test_convert_sources_apply_requires_approval(self) -> None:
+        exit_code, payload = self._run_script(
+            CONVERT_SOURCES_PATH,
+            "--mode",
+            "apply",
+            "--path",
+            "raw/inbox/source.txt",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "approval_required")
+
+    def test_convert_sources_apply_rejects_assets_path(self) -> None:
+        self.write_file("raw/assets/vendor.md", "# Vendored Asset\n")
+        exit_code, payload = self._run_script(
+            CONVERT_SOURCES_PATH,
+            "--mode",
+            "apply",
+            "--approval",
+            "approved",
+            "--path",
+            "raw/assets/vendor.md",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("raw/inbox", payload["message"])
+
+    def test_convert_sources_apply_writes_md_and_meta(self) -> None:
+        self.write_file("raw/inbox/my-source.txt", "Hello world\n")
+        exit_code, payload = self._run_script(
+            CONVERT_SOURCES_PATH,
+            "--mode",
+            "apply",
+            "--approval",
+            "approved",
+            "--path",
+            "raw/inbox/my-source.txt",
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["summary"]["converted_count"], 1)
+        self.assertEqual(payload["summary"]["error_count"], 0)
+        item = payload["items"][0]
+        self.assertEqual(item["status"], "pass")
+        self.assertEqual(item["output_path"], "raw/processed/my-source.md")
+        self.assertEqual(item["meta_path"], "raw/processed/my-source.meta.json")
+        self.assertIn("source_sha256", item)
+        # verify files actually exist in the workspace
+        md_path = self.workspace / "raw/processed/my-source.md"
+        meta_path = self.workspace / "raw/processed/my-source.meta.json"
+        self.assertTrue(md_path.exists())
+        self.assertTrue(meta_path.exists())
+        meta = json.loads(meta_path.read_text())
+        self.assertIn("source_sha256", meta)
+        self.assertEqual(meta["surface"], "scripts/ingest/convert_sources_to_md.py")
+
+    def test_convert_sources_apply_immutability_guard(self) -> None:
+        self.write_file("raw/inbox/existing.txt", "First run\n")
+        self.write_file("raw/processed/existing.md", "# Existing\n")
+        exit_code, payload = self._run_script(
+            CONVERT_SOURCES_PATH,
+            "--mode",
+            "apply",
+            "--approval",
+            "approved",
+            "--path",
+            "raw/inbox/existing.txt",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "conversion_errors")
+        item = payload["items"][0]
+        self.assertEqual(item["reason_code"], "output_already_exists")
+
     def test_snapshot_capture_and_compare_run_from_repo_root(self) -> None:
         capture_exit, capture_payload = self._run_script(
             SNAPSHOT_PATH,

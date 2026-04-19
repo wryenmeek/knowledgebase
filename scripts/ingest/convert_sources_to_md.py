@@ -1,8 +1,11 @@
-"""Read-only ingest conversion previews with explicit no-write gating."""
+"""Ingest conversion of raw/inbox sources to raw/processed Markdown artifacts."""
 
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
 import re
 from pathlib import Path
 import sys
@@ -28,19 +31,24 @@ from scripts._optional_surface_common import (
     repo_relative,
     repo_root_failure,
     run_surface_cli,
-    write_surface_not_declared_result,
 )
+from scripts.kb import write_utils
+from scripts.kb.write_utils import LockUnavailableError
 
 SURFACE = "scripts/ingest/convert_sources_to_md.py"
 SUPPORTED_MODES: tuple[str, ...] = ("inspect", "preview", "apply")
 LOCK_REQUIRED_MODES: tuple[str, ...] = ("apply",)
+# inspect/preview: may enumerate any ADR-006-compliant source path including raw/assets
 ALLOWED_SOURCE_ROOTS: tuple[str, ...] = ("raw/inbox", "raw/assets")
+# apply: write mode is restricted to raw/inbox only (ADR-010)
+APPLY_SOURCE_ROOTS: tuple[str, ...] = ("raw/inbox",)
 ALLOWED_SOURCE_SUFFIXES: tuple[str, ...] = (".html", ".md", ".pdf", ".txt")
+PROCESSED_OUTPUT_ROOT = "raw/processed"
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = JsonArgumentParser(
-        description="Inspect or preview repo-local source conversion without mutating processed artifacts."
+        description="Inspect or preview repo-local source conversion; apply writes to raw/processed."
     )
     add_common_surface_args(parser, modes=SUPPORTED_MODES, default_mode="inspect")
     return parser
@@ -51,7 +59,9 @@ def _path_rules() -> dict[str, object]:
         allowed_roots=ALLOWED_SOURCE_ROOTS,
         allowed_suffixes=ALLOWED_SOURCE_SUFFIXES,
     )
-    rules["direct_writes_declared"] = False
+    rules["direct_writes_declared"] = True
+    rules["apply_source_roots"] = list(APPLY_SOURCE_ROOTS)
+    rules["output_root"] = PROCESSED_OUTPUT_ROOT
     return rules
 
 
@@ -152,20 +162,108 @@ def run_convert_sources(
             items=tuple(items),
             summary={"selected_count": len(items), "unsupported_count": unsupported},
         )
+    # apply mode — requires approval and lock
     if approval != APPROVAL_APPROVED:
         return approval_required_result(
             surface=SURFACE,
             mode=mode,
             path_rules=path_rules,
-            lock_required=False,
+            lock_required=True,
         )
-    return write_surface_not_declared_result(
+    # Restrict apply-mode input to raw/inbox/** only (ADR-010)
+    inbox_violations = [
+        p for p in resolved_paths
+        if not repo_relative(normalized_repo_root, p).startswith("raw/inbox/")
+    ]
+    if inbox_violations:
+        return invalid_input_result(
+            surface=SURFACE,
+            mode=mode,
+            approval=approval,
+            message=(
+                "apply mode only accepts sources from raw/inbox/**; "
+                "one or more paths resolve outside that boundary: "
+                + ", ".join(repo_relative(normalized_repo_root, p) for p in inbox_violations)
+            ),
+            path_rules=path_rules,
+        )
+    processed_root = normalized_repo_root / PROCESSED_OUTPUT_ROOT
+    processed_root.mkdir(parents=True, exist_ok=True)
+    items: list[dict] = []
+    errors = 0
+    try:
+        with write_utils.exclusive_write_lock(normalized_repo_root):
+            for path in resolved_paths:
+                slug = path.stem
+                md_out = processed_root / f"{slug}.md"
+                meta_out = processed_root / f"{slug}.meta.json"
+                if md_out.exists() or meta_out.exists():
+                    errors += 1
+                    items.append(
+                        {
+                            "source_path": repo_relative(normalized_repo_root, path),
+                            "status": STATUS_FAIL,
+                            "reason_code": "output_already_exists",
+                            "message": (
+                                f"processed artifact already exists and is immutable: "
+                                f"{repo_relative(normalized_repo_root, md_out)}"
+                            ),
+                        }
+                    )
+                    continue
+                md_content, failure = _preview_markdown(path)
+                if failure is not None:
+                    errors += 1
+                    items.append(
+                        {
+                            "source_path": repo_relative(normalized_repo_root, path),
+                            "status": STATUS_FAIL,
+                            "reason_code": REASON_CODE_UNSUPPORTED_SOURCE_TYPE,
+                            "message": failure,
+                        }
+                    )
+                    continue
+                sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+                md_out.write_text(md_content, encoding="utf-8")
+                meta = {
+                    "source_path": repo_relative(normalized_repo_root, path),
+                    "source_sha256": sha256,
+                    "converted_at": datetime.now(timezone.utc).isoformat(),
+                    "surface": SURFACE,
+                }
+                meta_out.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+                items.append(
+                    {
+                        "source_path": repo_relative(normalized_repo_root, path),
+                        "output_path": repo_relative(normalized_repo_root, md_out),
+                        "meta_path": repo_relative(normalized_repo_root, meta_out),
+                        "source_sha256": sha256,
+                        "status": STATUS_PASS,
+                    }
+                )
+    except LockUnavailableError as exc:
+        return SurfaceResult(
+            surface=SURFACE,
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code="lock_unavailable",
+            message=str(exc),
+            approval=approval,
+            path_rules=path_rules,
+            items=(),
+            summary={},
+        )
+    converted = sum(1 for i in items if i.get("status") == STATUS_PASS)
+    return SurfaceResult(
         surface=SURFACE,
         mode=mode,
+        status=STATUS_FAIL if errors else STATUS_PASS,
+        reason_code=REASON_CODE_OK if not errors else "conversion_errors",
+        message=f"converted {converted} source(s) to {PROCESSED_OUTPUT_ROOT}",
         approval=approval,
         path_rules=path_rules,
-        lock_required=False,
-        message="scripts/ingest/** has no narrower processed-artifact write contract for conversion output yet",
+        items=tuple(items),
+        summary={"converted_count": converted, "error_count": errors},
     )
 
 
@@ -193,6 +291,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 __all__ = [
     "SURFACE",
     "SUPPORTED_MODES",
+    "APPLY_SOURCE_ROOTS",
+    "PROCESSED_OUTPUT_ROOT",
     "run_convert_sources",
     "run_cli",
     "main",

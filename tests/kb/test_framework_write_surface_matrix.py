@@ -164,6 +164,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("ADR-006", "schema/**", "scripts/kb/contracts.py"),
         "Hard-fail behavior": ("missing provenance", "partial validator result", "fail closed"),
     },
+    "scripts/ingest/convert_sources_to_md.py` — `apply` mode only": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("raw/processed/**", "write-once", "immutable post-write"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Artifact / schema owners": ("ADR-006", "ADR-010"),
+        "Hard-fail behavior": ("raw/inbox", "output already exists", "lock unavailable", "fail closed"),
+    },
 }
 
 
