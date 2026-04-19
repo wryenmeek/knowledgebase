@@ -353,8 +353,9 @@ if (info.state === 'failed') {
   console.log(`Failed: ${failReason}`);
   await client.archive();  // remove from active list
 
-  // Redispatch is handled by fleet-merge.ts — it reads sessions.json
-  // and calls jules.run() for any failed entry
+  // To redispatch a single failed task, manually call jules.run() with the original
+  // task prompt from issue_tasks.json (see the Escalation section for the full flow).
+  // Do not rerun fleet-dispatch.ts — it redispatches all tasks, not just the failed one.
 }
 ```
 
@@ -418,7 +419,17 @@ If a session cannot be unblocked after two feedback rounds:
 1. Archive the session: `await client.archive()`
 2. Document the failure in `.fleet/<date>/sessions.json` (add `status: "abandoned"` and `failReason: "..."` fields)
 3. Re-examine the original task prompt in `issue_tasks.json` — the prompt may be too ambiguous or too broad
-4. Rewrite the task prompt and redispatch: `bun scripts/fleet/fleet-dispatch.ts`
+4. Rewrite the task prompt and redispatch the **single task** manually:
+   ```typescript
+   import { jules } from '@google/jules-sdk';
+   // Load the updated prompt from issue_tasks.json
+   const run = await jules.run({
+     prompt: updatedTaskPrompt,
+     source: { github: 'owner/repo', baseBranch: 'main' },
+   });
+   console.log('New session:', run.id);
+   ```
+   Do not rerun `fleet-dispatch.ts` — it redispatches **all** tasks in `issue_tasks.json`, which would create duplicate sessions for unrelated tasks.
 
 ---
 

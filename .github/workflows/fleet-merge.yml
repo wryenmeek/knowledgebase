@@ -101,8 +101,28 @@ jobs:
 
                 echo "  ⚠️ Merge conflict detected. Re-dispatching task..."
 
-                # Get the PR's task prompt from the fleet data
-                TASK_PROMPT=$(gh pr view "$PR_NUM" --json body --jq '.body')
+                # Load the original task prompt from fleet data (not the PR body,
+                # which may omit file boundaries and test constraints from the original task).
+                SESSION_ID=$(gh pr view "$PR_NUM" --json body -q '.body' \
+                  | grep -oE 'https://jules\.google\.com/task/[A-Za-z0-9_-]+' \
+                  | sed 's|.*/||' || true)
+                FLEET_DIR=$(ls -d .fleet/*/ 2>/dev/null | sort | tail -1 || true)
+                TASK_PROMPT=""
+                if [ -n "$SESSION_ID" ] && [ -n "$FLEET_DIR" ]; then
+                  TASK_ID=$(jq -r --arg sid "$SESSION_ID" \
+                    '.[] | select(.sessionId == $sid) | .taskId // empty' \
+                    "${FLEET_DIR}sessions.json" 2>/dev/null || true)
+                  if [ -n "$TASK_ID" ]; then
+                    TASK_PROMPT=$(jq -r --arg tid "$TASK_ID" \
+                      '.tasks[] | select(.id == $tid) | .prompt // empty' \
+                      "${FLEET_DIR}issue_tasks.json" 2>/dev/null || true)
+                  fi
+                fi
+                # Fall back to PR body if original prompt not found
+                if [ -z "$TASK_PROMPT" ]; then
+                  echo "  ⚠️ Could not locate original task prompt in fleet data; using PR body."
+                  TASK_PROMPT=$(gh pr view "$PR_NUM" --json body -q '.body')
+                fi
 
                 # Close the conflicting PR
                 echo "  🔒 Closing conflicting PR #${PR_NUM}..."
