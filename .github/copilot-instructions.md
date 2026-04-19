@@ -2,6 +2,29 @@
 
 This repository uses the Agent Skills framework ported into `.github/skills` and `.github/agents`.
 
+## Build, test, and verify commands
+
+```bash
+# Python test suite (covers scripts/kb/, scripts/validation/, scripts/reporting/, etc.)
+python3 -m pytest tests/
+
+# Run a single test file
+python3 -m pytest tests/kb/test_ingest.py
+
+# TypeScript build verification (scripts/fleet/ only — NOT covered by pytest)
+cd scripts/fleet && bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts
+```
+
+> **Two separate runtimes:** `scripts/fleet/` is a standalone TypeScript/Bun project (`package.json`, `tsconfig.json`). It is independent of the Python test suite. Always run `bun build` after editing TypeScript fleet files — pytest passing does **not** mean TypeScript is clean.
+
+## Planning vs implementation
+
+When asked to **"create a plan"**, output the plan only and wait for explicit approval ("implement", "start", "go ahead") before making any changes. Do not combine plan creation and implementation in a single response.
+
+## Research mode
+
+When a user message begins with `Researching:`, produce analysis and findings only. Do not create files, make commits, or open PRs during the research phase. The prefix is an explicit signal to stay read-only.
+
 ## Project structure
 
 - `.github/skills/` → Core skills (`SKILL.md` per skill directory)
@@ -75,3 +98,40 @@ Use personas in `.github/agents` when useful:
 - `@code-reviewer`
 - `@test-engineer`
 - `@security-auditor`
+
+## Build, test, and lint commands
+
+```bash
+# Run the full Python test suite (~45s, 314 tests)
+python3 -m pytest tests/
+
+# Run a single test file
+python3 -m pytest tests/kb/test_ingest.py
+
+# Verify TypeScript fleet scripts compile (no pytest coverage for these)
+cd scripts/fleet && bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts
+```
+
+`scripts/fleet/` is a standalone TypeScript/Bun project (its own `package.json`, `bun.lock`, `tsconfig.json`) — completely separate from the Python test suite. **Always run `bun build` after editing any TypeScript in `scripts/fleet/`** — the Python tests will not catch TypeScript syntax errors there.
+
+## Planning vs. implementation
+
+**"Create a plan" means plan only.** When asked to create a plan, output the plan and wait for explicit approval before making any changes. The user says things like "implement", "start", "go ahead", or "get to work" to trigger implementation. Do not combine plan creation and implementation in a single response.
+
+**"Researching:" prefix = no writes.** When a user message begins with `Researching:`, produce analysis and findings only. Do not create files, make commits, or open PRs. The research phase ends when the user gives an explicit action command.
+
+## Jules SDK
+
+The `@google/jules-sdk` package exports a pre-built singleton — not a constructor class:
+
+```typescript
+import { jules } from '@google/jules-sdk';
+// jules is ready to use immediately; reads JULES_API_KEY from env automatically.
+// Never use: new Jules(), Jules({ apiKey }), or jules.createSession()
+```
+
+Key method semantics:
+- `jules.run(config)` → auto-approves plan, auto-creates PR. **Use for CI.**
+- `jules.session(config)` → defaults `requirePlanApproval: true`, pauses for human approval.
+- `jules.session(id: string)` → rehydrates an existing session by ID.
+- `jules.createSession()` → **does not exist.**
