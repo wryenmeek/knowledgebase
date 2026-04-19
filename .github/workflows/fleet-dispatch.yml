@@ -14,8 +14,13 @@
 
 # .github/workflows/fleet-dispatch.yml
 #
-# Creates a Jules session to analyze open issues and dispatch parallel agents.
-# The session receives a bootstrap prompt and runs the fleet scripts from the repo.
+# Full fleet pipeline:
+#   1. Creates a Jules planning session that analyzes open issues and writes
+#      .fleet/<date>/issue_tasks.json to a PR branch.
+#   2. Polls GitHub until Jules' planning PR appears (up to 60 minutes).
+#   3. Auto-merges the planning PR into the base branch.
+#   4. Runs fleet-dispatch.ts, which reads the manifest and spawns one parallel
+#      Jules session per task — each session auto-creates a PR.
 name: Fleet Dispatch
 
 on:
@@ -30,8 +35,9 @@ on:
         default: "main"
 
 permissions:
-  contents: read
+  contents: write
   issues: read
+  pull-requests: write
 
 concurrency:
   group: fleet-dispatch
@@ -40,7 +46,8 @@ concurrency:
 jobs:
   dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Jules planning can take 10–60 minutes; give the full pipeline 90 minutes.
+    timeout-minutes: 90
     steps:
       - name: Checkout code
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -55,9 +62,60 @@ jobs:
         run: bun install
 
       - name: Create planning session
+        id: plan
         working-directory: scripts/fleet
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
+        # fleet-plan.ts uses jules.run() (auto-approve, auto-PR) and writes
+        # plan_session_id to GITHUB_OUTPUT for the next step.
         run: bun fleet-plan.ts
+
+      - name: Wait for Jules planning PR
+        id: wait_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLAN_SESSION_ID: ${{ steps.plan.outputs.plan_session_id }}
+        run: |
+          set -euo pipefail
+          BASE="${{ inputs.base_branch || 'main' }}"
+          echo "⏳ Waiting for Jules planning PR (session $PLAN_SESSION_ID)..."
+
+          for i in $(seq 1 60); do
+            PR=$(gh pr list --state open --base "$BASE" \
+              --json number,author,body \
+              --jq "[.[] | select(
+                (.author.login == \"google-labs-jules\" or (.author.login | endswith(\"[bot]\")))
+                and (.body | contains(\"$PLAN_SESSION_ID\"))
+              )] | .[0].number // empty")
+            if [ -n "$PR" ]; then
+              echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
+              echo "✅ Found Jules planning PR #$PR"
+              exit 0
+            fi
+            echo "  attempt $i/60 — no PR yet, sleeping 60s..."
+            sleep 60
+          done
+          echo "❌ Timed out waiting for Jules planning PR." >&2
+          exit 1
+
+      - name: Merge planning PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PR_NUMBER="${{ steps.wait_pr.outputs.pr_number }}"
+          gh pr merge "$PR_NUMBER" --squash --delete-branch
+          echo "✅ Planning PR #$PR_NUMBER merged."
+
+      - name: Dispatch task sessions
+        working-directory: scripts/fleet
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin "${{ inputs.base_branch || 'main' }}"
+          bun fleet-dispatch.ts

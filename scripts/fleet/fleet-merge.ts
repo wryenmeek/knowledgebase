@@ -144,25 +144,25 @@ async function redispatchTask(
 
   // Create a new Jules session with the same prompt
   console.log(`  🚀 Re-dispatching task "${task.id}" against current ${BASE_BRANCH}...`);
-  const session = await jules.createSession({
+  const run = await jules.run({
     prompt: task.prompt,
     source: {
       github: `${OWNER}/${REPO}`,
       baseBranch: BASE_BRANCH,
     },
   });
-  console.log(`  📝 New session: ${session.id}`);
+  console.log(`  📝 New session: ${run.id}`);
 
   // Update sessions.json with new session ID
   const sessionEntry = sessions.find(s => s.taskId === task.id);
   if (sessionEntry) {
-    sessionEntry.sessionId = session.id;
+    sessionEntry.sessionId = run.id;
     const sessionsPath = path.join(fleetDir, "sessions.json");
     await Bun.write(sessionsPath, JSON.stringify(sessions, null, 2));
   }
 
   // Poll for the new PR
-  console.log(`  ⏳ Waiting for new PR from session ${session.id}...`);
+  console.log(`  ⏳ Waiting for new PR from session ${run.id}...`);
   const start = Date.now();
   while (Date.now() - start < PR_POLL_TIMEOUT_MS) {
     await new Promise(r => setTimeout(r, PR_POLL_INTERVAL_MS));
@@ -170,8 +170,8 @@ async function redispatchTask(
     const pulls = (await res.json()) as GitHubPR[];
     const newPr = pulls.find(
       (pr: GitHubPR) =>
-        pr.head.ref.includes(session.id) ||
-        pr.body?.includes(session.id)
+        pr.head.ref.includes(run.id) ||
+        pr.body?.includes(run.id)
     );
     if (newPr) {
       console.log(`  ✅ New PR #${newPr.number} found (${newPr.head.ref})`);
@@ -179,7 +179,7 @@ async function redispatchTask(
     }
     console.log(`  ⏳ No PR yet... polling again in 30s`);
   }
-  throw new Error(`Timed out waiting for new PR from re-dispatched session ${session.id}`);
+  throw new Error(`Timed out waiting for new PR from re-dispatched session ${run.id}`);
 }
 
 // Main: sequential merge in task order

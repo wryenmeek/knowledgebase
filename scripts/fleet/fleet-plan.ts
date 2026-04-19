@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import fs from 'node:fs'
 import { jules } from '@google/jules-sdk'
 import { analyzeIssuesPrompt } from './prompts/analyze-issues.js'
 import { getIssuesAsMarkdown } from './github/markdown.js'
@@ -37,13 +38,19 @@ const prompt = analyzeIssuesPrompt({ issuesMarkdown, repoFullName: repoInfo.full
 
 console.log(`🔍 Planning fleet for ${repoInfo.fullName} (branch: ${baseBranch})`)
 
-const session = await jules.session({
+// jules.run() auto-approves the plan and auto-creates a PR (autoPr defaults to true).
+// jules.session() would pause waiting for manual plan approval — wrong for CI.
+const run = await jules.run({
   prompt,
   source: {
     github: repoInfo.fullName,
     baseBranch,
   },
-  autoPr: true
 })
 
-console.log(`✅ Planner session started: ${session.id}`)
+console.log(`✅ Planning run started: ${run.id}`)
+
+// Export session ID for the downstream "Wait for planning PR" CI step.
+if (process.env.GITHUB_OUTPUT) {
+  fs.appendFileSync(process.env.GITHUB_OUTPUT, `plan_session_id=${run.id}\n`)
+}

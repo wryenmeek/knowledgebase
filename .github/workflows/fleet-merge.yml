@@ -113,11 +113,11 @@ jobs:
                 JULES_REPO="${{ github.repository }}"
                 NEW_SESSION_ID=$(TASK_PROMPT="${TASK_PROMPT}" JULES_REPO="${JULES_REPO}" JULES_BASE_BRANCH="${BASE_BRANCH}" bun -e "
                   import { jules } from '@google/jules-sdk';
-                  const session = await jules.createSession({
+                  const run = await jules.run({
                     prompt: process.env.TASK_PROMPT,
                     source: { github: process.env.JULES_REPO, baseBranch: process.env.JULES_BASE_BRANCH },
                   });
-                  console.log(session.id);
+                  console.log(run.id);
                 ")
                 echo "  📝 New session: ${NEW_SESSION_ID}"
 

@@ -34,7 +34,7 @@ ${issuesMarkdown}
 
 ## Your Task
 
-Perform a four-phase analysis: **Investigate**, **Architect**, **Plan**, and **Dispatch**
+Perform a three-phase analysis: **Investigate**, **Architect**, and **Plan**
 
 ---
 
@@ -303,17 +303,5 @@ Issues that require changes outside this repository (backend API, infrastructure
 6. **Order tasks by risk** — lowest risk first, so easy wins merge before complex changes.
 7. **Diffs must be valid.** Before/after code must reflect the actual current codebase, not approximations.
 8. **Test files must be in the ownership matrix.** For every source file a task modifies, include its corresponding test file(s) in both the task's \`test_files\` array and the \`file_ownership\` map. No test file may appear in more than one task.
-9. **Test boundary: tasks must not touch files outside their ownership.** Each task's prompt must instruct the agent to ONLY modify files listed in its \`files\`, \`new_files\`, and \`test_files\` arrays. If a test outside the boundary fails, the agent must make its implementation backward-compatible rather than modifying the unowned test.
-
----
-
-## Phase 4: Dispatch
-
-After you have written both \`.fleet/${YYYY_MM_DD}/issue_tasks.md\` and \`.fleet/${YYYY_MM_DD}/issue_tasks.json\`, run the dispatcher to spawn parallel Jules sessions for each task:
-
-\`\`\`bash
-bun run scripts/fleet/fleet-dispatch.ts
-\`\`\`
-
-This script reads the \`tasks\` array from the JSON file, creates a Jules session for each task using its \`prompt\` field, and logs the resulting session IDs. **Do not skip this step** — the analysis is only complete once the sub-tasks have been dispatched.`;
+9. **Test boundary: tasks must not touch files outside their ownership.** Each task's prompt must instruct the agent to ONLY modify files listed in its \`files\`, \`new_files\`, and \`test_files\` arrays. If a test outside the boundary fails, the agent must make its implementation backward-compatible rather than modifying the unowned test.`;
 }
