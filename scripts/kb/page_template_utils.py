@@ -15,7 +15,8 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "source": ("## Summary", "## Evidence", "## Open Questions"),
     "analysis": ("## Summary", "## Evidence", "## Open Questions"),
 }
-_FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
+_FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$", re.MULTILINE)
+_FRONTMATTER_BLOCK_RE = re.compile(r"^[ \t]*---[ \t]*\r?\n(.*?)\r?\n[ \t]*---[ \t]*(?:\r?\n|$)", re.DOTALL)
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
 TOPICAL_NAMESPACES: frozenset[str] = frozenset({"sources", "entities", "concepts", "analyses"})
@@ -99,22 +100,26 @@ def validate_page_template_path(
 
 
 def extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    first_newline = text.find("\n")
+    if first_newline == -1:
+        first_line = text
+    else:
+        first_line = text[:first_newline]
+
+    if first_line.strip() != "---":
         return None, text
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
+
+    match = _FRONTMATTER_BLOCK_RE.match(text)
+    if match:
+        return match.group(1), text[match.end():]
     return None, text
 
 
 def parse_frontmatter(frontmatter: str) -> dict[str, str]:
-    parsed: dict[str, str] = {}
-    for line in frontmatter.splitlines():
-        match = _FRONTMATTER_KEY_RE.match(line)
-        if match:
-            parsed[match.group(1)] = match.group(2).strip()
-    return parsed
+    return {
+        match.group(1): match.group(2).strip()
+        for match in _FRONTMATTER_KEY_RE.finditer(frontmatter)
+    }
 
 
 def strip_quotes(value: str) -> str:
@@ -125,12 +130,7 @@ def strip_quotes(value: str) -> str:
 
 def extract_frontmatter_keys(frontmatter: str) -> set[str]:
     """Return the set of top-level key names present in a YAML frontmatter block."""
-    keys: set[str] = set()
-    for line in frontmatter.splitlines():
-        match = _FRONTMATTER_KEY_RE.match(line)
-        if match:
-            keys.add(match.group(1))
-    return keys
+    return {match.group(1) for match in _FRONTMATTER_KEY_RE.finditer(frontmatter)}
 
 
 def extract_headings(body: str) -> set[str]:
