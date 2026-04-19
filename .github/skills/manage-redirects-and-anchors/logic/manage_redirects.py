@@ -33,8 +33,6 @@ REDIRECTS_FILE = "wiki/redirects.md"
 _REDIRECTS_HEADER = "| old_slug | new_slug | redirected_at | reason |\n|----------|----------|----------------|--------|\n"
 
 
-
-
 def _normalize_slug(value: str) -> str:
     """Derive a canonical slug per ADR-009 normalization rules."""
     slug = value.lower().strip()

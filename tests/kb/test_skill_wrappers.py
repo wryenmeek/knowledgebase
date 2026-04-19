@@ -1128,6 +1128,19 @@ class ComputeKpisWrapperTests(_RuntimeWrapperFixture):
         # malformed file is skipped; KPIs are computed from the valid file only
         self.assertEqual(result.summary["kpis"]["page_count"], 1)
 
+    def test_findings_without_numeric_scores_returns_zero_page_count(self) -> None:
+        import json
+        # Findings exist but none have numeric "score" fields
+        artifact = {"findings": [{"page_path": "wiki/p.md"}, {"page_path": "wiki/q.md"}]}
+        (self.repo_root / "wiki" / "reports" / "quality-scores-noscores.json").write_text(
+            json.dumps(artifact), encoding="utf-8"
+        )
+        result = self._run_kpis(mode="snapshot")
+        self.assertEqual(result.status, "pass")
+        kpis = result.summary["kpis"]
+        self.assertEqual(kpis["page_count"], 2)  # len(all_findings), not len(scores)
+        self.assertIsNone(kpis["avg_score"])
+
 
 class AnalyzeMissedQueriesWrapperTests(_RuntimeWrapperFixture):
     """Tests for analyze-missed-queries read-only coverage gap scan."""

@@ -74,15 +74,15 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _scan_page_for_gaps(page_path: Path) -> list[dict]:
     """Return gap findings for a single wiki page."""
-    findings = []
     try:
         content = page_path.read_text(encoding="utf-8")
     except OSError:
-        return findings
-    for pattern, label in _GAP_PATTERNS:
-        if re.search(pattern, content, re.IGNORECASE):
-            findings.append({"gap_type": label, "pattern": pattern})
-    return findings
+        return []
+    return [
+        {"gap_type": label, "pattern": pattern}
+        for pattern, label in _GAP_PATTERNS
+        if re.search(pattern, content, re.IGNORECASE)
+    ]
 
 
 def run_analyze_missed_queries(
@@ -114,15 +114,12 @@ def run_analyze_missed_queries(
         )
 
     items = []
-    gap_page_count = 0
     for page_path in resolved_paths:
         gaps = _scan_page_for_gaps(page_path)
-        rel = repo_relative(normalized_repo_root, page_path)
         if gaps:
-            gap_page_count += 1
             items.append(
                 {
-                    "path": rel,
+                    "path": repo_relative(normalized_repo_root, page_path),
                     "gap_count": len(gaps),
                     "gaps": gaps,
                 }
@@ -133,13 +130,13 @@ def run_analyze_missed_queries(
         mode=mode,
         status=STATUS_PASS,
         reason_code=REASON_CODE_OK,
-        message=f"coverage gap scan complete: {gap_page_count}/{len(resolved_paths)} pages have gaps",
+        message=f"coverage gap scan complete: {len(items)}/{len(resolved_paths)} pages have gaps",
         approval=approval,
         path_rules=path_rules,
         items=tuple(items),
         summary={
             "scanned_count": len(resolved_paths),
-            "gap_page_count": gap_page_count,
+            "gap_page_count": len(items),
         },
     )
 

@@ -65,20 +65,22 @@ def _path_rules() -> dict[str, object]:
     return rules
 
 
+def _stem_to_title(path: Path) -> str:
+    return path.stem.replace("-", " ").replace("_", " ").title() or "Converted Source"
+
+
 def _preview_markdown(path: Path) -> tuple[str | None, str | None]:
     suffix = path.suffix.lower()
     if suffix == ".md":
         return path.read_text(encoding="utf-8"), None
     if suffix == ".txt":
-        title = path.stem.replace("-", " ").replace("_", " ").title() or "Converted Source"
         body = path.read_text(encoding="utf-8").rstrip()
-        return f"# {title}\n\n```text\n{body}\n```\n", None
+        return f"# {_stem_to_title(path)}\n\n```text\n{body}\n```\n", None
     if suffix == ".html":
         raw = path.read_text(encoding="utf-8")
         text = re.sub(r"<[^>]+>", " ", raw)
         normalized = " ".join(text.split())
-        title = path.stem.replace("-", " ").replace("_", " ").title() or "Converted Source"
-        return f"# {title}\n\n{normalized}\n", None
+        return f"# {_stem_to_title(path)}\n\n{normalized}\n", None
     return None, "source type requires an external converter that is not enabled in this deterministic repo-local surface"
 
 

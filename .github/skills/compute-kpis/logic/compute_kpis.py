@@ -64,15 +64,6 @@ def _compute_kpis_from_scores(score_files: list[Path]) -> dict:
         except (json.JSONDecodeError, OSError):
             pass
 
-    if not all_findings:
-        return {
-            "page_count": 0,
-            "avg_score": None,
-            "low_score_count": 0,
-            "high_score_count": 0,
-            "score_coverage_pct": 0.0,
-        }
-
     scores = [f["score"] for f in all_findings if isinstance(f.get("score"), (int, float))]
     if not scores:
         return {
