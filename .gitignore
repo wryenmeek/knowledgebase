@@ -209,3 +209,7 @@ __marimo__/
 # JavaScript / Bun dependencies and fleet artifacts
 node_modules/
 .fleet/
+
+# Test runtime directories (created/cleaned by harnesses.py test teardown; never commit)
+tests/kb/.runtime/
+tests/kb/.runtime_skill_wrappers/
