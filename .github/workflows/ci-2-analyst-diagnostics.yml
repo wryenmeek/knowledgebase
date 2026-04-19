@@ -106,6 +106,14 @@ jobs:
           python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py 2>&1 | tee -a diagnostics/diagnostics.log
           wrapper_exit="${PIPESTATUS[0]}"
 
+          echo "[CI-2] check_doc_freshness --scope wiki" | tee -a diagnostics/diagnostics.log
+          python3 scripts/validation/check_doc_freshness.py --scope wiki --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 2>&1 | tee -a diagnostics/diagnostics.log
+          freshness_exit="${PIPESTATUS[0]}"
+
+          echo "[CI-2] content_quality_report --mode summary" | tee -a diagnostics/diagnostics.log
+          python3 scripts/reporting/content_quality_report.py --mode summary --path wiki 2>&1 | tee -a diagnostics/diagnostics.log
+          quality_exit="${PIPESTATUS[0]}"
+
           echo "[CI-2] lint_wiki --strict" | tee -a diagnostics/diagnostics.log
           python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict 2>&1 | tee -a diagnostics/diagnostics.log
           lint_exit="${PIPESTATUS[0]}"
@@ -115,11 +123,11 @@ jobs:
           tests_exit="${PIPESTATUS[0]}"
 
           diagnostics_exit=0
-          if [ "${wrapper_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then
+          if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then
             diagnostics_exit=1
           fi
 
-          echo "[CI-2] wrapper_exit=${wrapper_exit} lint_exit=${lint_exit} tests_exit=${tests_exit} diagnostics_exit=${diagnostics_exit}" | tee -a diagnostics/diagnostics.log
+          echo "[CI-2] wrapper_exit=${wrapper_exit} freshness_exit=${freshness_exit} quality_exit=${quality_exit} lint_exit=${lint_exit} tests_exit=${tests_exit} diagnostics_exit=${diagnostics_exit}" | tee -a diagnostics/diagnostics.log
           echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"
           exit 0
 

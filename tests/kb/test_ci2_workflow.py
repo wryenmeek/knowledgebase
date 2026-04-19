@@ -97,6 +97,22 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         )
         self.assertIsNotNone(
             re.search(
+                r"python3 scripts/validation/check_doc_freshness\.py.*?freshness_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+                self.workflow_text,
+                flags=re.DOTALL,
+            ),
+            "Freshness command status must be captured for final diagnostics exit_code",
+        )
+        self.assertIsNotNone(
+            re.search(
+                r"python3 scripts/reporting/content_quality_report\.py.*?quality_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+                self.workflow_text,
+                flags=re.DOTALL,
+            ),
+            "Quality report command status must be captured for final diagnostics exit_code",
+        )
+        self.assertIsNotNone(
+            re.search(
                 r"python3 scripts/kb/lint_wiki\.py --wiki-root wiki --strict.*?lint_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
                 flags=re.DOTALL,
@@ -112,7 +128,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             "Test command status must be captured for final diagnostics exit_code",
         )
         self.assertIn(
-            'if [ "${wrapper_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
+            'if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
             self.workflow_text,
         )
         self.assertIn('echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"', self.workflow_text)

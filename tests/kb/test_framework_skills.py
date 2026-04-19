@@ -53,6 +53,38 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     "synthesize-cited-answer": {"logic": False, "classification": "Doc-only workflow"},
     "prepare-high-value-synthesis-handoff": {"logic": False, "classification": "Doc-only workflow"},
     "handoff-query-derived-page": {"logic": False, "classification": "Doc-only workflow"},
+    # G3b — thin wrapper skills
+    "run-ingest": {"logic": False, "classification": "Doc-only workflow"},
+    "persist-query-result": {"logic": False, "classification": "Doc-only workflow"},
+    # G3a Wave 1 — intake provenance (source-intake-steward)
+    "register-source-provenance": {"logic": False, "classification": "Doc-only workflow"},
+    "checksum-asset": {"logic": False, "classification": "Doc-only workflow"},
+    "create-intake-manifest": {"logic": False, "classification": "Doc-only workflow"},
+    "log-ingest-event": {"logic": False, "classification": "Doc-only workflow"},
+    # G3a Wave 2 — synthesis (synthesis-curator, evidence-verifier)
+    "synthesize-entity-page": {"logic": False, "classification": "Doc-only workflow"},
+    "synthesize-concept-page": {"logic": False, "classification": "Doc-only workflow"},
+    "claim-inventory": {"logic": False, "classification": "Doc-only workflow"},
+    # G3a Wave 3 — maintenance arm (maintenance-auditor, change-patrol, policy-arbiter, topology-librarian)
+    "semantic-wiki-lint": {"logic": False, "classification": "Doc-only workflow"},
+    "freshness-audit": {"logic": False, "classification": "Doc-only workflow"},
+    "cross-reference-symmetry-check": {"logic": False, "classification": "Doc-only workflow"},
+    "propose-supersede-or-archive": {"logic": False, "classification": "Doc-only workflow"},
+    "append-maintenance-log": {"logic": False, "classification": "Doc-only workflow"},
+    "patrol-human-edits": {"logic": False, "classification": "Doc-only workflow"},
+    "route-noncompliant-edit-for-review": {"logic": False, "classification": "Doc-only workflow"},
+    "manage-redirects-and-anchors": {"logic": False, "classification": "Doc-only workflow"},
+    "detect-original-research": {"logic": False, "classification": "Doc-only workflow"},
+    "compare-against-existing-pages": {"logic": False, "classification": "Doc-only workflow"},
+    "escalate-contradictions": {"logic": False, "classification": "Doc-only workflow"},
+    # G3a Wave 4 — quality and orchestration (quality-analyst, knowledgebase-orchestrator)
+    "score-page-quality": {"logic": False, "classification": "Doc-only workflow"},
+    "compute-kpis": {"logic": False, "classification": "Doc-only workflow"},
+    "analyze-missed-queries": {"logic": False, "classification": "Doc-only workflow"},
+    "prioritize-curation-backlog": {"logic": False, "classification": "Doc-only workflow"},
+    "route-wiki-task": {"logic": False, "classification": "Doc-only workflow"},
+    "plan-wiki-job": {"logic": False, "classification": "Doc-only workflow"},
+    "fail-closed-on-errors": {"logic": False, "classification": "Doc-only workflow"},
 }
 HELPER_OWNING_SKILLS: dict[str, tuple[str, ...]] = {
     "context-engineering": (

@@ -87,6 +87,44 @@ class ValidateWikiGovernanceWrapperTests(HarnessAssertionsTestCase):
             ),
         )
 
+    def test_freshness_threshold_is_opt_in_not_in_default_set(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_optin", VALIDATE_WRAPPER_PATH)
+
+        default_names = tuple(v.value for v in module.SUPPORTED_VALIDATORS)
+        self.assertNotIn("freshness-threshold", default_names)
+        self.assertIn("freshness-threshold", tuple(v.value for v in module.ALL_KNOWN_VALIDATORS))
+
+    def test_freshness_threshold_recognized_when_explicitly_requested(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_recognized", VALIDATE_WRAPPER_PATH)
+
+        selected, unsupported = module.resolve_validators(["freshness-threshold"])
+        self.assertIn(module.ValidatorName.FRESHNESS_THRESHOLD, selected)
+        self.assertEqual(unsupported, ())
+
+    def test_freshness_threshold_not_invoked_without_flag(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_no_flag", VALIDATE_WRAPPER_PATH)
+
+        with patch.object(module, "_validate_freshness_threshold") as freshness_mock:
+            with patch.object(module, "print"):
+                module.main([])
+
+        freshness_mock.assert_not_called()
+
+    def test_freshness_threshold_subprocess_prereq_missing_fails_closed(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_prereq", VALIDATE_WRAPPER_PATH)
+        import tempfile, pathlib
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = pathlib.Path(tmp)
+            (repo_root / "wiki").mkdir()
+            (repo_root / "wiki" / "log.md").write_text("- entry\n")
+            # check_doc_freshness.py does NOT exist in this temp root
+            findings = module._validate_freshness_threshold(repo_root, [])
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].status, "fail")
+        self.assertEqual(findings[0].reason_code, "prereq_missing")
+
     def test_protected_paths_default_to_blocking_mode(self) -> None:
         module = _load_module("validate_wiki_governance_modes", VALIDATE_WRAPPER_PATH)
 

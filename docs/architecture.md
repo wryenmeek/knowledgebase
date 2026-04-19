@@ -139,6 +139,11 @@ prevents ADR-007 drift into a second runtime.
 | Governance workflows + landed wrappers | Active mix of doc-only and wrapper-backed skills | `validate-wiki-governance`, `sync-knowledgebase-state` |
 | Knowledge-structure contracts | Active, doc-only | `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, `knowledge-schema-and-metadata-governance`, `entity-resolution-and-canonicalization`, `search-and-discovery-optimization` |
 | Policy/evidence/self-audit workflows | Active, doc-only | `validate-inbox-source`, `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace` |
+| Ingest and query persistence wrappers | Active, doc-only | `run-ingest`, `persist-query-result` |
+| Intake provenance workflows | Active, doc-only | `register-source-provenance`, `checksum-asset`, `create-intake-manifest`, `log-ingest-event` |
+| Synthesis workflows | Active, doc-only | `synthesize-entity-page`, `synthesize-concept-page`, `claim-inventory` |
+| Maintenance-arm workflows | Active, doc-only | `semantic-wiki-lint`, `freshness-audit`, `cross-reference-symmetry-check`, `propose-supersede-or-archive`, `append-maintenance-log`, `patrol-human-edits`, `route-noncompliant-edit-for-review`, `manage-redirects-and-anchors`, `detect-original-research`, `compare-against-existing-pages`, `escalate-contradictions` |
+| Quality and orchestration workflows | Active, doc-only | `score-page-quality`, `compute-kpis`, `analyze-missed-queries`, `prioritize-curation-backlog`, `route-wiki-task`, `plan-wiki-job`, `fail-closed-on-errors` |
 
 The skill layer carries workflow procedure and thin wrapper logic while leaving
 deterministic execution in `scripts/kb/**`. No framework skill should add a new

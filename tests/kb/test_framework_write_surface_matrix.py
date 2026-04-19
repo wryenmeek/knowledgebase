@@ -115,6 +115,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/kb/contracts.py", "delegated artifact schema owner"),
         "Hard-fail behavior": ("unsupported check", "undeclared direct write", "fail closed"),
     },
+    "scripts/context/manage_context_pages.py` — `publish-status` mode only": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("None direct", "wiki/status.md"),
+        "Lock requirements": ("wiki/.kb_write.lock", "ADR-005"),
+        "Artifact / schema owners": ("scripts/kb/contracts.py", "sync-knowledgebase-state"),
+        "Hard-fail behavior": ("staged-status-path", "undeclared direct write", "fail closed"),
+    },
     "scripts/maintenance/**": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("None direct", "narrower row"),
