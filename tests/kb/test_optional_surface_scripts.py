@@ -454,6 +454,25 @@ class OptionalSurfaceScriptTests(RuntimeWorkspaceTestCase):
         item = payload["items"][0]
         self.assertEqual(item["reason_code"], "output_already_exists")
 
+    def test_convert_sources_apply_slug_collision_rejected(self) -> None:
+        self.write_file("raw/inbox/report.txt", "text version\n")
+        self.write_file("raw/inbox/report.html", "<html>html version</html>\n")
+        exit_code, payload = self._run_script(
+            CONVERT_SOURCES_PATH,
+            "--mode",
+            "apply",
+            "--approval",
+            "approved",
+            "--path",
+            "raw/inbox/report.txt",
+            "--path",
+            "raw/inbox/report.html",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("slug collision", payload["message"])
+
     def test_snapshot_capture_and_compare_run_from_repo_root(self) -> None:
         capture_exit, capture_payload = self._run_script(
             SNAPSHOT_PATH,

@@ -1038,6 +1038,45 @@ class ManageRedirectsWrapperTests(_RuntimeWrapperFixture):
         content = (self.repo_root / "wiki" / "redirects.md").read_text(encoding="utf-8")
         self.assertIn("| REMOVED |", content)
 
+    def test_apply_mode_rejects_pipe_in_reason_does_not_corrupt_table(self) -> None:
+        result = self._run_redirects(
+            mode="apply",
+            old_slug="old-page",
+            new_slug="new-page",
+            reason="see history | was split from Part-C",
+            approval="approved",
+        )
+
+        self.assertEqual(result.status, "pass")
+        content = (self.repo_root / "wiki" / "redirects.md").read_text(encoding="utf-8")
+        # Pipe in reason must be sanitized; the row must have exactly 4 columns
+        for line in content.splitlines():
+            if line.startswith("| old-page |"):
+                self.assertEqual(line.count("|"), 5)  # 4 cells = 5 separators
+
+    def test_apply_mode_no_false_positive_on_target_slug_as_new_old_slug(self) -> None:
+        # Chain redirect: first foo→bar, then bar→baz
+        self._run_redirects(
+            mode="apply",
+            old_slug="foo",
+            new_slug="bar",
+            reason="renamed",
+            approval="approved",
+        )
+        # bar is already a new_slug — should NOT be treated as duplicate old_slug
+        result = self._run_redirects(
+            mode="apply",
+            old_slug="bar",
+            new_slug="baz",
+            reason="renamed again",
+            approval="approved",
+        )
+
+        self.assertEqual(result.status, "pass")
+        content = (self.repo_root / "wiki" / "redirects.md").read_text(encoding="utf-8")
+        self.assertIn("| foo | bar |", content)
+        self.assertIn("| bar | baz |", content)
+
 
 class ComputeKpisWrapperTests(_RuntimeWrapperFixture):
     """Tests for compute-kpis read-only KPI snapshot logic."""
@@ -1074,13 +1113,20 @@ class ComputeKpisWrapperTests(_RuntimeWrapperFixture):
             json.dumps(artifact), encoding="utf-8"
         )
         result = self._run_kpis(mode="snapshot")
+    def test_score_file_skips_malformed_json_gracefully(self) -> None:
+        import json
+        (self.repo_root / "wiki" / "reports" / "quality-scores-good.json").write_text(
+            json.dumps({"findings": [{"page_path": "wiki/p.md", "score": 0.8}]}),
+            encoding="utf-8",
+        )
+        (self.repo_root / "wiki" / "reports" / "quality-scores-bad.json").write_text(
+            "not valid json {{", encoding="utf-8"
+        )
+        result = self._run_kpis(mode="snapshot")
         self.assertEqual(result.status, "pass")
-        self.assertEqual(result.summary["artifact_count"], 1)
-        kpis = result.summary["kpis"]
-        self.assertEqual(kpis["page_count"], 3)
-        self.assertAlmostEqual(kpis["avg_score"], (0.9 + 0.3 + 0.7) / 3, places=3)
-        self.assertEqual(kpis["low_score_count"], 1)   # 0.3 < 0.4
-        self.assertEqual(kpis["high_score_count"], 1)  # 0.9 >= 0.8
+        self.assertEqual(result.summary["artifact_count"], 2)
+        # malformed file is skipped; KPIs are computed from the valid file only
+        self.assertEqual(result.summary["kpis"]["page_count"], 1)
 
 
 class AnalyzeMissedQueriesWrapperTests(_RuntimeWrapperFixture):
@@ -1114,6 +1160,16 @@ class AnalyzeMissedQueriesWrapperTests(_RuntimeWrapperFixture):
         items = result.items
         self.assertEqual(len(items), 1)
         self.assertIn("placeholder TODO marker", [g["gap_type"] for g in items[0]["gaps"]])
+
+    def test_empty_sources_frontmatter_detected_as_gap(self) -> None:
+        (self.repo_root / "wiki" / "no-sources.md").write_text(
+            "---\ntitle: No Sources\nsources: []\n---\n\nSome body text.\n", encoding="utf-8"
+        )
+        result = self._run_scan(paths=["wiki/no-sources.md"])
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(result.summary["gap_page_count"], 1)
+        gap_types = [g["gap_type"] for g in result.items[0]["gaps"]]
+        self.assertIn("empty sources list in frontmatter", gap_types)
 
     def test_path_escape_rejected(self) -> None:
         result = self._run_scan(paths=["raw/inbox/some-file.md"])

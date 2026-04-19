@@ -15,7 +15,6 @@ from scripts._optional_surface_common import (
     APPROVAL_NONE,
     JsonArgumentParser,
     REASON_CODE_OK,
-    STATUS_FAIL,
     STATUS_PASS,
     SurfaceResult,
     looks_like_repo_root,

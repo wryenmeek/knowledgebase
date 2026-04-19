@@ -187,6 +187,23 @@ def run_convert_sources(
             ),
             path_rules=path_rules,
         )
+    # Pre-pass: detect stem collisions before any writes (two inbox files → same output slug)
+    slug_to_sources: dict[str, list[Path]] = {}
+    for p in resolved_paths:
+        slug_to_sources.setdefault(p.stem, []).append(p)
+    collisions = {slug: paths for slug, paths in slug_to_sources.items() if len(paths) > 1}
+    if collisions:
+        collision_detail = "; ".join(
+            f"{slug}: {', '.join(repo_relative(normalized_repo_root, p) for p in paths)}"
+            for slug, paths in collisions.items()
+        )
+        return invalid_input_result(
+            surface=SURFACE,
+            mode=mode,
+            approval=approval,
+            message=f"slug collision: multiple inbox sources share the same stem: {collision_detail}",
+            path_rules=path_rules,
+        )
     processed_root = normalized_repo_root / PROCESSED_OUTPUT_ROOT
     processed_root.mkdir(parents=True, exist_ok=True)
     items: list[dict] = []
@@ -224,14 +241,28 @@ def run_convert_sources(
                     )
                     continue
                 sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
-                md_out.write_text(md_content, encoding="utf-8")
-                meta = {
-                    "source_path": repo_relative(normalized_repo_root, path),
-                    "source_sha256": sha256,
-                    "converted_at": datetime.now(timezone.utc).isoformat(),
-                    "surface": SURFACE,
-                }
-                meta_out.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+                try:
+                    md_out.write_text(md_content, encoding="utf-8")
+                    meta = {
+                        "source_path": repo_relative(normalized_repo_root, path),
+                        "source_sha256": sha256,
+                        "converted_at": datetime.now(timezone.utc).isoformat(),
+                        "surface": SURFACE,
+                    }
+                    meta_out.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+                except OSError as exc:
+                    # Roll back the partial pair so the source remains retryable.
+                    md_out.unlink(missing_ok=True)
+                    errors += 1
+                    items.append(
+                        {
+                            "source_path": repo_relative(normalized_repo_root, path),
+                            "status": STATUS_FAIL,
+                            "reason_code": "write_error",
+                            "message": str(exc),
+                        }
+                    )
+                    continue
                 items.append(
                     {
                         "source_path": repo_relative(normalized_repo_root, path),

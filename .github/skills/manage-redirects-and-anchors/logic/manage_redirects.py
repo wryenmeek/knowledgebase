@@ -32,7 +32,7 @@ SUPPORTED_MODES: tuple[str, ...] = ("propose", "apply")
 REDIRECTS_FILE = "wiki/redirects.md"
 _REDIRECTS_HEADER = "| old_slug | new_slug | redirected_at | reason |\n|----------|----------|----------------|--------|\n"
 
-_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
+
 
 
 def _normalize_slug(value: str) -> str:
@@ -92,7 +92,7 @@ def run_manage_redirects(
     norm_old = _normalize_slug(old_slug)
     norm_new = new_slug.upper() if new_slug.upper() == "REMOVED" else _normalize_slug(new_slug)
     today = date.today().isoformat()
-    clean_reason = reason.strip() or "no reason provided"
+    clean_reason = (reason.strip() or "no reason provided").replace("|", "-")
 
     if not norm_old or (norm_new != "REMOVED" and not norm_new):
         return SurfaceResult(
@@ -143,8 +143,9 @@ def run_manage_redirects(
                 )
             else:
                 existing = redirects_path.read_text(encoding="utf-8")
-                # duplicate check based on old_slug (each slug should redirect only once)
-                if f"| {norm_old} |" in existing:
+                # Anchor to line-start to avoid false positives when norm_old also
+                # appears as a new_slug in an earlier row.
+                if re.search(rf"(?m)^\| {re.escape(norm_old)} \|", existing):
                     return SurfaceResult(
                         surface=SURFACE,
                         mode=mode,
