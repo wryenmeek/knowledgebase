@@ -76,7 +76,7 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     "append-maintenance-log": {"logic": False, "classification": "Doc-only workflow"},
     "patrol-human-edits": {"logic": False, "classification": "Doc-only workflow"},
     "route-noncompliant-edit-for-review": {"logic": False, "classification": "Doc-only workflow"},
-    "manage-redirects-and-anchors": {"logic": False, "classification": "Doc-only workflow"},
+    "manage-redirects-and-anchors": {"logic": True},
     "detect-original-research": {"logic": False, "classification": "Doc-only workflow"},
     "compare-against-existing-pages": {"logic": False, "classification": "Doc-only workflow"},
     "escalate-contradictions": {"logic": False, "classification": "Doc-only workflow"},

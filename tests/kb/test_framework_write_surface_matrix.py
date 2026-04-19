@@ -24,6 +24,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("schema/taxonomy-contract.md", "schema/page-template.md"),
         "Hard-fail behavior": ("topology_invalid", "path_not_allowlisted", "fail closed"),
     },
+    ".github/skills/manage-redirects-and-anchors/logic/**": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("wiki/redirects.md", "append-only"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Artifact / schema owners": ("ADR-009", "schema/governed-artifact-contract.md"),
+        "Hard-fail behavior": ("lock_unavailable", "duplicate redirect", "fail closed"),
+    },
     ".github/skills/context-engineering/logic/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None",),

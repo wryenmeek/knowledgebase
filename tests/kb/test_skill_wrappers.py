@@ -65,6 +65,14 @@ APPEND_LOG_WRAPPER_PATH = (
     / "logic"
     / "append_log_entry.py"
 )
+MANAGE_REDIRECTS_WRAPPER_PATH = (
+    REPO_ROOT
+    / ".github"
+    / "skills"
+    / "manage-redirects-and-anchors"
+    / "logic"
+    / "manage_redirects.py"
+)
 VALIDATOR_WRAPPER_PATH = (
     REPO_ROOT
     / ".github"
@@ -911,6 +919,7 @@ class ValidateWikiGovernanceWrapperRuntimeTests(_RuntimeWrapperFixture):
 class SyncKnowledgebaseStateWrapperRuntimeTests(_RuntimeWrapperFixture):
     INIT_FIXTURE_REPO = True
 
+
     def test_write_index_mode_runs_end_to_end_with_authoritative_lint(self) -> None:
         module = self._load_fixture_module(
             ".github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py",
@@ -921,6 +930,102 @@ class SyncKnowledgebaseStateWrapperRuntimeTests(_RuntimeWrapperFixture):
             exit_code = module.main(["--write-index"])
 
         self.assertEqual(exit_code, 0)
+
+
+class ManageRedirectsWrapperTests(_RuntimeWrapperFixture):
+    INIT_FIXTURE_REPO = True
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.repo_root / "AGENTS.md").write_text("knowledgebase fixture\n", encoding="utf-8")
+
+    def _run_redirects(self, **kwargs):
+        module = _load_module("manage_redirects", MANAGE_REDIRECTS_WRAPPER_PATH)
+        return module.run_manage_redirects(repo_root=self.repo_root, **kwargs)
+
+    def test_propose_mode_is_read_only_and_returns_preview(self) -> None:
+        result = self._run_redirects(
+            mode="propose",
+            old_slug="old-page",
+            new_slug="new-page",
+            reason="renamed",
+        )
+
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(result.mode, "propose")
+        self.assertIn("old-page", result.items[0]["proposed_row"])
+        self.assertIn("new-page", result.items[0]["proposed_row"])
+        self.assertFalse((self.repo_root / "wiki" / "redirects.md").exists())
+
+    def test_apply_mode_requires_approval(self) -> None:
+        result = self._run_redirects(
+            mode="apply",
+            old_slug="old-page",
+            new_slug="new-page",
+        )
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.reason_code, "approval_required")
+        self.assertFalse((self.repo_root / "wiki" / "redirects.md").exists())
+
+    def test_apply_mode_creates_redirects_file_with_row(self) -> None:
+        result = self._run_redirects(
+            mode="apply",
+            old_slug="old-page",
+            new_slug="new-page",
+            reason="renamed by maintainer",
+            approval="approved",
+        )
+
+        self.assertEqual(result.status, "pass")
+        redirects_path = self.repo_root / "wiki" / "redirects.md"
+        self.assertTrue(redirects_path.exists())
+        content = redirects_path.read_text(encoding="utf-8")
+        self.assertIn("| old-page |", content)
+        self.assertIn("| new-page |", content)
+        self.assertIn("renamed by maintainer", content)
+
+    def test_apply_mode_rejects_duplicate_redirect(self) -> None:
+        self._run_redirects(
+            mode="apply",
+            old_slug="old-page",
+            new_slug="new-page",
+            reason="first",
+            approval="approved",
+        )
+        result = self._run_redirects(
+            mode="apply",
+            old_slug="old-page",
+            new_slug="new-page",
+            reason="duplicate attempt",
+            approval="approved",
+        )
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.reason_code, "duplicate_redirect")
+
+    def test_slug_normalization_lowercases_and_hyphenates(self) -> None:
+        result = self._run_redirects(
+            mode="propose",
+            old_slug="Medicare Advantage Part C",
+            new_slug="New Name",
+        )
+
+        self.assertEqual(result.summary["old_slug"], "medicare-advantage-part-c")
+        self.assertEqual(result.summary["new_slug"], "new-name")
+
+    def test_removed_new_slug_is_accepted(self) -> None:
+        result = self._run_redirects(
+            mode="apply",
+            old_slug="deleted-page",
+            new_slug="REMOVED",
+            reason="page deleted",
+            approval="approved",
+        )
+
+        self.assertEqual(result.status, "pass")
+        content = (self.repo_root / "wiki" / "redirects.md").read_text(encoding="utf-8")
+        self.assertIn("| REMOVED |", content)
 
 
 if __name__ == "__main__":
