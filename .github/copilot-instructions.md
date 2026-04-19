@@ -85,6 +85,20 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - Skill descriptions should clearly state what the skill does and “Use when...” triggers.
 - Prefer referencing shared docs over duplicating long guidance.
 
+### Jules SDK
+
+`@google/jules-sdk` exports a pre-built singleton — never use a constructor:
+
+```typescript
+import { jules } from '@google/jules-sdk';
+// jules is ready to use. JULES_API_KEY is read from the environment automatically.
+// jules.run()      → AutomatedSession (auto-approve, auto-PR) — use for CI
+// jules.session()  → SessionClient (defaults requirePlanApproval:true) — use for human-in-the-loop
+// jules.sessions() → async iterator over all sessions
+```
+
+Do not use `new Jules()`, `Jules({ apiKey })`, or `jules.createSession()` — none of these exist.
+
 ## Boundaries
 
 - **Always:** follow skill workflow requirements when applicable.
@@ -99,39 +113,3 @@ Use personas in `.github/agents` when useful:
 - `@test-engineer`
 - `@security-auditor`
 
-## Build, test, and lint commands
-
-```bash
-# Run the full Python test suite (~45s, 314 tests)
-python3 -m pytest tests/
-
-# Run a single test file
-python3 -m pytest tests/kb/test_ingest.py
-
-# Verify TypeScript fleet scripts compile (no pytest coverage for these)
-cd scripts/fleet && bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts
-```
-
-`scripts/fleet/` is a standalone TypeScript/Bun project (its own `package.json`, `bun.lock`, `tsconfig.json`) — completely separate from the Python test suite. **Always run `bun build` after editing any TypeScript in `scripts/fleet/`** — the Python tests will not catch TypeScript syntax errors there.
-
-## Planning vs. implementation
-
-**"Create a plan" means plan only.** When asked to create a plan, output the plan and wait for explicit approval before making any changes. The user says things like "implement", "start", "go ahead", or "get to work" to trigger implementation. Do not combine plan creation and implementation in a single response.
-
-**"Researching:" prefix = no writes.** When a user message begins with `Researching:`, produce analysis and findings only. Do not create files, make commits, or open PRs. The research phase ends when the user gives an explicit action command.
-
-## Jules SDK
-
-The `@google/jules-sdk` package exports a pre-built singleton — not a constructor class:
-
-```typescript
-import { jules } from '@google/jules-sdk';
-// jules is ready to use immediately; reads JULES_API_KEY from env automatically.
-// Never use: new Jules(), Jules({ apiKey }), or jules.createSession()
-```
-
-Key method semantics:
-- `jules.run(config)` → auto-approves plan, auto-creates PR. **Use for CI.**
-- `jules.session(config)` → defaults `requirePlanApproval: true`, pauses for human approval.
-- `jules.session(id: string)` → rehydrates an existing session by ID.
-- `jules.createSession()` → **does not exist.**
