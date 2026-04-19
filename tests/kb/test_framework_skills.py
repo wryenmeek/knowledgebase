@@ -82,8 +82,8 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     "escalate-contradictions": {"logic": False, "classification": "Doc-only workflow"},
     # G3a Wave 4 — quality and orchestration (quality-analyst, knowledgebase-orchestrator)
     "score-page-quality": {"logic": False, "classification": "Doc-only workflow"},
-    "compute-kpis": {"logic": False, "classification": "Doc-only workflow"},
-    "analyze-missed-queries": {"logic": False, "classification": "Doc-only workflow"},
+    "compute-kpis": {"logic": True},
+    "analyze-missed-queries": {"logic": True},
     "prioritize-curation-backlog": {"logic": False, "classification": "Doc-only workflow"},
     "route-wiki-task": {"logic": False, "classification": "Doc-only workflow"},
     "plan-wiki-job": {"logic": False, "classification": "Doc-only workflow"},

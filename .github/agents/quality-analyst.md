@@ -42,6 +42,8 @@ ADR-007 keeps telemetry-heavy observability, new runtime surfaces, and broad ana
 - `.github/skills/source-driven-development/SKILL.md`
 - `.github/skills/prioritize-quality-follow-up/SKILL.md`
 - `.github/skills/report-content-quality/SKILL.md`
+- `.github/skills/compute-kpis/SKILL.md` — read-only KPI snapshot from quality-scores report artifacts; invoke before `prioritize-curation-backlog` to quantify aggregate wiki health
+- `.github/skills/analyze-missed-queries/SKILL.md` — read-only coverage gap scan across wiki pages; invoke to surface placeholder, low-confidence, and uncited pages before routing new synthesis work
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`

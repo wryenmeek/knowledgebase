@@ -31,6 +31,20 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("ADR-009", "schema/governed-artifact-contract.md"),
         "Hard-fail behavior": ("lock_unavailable", "duplicate redirect", "fail closed"),
     },
+    ".github/skills/compute-kpis/logic/**": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None",),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("schema/report-artifact-contract.md", ".github/agents/quality-analyst.md"),
+        "Hard-fail behavior": ("missing artifact", "write attempt", "fail closed"),
+    },
+    ".github/skills/analyze-missed-queries/logic/**": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None",),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("schema/page-template.md", ".github/agents/quality-analyst.md"),
+        "Hard-fail behavior": ("path escape", "invalid wiki path", "fail closed"),
+    },
     ".github/skills/context-engineering/logic/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None",),

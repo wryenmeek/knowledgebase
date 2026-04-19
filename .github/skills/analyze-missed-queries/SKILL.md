@@ -1,26 +1,22 @@
 ---
 name: analyze-missed-queries
-description: Reviews queries that produced low-quality or no-result answers to identify wiki coverage gaps. Use when quality-analyst needs evidence of what knowledge is absent before prioritizing new synthesis work.
+description: Scans wiki pages for coverage gaps — missing citations, low-confidence markers, placeholder text, and empty sources — to identify where synthesis work is needed. Use when quality-analyst needs evidence of knowledge gaps before prioritizing new synthesis work.
 ---
 
 # Analyze Missed Queries
 
 ## Overview
 
-This skill documents the missed-query analysis step for the `quality-analyst` persona.
-A missed query is any query to `query-synthesist` that produced a low-confidence
-answer, a partial result, or no matching wiki page. Analyzing these gaps provides
-evidence for curation prioritization decisions. Analysis is read-only; gap findings
-route to `prioritize-curation-backlog`.
-
-**Doc-only workflow.** No `logic/` dir is introduced.
+This skill implements wiki coverage gap analysis for the `quality-analyst` persona.
+It scans wiki pages for gap markers: placeholder `TODO`/`PLACEHOLDER`/`TBD` text,
+low-confidence frontmatter, empty sources lists, and unresolved question markers.
+Gap findings route to `prioritize-curation-backlog`. Analysis is read-only.
 
 ## Classification
 
-- **Mode:** Doc-only workflow
+- **Mode:** `scan` — read-only gap analysis from wiki evidence
 - **MVP status:** Active
-- **Execution boundary:** Read-only gap analysis. No new wiki pages are created
-  directly from this skill.
+- **Execution boundary:** Read-only. No new wiki pages are created directly.
 
 ## When to Use
 
@@ -34,24 +30,25 @@ route to `prioritize-curation-backlog`.
 
 ## Contract
 
-- Input: a query log or a set of query results marked as low-confidence or no-match
-- Output: a structured coverage-gap report listing topic areas, query patterns,
-  and evidence of what is missing
-- Handoff: coverage gaps route to `prioritize-curation-backlog` and then to
+- **Input:** wiki page paths (defaults to all `wiki/**/*.md` pages)
+- **Output:** per-page gap findings listing gap type and pattern; summary includes
+  `scanned_count` and `gap_page_count`
+- **Handoff:** coverage gaps route to `prioritize-curation-backlog` and then to
   `knowledgebase-orchestrator` for intake consideration
 
 ## Assertions
 
 - No wiki pages are created or modified directly by this skill
 - Coverage gaps are evidence only; synthesis requires the full intake-safe lane
-- Query results used as input must be repo-local or explicitly consented operator
-  records — no external service calls
+- Wiki paths outside `wiki/**` are rejected (path-escape protection)
 - Missing query log fails closed with an explicit error rather than a silent empty report
+- This skill operates on repo-local wiki evidence only; external query logs are not
+  imported without operator consent
 
 ## References
 
 - `AGENTS.md`
-- `docs/architecture.md`
 - `raw/processed/SPEC.md`
+- `.github/skills/analyze-missed-queries/logic/analyze_missed_queries.py`
 - `.github/agents/quality-analyst.md`
 - `.github/agents/query-synthesist.md`

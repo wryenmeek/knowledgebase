@@ -73,6 +73,17 @@ MANAGE_REDIRECTS_WRAPPER_PATH = (
     / "logic"
     / "manage_redirects.py"
 )
+COMPUTE_KPIS_WRAPPER_PATH = (
+    REPO_ROOT / ".github" / "skills" / "compute-kpis" / "logic" / "compute_kpis.py"
+)
+ANALYZE_MISSED_QUERIES_WRAPPER_PATH = (
+    REPO_ROOT
+    / ".github"
+    / "skills"
+    / "analyze-missed-queries"
+    / "logic"
+    / "analyze_missed_queries.py"
+)
 VALIDATOR_WRAPPER_PATH = (
     REPO_ROOT
     / ".github"
@@ -1026,6 +1037,87 @@ class ManageRedirectsWrapperTests(_RuntimeWrapperFixture):
         self.assertEqual(result.status, "pass")
         content = (self.repo_root / "wiki" / "redirects.md").read_text(encoding="utf-8")
         self.assertIn("| REMOVED |", content)
+
+
+class ComputeKpisWrapperTests(_RuntimeWrapperFixture):
+    """Tests for compute-kpis read-only KPI snapshot logic."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.repo_root / "AGENTS.md").write_text("knowledgebase fixture\n")
+        (self.repo_root / "wiki" / "reports").mkdir(parents=True, exist_ok=True)
+
+    def _run_kpis(self, **kwargs):
+        module = _load_module("compute_kpis", COMPUTE_KPIS_WRAPPER_PATH)
+        return module.run_compute_kpis(repo_root=self.repo_root, **kwargs)
+
+    def test_no_score_files_returns_empty_snapshot(self) -> None:
+        result = self._run_kpis(mode="snapshot")
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(result.summary["artifact_count"], 0)
+        self.assertEqual(result.summary["kpis"], {})
+        self.assertIn("empty", result.message)
+
+    def test_score_file_computes_kpis(self) -> None:
+        artifact = {
+            "report_type": "quality-scores",
+            "generated_at": "2025-01-01T00:00:00Z",
+            "scope": "wiki",
+            "findings": [
+                {"page_path": "wiki/page-a.md", "score": 0.9},
+                {"page_path": "wiki/page-b.md", "score": 0.3},
+                {"page_path": "wiki/page-c.md", "score": 0.7},
+            ],
+        }
+        import json
+        (self.repo_root / "wiki" / "reports" / "quality-scores-2025-01-01.json").write_text(
+            json.dumps(artifact), encoding="utf-8"
+        )
+        result = self._run_kpis(mode="snapshot")
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(result.summary["artifact_count"], 1)
+        kpis = result.summary["kpis"]
+        self.assertEqual(kpis["page_count"], 3)
+        self.assertAlmostEqual(kpis["avg_score"], (0.9 + 0.3 + 0.7) / 3, places=3)
+        self.assertEqual(kpis["low_score_count"], 1)   # 0.3 < 0.4
+        self.assertEqual(kpis["high_score_count"], 1)  # 0.9 >= 0.8
+
+
+class AnalyzeMissedQueriesWrapperTests(_RuntimeWrapperFixture):
+    """Tests for analyze-missed-queries read-only coverage gap scan."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.repo_root / "AGENTS.md").write_text("knowledgebase fixture\n")
+        (self.repo_root / "wiki").mkdir(parents=True, exist_ok=True)
+
+    def _run_scan(self, **kwargs):
+        module = _load_module("analyze_missed_queries", ANALYZE_MISSED_QUERIES_WRAPPER_PATH)
+        return module.run_analyze_missed_queries(repo_root=self.repo_root, **kwargs)
+
+    def test_clean_page_no_gaps(self) -> None:
+        (self.repo_root / "wiki" / "clean-page.md").write_text(
+            "---\ntitle: Clean\n---\n\nAll good here.\n", encoding="utf-8"
+        )
+        result = self._run_scan(paths=["wiki/clean-page.md"])
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(result.summary["gap_page_count"], 0)
+        self.assertEqual(result.summary["scanned_count"], 1)
+
+    def test_todo_page_detected_as_gap(self) -> None:
+        (self.repo_root / "wiki" / "stub-page.md").write_text(
+            "---\ntitle: Stub\n---\n\nTODO: add content here.\n", encoding="utf-8"
+        )
+        result = self._run_scan(paths=["wiki/stub-page.md"])
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(result.summary["gap_page_count"], 1)
+        items = result.items
+        self.assertEqual(len(items), 1)
+        self.assertIn("placeholder TODO marker", [g["gap_type"] for g in items[0]["gaps"]])
+
+    def test_path_escape_rejected(self) -> None:
+        result = self._run_scan(paths=["raw/inbox/some-file.md"])
+        self.assertEqual(result.status, "fail")
 
 
 if __name__ == "__main__":
