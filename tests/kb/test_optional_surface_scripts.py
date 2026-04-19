@@ -152,20 +152,185 @@ class OptionalSurfaceScriptTests(RuntimeWorkspaceTestCase):
         self.assertEqual(payload["reason_code"], "invalid_input")
         self.assertIn("outside the declared scope", payload["message"])
 
-    def test_fill_context_apply_fails_closed_even_with_approval(self) -> None:
+    def test_fill_context_apply_requires_staged_fills_path(self) -> None:
+        # apply without --staged-fills-path should fail with invalid_input
         exit_code, payload = self._run_script(
             FILL_CONTEXT_PATH,
             "--mode",
             "apply",
-            "--path",
-            "docs",
             "--approval",
             "approved",
         )
 
         self.assertEqual(exit_code, 1)
-        self.assertEqual(payload["reason_code"], "write_surface_not_declared")
-        self.assertTrue(payload["lock_required"])
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("staged-fills-path", payload["message"])
+
+    def test_fill_context_apply_writes_fills_from_manifest(self) -> None:
+        # Produce a valid fill manifest and verify apply mode writes the file.
+        import hashlib
+        target_rel = "docs/guide.md"
+        existing_text = (self.workspace / target_rel).read_text(encoding="utf-8")
+        sha = hashlib.sha256(existing_text.encode("utf-8")).hexdigest()
+        filled_content = "---\nupdated_at: \"2024-01-01T00:00:00Z\"\nsources: []\n---\n\n# Guide\n\nFilled content.\n"
+        manifest = {"items": [{"path": target_rel, "content": filled_content, "expected_before_sha256": sha}]}
+        self.write_file("docs/staged/fills.json", json.dumps(manifest))
+
+        exit_code, payload = self._run_script(
+            FILL_CONTEXT_PATH,
+            "--mode",
+            "apply",
+            "--staged-fills-path",
+            "docs/staged/fills.json",
+            "--approval",
+            "approved",
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["summary"]["written_count"], 1)
+        self.assertEqual((self.workspace / target_rel).read_text(encoding="utf-8"), filled_content)
+
+    def test_fill_context_apply_rejects_remaining_placeholders(self) -> None:
+        manifest = {"items": [{"path": "docs/guide.md", "content": "# Guide\n\nTODO still here\n"}]}
+        self.write_file("docs/staged/fills-bad.json", json.dumps(manifest))
+
+        exit_code, payload = self._run_script(
+            FILL_CONTEXT_PATH,
+            "--mode",
+            "apply",
+            "--staged-fills-path",
+            "docs/staged/fills-bad.json",
+            "--approval",
+            "approved",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("placeholder", payload["message"])
+
+    def test_fill_context_apply_rejects_schema_write_target(self) -> None:
+        manifest = {"items": [{"path": "schema/contract.md", "content": "# Contract\n\nFilled.\n"}]}
+        self.write_file("docs/staged/fills-schema.json", json.dumps(manifest))
+
+        exit_code, payload = self._run_script(
+            FILL_CONTEXT_PATH,
+            "--mode",
+            "apply",
+            "--staged-fills-path",
+            "docs/staged/fills-schema.json",
+            "--approval",
+            "approved",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("declared write scope", payload["message"])
+
+    def test_fill_context_apply_rejects_docs_staged_write_target(self) -> None:
+        manifest = {"items": [{"path": "docs/staged/output.md", "content": "# Output\n"}]}
+        self.write_file("docs/staged/fills-staging.json", json.dumps(manifest))
+
+        exit_code, payload = self._run_script(
+            FILL_CONTEXT_PATH,
+            "--mode",
+            "apply",
+            "--staged-fills-path",
+            "docs/staged/fills-staging.json",
+            "--approval",
+            "approved",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("denied write root", payload["message"])
+
+    def test_fill_context_apply_rejects_sha_mismatch(self) -> None:
+        manifest = {"items": [{"path": "docs/guide.md", "content": "# Guide\n\nFilled.\n", "expected_before_sha256": "a" * 64}]}
+        self.write_file("docs/staged/fills-sha.json", json.dumps(manifest))
+
+        exit_code, payload = self._run_script(
+            FILL_CONTEXT_PATH,
+            "--mode",
+            "apply",
+            "--staged-fills-path",
+            "docs/staged/fills-sha.json",
+            "--approval",
+            "approved",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("SHA mismatch", payload["message"])
+
+    def test_generate_docs_apply_requires_staged_docs_path(self) -> None:
+        exit_code, payload = self._run_script(
+            GENERATE_DOCS_PATH,
+            "--mode",
+            "apply",
+            "--approval",
+            "approved",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("staged-docs-path", payload["message"])
+
+    def test_generate_docs_apply_writes_new_doc_from_manifest(self) -> None:
+        new_doc_content = "# Scripts Reference\n\nAuto-generated.\n"
+        manifest = {"items": [{"path": "docs/scripts-reference.md", "content": new_doc_content}]}
+        self.write_file("docs/staged/docs-manifest.json", json.dumps(manifest))
+
+        exit_code, payload = self._run_script(
+            GENERATE_DOCS_PATH,
+            "--mode",
+            "apply",
+            "--staged-docs-path",
+            "docs/staged/docs-manifest.json",
+            "--approval",
+            "approved",
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["summary"]["written_count"], 1)
+        self.assertEqual((self.workspace / "docs/scripts-reference.md").read_text(encoding="utf-8"), new_doc_content)
+
+    def test_generate_docs_apply_rejects_write_outside_docs(self) -> None:
+        manifest = {"items": [{"path": "wiki/generated.md", "content": "# Generated\n"}]}
+        self.write_file("docs/staged/docs-bad.json", json.dumps(manifest))
+
+        exit_code, payload = self._run_script(
+            GENERATE_DOCS_PATH,
+            "--mode",
+            "apply",
+            "--staged-docs-path",
+            "docs/staged/docs-bad.json",
+            "--approval",
+            "approved",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("declared write scope", payload["message"])
+
+    def test_generate_docs_apply_rejects_docs_staged_write_target(self) -> None:
+        manifest = {"items": [{"path": "docs/staged/output.md", "content": "# Output\n"}]}
+        self.write_file("docs/staged/docs-staging.json", json.dumps(manifest))
+
+        exit_code, payload = self._run_script(
+            GENERATE_DOCS_PATH,
+            "--mode",
+            "apply",
+            "--staged-docs-path",
+            "docs/staged/docs-staging.json",
+            "--approval",
+            "approved",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("denied write root", payload["message"])
 
     def test_generate_docs_inventory_runs_from_repo_root(self) -> None:
         exit_code, payload = self._run_script(

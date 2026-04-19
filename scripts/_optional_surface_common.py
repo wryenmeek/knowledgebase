@@ -267,6 +267,123 @@ def count_placeholders(text: str) -> int:
     return sum(text.count(marker) for marker in PLACEHOLDER_MARKERS)
 
 
+def resolve_write_target(
+    repo_root: Path,
+    raw_path: str,
+    *,
+    allowed_roots: Sequence[str],
+    allowed_suffixes: Sequence[str] | None = None,
+    denied_roots: Sequence[str] | None = None,
+) -> Path:
+    """Like ``_ensure_safe_relative_path`` but accepts non-existent target files.
+
+    Validates that ``raw_path`` is repo-relative, escapes nothing, contains no
+    symlinks in existing path components, falls within ``allowed_roots``, is not
+    within any ``denied_roots``, and (if provided) has an allowed suffix.  Does
+    **not** require the file to exist — suitable for write targets that will be
+    created by the caller.
+    """
+    normalized = raw_path.strip()
+    if not normalized:
+        raise ValueError("path values must be non-empty repo-relative paths")
+    candidate = Path(normalized)
+    if candidate.is_absolute():
+        raise ValueError(f"path must be repo-relative: {normalized}")
+    # Only check symlinks on components that already exist.
+    current = repo_root
+    for part in candidate.parts:
+        current = current / part
+        if current.exists() and current.is_symlink():
+            raise ValueError(f"path must not use symlinks: {normalized}")
+    resolved = (repo_root / candidate).resolve()
+    if not resolved.is_relative_to(repo_root):
+        raise ValueError(f"path escapes repository root: {normalized}")
+    allowed_root_paths = tuple((repo_root / root).resolve() for root in allowed_roots)
+    if not any(resolved == root or resolved.is_relative_to(root) for root in allowed_root_paths):
+        raise ValueError(f"path is outside the declared write scope: {normalized}")
+    if denied_roots:
+        denied_root_paths = tuple((repo_root / root).resolve() for root in denied_roots)
+        if any(resolved == root or resolved.is_relative_to(root) for root in denied_root_paths):
+            raise ValueError(f"path is within a denied write root: {normalized}")
+    if allowed_suffixes:
+        normalized_suffixes = {s.lower() for s in allowed_suffixes}
+        if resolved.suffix.lower() not in normalized_suffixes:
+            raise ValueError(f"path suffix '{resolved.suffix}' is not in the allowed set: {normalized}")
+    return resolved
+
+
+class ManifestItem(TypedDict, total=False):
+    path: str
+    content: str
+    expected_before_sha256: str | None
+
+
+def validate_staged_manifest(
+    raw: Any,
+    *,
+    repo_root: Path,
+    write_roots: Sequence[str],
+    denied_roots: Sequence[str] | None = None,
+    allowed_suffixes: Sequence[str] | None = None,
+    reject_remaining_placeholders: bool = False,
+) -> list[tuple[Path, str, str | None]]:
+    """Parse and validate a staged manifest dict, returning ``(resolved_path, content, expected_sha)`` tuples.
+
+    Raises ``ValueError`` on any violation:
+    - wrong top-level shape,
+    - duplicate target paths,
+    - path outside write roots or inside denied roots,
+    - disallowed suffix,
+    - wrong field types,
+    - SHA mismatch (file on disk differs from ``expected_before_sha256``),
+    - remaining placeholder markers in content (when ``reject_remaining_placeholders=True``).
+    """
+    if not isinstance(raw, dict) or not isinstance(raw.get("items"), list):
+        raise ValueError("manifest must be a JSON object with an 'items' array")
+    items = raw["items"]
+    seen_paths: set[Path] = set()
+    result: list[tuple[Path, str, str | None]] = []
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"manifest item {idx} must be an object")
+        if not isinstance(item.get("path"), str):
+            raise ValueError(f"manifest item {idx} missing required string field 'path'")
+        if not isinstance(item.get("content"), str):
+            raise ValueError(f"manifest item {idx} missing required string field 'content'")
+        expected_sha = item.get("expected_before_sha256")
+        if expected_sha is not None and not isinstance(expected_sha, str):
+            raise ValueError(f"manifest item {idx} field 'expected_before_sha256' must be a hex string or null")
+        resolved = resolve_write_target(
+            repo_root,
+            item["path"],
+            allowed_roots=write_roots,
+            allowed_suffixes=allowed_suffixes,
+            denied_roots=denied_roots,
+        )
+        if resolved in seen_paths:
+            raise ValueError(f"manifest item {idx} duplicates path: {item['path']}")
+        seen_paths.add(resolved)
+        # Hash-based drift check: reject if file was modified since manifest was produced.
+        if expected_sha is not None:
+            if not resolved.exists():
+                raise ValueError(
+                    f"manifest item {idx} specifies expected_before_sha256 but file does not exist: {item['path']}"
+                )
+            actual_sha = sha256_file(resolved)
+            if actual_sha != expected_sha:
+                raise ValueError(
+                    f"manifest item {idx} SHA mismatch — file was modified after manifest was produced: {item['path']}"
+                )
+        if reject_remaining_placeholders and count_placeholders(item["content"]) > 0:
+            raise ValueError(
+                f"manifest item {idx} still contains placeholder markers after fill: {item['path']}"
+            )
+        result.append((resolved, item["content"], expected_sha))
+    if not result:
+        raise ValueError("manifest 'items' array must not be empty")
+    return result
+
+
 def add_common_surface_args(
     parser: argparse.ArgumentParser,
     *,

@@ -122,12 +122,26 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/kb/contracts.py", "sync-knowledgebase-state"),
         "Hard-fail behavior": ("staged-status-path", "undeclared direct write", "fail closed"),
     },
+    "scripts/context/fill_context_pages.py` — `apply` mode only": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": (".github/skills/**", "docs/**"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Artifact / schema owners": ("scripts/_optional_surface_common.py", "scripts/kb/write_utils.py"),
+        "Hard-fail behavior": ("path outside write roots", "SHA drift", "placeholder markers", "fail closed"),
+    },
     "scripts/maintenance/**": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("None direct", "narrower row"),
         "Lock requirements": ("ADR-005",),
         "Artifact / schema owners": ("schema/**", "delegated artifact schema owner"),
         "Hard-fail behavior": ("partial audit/validator results", "undeclared writes", "fail closed"),
+    },
+    "scripts/maintenance/generate_docs.py` — `apply` mode only": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("docs/**",),
+        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Artifact / schema owners": ("scripts/_optional_surface_common.py", "scripts/kb/write_utils.py"),
+        "Hard-fail behavior": ("path outside docs/**", "SHA drift", "lock unavailable", "fail closed"),
     },
     "scripts/ingest/**": {
         "Runtime mode": ("blocking-only",),

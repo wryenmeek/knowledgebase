@@ -1,0 +1,246 @@
+name: CI-4 Framework Writer
+
+# Writes agent-generated content to docs/** and .github/skills/** via staged manifests.
+# This workflow is intentionally separate from CI-3 which owns wiki/** and raw/processed/**.
+# Trigger: workflow_dispatch only (agent stages manifest → maintainer approves → this runs).
+
+on:
+  workflow_dispatch:
+    inputs:
+      maintainer_approved:
+        description: Manual attestation flag for CI-4 framework write dispatch; protected-environment reviewers enforce authoritative approval.
+        required: true
+        type: boolean
+      mode:
+        description: Which script mode to invoke (fill-context or generate-docs).
+        required: true
+        type: choice
+        options:
+          - fill-context
+          - generate-docs
+      staged_manifest_path:
+        description: Relative path to the staged manifest JSON file under docs/staged/ (e.g. docs/staged/fills-2024-01-01.json).
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+
+concurrency:
+  group: kb-framework-write-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: CI-4 preflight (framework-writer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CI_ID: CI-4
+      TOKEN_PROFILE: tp-framework-writer
+      WRITE_ALLOWLIST: docs/**,.github/skills/**
+      FALLBACK_MANUAL_INSTRUCTIONS: Review AGENTS.md write-surface matrix rows for fill_context_pages.py apply and generate_docs.py apply, then re-run with a corrected staged manifest.
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout workflow context
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert CI-4 preflight prerequisites
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_APPROVED: ${{ github.event.inputs.maintainer_approved || 'false' }}
+          DISPATCH_MODE: ${{ github.event.inputs.mode || '' }}
+          STAGED_MANIFEST_PATH: ${{ github.event.inputs.staged_manifest_path || '' }}
+        run: |
+          set -euo pipefail
+
+          reason_list=()
+          prereq_ghaw_readiness="PASS"
+          prereq_trusted_trigger_model="PASS"
+          prereq_permissions_scope="PASS"
+          prereq_concurrency_guard="PASS"
+          prereq_fallback_manual_path="PASS"
+
+          if [[ "${CI_ID}" != "CI-4" ]] || [[ "${TOKEN_PROFILE}" != "tp-framework-writer" ]]; then
+            reason_list+=("reject:permissions_scope:token_profile_mismatch")
+            prereq_permissions_scope="FAIL"
+          fi
+
+          if ! command -v python3 >/dev/null 2>&1; then
+            reason_list+=("prereq_missing:ghaw_readiness:python3_unavailable")
+            prereq_ghaw_readiness="FAIL"
+          fi
+
+          for required_file in \
+            scripts/context/fill_context_pages.py \
+            scripts/maintenance/generate_docs.py \
+            scripts/_optional_surface_common.py \
+            scripts/kb/write_utils.py; do
+            if [[ ! -f "${required_file}" ]]; then
+              reason_list+=("prereq_missing:ghaw_readiness:missing_${required_file//\//_}")
+              prereq_ghaw_readiness="FAIL"
+            fi
+          done
+
+          if [[ "${EVENT_NAME}" != "workflow_dispatch" ]]; then
+            reason_list+=("reject:trusted_trigger_model:event_not_allowed:${EVENT_NAME}")
+            prereq_trusted_trigger_model="FAIL"
+          elif [[ "${MANUAL_APPROVED}" != "true" ]]; then
+            reason_list+=("reject:trusted_trigger_model:manual_approval_required")
+            prereq_trusted_trigger_model="FAIL"
+          fi
+
+          if [[ "${DISPATCH_MODE}" != "fill-context" && "${DISPATCH_MODE}" != "generate-docs" ]]; then
+            reason_list+=("reject:trusted_trigger_model:invalid_mode:${DISPATCH_MODE}")
+            prereq_trusted_trigger_model="FAIL"
+          fi
+
+          if [[ -z "${STAGED_MANIFEST_PATH}" ]]; then
+            reason_list+=("reject:trusted_trigger_model:staged_manifest_path_required")
+            prereq_trusted_trigger_model="FAIL"
+          elif [[ "${STAGED_MANIFEST_PATH}" != docs/staged/* ]]; then
+            reason_list+=("reject:trusted_trigger_model:staged_manifest_path_outside_docs_staged:${STAGED_MANIFEST_PATH}")
+            prereq_trusted_trigger_model="FAIL"
+          fi
+
+          if [[ -z "${FALLBACK_MANUAL_INSTRUCTIONS}" ]]; then
+            reason_list+=("prereq_missing:fallback_manual_path")
+            prereq_fallback_manual_path="FAIL"
+          fi
+
+          {
+            echo "ghaw_readiness=${prereq_ghaw_readiness}"
+            echo "trusted_trigger_model=${prereq_trusted_trigger_model}"
+            echo "permissions_scope=${prereq_permissions_scope}"
+            echo "concurrency_guard=${prereq_concurrency_guard}"
+            echo "fallback_manual_path=${prereq_fallback_manual_path}"
+          } >> "${GITHUB_OUTPUT}"
+
+          if [[ "${#reason_list[@]}" -gt 0 ]]; then
+            for reason in "${reason_list[@]}"; do
+              echo "::error::CI-4 preflight rejection reason=${reason}" >&2
+            done
+            exit 1
+          fi
+
+          echo "CI-4 preflight PASS: workflow_dispatch + manual approval checks satisfied."
+
+  manual-approval:
+    name: CI-4 manual protected-environment approval
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: ci4-manual-approval
+    steps:
+      - name: Confirm protected-environment approval
+        run: |
+          set -euo pipefail
+          echo "CI-4 framework write approved via protected environment reviewers."
+
+  framework-writer:
+    name: CI-4 apply framework write (tp-framework-writer)
+    needs:
+      - preflight
+      - manual-approval
+    if: ${{ always() && needs.preflight.result == 'success' && needs.manual-approval.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      checks: read
+      contents: write
+      pull-requests: write
+    env:
+      CI_ID: CI-4
+      TOKEN_PROFILE: tp-framework-writer
+      WRITE_ALLOWLIST: docs/**,.github/skills/**
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout trusted source revision
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate staged manifest is in docs/staged/
+        env:
+          STAGED_MANIFEST_PATH: ${{ github.event.inputs.staged_manifest_path }}
+        run: |
+          set -euo pipefail
+          if [[ "${STAGED_MANIFEST_PATH}" != docs/staged/* ]]; then
+            echo "::error::reject:path_filter:staged_manifest_outside_docs_staged:${STAGED_MANIFEST_PATH}" >&2
+            exit 1
+          fi
+          if [[ ! -f "${STAGED_MANIFEST_PATH}" ]]; then
+            echo "::error::reject:path_filter:staged_manifest_not_found:${STAGED_MANIFEST_PATH}" >&2
+            exit 1
+          fi
+          echo "Staged manifest validated: ${STAGED_MANIFEST_PATH}"
+
+      - name: Run framework write (fill-context or generate-docs)
+        id: write-path
+        env:
+          DISPATCH_MODE: ${{ github.event.inputs.mode }}
+          STAGED_MANIFEST_PATH: ${{ github.event.inputs.staged_manifest_path }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${DISPATCH_MODE}" == "fill-context" ]]; then
+            echo "[CI-4] Invoking fill_context_pages.py apply mode"
+            python3 scripts/context/fill_context_pages.py \
+              --mode apply \
+              --staged-fills-path "${STAGED_MANIFEST_PATH}" \
+              --approval approved
+          elif [[ "${DISPATCH_MODE}" == "generate-docs" ]]; then
+            echo "[CI-4] Invoking generate_docs.py apply mode"
+            python3 scripts/maintenance/generate_docs.py \
+              --mode apply \
+              --staged-docs-path "${STAGED_MANIFEST_PATH}" \
+              --approval approved
+          else
+            echo "::error::reject:mode:unrecognised_dispatch_mode:${DISPATCH_MODE}" >&2
+            exit 1
+          fi
+
+      - name: Create PR for framework write
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH_MODE: ${{ github.event.inputs.mode }}
+          STAGED_MANIFEST_PATH: ${{ github.event.inputs.staged_manifest_path }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          branch_name="ci4/framework-write-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "${branch_name}"
+
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No file changes produced by framework write. No PR needed."
+            exit 0
+          fi
+
+          git add docs/ .github/skills/
+          git commit -m "$(printf 'ci(framework-write): apply %s from %s\n\nStaged manifest: %s\nDispatch mode: %s\nCI workflow: CI-4 framework-writer\n\nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>' "${DISPATCH_MODE}" "${STAGED_MANIFEST_PATH}" "${STAGED_MANIFEST_PATH}" "${DISPATCH_MODE}")"
+
+          git push origin "${branch_name}"
+
+          pr_body="$(printf 'Automated framework write from CI-4.\n\nMode: %s\nStaged manifest: %s\n\nWrite targets restricted to docs/** and .github/skills/**.' "${DISPATCH_MODE}" "${STAGED_MANIFEST_PATH}")"
+
+          gh pr create \
+            --title "ci(framework-write): apply staged manifest" \
+            --body "${pr_body}" \
+            --head "${branch_name}" \
+            --base main
