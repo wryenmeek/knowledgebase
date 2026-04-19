@@ -31,6 +31,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Assert CI-1 gatekeeper profile context
         run: |
           set -euo pipefail
@@ -177,3 +182,12 @@ jobs:
           set -euo pipefail
           echo "CI-1 handoff gate passed for raw/inbox/**."
           echo "CI-3 PR-producing behavior is intentionally out of scope for this workflow."
+
+      - name: Upload CI-1 preflight artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci1-gatekeeper-preflight-${{ github.run_id }}
+          path: preflight/
+          if-no-files-found: warn
+          retention-days: 7

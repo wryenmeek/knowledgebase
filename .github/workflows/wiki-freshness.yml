@@ -1,0 +1,80 @@
+name: Wiki Freshness Check
+
+on:
+  schedule:
+    - cron: "30 3 * * 1" # Monday 03:30 UTC
+  workflow_dispatch:
+    inputs:
+      enforcement_mode:
+        description: "Whether freshness failures block the run (signal=advisory, blocking=hard-fail)"
+        type: choice
+        options:
+          - signal
+          - blocking
+        default: signal
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kb-freshness-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  wiki-freshness:
+    name: Wiki freshness analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENFORCEMENT_MODE: ${{ inputs.enforcement_mode || 'signal' }}
+    steps:
+      - name: Checkout repository snapshot
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Run wiki freshness check
+        id: freshness
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p freshness-reports
+          python3 scripts/validation/check_doc_freshness.py \
+            --scope wiki \
+            --as-of "$(date -u +%Y-%m-%d)" \
+            --max-age-days 90 \
+            > freshness-reports/wiki-freshness.json 2>&1
+          freshness_exit=$?
+          echo "exit_code=${freshness_exit}" >> "${GITHUB_OUTPUT}"
+          exit "${freshness_exit}"
+
+      - name: Display freshness summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -f freshness-reports/wiki-freshness.json ]]; then
+            cat freshness-reports/wiki-freshness.json
+          else
+            echo "No freshness report generated."
+          fi
+
+      - name: Upload freshness report artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wiki-freshness-${{ github.run_id }}
+          path: freshness-reports/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail on stale wiki pages (blocking mode only)
+        if: env.ENFORCEMENT_MODE == 'blocking' && steps.freshness.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          echo "::error::Wiki freshness check failed in blocking mode. Review the uploaded freshness report artifact." >&2
+          exit 1

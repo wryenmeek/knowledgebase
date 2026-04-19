@@ -28,10 +28,29 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4  # TODO: pin to commit SHA matching this repo's SHA-pinning standard
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-py3.12-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            pip-${{ runner.os }}-py3.12-
+
+      - name: Dependency vulnerability audit (pip-audit)
+        run: |
+          set -euo pipefail
+          pip install --quiet pip-audit
+          pip-audit --desc on
 
       - name: Bootstrap repo-local qmd preflight shim
         run: |
@@ -119,3 +138,18 @@ jobs:
           set -euo pipefail
           echo "::error::CI-2 diagnostics failed (profile=${TOKEN_PROFILE}, ci_id=${CI_ID}). Review diagnostics artifacts." >&2
           exit 1
+
+  lint-workflows:
+    name: CI-2 workflow lint (actionlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository snapshot
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Run actionlint
+        uses: raven-actions/actionlint@v2
+        with:
+          files: ".github/workflows/*.yml"
