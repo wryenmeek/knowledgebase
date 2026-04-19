@@ -26,11 +26,31 @@ automation must satisfy before writing durable state.
 | `wiki-backlog` | `wiki/backlog.md` | `schema/governed-artifact-contract.md` | Governed backlog of approved maintenance or curation follow-up items. | Mutable ledger; status and priority may change as work advances. | ADR-005 workflow concurrency plus `wiki/.kb_write.lock` before any mutation. | Write a complete next-state file and publish via atomic same-directory replace. |
 | `wiki-status` | `wiki/status.md` | `schema/governed-artifact-contract.md` | Governed status snapshot summarizing the last successful sync/maintenance state. | Mutable snapshot; each run may replace stale status with the newest approved state. | ADR-005 workflow concurrency plus `wiki/.kb_write.lock` before any mutation. | Write a complete next-state file and publish via atomic same-directory replace. |
 
+## Pattern-based report artifacts
+
+`wiki/reports/` is a governed output directory for approval-gated reporting
+surfaces. Unlike the fixed-path artifacts above, report artifacts are
+dynamically named per run. Their schema and write semantics are declared in
+[`schema/report-artifact-contract.md`](report-artifact-contract.md).
+
+| Artifact family | Path pattern | Schema owner | Mutability | Lock requirement |
+|---|---|---|---|---|
+| Report artifacts | `wiki/reports/<type>-<YYYY-MM-DD>[‑n].json` | `schema/report-artifact-contract.md` | Write-once per run; no mutation of existing files | ADR-005 + `wiki/.kb_write.lock` before every write |
+
+Path rules for `wiki/reports/**`:
+1. Only approval-gated scripts with an explicit narrower AGENTS.md row may
+   write here.
+2. Each write produces a new timestamped file; existing files are never
+   overwritten.
+3. No topical wiki page may be placed under `wiki/reports/`.
+
 ## Path ownership rules
 
 1. Reserved governed artifacts live at fixed root-level `wiki/*.md` paths in MVP.
-2. No other writer may repurpose these paths for topical content.
-3. New governed state targets must add a row here before any automation writes
+2. Pattern-based report artifacts live under `wiki/reports/` with per-run
+   timestamped filenames; see the section above.
+3. No other writer may repurpose these paths for topical content.
+4. New governed state targets must add a row here before any automation writes
    them; undeclared targets remain deny-by-default even if they live under
    `wiki/**`.
 
