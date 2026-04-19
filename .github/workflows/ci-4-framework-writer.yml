@@ -124,6 +124,26 @@ jobs:
           if [[ "${#reason_list[@]}" -gt 0 ]]; then
             for reason in "${reason_list[@]}"; do
               echo "::error::CI-4 preflight rejection reason=${reason}" >&2
+              case "${reason}" in
+                reject:permissions_scope:token_profile_mismatch)
+                  echo "::notice::FIX: ensure this workflow uses the tp-framework-writer token profile. Check the TOKEN_PROFILE env var." ;;
+                prereq_missing:ghaw_readiness:python3_unavailable)
+                  echo "::notice::FIX: ensure Python 3.12+ is available in the CI runner environment." ;;
+                prereq_missing:ghaw_readiness:missing_*)
+                  echo "::notice::FIX: a required file referenced in the reason code is missing from the repository. Add it before proceeding." ;;
+                reject:trusted_trigger_model:event_not_allowed:*)
+                  echo "::notice::FIX: CI-4 only accepts workflow_dispatch events. Trigger it manually from the Actions tab." ;;
+                reject:trusted_trigger_model:manual_approval_required)
+                  echo "::notice::FIX: all CI-4 runs require a manual protected-environment approval (ci4-manual-approval environment)." ;;
+                reject:trusted_trigger_model:invalid_mode:*)
+                  echo "::notice::FIX: DISPATCH_MODE must be one of the allowed values. See the workflow inputs definition." ;;
+                reject:trusted_trigger_model:staged_manifest_path_required)
+                  echo "::notice::FIX: a STAGED_MANIFEST_PATH input is required for this dispatch mode. Provide it when triggering workflow_dispatch." ;;
+                reject:trusted_trigger_model:staged_manifest_path_outside_docs_staged:*)
+                  echo "::notice::FIX: the staged manifest path must be under docs/staged/. Move the file there and re-trigger." ;;
+                prereq_missing:fallback_manual_path)
+                  echo "::notice::FIX: the manual fallback path prereq is missing. Ensure FALLBACK_MANUAL_INSTRUCTIONS env var is set in the workflow." ;;
+              esac
             done
             exit 1
           fi

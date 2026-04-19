@@ -111,6 +111,8 @@ class LintWikiCliTests(KnowledgebaseWorkspaceTestCase):
     def _extract_violation_codes(self, stdout: str) -> list[str]:
         codes: list[str] = []
         for line in stdout.splitlines():
+            if line.startswith(" ") or line.startswith("\t"):
+                continue  # skip hint lines (indented)
             parts = line.split(": ", 2)
             if len(parts) == 3:
                 codes.append(parts[1])

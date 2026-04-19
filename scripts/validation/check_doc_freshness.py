@@ -171,7 +171,12 @@ def run_cli(
         max_age_days=args.max_age_days,
         paths=args.path,
     )
-    output_stream.write(report.to_json())
+    if getattr(args, "failures_only", False):
+        report_dict = report.to_dict()
+        report_dict["files"] = [f for f in report_dict["files"] if f["status"] == STATUS_FAIL]
+        output_stream.write(json.dumps(report_dict, sort_keys=True))
+    else:
+        output_stream.write(report.to_json())
     output_stream.write("\n")
     return 0 if report.status == STATUS_PASS else 1
 
@@ -186,6 +191,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--path", action="append", default=[], help="Optional repo-relative markdown file or directory.")
     parser.add_argument("--as-of", required=True, help="Required ISO date used for deterministic age checks.")
     parser.add_argument("--max-age-days", required=True, type=int, help="Maximum allowed age in days.")
+    parser.add_argument("--failures-only", action="store_true", default=False, help="Suppress passing files; emit only stale or invalid entries.")
     return parser
 
 
@@ -295,7 +301,7 @@ def _check_file(path: Path, *, repo_root: Path, as_of_date: date, max_age_days: 
             path=relative_path,
             status=STATUS_FAIL,
             reason_code=REASON_CODE_STALE_DOCUMENT,
-            message=f"document exceeds freshness threshold ({age_days}d > {max_age_days}d)",
+            message=f"document exceeds freshness threshold ({age_days}d > {max_age_days}d). FIX: update page content and set updated_at: <today's date> in the YAML frontmatter.",
             updated_at=updated_at_date.isoformat(),
             age_days=age_days,
         )

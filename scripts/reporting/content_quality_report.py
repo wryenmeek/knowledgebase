@@ -47,6 +47,12 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Summarize repo-local content quality; persist mode writes a governed report artifact."
     )
     add_common_surface_args(parser, modes=SUPPORTED_MODES, default_mode="summary")
+    parser.add_argument(
+        "--failures-only",
+        action="store_true",
+        default=False,
+        help="Suppress clean items; emit only files with quality issues.",
+    )
     return parser
 
 
@@ -72,6 +78,7 @@ def run_quality_report(
     mode: str,
     paths: Sequence[str] | None = None,
     approval: str = APPROVAL_NONE,
+    failures_only: bool = False,
 ) -> SurfaceResult:
     path_rules = _path_rules()
     normalized_repo_root = Path(repo_root).resolve()
@@ -115,6 +122,11 @@ def run_quality_report(
         )
     if mode in {"summary", "placeholder-audit"}:
         reported_items = tuple(items if mode == "summary" else [item for item in items if item["placeholder_count"] > 0])
+        if failures_only:
+            reported_items = tuple(
+                item for item in reported_items
+                if item["missing_sources"] or item["missing_updated_at"] or item["placeholder_count"]
+            )
         return SurfaceResult(
             surface=SURFACE,
             mode=mode,
@@ -196,6 +208,7 @@ def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.st
             "mode": a.mode,
             "paths": a.path,
             "approval": a.approval,
+            "failures_only": a.failures_only,
         },
         output_stream=output_stream,
     )

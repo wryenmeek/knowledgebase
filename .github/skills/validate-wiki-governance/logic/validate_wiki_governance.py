@@ -157,6 +157,12 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="paths",
         help="Repeat to scope checks to repo-relative paths.",
     )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        default=False,
+        help="Suppress passing findings; on a clean run emit a compact pass summary.",
+    )
     return parser
 
 
@@ -294,7 +300,7 @@ def _validate_sourceref_shape(repo_root: Path, target_paths: Sequence[str]) -> l
                         target=page,
                         status=FindingStatus.FAIL,
                         reason_code=ReasonCode.VALIDATION_FAILED,
-                        message=f"invalid SourceRef shape '{source_value}': {exc}",
+                        message=f"invalid SourceRef shape '{source_value}': {exc}. FIX: use canonical form repo://<owner>/<repo>/<path>@<git_sha>#<anchor>?sha256=<64hex>.",
                     )
                 )
     if not findings:
@@ -336,7 +342,7 @@ def _validate_single_page_template(repo_root: Path, page: str) -> list[Validatio
             target=normalized_page,
             status=FindingStatus.FAIL,
             reason_code=ReasonCode.VALIDATION_FAILED,
-            message=message,
+            message=f"{message}. FIX: see schema/page-template.md for the required frontmatter structure.",
         )
         for _, message in violations
     ]
@@ -429,7 +435,7 @@ def _validate_topology_hygiene(repo_root: Path, target_paths: Sequence[str]) -> 
                 target="wiki/index.md",
                 status=FindingStatus.FAIL,
                 reason_code=ReasonCode.VALIDATION_FAILED,
-                message="wiki/index.md must match deterministic topology output",
+                message="wiki/index.md is out of sync with topology. FIX: run python3 scripts/kb/update_index.py --wiki-root wiki --write",
             )
         ]
     return [_ok(ValidatorName.TOPOLOGY_HYGIENE, "wiki/index.md", "topology hygiene passed")]
@@ -614,7 +620,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
         return 2
-    print(json.dumps(report.to_dict(), sort_keys=True))
+    if args.quiet:
+        failures = [f for f in report.findings if f.status != FindingStatus.PASS.value]
+        if not failures:
+            print(json.dumps({"findings_count": 0, "status": "pass", "validators_passed": len(report.validators)}, sort_keys=True))
+        else:
+            report_dict = report.to_dict()
+            report_dict["findings"] = [f.to_dict() for f in failures]
+            print(json.dumps(report_dict, sort_keys=True))
+    else:
+        print(json.dumps(report.to_dict(), sort_keys=True))
     return report.exit_code()
 
 

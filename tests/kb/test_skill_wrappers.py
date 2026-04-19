@@ -925,7 +925,7 @@ class ValidateWikiGovernanceWrapperRuntimeTests(_RuntimeWrapperFixture):
             exit_code = module.main(["--mode", "signal", "--validator", "topology-hygiene", "--path", "wiki/index.md"])
 
         self.assertEqual(exit_code, 1)
-        self.assertIn('wiki/index.md must match deterministic topology output', print_mock.call_args.args[0])
+        self.assertIn('wiki/index.md is out of sync with topology', print_mock.call_args.args[0])
 
 
 class SyncKnowledgebaseStateWrapperRuntimeTests(_RuntimeWrapperFixture):

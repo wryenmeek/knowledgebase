@@ -285,6 +285,26 @@ jobs:
           if [[ "${#reason_list[@]}" -gt 0 ]]; then
             for reason in "${reason_list[@]}"; do
               echo "::error::CI-3 preflight rejection reason=${reason}" >&2
+              case "${reason}" in
+                reject:permissions_scope:token_profile_mismatch)
+                  echo "::notice::FIX: ensure this workflow uses the tp-pr-producer token profile. Check the TOKEN_PROFILE env var." ;;
+                prereq_missing:ghaw_readiness:python3_unavailable)
+                  echo "::notice::FIX: ensure Python 3.12+ is available in the CI runner environment." ;;
+                prereq_missing:ghaw_readiness:gh_cli_unavailable)
+                  echo "::notice::FIX: the GitHub CLI (gh) must be available in the runner. It is pre-installed on ubuntu-latest." ;;
+                prereq_missing:ghaw_readiness:missing_*)
+                  echo "::notice::FIX: a required file referenced in the reason code is missing from the repository. Add it before proceeding." ;;
+                reject:trusted_trigger_model:unexpected_handoff_workflow)
+                  echo "::notice::FIX: CI-3 must be triggered by the CI-1 gatekeeper workflow_run event. Check the on.workflow_run.workflows setting." ;;
+                reject:trusted_trigger_model:upstream_ci1_not_success)
+                  echo "::notice::FIX: the upstream CI-1 gatekeeper must have completed successfully before CI-3 can run." ;;
+                reject:trusted_trigger_model:manual_approval_required)
+                  echo "::notice::FIX: workflow_dispatch runs require a manual protected-environment approval (ci3-manual-approval environment)." ;;
+                reject:permissions_scope:minimum_permissions_mismatch | reject:permissions_scope:forbidden_write_scope_declared | reject:permissions_scope:write_allowlist_mismatch)
+                  echo "::notice::FIX: review the permissions block in this workflow. Only allowlisted write scopes are permitted." ;;
+                prereq_missing:concurrency_guard:*)
+                  echo "::notice::FIX: the concurrency block is missing or misconfigured. Ensure group and cancel-in-progress match the expected values." ;;
+              esac
             done
             exit 1
           fi

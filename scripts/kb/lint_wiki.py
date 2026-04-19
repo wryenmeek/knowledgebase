@@ -28,6 +28,20 @@ _CONTRADICTION_MARKER_RE = re.compile(
 )
 _EXTERNAL_LINK_PREFIXES = ("http://", "https://", "mailto:", "tel:", "ftp://")
 
+# Maps violation code → concise remediation hint printed below each violation.
+REMEDIATION_HINTS: dict[str, str] = {
+    "missing-frontmatter": "FIX: add a YAML frontmatter block (--- delimiters) at the top of the file with required keys: title, tags, sources, updated_at.",
+    "missing-frontmatter-key": "FIX: add the missing key to the YAML frontmatter block. See schema/page-template.md for required keys.",
+    "invalid-sources": "FIX: ensure the 'sources' field is a YAML list of canonical SourceRef URIs (repo://<owner>/<repo>/<path>@<git_sha>#<anchor>?sha256=<64hex>).",
+    "invalid-sourceref": "FIX: correct the SourceRef to canonical form: repo://<owner>/<repo>/<path>@<git_sha>#<anchor>?sha256=<64hex>. Run scripts/kb/sourceref.py --validate for details.",
+    "missing-heading": "FIX: add a top-level heading (# Title) as the first non-frontmatter content line.",
+    "orphan-page": "FIX: add a link to this page from another page or from wiki/index.md. Run python3 scripts/kb/update_index.py --wiki-root wiki --write to regenerate the index.",
+    "contradiction-marker": "FIX: resolve the CONTRADICTION marker by updating the content and removing the marker, or escalate via wiki/open-questions.md.",
+    "broken-link": "FIX: update or remove the broken internal link. Check that the linked page exists under wiki/.",
+    "duplicate-heading": "FIX: ensure each heading within the file is unique to avoid ambiguous anchor references.",
+    "invalid-updated_at": "FIX: set updated_at to a valid ISO date in the frontmatter (e.g., updated_at: 2024-01-15).",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class Violation:
@@ -379,6 +393,9 @@ def main(argv: list[str] | None = None) -> int:
             f"{_display_path(violation.page, wiki_root.resolve())}: "
             f"{violation.code}: {violation.message}"
         )
+        hint = REMEDIATION_HINTS.get(violation.code)
+        if hint:
+            print(f"  {hint}")
 
     print(f"Found {len(violations)} violation(s).")
 
