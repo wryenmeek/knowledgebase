@@ -58,9 +58,11 @@ jobs:
           set -euo pipefail
 
           BASE_BRANCH="${{ inputs.base_branch || 'main' }}"
-          MAX_CI_WAIT=600   # 10 minutes per PR
-          MAX_RETRIES=2     # Max re-dispatch attempts per PR
-          PR_POLL_TIMEOUT=900  # 15 minutes to wait for re-dispatched PR
+          MAX_CI_WAIT=600           # 10 minutes per PR
+          MAX_RETRIES=2             # max re-dispatch attempts per PR
+          PR_POLL_TIMEOUT=900       # 15 minutes to wait for re-dispatched PR
+          POLL_INTERVAL=30          # seconds between status polls
+          CI_NONE_THRESHOLD=$((4 * POLL_INTERVAL))  # proceed if no checks register after this many consecutive seconds
 
           echo "🔍 Finding open Jules-authored PRs targeting ${BASE_BRANCH}..."
 
@@ -124,8 +126,8 @@ jobs:
                 POLL_ELAPSED=0
                 NEW_PR_NUM=""
                 while [ $POLL_ELAPSED -lt $PR_POLL_TIMEOUT ]; do
-                  sleep 30
-                  POLL_ELAPSED=$((POLL_ELAPSED + 30))
+                  sleep "$POLL_INTERVAL"
+                  POLL_ELAPSED=$((POLL_ELAPSED + POLL_INTERVAL))
                   NEW_PR_NUM=$(gh pr list --state open --base "$BASE_BRANCH" --json number,headRefName,body \
                     --jq "[.[] | select(.headRefName | contains(\"${NEW_SESSION_ID}\")) // select(.body | contains(\"${NEW_SESSION_ID}\"))] | .[0].number // empty")
                   if [ -n "$NEW_PR_NUM" ]; then
@@ -146,11 +148,11 @@ jobs:
               fi
 
               # Wait for branch update and checks to register before first poll
-              sleep 30
+              sleep "$POLL_INTERVAL"
 
               # Wait for CI checks to pass
               echo "  🧪 Waiting for CI checks..."
-              ELAPSED=30
+              ELAPSED=$POLL_INTERVAL
               CI_PASSED=false
               CI_NONE_ELAPSED=0
 
@@ -163,15 +165,13 @@ jobs:
                     break
                     ;;
                   "none")
-                    CI_NONE_ELAPSED=$((CI_NONE_ELAPSED + 30))
-                    if [ $CI_NONE_ELAPSED -ge 120 ]; then
+                    CI_NONE_ELAPSED=$((CI_NONE_ELAPSED + POLL_INTERVAL))
+                    if [ $CI_NONE_ELAPSED -ge $CI_NONE_THRESHOLD ]; then
                       echo "  ℹ️  No CI checks registered after ${CI_NONE_ELAPSED}s. Proceeding."
                       CI_PASSED=true
                       break
                     fi
                     echo "  ⏳ Checks not yet registered... (${ELAPSED}s/${MAX_CI_WAIT}s)"
-                    sleep 30
-                    ELAPSED=$((ELAPSED + 30))
                     ;;
                   "fail")
                     echo "  ❌ CI failed for PR #${PR_NUM}. Skipping."
@@ -180,10 +180,10 @@ jobs:
                   *)
                     CI_NONE_ELAPSED=0
                     echo "  ⏳ CI pending... (${ELAPSED}s/${MAX_CI_WAIT}s)"
-                    sleep 30
-                    ELAPSED=$((ELAPSED + 30))
                     ;;
                 esac
+                sleep "$POLL_INTERVAL"
+                ELAPSED=$((ELAPSED + POLL_INTERVAL))
               done
 
               if [ "$CI_PASSED" = false ]; then
