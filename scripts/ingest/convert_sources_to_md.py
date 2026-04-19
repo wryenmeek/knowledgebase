@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import hashlib
 import json
 import re
 from pathlib import Path
@@ -28,10 +27,12 @@ from scripts._optional_surface_common import (
     base_path_rules,
     expand_repo_paths,
     invalid_input_result,
+    lock_unavailable_result,
     looks_like_repo_root,
     repo_relative,
     repo_root_failure,
     run_surface_cli,
+    sha256_file,
 )
 from scripts.kb import write_utils
 from scripts.kb.write_utils import LockUnavailableError
@@ -243,7 +244,7 @@ def run_convert_sources(
                         }
                     )
                     continue
-                sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+                sha256 = sha256_file(path)
                 try:
                     md_out.write_text(md_content, encoding="utf-8")
                     meta = {
@@ -276,19 +277,7 @@ def run_convert_sources(
                     }
                 )
     except LockUnavailableError as exc:
-        return SurfaceResult(
-            surface=SURFACE,
-            mode=mode,
-            status=STATUS_FAIL,
-            reason_code="lock_unavailable",
-            message=str(exc),
-            approval=approval,
-            lock_path=LOCK_PATH,
-            lock_required=True,
-            path_rules=path_rules,
-            items=(),
-            summary={},
-        )
+        return lock_unavailable_result(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules, exc=exc)
     converted = sum(1 for i in items if i.get("status") == STATUS_PASS)
     return SurfaceResult(
         surface=SURFACE,

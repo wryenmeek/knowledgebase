@@ -193,6 +193,27 @@ def write_surface_not_declared_result(
     )
 
 
+def lock_unavailable_result(
+    *,
+    surface: str,
+    mode: str,
+    approval: str,
+    path_rules: dict[str, Any],
+    exc: Exception,
+) -> SurfaceResult:
+    return SurfaceResult(
+        surface=surface,
+        mode=mode,
+        status=STATUS_FAIL,
+        reason_code="lock_unavailable",
+        message=str(exc),
+        approval=approval,
+        lock_path=LOCK_PATH,
+        lock_required=True,
+        path_rules=path_rules,
+    )
+
+
 def _ensure_safe_relative_path(
     repo_root: Path,
     raw_path: str,

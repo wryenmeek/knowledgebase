@@ -24,6 +24,7 @@ from scripts._optional_surface_common import (
     base_path_rules,
     expand_repo_paths,
     invalid_input_result,
+    lock_unavailable_result,
     looks_like_repo_root,
     repo_relative,
     repo_root_failure,
@@ -181,13 +182,7 @@ def run_generate_docs(
                     "changed": changed,
                 })
     except LockUnavailableError as exc:
-        return SurfaceResult(
-            surface=SURFACE, mode=mode, status=STATUS_FAIL,
-            reason_code="lock_unavailable",
-            message=str(exc), approval=approval,
-            lock_path=LOCK_PATH, lock_required=True,
-            path_rules=path_rules, items=(),
-        )
+        return lock_unavailable_result(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules, exc=exc)
     except OSError as exc:
         rollback_file_state(snapshots)
         return SurfaceResult(
@@ -195,7 +190,7 @@ def run_generate_docs(
             reason_code="write_failed",
             message=f"write failed and changes were rolled back: {exc}",
             approval=approval, lock_path=LOCK_PATH, lock_required=True,
-            path_rules=path_rules, items=(),
+            path_rules=path_rules,
         )
 
     return SurfaceResult(

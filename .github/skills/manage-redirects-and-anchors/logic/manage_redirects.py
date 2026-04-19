@@ -21,6 +21,9 @@ from scripts._optional_surface_common import (
     STATUS_PASS,
     SurfaceResult,
     approval_required_result,
+    base_path_rules,
+    invalid_input_result,
+    lock_unavailable_result,
     looks_like_repo_root,
     repo_root_failure,
     run_surface_cli,
@@ -44,12 +47,14 @@ def _normalize_slug(value: str) -> str:
 
 
 def _path_rules() -> dict[str, object]:
-    return {
-        "allowed_roots": [REDIRECTS_FILE],
-        "lock_path": LOCK_PATH,
-        "direct_writes_declared": True,
-        "output_root": REDIRECTS_FILE,
-    }
+    rules = base_path_rules(
+        allowed_roots=[REDIRECTS_FILE],
+        allowed_suffixes=[".md"],
+    )
+    rules["lock_path"] = LOCK_PATH
+    rules["direct_writes_declared"] = True
+    rules["output_root"] = REDIRECTS_FILE
+    return rules
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -94,16 +99,9 @@ def run_manage_redirects(
     clean_reason = (reason.strip() or "no reason provided").replace("|", "-")
 
     if not norm_old or (norm_new != "REMOVED" and not norm_new):
-        return SurfaceResult(
-            surface=SURFACE,
-            mode=mode,
-            status=STATUS_FAIL,
-            reason_code="invalid_input",
+        return invalid_input_result(
+            surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules,
             message="old_slug and new_slug must normalize to non-empty values",
-            approval=approval,
-            path_rules=path_rules,
-            items=(),
-            summary={},
         )
 
     new_row = f"| {norm_old} | {norm_new} | {today} | {clean_reason} |\n"
@@ -167,19 +165,7 @@ def run_manage_redirects(
                 else:
                     redirects_path.write_text(existing + new_row, encoding="utf-8")
     except LockUnavailableError as exc:
-        return SurfaceResult(
-            surface=SURFACE,
-            mode=mode,
-            status=STATUS_FAIL,
-            reason_code="lock_unavailable",
-            message=str(exc),
-            approval=approval,
-            lock_path=LOCK_PATH,
-            lock_required=True,
-            path_rules=path_rules,
-            items=(),
-            summary={},
-        )
+        return lock_unavailable_result(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules, exc=exc)
 
     return SurfaceResult(
         surface=SURFACE,

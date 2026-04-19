@@ -84,6 +84,7 @@ ANALYZE_MISSED_QUERIES_WRAPPER_PATH = (
     / "logic"
     / "analyze_missed_queries.py"
 )
+CONVERT_SOURCES_PATH = REPO_ROOT / "scripts" / "ingest" / "convert_sources_to_md.py"
 VALIDATOR_WRAPPER_PATH = (
     REPO_ROOT
     / ".github"
@@ -1076,6 +1077,51 @@ class ManageRedirectsWrapperTests(_RuntimeWrapperFixture):
         content = (self.repo_root / "wiki" / "redirects.md").read_text(encoding="utf-8")
         self.assertIn("| foo | bar |", content)
         self.assertIn("| bar | baz |", content)
+
+    def test_apply_mode_lock_unavailable_returns_lock_required_fields(self) -> None:
+        module = _load_module("manage_redirects_lock", MANAGE_REDIRECTS_WRAPPER_PATH)
+        with patch.object(
+            module.write_utils,
+            "exclusive_write_lock",
+            side_effect=module.write_utils.LockUnavailableError(),
+        ):
+            result = module.run_manage_redirects(
+                repo_root=self.repo_root,
+                mode="apply",
+                old_slug="old-page",
+                new_slug="new-page",
+                approval="approved",
+            )
+        self.assertEqual(result.reason_code, "lock_unavailable")
+        self.assertTrue(result.lock_required)
+        self.assertEqual(result.lock_path, "wiki/.kb_write.lock")
+
+
+class ConvertSourcesLockTests(_RuntimeWrapperFixture):
+    """Lock-unavailable regression tests for convert_sources_to_md (G1f)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.repo_root / "AGENTS.md").write_text("knowledgebase fixture\n", encoding="utf-8")
+        (self.repo_root / "raw" / "inbox").mkdir(parents=True, exist_ok=True)
+        (self.repo_root / "raw" / "inbox" / "sample.txt").write_text("hello\n", encoding="utf-8")
+
+    def test_apply_mode_lock_unavailable_returns_lock_required_fields(self) -> None:
+        module = _load_module("convert_sources_lock", CONVERT_SOURCES_PATH)
+        with patch.object(
+            module.write_utils,
+            "exclusive_write_lock",
+            side_effect=module.write_utils.LockUnavailableError(),
+        ):
+            result = module.run_convert_sources(
+                repo_root=self.repo_root,
+                mode="apply",
+                paths=["raw/inbox/sample.txt"],
+                approval="approved",
+            )
+        self.assertEqual(result.reason_code, "lock_unavailable")
+        self.assertTrue(result.lock_required)
+        self.assertEqual(result.lock_path, "wiki/.kb_write.lock")
 
 
 class ComputeKpisWrapperTests(_RuntimeWrapperFixture):

@@ -26,6 +26,7 @@ from scripts._optional_surface_common import (
     count_placeholders,
     expand_repo_paths,
     invalid_input_result,
+    lock_unavailable_result,
     looks_like_repo_root,
     repo_relative,
     repo_root_failure,
@@ -280,20 +281,14 @@ def run_quality_runtime(
     try:
         written_path = write_report_artifact(normalized_repo_root, report_type, artifact)
     except LockUnavailableError as exc:
-        return SurfaceResult(
-            surface=SURFACE, mode=mode, status=STATUS_FAIL,
-            reason_code="lock_unavailable",
-            message=str(exc), approval=approval,
-            lock_path=LOCK_PATH, lock_required=True,
-            path_rules=path_rules, items=(),
-        )
+        return lock_unavailable_result(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules, exc=exc)
     except OSError as exc:
         return SurfaceResult(
             surface=SURFACE, mode=mode, status=STATUS_FAIL,
             reason_code="write_failed",
             message=f"report write failed: {exc}",
             approval=approval, lock_path=LOCK_PATH, lock_required=True,
-            path_rules=path_rules, items=(),
+            path_rules=path_rules,
         )
     return SurfaceResult(
         surface=SURFACE,
