@@ -67,7 +67,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             self.workflow_text,
         )
         self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
-        self.assertIn("python3 -m unittest discover -s tests -p 'test_*.py'", self.workflow_text)
+        self.assertIn("python3 -m pytest tests/ -q", self.workflow_text)
         self.assertIn(
             "uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
             self.workflow_text,
@@ -121,7 +121,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         )
         self.assertIsNotNone(
             re.search(
-                r"python3 -m unittest discover -s tests -p 'test_\*\.py'.*?tests_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+                r"python3 -m pytest tests/ -q.*?tests_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
                 flags=re.DOTALL,
             ),

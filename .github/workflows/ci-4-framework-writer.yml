@@ -218,6 +218,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DISPATCH_MODE: ${{ github.event.inputs.mode }}
           STAGED_MANIFEST_PATH: ${{ github.event.inputs.staged_manifest_path }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
@@ -239,8 +240,9 @@ jobs:
 
           pr_body="$(printf 'Automated framework write from CI-4.\n\nMode: %s\nStaged manifest: %s\n\nWrite targets restricted to docs/** and .github/skills/**.' "${DISPATCH_MODE}" "${STAGED_MANIFEST_PATH}")"
 
+          base_branch="${DEFAULT_BRANCH:-main}"
           gh pr create \
             --title "ci(framework-write): apply staged manifest" \
             --body "${pr_body}" \
             --head "${branch_name}" \
-            --base main
+            --base "${base_branch}"

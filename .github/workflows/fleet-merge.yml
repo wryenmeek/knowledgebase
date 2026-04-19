@@ -27,6 +27,10 @@ on:
         type: string
         default: "main"
 
+permissions:
+  contents: write
+  pull-requests: write
+
 concurrency:
   group: fleet-merge
   cancel-in-progress: false
@@ -39,10 +43,12 @@ jobs:
       JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.1"
 
       - name: Install fleet dependencies
         run: cd scripts/fleet && bun install
@@ -102,15 +108,15 @@ jobs:
 
                 # Re-dispatch via Jules SDK
                 echo "  🚀 Re-dispatching against current ${BASE_BRANCH}..."
-                REPO_FULL="${{ github.repository }}"
-                NEW_SESSION_ID=$(bun -e "
+                JULES_REPO="${{ github.repository }}"
+                NEW_SESSION_ID=$(TASK_PROMPT="${TASK_PROMPT}" JULES_REPO="${JULES_REPO}" JULES_BASE_BRANCH="${BASE_BRANCH}" bun -e "
                   import { jules } from '@google/jules-sdk';
                   const session = await jules.createSession({
                     prompt: process.env.TASK_PROMPT,
-                    source: { github: '${REPO_FULL}', baseBranch: '${BASE_BRANCH}' },
+                    source: { github: process.env.JULES_REPO, baseBranch: process.env.JULES_BASE_BRANCH },
                   });
                   console.log(session.id);
-                " 2>/dev/null)
+                ")
                 echo "  📝 New session: ${NEW_SESSION_ID}"
 
                 # Poll for new PR
@@ -139,16 +145,17 @@ jobs:
                 continue
               fi
 
-              # Wait for branch update to propagate
-              sleep 5
+              # Wait for branch update and checks to register before first poll
+              sleep 30
 
               # Wait for CI checks to pass
               echo "  🧪 Waiting for CI checks..."
-              ELAPSED=0
+              ELAPSED=30
               CI_PASSED=false
+              CI_NONE_ELAPSED=0
 
               while [ $ELAPSED -lt $MAX_CI_WAIT ]; do
-                STATUS=$(gh pr checks "$PR_NUM" --json name,state --jq '[.[].state] | if length == 0 then "none" elif all(. == "SUCCESS" or . == "SKIPPED") then "pass" elif any(. == "FAILURE") then "fail" else "pending" end')
+                STATUS=$(gh pr checks "$PR_NUM" --json name,state --jq '[.[].state] | if length == 0 then "none" elif all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL") then "pass" elif any(. == "FAILURE" or . == "TIMED_OUT" or . == "CANCELLED" or . == "ACTION_REQUIRED") then "fail" else "pending" end')
 
                 case "$STATUS" in
                   "pass")
@@ -156,9 +163,15 @@ jobs:
                     break
                     ;;
                   "none")
-                    echo "  ℹ️  No CI checks configured. Proceeding."
-                    CI_PASSED=true
-                    break
+                    CI_NONE_ELAPSED=$((CI_NONE_ELAPSED + 30))
+                    if [ $CI_NONE_ELAPSED -ge 120 ]; then
+                      echo "  ℹ️  No CI checks registered after ${CI_NONE_ELAPSED}s. Proceeding."
+                      CI_PASSED=true
+                      break
+                    fi
+                    echo "  ⏳ Checks not yet registered... (${ELAPSED}s/${MAX_CI_WAIT}s)"
+                    sleep 30
+                    ELAPSED=$((ELAPSED + 30))
                     ;;
                   "fail")
                     echo "  ❌ CI failed for PR #${PR_NUM}. Skipping."
