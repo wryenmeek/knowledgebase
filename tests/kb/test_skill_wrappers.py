@@ -276,6 +276,31 @@ class ValidateWikiGovernanceWrapperTests(HarnessAssertionsTestCase):
         cmd = run_mock.call_args[0][0]
         self.assertNotIn("--path", cmd)
 
+    def test_freshness_threshold_base_cmd_flags_always_present(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_baseflags", VALIDATE_WRAPPER_PATH)
+        import tempfile, pathlib
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = pathlib.Path(tmp)
+            script = repo_root / "scripts" / "validation" / "check_doc_freshness.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("# stub\n")
+
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stdout = ""
+            proc.stderr = ""
+            with patch.object(module.subprocess, "run", return_value=proc) as run_mock:
+                module._validate_freshness_threshold(repo_root, [])
+
+        cmd = run_mock.call_args[0][0]
+        self.assertIn("--scope", cmd)
+        self.assertIn("wiki", cmd)
+        self.assertIn("--max-age-days", cmd)
+        self.assertIn("90", cmd)
+        self.assertIn("--as-of", cmd)
+
     def test_protected_paths_default_to_blocking_mode(self) -> None:
         module = _load_module("validate_wiki_governance_modes", VALIDATE_WRAPPER_PATH)
 

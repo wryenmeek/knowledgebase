@@ -264,6 +264,17 @@ class SuggestBacklinksResolveLinkTargetTests(unittest.TestCase):
         result = sb._resolve_link_target("outpatient-care", self.wiki_root)
         self.assertEqual(result, page.resolve())
 
+    def test_mailto_scheme_returns_none(self) -> None:
+        self.assertIsNone(sb._resolve_link_target("mailto:contact@cms.gov", self.wiki_root))
+
+    def test_path_traversal_outside_wiki_root_returns_none(self) -> None:
+        """A link like '../scripts/kb/foo.py' must not escape wiki_root."""
+        # Create a real file one level above wiki_root to confirm it exists but is rejected
+        outside = self.wiki_root.parent / "secret.md"
+        outside.write_text("# Secret\n")
+        result = sb._resolve_link_target("../secret.md", self.wiki_root)
+        self.assertIsNone(result, "Path traversal outside wiki_root must return None")
+
 
 class SuggestBacklinksProposalStructureTests(unittest.TestCase):
     """BacklinkProposal and scan() return value structure."""
@@ -287,6 +298,36 @@ class SuggestBacklinksProposalStructureTests(unittest.TestCase):
             wiki_root.mkdir()
             result = sb.scan(wiki_root / "nonexistent.md", wiki_root)
             self.assertIsInstance(result, list)
+
+
+class SuggestBacklinksMainTests(unittest.TestCase):
+    """Smoke tests for the main() CLI entry point."""
+
+    def test_main_emits_json_array_for_existing_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wiki_root = Path(tmpdir) / "wiki"
+            (wiki_root / "entities").mkdir(parents=True)
+            candidate = wiki_root / "entities" / "part-b.md"
+            candidate.write_text("---\ntitle: Part B\n---\n\n# Part B\n\nOutpatient coverage.\n")
+            import io, contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = sb.main([str(candidate), "--wiki-root", str(wiki_root)])
+            self.assertEqual(rc, 0)
+            import json
+            parsed = json.loads(buf.getvalue())
+            self.assertIsInstance(parsed, list)
+
+    def test_main_emits_empty_array_for_nonexistent_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wiki_root = Path(tmpdir) / "wiki"
+            wiki_root.mkdir()
+            import io, contextlib, json
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = sb.main([str(wiki_root / "missing.md"), "--wiki-root", str(wiki_root)])
+            self.assertEqual(rc, 0)
+            self.assertEqual(json.loads(buf.getvalue()), [])
 
 
 if __name__ == "__main__":

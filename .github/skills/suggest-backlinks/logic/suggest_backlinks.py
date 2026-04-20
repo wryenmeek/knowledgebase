@@ -94,10 +94,12 @@ def _resolve_link_target(raw: str, wiki_root: Path) -> Path | None:
     clean = raw.split("#")[0].split("?")[0].strip()
     if not clean:
         return None
+    wiki_root_str = str(wiki_root.resolve())
     # Try as a relative path to wiki_root (works for explicit md link URLs)
     for candidate in (wiki_root / clean, wiki_root / (clean + ".md")):
-        if candidate.resolve().is_file():
-            return candidate.resolve()
+        resolved = candidate.resolve()
+        if resolved.is_file() and str(resolved).startswith(wiki_root_str):
+            return resolved
     # Wikilink title-to-filename: kebab normalization across all namespaces
     kebab = clean.lower().replace(" ", "-")
     for ns_dir in sorted(wiki_root.iterdir()):
@@ -105,8 +107,9 @@ def _resolve_link_target(raw: str, wiki_root: Path) -> Path | None:
             continue
         for name in (kebab, clean.lower()):
             p = (ns_dir / name).with_suffix(".md")
-            if p.is_file():
-                return p.resolve()
+            resolved = p.resolve()
+            if resolved.is_file() and str(resolved).startswith(wiki_root_str):
+                return resolved
     return None
 
 
@@ -151,6 +154,8 @@ def _scan_neighbor(
     in_code_block = False
 
     for lineno, line in enumerate(lines, start=1):
+        # Simple toggle — sufficient for well-formed wiki Markdown;
+        # odd-numbered bare-fence sequences in list items may suppress proposals.
         if line.strip().startswith("```"):
             in_code_block = not in_code_block
         if in_code_block:
