@@ -101,7 +101,7 @@ Before writing any new helper function, constant, or utility, search these canon
 
 If a suitable helper exists, import it. If a related helper needs extending, extend the canonical module rather than creating a parallel private copy. See ADR-011.
 
-### Rule 0.5: Simplicity First
+### Rule 1: Simplicity First
 
 Before writing any code, ask: "What is the simplest thing that could work?"
 
@@ -125,7 +125,7 @@ SIMPLICITY CHECK:
 
 Three similar lines of code is better than a premature abstraction. Implement the naive, obviously-correct version first. Optimize only after correctness is proven with tests.
 
-### Rule 1: Scope Discipline
+### Rule 2: Scope Discipline
 
 Touch only what the task requires.
 
@@ -145,7 +145,7 @@ NOTICED BUT NOT TOUCHING:
 → Want me to create tasks for these?
 ```
 
-### Rule 2: One Thing at a Time
+### Rule 3: One Thing at a Time
 
 Each increment changes one logical thing. Don't mix concerns:
 
@@ -153,11 +153,11 @@ Each increment changes one logical thing. Don't mix concerns:
 
 **Good:** Three separate commits — one for each change.
 
-### Rule 3: Keep It Compilable
+### Rule 4: Keep It Compilable
 
 After each increment, the project must build and existing tests must pass. Don't leave the codebase in a broken state between slices.
 
-### Rule 4: Feature Flags for Incomplete Features
+### Rule 5: Feature Flags for Incomplete Features
 
 If a feature isn't ready for users but you need to merge increments:
 
@@ -172,7 +172,7 @@ if (ENABLE_TASK_SHARING) {
 
 This lets you merge small increments to the main branch without exposing incomplete work.
 
-### Rule 5: Safe Defaults
+### Rule 6: Safe Defaults
 
 New code should default to safe, conservative behavior:
 
@@ -184,7 +184,7 @@ export function createTask(data: TaskInput, options?: { notify?: boolean }) {
 }
 ```
 
-### Rule 6: Rollback-Friendly
+### Rule 7: Rollback-Friendly
 
 Each increment should be independently revertable:
 

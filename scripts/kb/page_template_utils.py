@@ -162,12 +162,12 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
         if inline_value:
             return [strip_quotes(inline_value)]
         sources: list[str] = []
-        for candidate in lines[index + 1:]:
-            if not candidate.startswith("  "):
+        for raw_line in lines[index + 1:]:
+            if not raw_line.startswith("  "):
                 break
-            candidate = candidate.strip()
-            if candidate.startswith("- "):
-                sources.append(strip_quotes(candidate[2:].strip()))
+            item = raw_line.strip()
+            if item.startswith("- "):
+                sources.append(strip_quotes(item[2:].strip()))
         return sources
     return []
 
