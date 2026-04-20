@@ -94,11 +94,11 @@ def _resolve_link_target(raw: str, wiki_root: Path) -> Path | None:
     clean = raw.split("#")[0].split("?")[0].strip()
     if not clean:
         return None
-    wiki_root_str = str(wiki_root.resolve())
+    wiki_root_resolved = wiki_root.resolve()
     # Try as a relative path to wiki_root (works for explicit md link URLs)
     for candidate in (wiki_root / clean, wiki_root / (clean + ".md")):
         resolved = candidate.resolve()
-        if resolved.is_file() and str(resolved).startswith(wiki_root_str):
+        if resolved.is_file() and resolved.is_relative_to(wiki_root_resolved):
             return resolved
     # Wikilink title-to-filename: kebab normalization across all namespaces
     kebab = clean.lower().replace(" ", "-")
@@ -108,7 +108,7 @@ def _resolve_link_target(raw: str, wiki_root: Path) -> Path | None:
         for name in (kebab, clean.lower()):
             p = (ns_dir / name).with_suffix(".md")
             resolved = p.resolve()
-            if resolved.is_file() and str(resolved).startswith(wiki_root_str):
+            if resolved.is_file() and resolved.is_relative_to(wiki_root_resolved):
                 return resolved
     return None
 

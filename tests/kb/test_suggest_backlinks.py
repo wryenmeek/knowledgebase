@@ -269,11 +269,24 @@ class SuggestBacklinksResolveLinkTargetTests(unittest.TestCase):
 
     def test_path_traversal_outside_wiki_root_returns_none(self) -> None:
         """A link like '../scripts/kb/foo.py' must not escape wiki_root."""
-        # Create a real file one level above wiki_root to confirm it exists but is rejected
         outside = self.wiki_root.parent / "secret.md"
         outside.write_text("# Secret\n")
         result = sb._resolve_link_target("../secret.md", self.wiki_root)
         self.assertIsNone(result, "Path traversal outside wiki_root must return None")
+
+    def test_sibling_directory_not_mistaken_for_wiki_root(self) -> None:
+        """A sibling dir named wiki-extra/ must not pass the bounds check.
+
+        The old startswith(wiki_root_str) check would accept
+        /path/to/wiki-extra/page.md when wiki_root is /path/to/wiki.
+        is_relative_to() is separator-safe and must reject it.
+        """
+        sibling = self.wiki_root.parent / (self.wiki_root.name + "-extra")
+        sibling.mkdir()
+        evil = sibling / "evil.md"
+        evil.write_text("# Evil\n")
+        result = sb._resolve_link_target("../wiki-extra/evil.md", self.wiki_root)
+        self.assertIsNone(result, "Sibling directory must not pass wiki_root bounds check")
 
 
 class SuggestBacklinksProposalStructureTests(unittest.TestCase):

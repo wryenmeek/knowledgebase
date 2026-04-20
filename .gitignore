@@ -213,3 +213,4 @@ node_modules/
 # Test runtime directories (created/cleaned by harnesses.py test teardown; never commit)
 tests/kb/.runtime/
 tests/kb/.runtime_skill_wrappers/
+.DS_Store
