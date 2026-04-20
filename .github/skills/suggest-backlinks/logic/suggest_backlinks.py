@@ -18,8 +18,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+# Add repo root to sys.path for canonical module imports (ADR-011)
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+from scripts.kb.page_template_utils import parse_page_frontmatter  # noqa: E402
+
 WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
-MDLINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+MDLINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")  # group 1 = display, group 2 = URL
 
 
 @dataclass(frozen=True)
@@ -41,13 +45,11 @@ class BacklinkProposal:
 
 
 def _get_candidate_title(page_path: Path) -> str:
-    """Extract title from frontmatter, or derive from filename."""
+    """Extract title from frontmatter via canonical parser, or derive from filename."""
     try:
-        text = page_path.read_text(encoding="utf-8")
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("title:"):
-                return stripped[len("title:"):].strip().strip('"').strip("'")
+        fm = parse_page_frontmatter(page_path.read_text(encoding="utf-8"))
+        if fm.get("title"):
+            return fm["title"]
     except OSError:
         pass
     return page_path.stem.replace("-", " ").replace("_", " ").title()
@@ -63,17 +65,44 @@ def _get_namespace(page_path: Path, wiki_root: Path) -> str | None:
 
 
 def _get_existing_link_targets(page_path: Path) -> set[str]:
-    """Return raw link targets found in a page (wikilinks and md links)."""
+    """Return raw link targets found in a page (wikilinks and md link URLs)."""
     targets: set[str] = set()
     try:
         text = page_path.read_text(encoding="utf-8")
         for m in WIKILINK_RE.finditer(text):
             targets.add(m.group(1).strip())
         for m in MDLINK_RE.finditer(text):
-            targets.add(m.group(1).strip())
+            # Use URL path (group 2) for file resolution, not display text (group 1)
+            url = m.group(2).strip().split("#")[0].split("?")[0]
+            if url:
+                targets.add(url)
     except OSError:
         pass
     return targets
+
+
+def _resolve_link_target(raw: str, wiki_root: Path) -> Path | None:
+    """Resolve a raw link target to an absolute wiki file path, or None.
+
+    Handles md link URL paths (e.g. 'entities/part-b.md') and wikilink
+    titles (e.g. 'Part B') via kebab-case normalization across namespaces.
+    """
+    if not raw or raw.startswith(("http://", "https://", "mailto:")):
+        return None
+    # Try as a relative path to wiki_root (works for explicit md link URLs)
+    for candidate in (wiki_root / raw, wiki_root / (raw + ".md")):
+        if candidate.resolve().is_file():
+            return candidate.resolve()
+    # Wikilink title-to-filename: kebab normalization across all namespaces
+    kebab = raw.lower().replace(" ", "-")
+    for ns_dir in sorted(wiki_root.iterdir()):
+        if not ns_dir.is_dir():
+            continue
+        for name in (kebab, raw.lower()):
+            p = (ns_dir / name).with_suffix(".md")
+            if p.is_file():
+                return p.resolve()
+    return None
 
 
 def _line_already_links_title(line: str, title: str) -> bool:
@@ -173,16 +202,15 @@ def scan(candidate: str | Path, wiki_root: str | Path = "wiki") -> list[Backlink
 
     # Neighborhood 2: pages the candidate already links to
     for link_target in _get_existing_link_targets(candidate_path):
-        for suffix in (".md", ""):
-            guessed = (wiki_root_path / (link_target + suffix)).resolve()
-            if guessed.is_file() and guessed not in seen:
-                seen.add(guessed)
-                proposals.extend(
-                    _scan_neighbor(
-                        guessed, candidate_path, title, wiki_root_path,
-                        "linked-neighbor",
-                    )
+        resolved = _resolve_link_target(link_target, wiki_root_path)
+        if resolved is not None and resolved not in seen:
+            seen.add(resolved)
+            proposals.extend(
+                _scan_neighbor(
+                    resolved, candidate_path, title, wiki_root_path,
+                    "linked-neighbor",
                 )
+            )
 
     return proposals
 

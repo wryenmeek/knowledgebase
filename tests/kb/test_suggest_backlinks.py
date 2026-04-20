@@ -145,6 +145,28 @@ class SuggestBacklinksNamespaceScopeTests(unittest.TestCase):
         proposals = sb.scan(candidate, self.wiki_root)
         self.assertEqual(proposals, [])
 
+    def test_linked_neighbor_md_link_expansion(self) -> None:
+        """Linked-neighbor expansion must follow md link URL paths, not display text."""
+        # Candidate in entities/ links via md link to a page in concepts/
+        candidate = self._write(
+            "entities/part-b.md",
+            "---\ntitle: Part B\n---\n\n# Part B\n\n"
+            "See [Outpatient Care](concepts/outpatient-care.md) for details.\n",
+        )
+        # The linked page mentions Part B (unlinked)
+        self._write(
+            "concepts/outpatient-care.md",
+            "---\ntitle: Outpatient Care\n---\n\n# Outpatient Care\n\n"
+            "Part B covers outpatient services through Medicare.\n",
+        )
+        proposals = sb.scan(candidate, self.wiki_root)
+        sources = {p.source_file for p in proposals}
+        self.assertIn("concepts/outpatient-care.md", sources,
+                      "Linked-neighbor via md link URL should be scanned")
+        neighbor_props = [p for p in proposals if p.source_file == "concepts/outpatient-care.md"]
+        self.assertEqual(len(neighbor_props), 1)
+        self.assertEqual(neighbor_props[0].rationale, "linked-neighbor")
+
 
 class SuggestBacklinksProposalStructureTests(unittest.TestCase):
     """BacklinkProposal and scan() return value structure."""
