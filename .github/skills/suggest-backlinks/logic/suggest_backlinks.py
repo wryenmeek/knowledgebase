@@ -8,7 +8,8 @@ Neighborhood definition (per SKILL.md contract):
   - Same namespace: all .md pages under wiki/<same-namespace-dir>/
   - Linked neighbors: pages the candidate already wikilinks or md-links to
 
-Scope constraint: no repo-wide crawl. Proposals are narrow and human-reviewable.
+Scope constraint: the two-neighborhood design was chosen to keep proposals
+narrow and human-reviewable without a repo-wide crawl (MVP constraint).
 """
 
 from __future__ import annotations
@@ -87,6 +88,11 @@ def _resolve_link_target(raw: str, wiki_root: Path) -> Path | None:
     Handles md link URL paths (e.g. 'entities/part-b.md', optionally with
     '#anchor' or '?query') and wikilink titles (e.g. 'Part B') via
     kebab-case normalization across namespaces.
+
+    Security contract: only paths that resolve inside wiki_root (verified via
+    Path.is_relative_to) are returned. Any path that escapes wiki_root —
+    including '../' traversal or sibling-directory matches — is discarded
+    (returns None).
     """
     if not raw or raw.startswith(("http://", "https://", "mailto:")):
         return None
@@ -132,7 +138,12 @@ def _scan_neighbor(
     wiki_root: Path,
     rationale: str,
 ) -> list[BacklinkProposal]:
-    """Scan one neighbor page for unlinked whole-word mentions of title."""
+    """Scan one neighbor page for unlinked whole-word mentions of title.
+
+    Matching is whole-word and case-insensitive. Lines where the title already
+    appears inside link syntax (wikilink or md-link) are suppressed. Lines
+    inside fenced code blocks are skipped.
+    """
     if neighbor.resolve() == candidate_path.resolve():
         return []
     try:
@@ -178,6 +189,12 @@ def scan(candidate: str | Path, wiki_root: str | Path = "wiki") -> list[Backlink
     Neighborhood:
       1. Same-namespace pages (wiki/<namespace>/*.md siblings)
       2. Pages the candidate already explicitly links to
+
+    Args:
+        candidate: Path (or str) to the candidate wiki page.
+        wiki_root: Path (or str) to the wiki root directory (default: 'wiki'
+            relative to cwd). All path resolution and bounds checks are
+            relative to this root; paths outside wiki_root are never read.
 
     Returns a list of BacklinkProposal objects. Empty list on missing candidate,
     empty corpus, or no findings. Never writes to wiki.

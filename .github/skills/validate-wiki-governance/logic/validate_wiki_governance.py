@@ -441,6 +441,12 @@ def _validate_topology_hygiene(repo_root: Path, target_paths: Sequence[str]) -> 
 
 
 def _validate_freshness_threshold(repo_root: Path, target_paths: Sequence[str]) -> list[ValidationFinding]:
+    # Subprocess rather than direct import: check_doc_freshness.py lives in
+    # scripts/validation/, a post-MVP surface not yet safe to import directly
+    # into this MVP wrapper. Subprocess call isolates any import-time side
+    # effects and avoids coupling validation-layer package state to the
+    # governance wrapper. Flags passed: --scope wiki --max-age-days 90
+    # --as-of <today>; wiki/*.md target_paths forwarded as --path flags.
     freshness_script = repo_root / "scripts" / "validation" / "check_doc_freshness.py"
     if not freshness_script.is_file():
         return [_prereq_missing(

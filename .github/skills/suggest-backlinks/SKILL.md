@@ -63,10 +63,18 @@ neighborhood-scoped case. Run from the repository root:
 python3 .github/skills/suggest-backlinks/logic/suggest_backlinks.py <page> [--wiki-root wiki]
 ```
 
+`scan(candidate, wiki_root="wiki")` is the importable Python entry point;
+`main()` is the CLI dispatcher called by `if __name__ == "__main__"`.
+
 The scanner returns a JSON list of `BacklinkProposal` objects
 (`source_file`, `source_line`, `surface_text`, `suggested_link`, `rationale`).
 Neighborhood is bounded to the candidate's namespace plus pages it already
 links to — no repo-wide crawl.
+
+Security contract: all resolved file paths are validated against `wiki_root`
+via `Path.is_relative_to()` before being read; any candidate that resolves
+outside `wiki_root` (including `../` traversal or sibling-directory matches)
+is silently discarded.
 
 ## Procedure
 

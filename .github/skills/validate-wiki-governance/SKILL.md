@@ -33,7 +33,7 @@ Supported validators:
 2. `page-template`
 3. `append-only-log`
 4. `topology-hygiene`
-5. `freshness-threshold` (opt-in — must be passed explicitly via `--validator freshness-threshold`; not included in the default set)
+5. `freshness-threshold` (opt-in — must be passed explicitly via `--validator freshness-threshold`; not included in the default set; delegates to `scripts/validation/check_doc_freshness.py` via subprocess with `--scope wiki --max-age-days 90 --as-of <run-date>`; if the script is absent or the subprocess fails to start, returns `prereq_missing` and fails closed)
 
 Protected/write paths default to `blocking` mode even when `--mode` is omitted. Unsupported validators, missing prerequisites, and partial results are hard failures on protected/write paths.
 

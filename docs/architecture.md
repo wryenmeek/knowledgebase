@@ -170,7 +170,8 @@ Operators can validate the landed framework with these repo-local entrypoints:
 
 | Check | Command | Primary evidence |
 |---|---|---|
-| Fixed governance gate | `python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py` | Wrapper over `scripts/kb/qmd_preflight.py`, `scripts/kb/update_index.py`, and `scripts/kb/lint_wiki.py`; pass `--validator freshness-threshold` to also check page age |
+| Fixed governance gate | `python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py` | Wrapper over `scripts/kb/qmd_preflight.py`, `scripts/kb/update_index.py`, and `scripts/kb/lint_wiki.py`; add `--validator freshness-threshold` to opt in to page-age checking (not run by default; requires `scripts/validation/check_doc_freshness.py`) |
+| Advisory freshness sweep | `.github/workflows/wiki-freshness.yml` (scheduled Monday 03:30 UTC; `workflow_dispatch` with `enforcement_mode` input) | Two-step: (1) `check_doc_freshness.py --scope wiki --max-age-days 90`; (2) `validate_wiki_governance.py --mode signal` with all 5 validators including `freshness-threshold`. Always advisory unless `blocking` mode is selected. |
 | Backlink suggestions | `python3 .github/skills/suggest-backlinks/logic/suggest_backlinks.py <page> [--wiki-root wiki]` | Neighborhood-scoped (same namespace + linked pages); returns JSON `BacklinkProposal` list; read-only |
 | Read-only state-sync precheck | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only [--artifact wiki/index.md\|wiki/log.md\|wiki/open-questions.md\|wiki/backlog.md\|wiki/status.md]` | Confirms approved governed-artifact routing; index precheck still runs the allowlisted index/lint path |
 | Write-capable governed sync | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index` (or the typed log/open-questions/backlog/status sync flags) | Mutates only approved governed artifacts after mode-specific checks and ADR-005 locking succeed |
@@ -183,6 +184,11 @@ Operators can validate the landed framework with these repo-local entrypoints:
 - The current CI/runtime write allowlist above is unchanged by the approved
   post-MVP package surfaces; those surfaces only widen where future code may
   live, not what automation may write by default.
+- **Scanner path bounds:** any future read-only scanner that resolves file
+  paths from page input must validate resolved paths with
+  `Path.is_relative_to(wiki_root)` before opening them. Established in
+  `suggest_backlinks.py`; `str.startswith()` is insufficient (sibling
+  directories match without a separator).
 - Raw immutability: `raw/processed/**` must not be mutated after ingest.
 - Ingest-time SourceRefs may use provisional placeholder git SHAs; only reconciled commit-bound SourceRefs whose `git_sha` resolves to a real revision containing the cited artifact bytes count as authoritative provenance.
 - Concurrency guard: workflow-level concurrency group plus local lock file (`wiki/.kb_write.lock`).
