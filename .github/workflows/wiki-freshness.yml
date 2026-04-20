@@ -83,6 +83,7 @@ jobs:
           python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py \
             --mode signal \
             --quiet \
+            --validator freshness-threshold \
             > freshness-reports/governance-signal.json
           python3 - <<'EOF'
           import json, sys
