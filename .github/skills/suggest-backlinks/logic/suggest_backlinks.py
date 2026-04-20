@@ -132,6 +132,15 @@ def _scan_neighbor(
     except OSError:
         return []
 
+    try:
+        source_rel = str(neighbor.relative_to(wiki_root))
+    except ValueError:
+        source_rel = str(neighbor)
+    try:
+        suggested = str(candidate_path.relative_to(wiki_root))
+    except ValueError:
+        suggested = str(candidate_path)
+
     pattern = re.compile(r"\b" + re.escape(title) + r"\b", re.IGNORECASE)
     proposals: list[BacklinkProposal] = []
     in_code_block = False
@@ -142,14 +151,6 @@ def _scan_neighbor(
         if in_code_block:
             continue
         if pattern.search(line) and not _line_already_links_title(line, title):
-            try:
-                source_rel = str(neighbor.relative_to(wiki_root))
-            except ValueError:
-                source_rel = str(neighbor)
-            try:
-                suggested = str(candidate_path.relative_to(wiki_root))
-            except ValueError:
-                suggested = str(candidate_path)
             proposals.append(BacklinkProposal(
                 source_file=source_rel,
                 source_line=lineno,
