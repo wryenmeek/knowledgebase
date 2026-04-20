@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import unittest
 from pathlib import Path
 import subprocess
@@ -240,7 +241,6 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
 
 class CheckNoSymlinkPathTests(unittest.TestCase):
     def setUp(self) -> None:
-        import tempfile
         self._tmp = tempfile.TemporaryDirectory()
         # Resolve to canonical path; on macOS /var is a symlink to /private/var
         self.tmp_path = Path(self._tmp.name).resolve()

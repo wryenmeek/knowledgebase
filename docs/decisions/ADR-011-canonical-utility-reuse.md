@@ -1,7 +1,10 @@
 # ADR-011: Canonical Utility Re-Use Policy
 
-**Status:** Accepted
-**Date:** 2025-01-01
+## Status
+Accepted
+
+## Date
+2026-04-19
 
 ## Context
 
