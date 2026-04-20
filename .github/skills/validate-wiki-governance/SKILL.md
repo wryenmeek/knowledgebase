@@ -24,14 +24,16 @@ Run from the repository root:
 python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py
 python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --mode signal --path README.md --validator page-template
 python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --mode blocking --path wiki/index.md --validator topology-hygiene
+python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --mode signal --validator freshness-threshold
 ```
 
-Supported validators are fixed and typed:
+Supported validators:
 
 1. `sourceref-shape`
 2. `page-template`
 3. `append-only-log`
 4. `topology-hygiene`
+5. `freshness-threshold` (opt-in — must be passed explicitly via `--validator freshness-threshold`; not included in the default set)
 
 Protected/write paths default to `blocking` mode even when `--mode` is omitted. Unsupported validators, missing prerequisites, and partial results are hard failures on protected/write paths.
 
@@ -43,7 +45,7 @@ Protected/write paths default to `blocking` mode even when `--mode` is omitted. 
 - Read-only validation only
 - No network behavior
 - Fail closed on unsupported validators, missing prerequisites, and protected-path partial results
-- Approved post-MVP checks only; no freshness scoring, crawl-heavy analysis, or broad reporting runtime
+- Approved post-MVP checks only; no crawl-heavy analysis or broad reporting runtime
 
 ## Inputs and references
 

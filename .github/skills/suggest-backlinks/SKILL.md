@@ -8,9 +8,10 @@ description: Recommends governed backlink opportunities between already-cleared 
 ## Overview
 
 Use this skill to propose narrow backlink improvements between curated pages
-without turning MVP into a link-rewriter. It is an active, doc-only contract
-consumer: inspect cleared pages, identify structurally justified backlink
-opportunities, and hand the recommendation back through governed follow-up.
+without turning MVP into a link-rewriter. It is an active, read-only logic
+skill: the scanner inspects cleared pages, identifies structurally justified
+backlink opportunities, and hands the recommendation back through governed
+follow-up.
 
 ## Classification
 
@@ -52,6 +53,20 @@ opportunities, and hand the recommendation back through governed follow-up.
   silently automated
 - No graph crawler, ranking engine, or mass backlink generator is introduced in
   MVP
+
+## Scanner
+
+The `logic/suggest_backlinks.py` scanner automates Steps 1–2 for the
+neighborhood-scoped case. Run from the repository root:
+
+```bash
+python3 .github/skills/suggest-backlinks/logic/suggest_backlinks.py <page> [--wiki-root wiki]
+```
+
+The scanner returns a JSON list of `BacklinkProposal` objects
+(`source_file`, `source_line`, `surface_text`, `suggested_link`, `rationale`).
+Neighborhood is bounded to the candidate's namespace plus pages it already
+links to — no repo-wide crawl.
 
 ## Procedure
 

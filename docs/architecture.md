@@ -156,6 +156,7 @@ prevents ADR-007 drift into a second runtime.
 | Intake provenance workflows | Active, doc-only | `register-source-provenance`, `checksum-asset`, `create-intake-manifest`, `log-ingest-event` |
 | Synthesis workflows | Active, doc-only | `synthesize-entity-page`, `synthesize-concept-page`, `claim-inventory` |
 | Maintenance-arm workflows | Active, doc-only | `semantic-wiki-lint`, `freshness-audit`, `cross-reference-symmetry-check`, `propose-supersede-or-archive`, `append-maintenance-log`, `patrol-human-edits`, `route-noncompliant-edit-for-review`, `manage-redirects-and-anchors`, `detect-original-research`, `compare-against-existing-pages`, `escalate-contradictions` |
+| Topology / discovery workflows | Active, has logic/ | `suggest-backlinks` — neighborhood-scoped scanner (`logic/suggest_backlinks.py`) proposes backlink candidates; no direct page mutation |
 | Quality and orchestration workflows | Active, doc-only | `score-page-quality`, `compute-kpis`, `analyze-missed-queries`, `prioritize-curation-backlog`, `route-wiki-task`, `plan-wiki-job`, `fail-closed-on-errors` |
 
 The skill layer carries workflow procedure and thin wrapper logic while leaving
@@ -169,7 +170,8 @@ Operators can validate the landed framework with these repo-local entrypoints:
 
 | Check | Command | Primary evidence |
 |---|---|---|
-| Fixed governance gate | `python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py` | Wrapper over `scripts/kb/qmd_preflight.py`, `scripts/kb/update_index.py`, and `scripts/kb/lint_wiki.py` |
+| Fixed governance gate | `python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py` | Wrapper over `scripts/kb/qmd_preflight.py`, `scripts/kb/update_index.py`, and `scripts/kb/lint_wiki.py`; pass `--validator freshness-threshold` to also check page age |
+| Backlink suggestions | `python3 .github/skills/suggest-backlinks/logic/suggest_backlinks.py <page> [--wiki-root wiki]` | Neighborhood-scoped (same namespace + linked pages); returns JSON `BacklinkProposal` list; read-only |
 | Read-only state-sync precheck | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only [--artifact wiki/index.md\|wiki/log.md\|wiki/open-questions.md\|wiki/backlog.md\|wiki/status.md]` | Confirms approved governed-artifact routing; index precheck still runs the allowlisted index/lint path |
 | Write-capable governed sync | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index` (or the typed log/open-questions/backlog/status sync flags) | Mutates only approved governed artifacts after mode-specific checks and ADR-005 locking succeed |
 | Focused framework suite | `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_skill_wrappers` | `tests/kb/test_framework_contracts.py`, `test_framework_skills.py`, `test_framework_agents.py`, `test_framework_references.py`, `test_skill_wrappers.py` |
