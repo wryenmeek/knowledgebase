@@ -76,6 +76,30 @@ jobs:
               print(f"::warning file={path}::{msg} FIX: update page content and set updated_at to today's date in the YAML frontmatter.")
           EOF
 
+      - name: Advisory governance signal sweep
+        run: |
+          set -euo pipefail
+          mkdir -p freshness-reports
+          python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py \
+            --mode signal \
+            --quiet \
+            > freshness-reports/governance-signal.json
+          python3 - <<'EOF'
+          import json, sys
+          with open("freshness-reports/governance-signal.json") as f:
+              report = json.load(f)
+          findings = report.get("findings", [])
+          fail_findings = [fn for fn in findings if fn.get("status") == "fail"]
+          if not fail_findings:
+              print("Governance signal sweep: no advisory findings.")
+              sys.exit(0)
+          for fn in fail_findings:
+              target = fn.get("target", "wiki")
+              msg = fn.get("message", "governance finding")
+              validator = fn.get("validator", "governance")
+              print(f"::warning file={target}::[{validator}] {msg} (advisory — signal mode)")
+          EOF
+
       - name: Upload freshness report artifact
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
