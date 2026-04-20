@@ -24,8 +24,7 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     },
     "update-index": {"logic": False, "classification": "Doc-only workflow"},
     "suggest-backlinks": {
-        "logic": False,
-        "classification": "Doc-only contract consumer",
+        "logic": True,
     },
     "validate-taxonomy-placement": {
         "logic": False,

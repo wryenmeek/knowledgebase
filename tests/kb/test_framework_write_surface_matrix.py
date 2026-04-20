@@ -108,6 +108,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("schema/metadata-schema-contract.md", "schema/ingest-checklist.md"),
         "Hard-fail behavior": ("path_not_allowlisted", "authoritative byte mismatch", "fail closed"),
     },
+    ".github/skills/suggest-backlinks/logic/**": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None",),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("schema/taxonomy-contract.md", ".github/skills/suggest-backlinks/SKILL.md"),
+        "Hard-fail behavior": ("path escape", "invalid wiki path", "write attempt", "fail closed"),
+    },
     "scripts/kb/**": {
         "Runtime mode": ("Mixed", "blocking-only"),
         "Writable paths": ("wiki/**", "raw/processed/**"),

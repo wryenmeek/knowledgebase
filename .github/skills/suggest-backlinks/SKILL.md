@@ -14,7 +14,7 @@ opportunities, and hand the recommendation back through governed follow-up.
 
 ## Classification
 
-- **Mode:** Doc-only contract consumer
+- **Mode:** Read-only logic skill
 - **MVP status:** Active
 - **Execution boundary:** Recommendation only. No direct page edit or
   persistence side effect occurs here.
