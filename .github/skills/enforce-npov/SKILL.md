@@ -99,3 +99,4 @@ forcing a merge or publication path open.
 - [`docs/ideas/wiki-curation-agent-framework.md`](../../../docs/ideas/wiki-curation-agent-framework.md)
 - [`raw/processed/SPEC.md`](../../../raw/processed/SPEC.md)
 - [`schema/page-template.md`](../../../schema/page-template.md)
+- [Manual of Style](../references/manual-of-style.md) — prose register, heading conventions, vocabulary standards

@@ -52,3 +52,4 @@ through `knowledgebase-orchestrator` before any remediation write path opens.
 - `schema/page-template.md`
 - `schema/taxonomy-contract.md`
 - `.github/agents/maintenance-auditor.md`
+- [Manual of Style](../references/manual-of-style.md) — prose register, heading conventions, vocabulary standards
