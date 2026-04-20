@@ -84,21 +84,26 @@ def _get_existing_link_targets(page_path: Path) -> set[str]:
 def _resolve_link_target(raw: str, wiki_root: Path) -> Path | None:
     """Resolve a raw link target to an absolute wiki file path, or None.
 
-    Handles md link URL paths (e.g. 'entities/part-b.md') and wikilink
-    titles (e.g. 'Part B') via kebab-case normalization across namespaces.
+    Handles md link URL paths (e.g. 'entities/part-b.md', optionally with
+    '#anchor' or '?query') and wikilink titles (e.g. 'Part B') via
+    kebab-case normalization across namespaces.
     """
     if not raw or raw.startswith(("http://", "https://", "mailto:")):
         return None
+    # Strip anchors and query strings so 'entities/part-b.md#section' resolves correctly
+    clean = raw.split("#")[0].split("?")[0].strip()
+    if not clean:
+        return None
     # Try as a relative path to wiki_root (works for explicit md link URLs)
-    for candidate in (wiki_root / raw, wiki_root / (raw + ".md")):
+    for candidate in (wiki_root / clean, wiki_root / (clean + ".md")):
         if candidate.resolve().is_file():
             return candidate.resolve()
     # Wikilink title-to-filename: kebab normalization across all namespaces
-    kebab = raw.lower().replace(" ", "-")
+    kebab = clean.lower().replace(" ", "-")
     for ns_dir in sorted(wiki_root.iterdir()):
         if not ns_dir.is_dir():
             continue
-        for name in (kebab, raw.lower()):
+        for name in (kebab, clean.lower()):
             p = (ns_dir / name).with_suffix(".md")
             if p.is_file():
                 return p.resolve()

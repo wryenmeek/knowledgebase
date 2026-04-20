@@ -167,6 +167,103 @@ class SuggestBacklinksNamespaceScopeTests(unittest.TestCase):
         self.assertEqual(len(neighbor_props), 1)
         self.assertEqual(neighbor_props[0].rationale, "linked-neighbor")
 
+    def test_linked_neighbor_wikilink_expansion(self) -> None:
+        """Linked-neighbor expansion follows [[wikilink]] via kebab-case resolution."""
+        candidate = self._write(
+            "entities/part-b.md",
+            "---\ntitle: Part B\n---\n\n# Part B\n\n"
+            "See [[outpatient-care]] for details.\n",
+        )
+        self._write(
+            "concepts/outpatient-care.md",
+            "---\ntitle: Outpatient Care\n---\n\n# Outpatient Care\n\n"
+            "Part B covers outpatient services.\n",
+        )
+        proposals = sb.scan(candidate, self.wiki_root)
+        sources = {p.source_file for p in proposals}
+        self.assertIn("concepts/outpatient-care.md", sources,
+                      "Linked-neighbor via [[wikilink]] should resolve via kebab")
+
+    def test_candidate_without_frontmatter_derives_title_from_filename(self) -> None:
+        """Title falls back to stem-derived name when frontmatter is absent."""
+        candidate = self._write(
+            "entities/part-b.md",
+            "# Part B\n\nOutpatient services.\n",  # no frontmatter block
+        )
+        self._write(
+            "entities/overview.md",
+            "---\ntitle: Overview\n---\n\n# Overview\n\nPart B covers outpatient care.\n",
+        )
+        proposals = sb.scan(candidate, self.wiki_root)
+        self.assertTrue(len(proposals) >= 1)
+        self.assertEqual(proposals[0].surface_text, "Part B")
+
+    def test_anchored_md_link_still_resolves_neighbor(self) -> None:
+        """Anchored md links (#section) are stripped so the page is still found."""
+        candidate = self._write(
+            "entities/part-b.md",
+            "---\ntitle: Part B\n---\n\n# Part B\n\n"
+            "See [details](concepts/outpatient-care.md#coverage) here.\n",
+        )
+        self._write(
+            "concepts/outpatient-care.md",
+            "---\ntitle: Outpatient Care\n---\n\n# Outpatient Care\n\n"
+            "Part B covers this.\n",
+        )
+        proposals = sb.scan(candidate, self.wiki_root)
+        sources = {p.source_file for p in proposals}
+        self.assertIn("concepts/outpatient-care.md", sources,
+                      "Anchor in md link URL should be stripped during resolution")
+
+
+class SuggestBacklinksResolveLinkTargetTests(unittest.TestCase):
+    """Unit tests for the _resolve_link_target helper."""
+
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.wiki_root = Path(self._tmpdir.name) / "wiki"
+        (self.wiki_root / "entities").mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_http_url_returns_none(self) -> None:
+        self.assertIsNone(sb._resolve_link_target("http://cms.gov/page", self.wiki_root))
+
+    def test_https_url_returns_none(self) -> None:
+        self.assertIsNone(sb._resolve_link_target("https://example.com/page", self.wiki_root))
+
+    def test_empty_string_returns_none(self) -> None:
+        self.assertIsNone(sb._resolve_link_target("", self.wiki_root))
+
+    def test_nonexistent_path_returns_none(self) -> None:
+        self.assertIsNone(sb._resolve_link_target("entities/missing.md", self.wiki_root))
+
+    def test_existing_md_path_resolves(self) -> None:
+        page = self.wiki_root / "entities" / "part-b.md"
+        page.write_text("# Part B\n")
+        result = sb._resolve_link_target("entities/part-b.md", self.wiki_root)
+        self.assertEqual(result, page.resolve())
+
+    def test_anchored_path_strips_anchor(self) -> None:
+        page = self.wiki_root / "entities" / "part-b.md"
+        page.write_text("# Part B\n")
+        result = sb._resolve_link_target("entities/part-b.md#section", self.wiki_root)
+        self.assertEqual(result, page.resolve())
+
+    def test_query_string_stripped(self) -> None:
+        page = self.wiki_root / "entities" / "part-b.md"
+        page.write_text("# Part B\n")
+        result = sb._resolve_link_target("entities/part-b.md?foo=bar", self.wiki_root)
+        self.assertEqual(result, page.resolve())
+
+    def test_kebab_wikilink_resolves_across_namespaces(self) -> None:
+        (self.wiki_root / "concepts").mkdir(parents=True)
+        page = self.wiki_root / "concepts" / "outpatient-care.md"
+        page.write_text("# Outpatient Care\n")
+        result = sb._resolve_link_target("outpatient-care", self.wiki_root)
+        self.assertEqual(result, page.resolve())
+
 
 class SuggestBacklinksProposalStructureTests(unittest.TestCase):
     """BacklinkProposal and scan() return value structure."""

@@ -145,6 +145,137 @@ class ValidateWikiGovernanceWrapperTests(HarnessAssertionsTestCase):
         self.assertEqual(findings[0].status, "fail")
         self.assertEqual(findings[0].reason_code, "prereq_missing")
 
+    def test_freshness_threshold_subprocess_success_returns_ok_finding(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_success", VALIDATE_WRAPPER_PATH)
+        import tempfile, pathlib
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = pathlib.Path(tmp)
+            script = repo_root / "scripts" / "validation" / "check_doc_freshness.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("# stub\n")
+
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stdout = ""
+            proc.stderr = ""
+            with patch.object(module.subprocess, "run", return_value=proc):
+                findings = module._validate_freshness_threshold(repo_root, [])
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].status, "pass")
+        self.assertEqual(findings[0].validator, "freshness-threshold")
+
+    def test_freshness_threshold_subprocess_failure_json_message_used(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_fail_json", VALIDATE_WRAPPER_PATH)
+        import tempfile, pathlib
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = pathlib.Path(tmp)
+            script = repo_root / "scripts" / "validation" / "check_doc_freshness.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("# stub\n")
+
+            proc = MagicMock()
+            proc.returncode = 1
+            proc.stdout = '{"message": "wiki/entities/part-b.md exceeds max age"}'
+            proc.stderr = ""
+            with patch.object(module.subprocess, "run", return_value=proc):
+                findings = module._validate_freshness_threshold(repo_root, [])
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].status, "fail")
+        self.assertEqual(findings[0].reason_code, "validation_failed")
+        self.assertIn("exceeds max age", findings[0].message)
+
+    def test_freshness_threshold_subprocess_failure_plain_text_message_used(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_fail_plain", VALIDATE_WRAPPER_PATH)
+        import tempfile, pathlib
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = pathlib.Path(tmp)
+            script = repo_root / "scripts" / "validation" / "check_doc_freshness.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("# stub\n")
+
+            proc = MagicMock()
+            proc.returncode = 1
+            proc.stdout = "1 stale page found"
+            proc.stderr = ""
+            with patch.object(module.subprocess, "run", return_value=proc):
+                findings = module._validate_freshness_threshold(repo_root, [])
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].status, "fail")
+        self.assertEqual(findings[0].message, "1 stale page found")
+
+    def test_freshness_threshold_oserror_starting_subprocess_fails_closed(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_oserror", VALIDATE_WRAPPER_PATH)
+        import tempfile, pathlib
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = pathlib.Path(tmp)
+            script = repo_root / "scripts" / "validation" / "check_doc_freshness.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("# stub\n")
+
+            with patch.object(module.subprocess, "run", side_effect=OSError("exec failed")):
+                findings = module._validate_freshness_threshold(repo_root, [])
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].status, "fail")
+        self.assertEqual(findings[0].reason_code, "prereq_missing")
+        self.assertIn("subprocess failed to start", findings[0].message)
+
+    def test_freshness_threshold_wiki_paths_passed_as_path_flags(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_pathflags", VALIDATE_WRAPPER_PATH)
+        import tempfile, pathlib
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = pathlib.Path(tmp)
+            script = repo_root / "scripts" / "validation" / "check_doc_freshness.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("# stub\n")
+
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stdout = ""
+            proc.stderr = ""
+            with patch.object(module.subprocess, "run", return_value=proc) as run_mock:
+                module._validate_freshness_threshold(
+                    repo_root, ["wiki/entities/part-b.md", "wiki/concepts/foo.md"]
+                )
+
+        cmd = run_mock.call_args[0][0]
+        path_values = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--path"]
+        self.assertIn("wiki/entities/part-b.md", path_values)
+        self.assertIn("wiki/concepts/foo.md", path_values)
+
+    def test_freshness_threshold_non_wiki_paths_not_passed_as_flags(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_nonwiki", VALIDATE_WRAPPER_PATH)
+        import tempfile, pathlib
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = pathlib.Path(tmp)
+            script = repo_root / "scripts" / "validation" / "check_doc_freshness.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("# stub\n")
+
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stdout = ""
+            proc.stderr = ""
+            with patch.object(module.subprocess, "run", return_value=proc) as run_mock:
+                module._validate_freshness_threshold(repo_root, ["README.md", "docs/architecture.md"])
+
+        cmd = run_mock.call_args[0][0]
+        self.assertNotIn("--path", cmd)
+
     def test_protected_paths_default_to_blocking_mode(self) -> None:
         module = _load_module("validate_wiki_governance_modes", VALIDATE_WRAPPER_PATH)
 
