@@ -12,12 +12,11 @@ import sys
 from datetime import date
 from typing import Iterable, Sequence
 
-if __package__ in (None, ""):
+if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 from scripts.kb import contracts, page_template_utils, path_utils, sourceref, update_index
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-TOPICAL_NAMESPACES: tuple[str, ...] = ("sources", "entities", "concepts", "analyses")
 REQUIRED_TEMPLATE_SECTIONS = page_template_utils.TEMPLATE_SECTION_REQUIREMENTS
 
 
@@ -287,10 +286,10 @@ def _validate_sourceref_shape(repo_root: Path, target_paths: Sequence[str]) -> l
         if not page_path.is_file():
             findings.append(_prereq_missing(ValidatorName.SOURCEREF_SHAPE, page, "page is required"))
             continue
-        frontmatter_lines = _extract_frontmatter_lines(page_path.read_text(encoding="utf-8"))
-        if frontmatter_lines is None:
+        frontmatter_text, _ = page_template_utils.extract_frontmatter(page_path.read_text(encoding="utf-8"))
+        if frontmatter_text is None:
             continue
-        for source_value in _extract_sources(frontmatter_lines):
+        for source_value in page_template_utils.extract_sources_from_frontmatter(frontmatter_text):
             try:
                 sourceref.validate_sourceref(source_value, authoritative=False)
             except sourceref.SourceRefValidationError as exc:
@@ -526,7 +525,7 @@ def _all_wiki_markdown_paths(repo_root: Path) -> list[str]:
 def _all_topical_page_paths(repo_root: Path) -> list[str]:
     wiki_root = repo_root / "wiki"
     pages: list[str] = []
-    for namespace in TOPICAL_NAMESPACES:
+    for namespace in page_template_utils.TOPICAL_NAMESPACES:
         namespace_root = wiki_root / namespace
         if not namespace_root.exists():
             continue
@@ -538,36 +537,7 @@ def _all_topical_page_paths(repo_root: Path) -> list[str]:
 
 def _is_topical_page_path(path: str) -> bool:
     parts = PurePosixPath(path).parts
-    return len(parts) >= 3 and parts[0] == "wiki" and parts[1] in TOPICAL_NAMESPACES and path.endswith(".md")
-
-
-def _extract_frontmatter_lines(text: str) -> tuple[str, ...] | None:
-    frontmatter, _ = page_template_utils.extract_frontmatter(text)
-    if frontmatter is None:
-        return None
-    return tuple(frontmatter.splitlines())
-
-
-def _extract_sources(frontmatter_lines: Sequence[str]) -> list[str]:
-    lines = list(frontmatter_lines)
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped.startswith("sources:"):
-            continue
-        inline_value = stripped[len("sources:") :].strip()
-        if inline_value == "[]":
-            return []
-        if inline_value:
-            return [page_template_utils.strip_quotes(inline_value)]
-        sources: list[str] = []
-        for candidate in lines[index + 1 :]:
-            if not candidate.startswith("  "):
-                break
-            candidate = candidate.strip()
-            if candidate.startswith("- "):
-                sources.append(page_template_utils.strip_quotes(candidate[2:].strip()))
-        return sources
-    return []
+    return len(parts) >= 3 and parts[0] == "wiki" and parts[1] in page_template_utils.TOPICAL_NAMESPACES and path.endswith(".md")
 
 
 def _ok(validator: ValidatorName, target: str, message: str) -> ValidationFinding:

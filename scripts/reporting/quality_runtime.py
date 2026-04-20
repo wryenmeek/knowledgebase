@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 from typing import Any, Sequence, TextIO
 
-if __package__ in (None, ""):
+if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
@@ -72,13 +72,6 @@ def _path_rules() -> dict[str, object]:
         }
     )
     return rules
-
-
-def _frontmatter_map(text: str) -> dict[str, str]:
-    frontmatter, _body = page_template_utils.extract_frontmatter(text)
-    if frontmatter is None:
-        return {}
-    return page_template_utils.parse_frontmatter(frontmatter)
 
 
 def _parse_confidence(frontmatter: dict[str, str]) -> int | None:
@@ -208,7 +201,7 @@ def run_quality_runtime(
     for path in resolved_paths:
         relative_path = repo_relative(normalized_repo_root, path)
         text = path.read_text(encoding="utf-8")
-        frontmatter = _frontmatter_map(text)
+        frontmatter = page_template_utils.parse_page_frontmatter(text)
         confidence = _parse_confidence(frontmatter)
         missing_sources = "sources" not in frontmatter
         missing_updated_at = "updated_at" not in frontmatter

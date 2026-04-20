@@ -7,12 +7,11 @@ import contextlib
 from dataclasses import dataclass
 import hashlib
 import json
-import os
 from pathlib import Path
 import sys
 from typing import Sequence, TextIO
 
-from scripts.kb import contracts, update_index
+from scripts.kb import contracts, page_template_utils, update_index
 from scripts.kb.ingest_render import (
     SourceProvenance,
     _PROVISIONAL_GIT_SHA,
@@ -26,8 +25,8 @@ from scripts.kb.sourceref import SourceRefValidationError
 from scripts.kb.write_utils import (
     LockUnavailableError,
     append_log_only_state_changes,
+    check_no_symlink_path,
     exclusive_write_lock,
-    open_atomic_temp_file,
     read_optional_text,
     write_text_capturing_previous_safe,
 )
@@ -398,7 +397,7 @@ def _resolve_inbox_path(repo_root: Path, raw_path: str) -> tuple[Path, str]:
     requested_path = Path(raw_path)
     lexical_path = requested_path if requested_path.is_absolute() else repo_root / requested_path
     try:
-        _ensure_not_symlink(lexical_path)
+        check_no_symlink_path(lexical_path)
     except OSError as exc:
         raise IngestError(
             contracts.ReasonCode.INVALID_INPUT.value,
@@ -475,8 +474,8 @@ def _ingest_source(repo_root: Path, source_input: str) -> _SourceIngestAttempt:
     processed_relative = (Path("raw/processed") / inbox_suffix).as_posix()
     processed_path = repo_root / processed_relative
     try:
-        _ensure_not_symlink(source_path)
-        _ensure_not_symlink(processed_path)
+        check_no_symlink_path(source_path)
+        check_no_symlink_path(processed_path)
     except OSError as exc:
         return _SourceIngestAttempt(
             outcome=SourceOutcome(
@@ -604,40 +603,11 @@ def _ingest_source(repo_root: Path, source_input: str) -> _SourceIngestAttempt:
 def _restore_previous_content(path: Path, previous_content: str | None) -> None:
     if previous_content is None:
         if path.exists() or path.is_symlink():
-            _ensure_not_symlink(path)
+            check_no_symlink_path(path)
             path.unlink()
         return
 
-    _write_text_atomically(path, previous_content)
-
-
-def _ensure_not_symlink(path: Path) -> None:
-    current = path
-    while True:
-        if current.is_symlink():
-            raise OSError(f"symlinked path component is not allowed: {current}")
-        if current.parent == current:
-            return
-        current = current.parent
-
-
-def _write_text_atomically(path: Path, content: str) -> None:
-    _ensure_not_symlink(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    temp_path = path.with_name(f"{path.name}.tmp")
-    temp_created = False
-    try:
-        with open_atomic_temp_file(temp_path) as handle:
-            temp_created = True
-            handle.write(content)
-        _ensure_not_symlink(path)
-        os.replace(temp_path, path)
-    except OSError:
-        if temp_created:
-            with contextlib.suppress(OSError):
-                temp_path.unlink()
-        raise
+    write_text_capturing_previous_safe(path, previous_content)
 
 
 def _rollback_ingest_mutations(
@@ -657,8 +627,8 @@ def _rollback_ingest_mutations(
         source_path = repo_root / mutation.source
         processed_path = repo_root / mutation.processed_path
         try:
-            _ensure_not_symlink(source_path)
-            _ensure_not_symlink(processed_path)
+            check_no_symlink_path(source_path)
+            check_no_symlink_path(processed_path)
             source_path.parent.mkdir(parents=True, exist_ok=True)
             if source_path.exists() or source_path.is_symlink():
                 raise OSError(f"source path already exists during rollback: {mutation.source}")
@@ -767,7 +737,7 @@ def _render_log_entry(outcomes: list[SourceOutcome]) -> str:
 
 
 def _ensure_wiki_tree(wiki_root: Path) -> None:
-    for directory in ("sources", "entities", "concepts", "analyses"):
+    for directory in page_template_utils.TOPICAL_NAMESPACES:
         (wiki_root / directory).mkdir(parents=True, exist_ok=True)
 
 

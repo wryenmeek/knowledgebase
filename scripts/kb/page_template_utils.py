@@ -117,10 +117,59 @@ def parse_frontmatter(frontmatter: str) -> dict[str, str]:
     return parsed
 
 
+def parse_page_frontmatter(text: str) -> dict[str, str]:
+    """Extract and parse frontmatter from a full page text, returning key→value pairs.
+
+    Returns an empty dict when the text has no frontmatter block.
+    Convenience wrapper over :func:`extract_frontmatter` + :func:`parse_frontmatter`.
+    """
+    frontmatter, _ = extract_frontmatter(text)
+    if frontmatter is None:
+        return {}
+    return parse_frontmatter(frontmatter)
+
+
 def strip_quotes(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
         return value[1:-1]
     return value
+
+
+def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
+    """Return the list of source values from a YAML frontmatter block.
+
+    Handles three forms of the ``sources:`` key:
+
+    - Inline empty list:  ``sources: []`` → ``[]``
+    - Inline single value: ``sources: repo://...`` → ``["repo://..."]``
+    - Multi-line YAML list::
+
+        sources:
+          - repo://first
+          - repo://second
+
+    Returns an empty list when the ``sources:`` key is absent.
+    Quotes are stripped from each value using :func:`strip_quotes`.
+    """
+    lines = frontmatter.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("sources:"):
+            continue
+        inline_value = stripped[len("sources:"):].strip()
+        if inline_value == "[]":
+            return []
+        if inline_value:
+            return [strip_quotes(inline_value)]
+        sources: list[str] = []
+        for candidate in lines[index + 1:]:
+            if not candidate.startswith("  "):
+                break
+            candidate = candidate.strip()
+            if candidate.startswith("- "):
+                sources.append(strip_quotes(candidate[2:].strip()))
+        return sources
+    return []
 
 
 def extract_frontmatter_keys(frontmatter: str) -> set[str]:
@@ -156,9 +205,11 @@ __all__ = [
     "extract_frontmatter",
     "extract_frontmatter_keys",
     "extract_headings",
+    "extract_sources_from_frontmatter",
     "is_nested_topical_page",
     "normalize_page_path",
     "parse_frontmatter",
+    "parse_page_frontmatter",
     "strip_quotes",
     "validate_page_template_path",
 ]

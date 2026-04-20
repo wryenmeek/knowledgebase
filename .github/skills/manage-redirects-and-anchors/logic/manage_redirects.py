@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 from typing import Sequence, TextIO
 
-if __package__ in (None, ""):
+if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,

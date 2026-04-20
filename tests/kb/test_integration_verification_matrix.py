@@ -19,7 +19,7 @@ WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "ci-2-analyst-diagnostics.
 class IntegrationVerificationMatrixTests(KnowledgebaseWorkspaceTestCase):
     RUNTIME_ROOT_NAME = ".runtime_verification_integration"
     RAW_DIRS = ("raw/inbox", "raw/processed", "raw/other")
-    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")
+    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")  # keep in sync with page_template_utils.TOPICAL_NAMESPACES
     AGENTS_TEXT = "schema fixture\n"
     LOG_TEXT = "\n"
 

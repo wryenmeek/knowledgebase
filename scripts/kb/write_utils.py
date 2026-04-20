@@ -177,7 +177,7 @@ def write_text_capturing_previous(path: Path, content: str) -> tuple[bool, str |
     return True, previous_content
 
 
-def _check_no_symlink(path: Path) -> None:
+def check_no_symlink_path(path: Path) -> None:
     """Raise OSError if any component of path (up to root) is a symlink."""
     current = path
     while True:
@@ -199,7 +199,7 @@ def write_text_capturing_previous_safe(path: Path, content: str) -> tuple[bool, 
     ``rollback_file_state``.
     """
     if path.exists() or path.is_symlink():
-        _check_no_symlink(path)
+        check_no_symlink_path(path)
 
     previous_content: str | None = path.read_text(encoding="utf-8") if path.exists() else None
     if previous_content == content:
@@ -212,7 +212,7 @@ def write_text_capturing_previous_safe(path: Path, content: str) -> tuple[bool, 
         with open_atomic_temp_file(temp_path) as handle:
             temp_created = True
             handle.write(content)
-        _check_no_symlink(path)
+        check_no_symlink_path(path)
         os.replace(temp_path, path)
     except OSError:
         if temp_created:
@@ -290,6 +290,7 @@ def validate_log_entry(entry: str) -> str:
 
 
 __all__ = [
+    "check_no_symlink_path",
     "LockUnavailableError",
     "atomic_replace_governed_artifact",
     "exclusive_write_lock",

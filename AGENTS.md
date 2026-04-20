@@ -23,6 +23,19 @@ Keep wiki content deterministic, provenance-first, and policy-aligned with the c
 4. Use canonical SourceRef citations: `repo://<owner>/<repo>/<path>@<git_sha>#<anchor>?sha256=<64-hex>`. Authoritative provenance is commit-bound: `git_sha` must resolve to a real git revision that contains the cited raw artifact/path and matching bytes. Ingest-time placeholder git SHAs remain provisional only until that reconciliation happens.
 5. Keep wiki frontmatter and companion knowledge-structure contracts aligned with `schema/page-template.md`, `schema/taxonomy-contract.md`, `schema/ontology-entity-contract.md`, and `schema/metadata-schema-contract.md`.
 
+## Canonical utility modules
+
+Before implementing any new helper function, constant, or utility, check these four canonical modules first. Import from them rather than re-implementing equivalent logic. See ADR-011.
+
+| Module | Scope |
+|---|---|
+| `scripts/kb/page_template_utils.py` | Frontmatter parsing, heading extraction, namespace constants (`TOPICAL_NAMESPACES`), wiki-page structural helpers. |
+| `scripts/kb/write_utils.py` | Safe file writes, atomic operations, symlink path checks (`check_no_symlink_path`), write-lock primitives, rollback helpers. |
+| `scripts/kb/contracts.py` | Status enums, reason codes, governed artifact contracts, result type definitions. |
+| `scripts/_optional_surface_common.py` | Optional-surface CLI framework, `SurfaceResult`, `run_surface_cli`, `JsonArgumentParser`, shared CLI reason codes. |
+
+**Rules:** (1) Check before implementing. (2) Extend the canonical module rather than creating a parallel private copy. (3) Module-level constants must have one canonical definition; local copies require a `# keep in sync with <module>.<CONSTANT>` comment. (4) New public helpers must be added to `__all__`.
+
 ## Write-surface matrix
 
 - Every executable surface under `.github/skills/**/logic/**` or `scripts/**` must add or update a row in this matrix before merge. New surfaces without a row are undeclared and must hard-fail on any protected/write path in CI/runtime.

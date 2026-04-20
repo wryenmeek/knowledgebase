@@ -11,7 +11,7 @@ from tests.kb.harnesses import KnowledgebaseWorkspaceTestCase
 
 class UnitVerificationMatrixTests(KnowledgebaseWorkspaceTestCase):
     RUNTIME_ROOT_NAME = ".runtime_verification_unit"
-    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")
+    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")  # keep in sync with page_template_utils.TOPICAL_NAMESPACES
 
     def _write_page(self, relative_path: str, *, title: str, page_type: str, confidence: str) -> None:
         self.write_wiki_page(

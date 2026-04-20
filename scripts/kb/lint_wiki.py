@@ -9,17 +9,17 @@ from pathlib import Path
 import re
 import sys
 
-if __package__ in (None, ""):
+if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts.kb import page_template_utils, sourceref
 from scripts.kb.page_template_utils import (
     REQUIRED_FRONTMATTER_KEYS,
     extract_frontmatter_keys as _extract_frontmatter_keys,
+    extract_sources_from_frontmatter as _extract_frontmatter_source_refs,
     strip_quotes as _normalize_frontmatter_scalar,
 )
 
 
-_FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:")
 _MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 _MARKDOWN_LINK_TITLE_RE = re.compile(r"^(?P<url>\S+)\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\))$")
 _CONTRADICTION_MARKER_RE = re.compile(
@@ -50,30 +50,6 @@ class Violation:
     page: Path
     code: str
     message: str
-
-
-def _extract_frontmatter_source_refs(frontmatter: str) -> list[str]:
-    lines = frontmatter.splitlines()
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped.startswith("sources:"):
-            continue
-        inline_value = stripped[len("sources:") :].strip()
-        if inline_value == "[]":
-            return []
-        if inline_value:
-            return [_normalize_frontmatter_scalar(inline_value)]
-        sources: list[str] = []
-        for candidate in lines[index + 1 :]:
-            if not candidate.startswith("  "):
-                break
-            candidate = candidate.strip()
-            if not candidate.startswith("- "):
-                continue
-            sources.append(_normalize_frontmatter_scalar(candidate[2:].strip()))
-        return sources
-    return []
-
 
 def _is_within(path: Path, root: Path) -> bool:
     # ⚡ Bolt: `is_relative_to` is a natively implemented method string comparison under the hood.

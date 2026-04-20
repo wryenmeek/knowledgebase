@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 from typing import Sequence, TextIO
 
-if __package__ in (None, ""):
+if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
@@ -65,13 +65,6 @@ def _path_rules() -> dict[str, object]:
     return rules
 
 
-def _frontmatter_keys(text: str) -> set[str]:
-    frontmatter, _body = page_template_utils.extract_frontmatter(text)
-    if frontmatter is None:
-        return set()
-    return set(page_template_utils.parse_frontmatter(frontmatter).keys())
-
-
 def run_quality_report(
     *,
     repo_root: str | Path = ".",
@@ -105,7 +98,7 @@ def run_quality_report(
     placeholder_files = 0
     for path in resolved_paths:
         text = path.read_text(encoding="utf-8")
-        frontmatter_keys = _frontmatter_keys(text)
+        frontmatter_keys = set(page_template_utils.parse_page_frontmatter(text))
         has_sources = "sources" in frontmatter_keys
         has_updated_at = "updated_at" in frontmatter_keys
         placeholder_count = count_placeholders(text)

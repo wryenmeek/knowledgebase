@@ -55,6 +55,7 @@ Does the change fit the system's design?
 - Is there code duplication that should be shared?
 - Are dependencies flowing in the right direction (no circular dependencies)?
 - Is the abstraction level appropriate (not over-engineered, not too coupled)?
+- **Utility reuse (ADR-011):** Does the change introduce any private helper that duplicates logic already in `page_template_utils.py`, `write_utils.py`, `contracts.py`, or `_optional_surface_common.py`? If yes, flag as a required fix before merge. Does it redefine a module-level constant (e.g. `TOPICAL_NAMESPACES`) without a `# keep in sync with` drift guard? If yes, flag as a required fix.
 
 ### 4. Security
 

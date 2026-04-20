@@ -154,6 +154,13 @@ Scan for these patterns — each one is a concrete signal, not a vague smell:
 | Over-engineered patterns | Factory-for-a-factory, strategy-with-one-strategy | Replace with the simple direct approach |
 | Redundant type assertions | Casting to a type that's already inferred | Remove the assertion |
 
+> **Canonical utility modules (ADR-011):** When identifying "Duplicated logic" or "Unnecessary abstractions" in this codebase, always check these four canonical modules before extracting to a new shared function — the helper may already exist:
+> - `scripts/kb/page_template_utils.py` — frontmatter parsing, `TOPICAL_NAMESPACES`
+> - `scripts/kb/write_utils.py` — safe writes, atomic ops, `check_no_symlink_path`
+> - `scripts/kb/contracts.py` — status enums, reason codes, result types
+> - `scripts/_optional_surface_common.py` — optional-surface CLI, `SurfaceResult`, `run_surface_cli`
+> If a helper already exists, import it. If it needs extending, extend the canonical module.
+
 ### Step 3: Apply Changes Incrementally
 
 Make one simplification at a time. Run tests after each change. **Submit refactoring changes separately from feature or bug fix changes.** A PR that refactors and adds a feature is two PRs — split them.

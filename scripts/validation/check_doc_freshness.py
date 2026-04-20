@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 from typing import Sequence, TextIO
 
-if __package__ in (None, ""):
+if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts.kb import page_template_utils
 from scripts._optional_surface_common import (
@@ -143,6 +143,9 @@ def run_freshness(
     )
 
 
+# run_cli does not use run_surface_cli because it emits a FreshnessReport schema
+# (with scope, as_of, max_age_days, and per-file files array) rather than a generic
+# SurfaceResult. Callers parse that richer structure for per-page stale annotations.
 def run_cli(
     argv: Sequence[str] | None = None,
     *,

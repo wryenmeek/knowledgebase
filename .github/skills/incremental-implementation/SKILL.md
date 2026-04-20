@@ -88,7 +88,20 @@ If Slice 1 fails, you discover it before investing in Slices 2 and 3.
 
 ## Implementation Rules
 
-### Rule 0: Simplicity First
+### Rule 0: Check for Existing Utilities First (ADR-011)
+
+Before writing any new helper function, constant, or utility, search these canonical modules:
+
+| Module | Scope |
+|---|---|
+| `scripts/kb/page_template_utils.py` | Frontmatter parsing, heading extraction, `TOPICAL_NAMESPACES`. |
+| `scripts/kb/write_utils.py` | Safe writes, atomic operations, `check_no_symlink_path`, write-lock, rollback. |
+| `scripts/kb/contracts.py` | Status enums, reason codes, result types. |
+| `scripts/_optional_surface_common.py` | Optional-surface CLI, `SurfaceResult`, `run_surface_cli`. |
+
+If a suitable helper exists, import it. If a related helper needs extending, extend the canonical module rather than creating a parallel private copy. See ADR-011.
+
+### Rule 0.5: Simplicity First
 
 Before writing any code, ask: "What is the simplest thing that could work?"
 
@@ -112,7 +125,7 @@ SIMPLICITY CHECK:
 
 Three similar lines of code is better than a premature abstraction. Implement the naive, obviously-correct version first. Optimize only after correctness is proven with tests.
 
-### Rule 0.5: Scope Discipline
+### Rule 1: Scope Discipline
 
 Touch only what the task requires.
 
@@ -132,7 +145,7 @@ NOTICED BUT NOT TOUCHING:
 → Want me to create tasks for these?
 ```
 
-### Rule 1: One Thing at a Time
+### Rule 2: One Thing at a Time
 
 Each increment changes one logical thing. Don't mix concerns:
 
@@ -140,11 +153,11 @@ Each increment changes one logical thing. Don't mix concerns:
 
 **Good:** Three separate commits — one for each change.
 
-### Rule 2: Keep It Compilable
+### Rule 3: Keep It Compilable
 
 After each increment, the project must build and existing tests must pass. Don't leave the codebase in a broken state between slices.
 
-### Rule 3: Feature Flags for Incomplete Features
+### Rule 4: Feature Flags for Incomplete Features
 
 If a feature isn't ready for users but you need to merge increments:
 
@@ -159,7 +172,7 @@ if (ENABLE_TASK_SHARING) {
 
 This lets you merge small increments to the main branch without exposing incomplete work.
 
-### Rule 4: Safe Defaults
+### Rule 5: Safe Defaults
 
 New code should default to safe, conservative behavior:
 
@@ -171,7 +184,7 @@ export function createTask(data: TaskInput, options?: { notify?: boolean }) {
 }
 ```
 
-### Rule 5: Rollback-Friendly
+### Rule 6: Rollback-Friendly
 
 Each increment should be independently revertable:
 

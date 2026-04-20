@@ -23,11 +23,10 @@ UPDATE_INDEX_SCRIPT = REPO_ROOT / "scripts" / "kb" / "update_index.py"
 
 
 class UpdateIndexCommandTests(KnowledgebaseWorkspaceTestCase):
-    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")
+    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")  # keep in sync with page_template_utils.TOPICAL_NAMESPACES
 
     def setUp(self) -> None:
         super().setUp()
-
         (self.workspace / "raw").mkdir(parents=True, exist_ok=True)
         (self.workspace / "raw" / "sentinel.txt").write_text(
             "raw-is-immutable\n", encoding="utf-8"

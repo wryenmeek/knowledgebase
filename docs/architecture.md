@@ -23,6 +23,19 @@ The system is designed to keep knowledge:
 | `schema/**` | Page/ingest contracts | Controlled write surface |
 | `scripts/kb/**` + `tests/kb/**` | Automation implementation and verification | Controlled write surface |
 
+## Canonical utility modules
+
+Before implementing any new helper, check these four canonical modules. See ADR-011.
+
+| Module | Scope |
+|---|---|
+| `scripts/kb/page_template_utils.py` | Frontmatter parsing, heading extraction, `TOPICAL_NAMESPACES`, wiki-page structural helpers. |
+| `scripts/kb/write_utils.py` | Safe file writes, atomic operations, `check_no_symlink_path`, write-lock primitives, rollback helpers. |
+| `scripts/kb/contracts.py` | Status enums, reason codes, governed artifact contracts, result type definitions. |
+| `scripts/_optional_surface_common.py` | Optional-surface CLI framework, `SurfaceResult`, `run_surface_cli`, `JsonArgumentParser`. |
+
+**Rule:** Import from canonical modules rather than re-implementing equivalent logic. Extend the canonical module if a related helper needs expanding. Local copies of module-level constants require a `# keep in sync with <module>.<CONSTANT>` drift guard.
+
 ## Core workflow
 
 1. Ingest source content from `raw/inbox/**`.

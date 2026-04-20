@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import unittest
 from pathlib import Path
 import subprocess
 import sys
@@ -11,6 +13,7 @@ from unittest.mock import patch
 
 from scripts.kb import contracts
 from scripts.kb import write_utils
+from scripts.kb.write_utils import check_no_symlink_path
 from tests.kb.harnesses import RuntimeWorkspaceTestCase
 
 
@@ -233,6 +236,47 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertEqual(written_path, target_path)
         self.assertEqual(target_path.read_text(encoding="utf-8"), "after\n")
         self.assertFalse(temp_path.exists())
+
+
+class CheckNoSymlinkPathTests(unittest.TestCase):
+    def setUp(self) -> None:
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        # Resolve to canonical path; on macOS /var is a symlink to /private/var
+        self.tmp_path = Path(self._tmp.name).resolve()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_plain_file_passes(self) -> None:
+        target = self.tmp_path / "file.txt"
+        target.write_text("hello", encoding="utf-8")
+        check_no_symlink_path(target)  # no exception
+
+    def test_plain_directory_passes(self) -> None:
+        subdir = self.tmp_path / "sub"
+        subdir.mkdir()
+        check_no_symlink_path(subdir)  # no exception
+
+    def test_symlink_raises(self) -> None:
+        target = self.tmp_path / "real.txt"
+        target.write_text("data", encoding="utf-8")
+        link = self.tmp_path / "link.txt"
+        link.symlink_to(target)
+        with self.assertRaises(OSError):
+            check_no_symlink_path(link)
+
+    def test_symlinked_parent_raises(self) -> None:
+        real_dir = self.tmp_path / "real_dir"
+        real_dir.mkdir()
+        link_dir = self.tmp_path / "link_dir"
+        link_dir.symlink_to(real_dir)
+        child = link_dir / "file.txt"
+        with self.assertRaises(OSError):
+            check_no_symlink_path(child)
+
+    def test_is_in_public_api(self) -> None:
+        self.assertIn("check_no_symlink_path", write_utils.__all__)
 
 
 if __name__ == "__main__":
