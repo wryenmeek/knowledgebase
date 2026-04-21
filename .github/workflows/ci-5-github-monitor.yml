@@ -1,0 +1,212 @@
+name: CI-5 GitHub Source Monitor
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      registry_path:
+        description: |
+          Optional: path to a single registry file
+          (e.g. raw/github-sources/org-repo.source-registry.json).
+          Omit to check all registries.
+        required: false
+        type: string
+
+# Workflow-level permissions are read-only.
+# The write-capable jobs override at job level.
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  check-drift:
+    name: CI-5 drift detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      drift_detected: ${{ steps.detect.outputs.drift_detected }}
+      artifact_name: ${{ steps.detect.outputs.artifact_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GITHUB_APP_ID }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Mask GitHub App token
+        run: echo "::add-mask::${{ steps.app-token.outputs.token }}"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e . --quiet
+
+      - name: Check drift across all registries
+        id: detect
+        env:
+          GITHUB_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          REGISTRY_ARGS=""
+          if [ -n "${{ inputs.registry_path }}" ]; then
+            REGISTRY_ARGS="--registry ${{ inputs.registry_path }}"
+          fi
+
+          # Run drift detection; exits 0 on success (even when drift is found),
+          # exits 1 on API errors or configuration errors.
+          python -m scripts.github_monitor.check_drift \
+            ${REGISTRY_ARGS} \
+            --output drift-report.json
+
+          # Parse has_drift from the report to set the job output.
+          HAS_DRIFT=$(python -c "
+          import json, sys
+          with open('drift-report.json') as f:
+              d = json.load(f)
+          print('true' if d.get('has_drift') else 'false')
+          ")
+          ARTIFACT_NAME="drift-report-${{ github.run_id }}"
+
+          echo "drift_detected=${HAS_DRIFT}" >> $GITHUB_OUTPUT
+          echo "artifact_name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+          echo "Drift detected: ${HAS_DRIFT}"
+
+      - name: Upload drift report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.detect.outputs.artifact_name || format('drift-report-{0}', github.run_id) }}
+          path: drift-report.json
+          retention-days: 7
+
+  fetch-and-update:
+    name: CI-5 fetch + registry update
+    needs: check-drift
+    if: needs.check-drift.outputs.drift_detected == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Protected environment gate — requires the same approval as CI-3.
+    environment: protected-pr-write
+    concurrency:
+      group: kb-write-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      WRITE_ALLOWLIST: raw/assets/**,raw/github-sources/**
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      # Regenerate token close to use to avoid 55-minute expiry on long jobs.
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GITHUB_APP_ID }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Mask GitHub App token
+        run: echo "::add-mask::${{ steps.app-token.outputs.token }}"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e . --quiet
+
+      - name: Download drift report
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.check-drift.outputs.artifact_name }}
+
+      - name: Fetch assets and update registry
+        env:
+          GITHUB_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          python -m scripts.github_monitor.fetch_content \
+            --drift-report drift-report.json \
+            --approval approved
+
+  synthesize:
+    name: CI-5 synthesize + open PR
+    needs: [check-drift, fetch-and-update]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: protected-pr-write
+    concurrency:
+      group: kb-write-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      WRITE_ALLOWLIST: raw/assets/**,raw/github-sources/**,wiki/**
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e . --quiet
+
+      - name: Download drift report
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.check-drift.outputs.artifact_name }}
+
+      - name: Apply diff-aware wiki updates
+        run: |
+          set -euo pipefail
+          python -m scripts.github_monitor.synthesize_diff \
+            --drift-report drift-report.json \
+            --approval approved
+
+      - name: Commit and open PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="github-monitor/sync-${{ github.run_id }}"
+          git checkout -b "${BRANCH}"
+
+          # Stage only the allowlisted paths.
+          git add raw/assets/ raw/github-sources/ wiki/
+          git diff --cached --quiet && echo "Nothing to commit" && exit 0
+
+          git commit -m "chore(github-monitor): sync monitored source(s) [run ${{ github.run_id }}]"
+
+          git push origin "HEAD:${BRANCH}"
+
+          gh pr create \
+            --title "chore(github-monitor): sync monitored source(s)" \
+            --body "Automated diff-aware sync by CI-5 GitHub source monitor (run ${{ github.run_id }})." \
+            --base main \
+            --head "${BRANCH}"

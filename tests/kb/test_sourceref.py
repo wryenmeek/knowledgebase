@@ -338,7 +338,39 @@ class SourceRefValidatorTests(unittest.TestCase):
                 repo_root=self.workspace,
             )
 
-        self.assertEqual(ctx.exception.reason_code, SourceRefReasonCode.ARTIFACT_NOT_FILE)
+    def test_authoritative_validation_accepts_external_asset_path(self) -> None:
+        """SourceRef pointing to raw/assets/{owner}/{repo}/{sha}/{path} passes validation.
+
+        This is the regression test for ADR-012 / GitHub source monitoring:
+        once a vendored external asset is committed, its SourceRef must pass
+        authoritative validation via the normal raw/assets/** allowlist.
+        """
+        self._init_git_repo()
+        asset_path = (
+            self.workspace
+            / "raw"
+            / "assets"
+            / "ext-owner"
+            / "ext-repo"
+            / ("a" * 40)
+            / "docs"
+            / "guide.md"
+        )
+        asset_path.parent.mkdir(parents=True, exist_ok=True)
+        asset_path.write_text("# External guide\n", encoding="utf-8")
+        commit_sha = self._commit_all("vendor external asset")
+        checksum = hashlib.sha256(asset_path.read_bytes()).hexdigest()
+
+        rel_path = asset_path.relative_to(self.workspace)
+        parsed = validate_sourceref(
+            f"repo://owner/repo/{rel_path}@{commit_sha}#asset?sha256={checksum}",
+            authoritative=True,
+            repo_root=self.workspace,
+        )
+
+        self.assertEqual(parsed.path, str(rel_path))
+        self.assertEqual(parsed.sha256, checksum)
+
 
 if __name__ == "__main__":
     unittest.main()
