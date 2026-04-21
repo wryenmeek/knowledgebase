@@ -25,6 +25,7 @@ jobs:
     env:
       CI_ID: CI-2
       TOKEN_PROFILE: tp-analyst-readonly
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout repository snapshot (read-only token)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -154,11 +155,11 @@ jobs:
         if: steps.diagnostics.outputs.exit_code != '0'
         run: |
           set -euo pipefail
-          [ "${{ steps.diagnostics.outputs.wrapper_exit }}" -eq 0 ] || echo "::error::validate_wiki_governance failed. FIX: run python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --quiet locally to see failures."
-          [ "${{ steps.diagnostics.outputs.freshness_exit }}" -eq 0 ] || echo "::error::check_doc_freshness failed. FIX: update the updated_at frontmatter field on stale pages. See diagnostics artifacts for which files."
-          [ "${{ steps.diagnostics.outputs.quality_exit }}" -eq 0 ] || echo "::error::content_quality_report failed. FIX: add missing sources/updated_at fields or resolve placeholder markers in affected wiki pages."
-          [ "${{ steps.diagnostics.outputs.lint_exit }}" -eq 0 ] || echo "::error::lint_wiki failed. FIX: run python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict locally to see violations with remediation hints."
-          [ "${{ steps.diagnostics.outputs.tests_exit }}" -eq 0 ] || echo "::error::pytest failed. FIX: run python3 -m pytest tests/ -q locally to see failures."
+          [ "${{ steps.diagnostics.outputs.wrapper_exit }}" = "0" ] || echo "::error::validate_wiki_governance failed. FIX: run python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --quiet locally to see failures."
+          [ "${{ steps.diagnostics.outputs.freshness_exit }}" = "0" ] || echo "::error::check_doc_freshness failed. FIX: update the updated_at frontmatter field on stale pages. See diagnostics artifacts for which files."
+          [ "${{ steps.diagnostics.outputs.quality_exit }}" = "0" ] || echo "::error::content_quality_report failed. FIX: add missing sources/updated_at fields or resolve placeholder markers in affected wiki pages."
+          [ "${{ steps.diagnostics.outputs.lint_exit }}" = "0" ] || echo "::error::lint_wiki failed. FIX: run python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict locally to see violations with remediation hints."
+          [ "${{ steps.diagnostics.outputs.tests_exit }}" = "0" ] || echo "::error::pytest failed. FIX: run python3 -m pytest tests/ -q locally to see failures."
           exit 1
 
   lint-workflows:
