@@ -27,6 +27,10 @@ on:
         type: string
         default: "main"
 
+permissions:
+  contents: write
+  pull-requests: write
+
 concurrency:
   group: fleet-merge
   cancel-in-progress: false
@@ -39,10 +43,12 @@ jobs:
       JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.1"
 
       - name: Install fleet dependencies
         run: cd scripts/fleet && bun install
@@ -52,9 +58,11 @@ jobs:
           set -euo pipefail
 
           BASE_BRANCH="${{ inputs.base_branch || 'main' }}"
-          MAX_CI_WAIT=600   # 10 minutes per PR
-          MAX_RETRIES=2     # Max re-dispatch attempts per PR
-          PR_POLL_TIMEOUT=900  # 15 minutes to wait for re-dispatched PR
+          MAX_CI_WAIT=600           # 10 minutes per PR
+          MAX_RETRIES=2             # max re-dispatch attempts per PR
+          PR_POLL_TIMEOUT=900       # 15 minutes to wait for re-dispatched PR
+          POLL_INTERVAL=30          # seconds between status polls
+          CI_NONE_THRESHOLD=$((4 * POLL_INTERVAL))  # proceed if no checks register after this many consecutive seconds
 
           echo "🔍 Finding open Jules-authored PRs targeting ${BASE_BRANCH}..."
 
@@ -93,8 +101,26 @@ jobs:
 
                 echo "  ⚠️ Merge conflict detected. Re-dispatching task..."
 
-                # Get the PR's task prompt from the fleet data
-                TASK_PROMPT=$(gh pr view "$PR_NUM" --json body --jq '.body')
+                # Load the original task prompt from fleet data (not the PR body,
+                # which may omit file boundaries and test constraints from the original task).
+                SESSION_ID=$(gh pr view "$PR_NUM" --json body -q '.body' \
+                  | grep -oE 'https://jules\.google\.com/task/[A-Za-z0-9_-]+' \
+                  | sed 's|.*/||' || true)
+                FLEET_DIR=$(find .fleet -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -1 || true)
+                TASK_PROMPT=""
+                if [ -n "$SESSION_ID" ] && [ -n "$FLEET_DIR" ]; then
+                  TASK_ID=$(jq -r --arg sid "$SESSION_ID" \
+                    '.[] | select(.sessionId == $sid) | .taskId // empty' \
+                    "${FLEET_DIR%/}/sessions.json" 2>/dev/null || true)
+                  [ -n "$TASK_ID" ] && TASK_PROMPT=$(jq -r --arg tid "$TASK_ID" \
+                    '.tasks[] | select(.id == $tid) | .prompt // empty' \
+                    "${FLEET_DIR%/}/issue_tasks.json" 2>/dev/null || true)
+                fi
+                # Fall back to PR body if original prompt not found
+                if [ -z "$TASK_PROMPT" ]; then
+                  echo "  ⚠️ Could not locate original task prompt in fleet data; using PR body."
+                  TASK_PROMPT=$(gh pr view "$PR_NUM" --json body -q '.body')
+                fi
 
                 # Close the conflicting PR
                 echo "  🔒 Closing conflicting PR #${PR_NUM}..."
@@ -102,15 +128,15 @@ jobs:
 
                 # Re-dispatch via Jules SDK
                 echo "  🚀 Re-dispatching against current ${BASE_BRANCH}..."
-                REPO_FULL="${{ github.repository }}"
-                NEW_SESSION_ID=$(bun -e "
+                JULES_REPO="${{ github.repository }}"
+                NEW_SESSION_ID=$(TASK_PROMPT="${TASK_PROMPT}" JULES_REPO="${JULES_REPO}" JULES_BASE_BRANCH="${BASE_BRANCH}" bun -e "
                   import { jules } from '@google/jules-sdk';
-                  const session = await jules.createSession({
+                  const run = await jules.run({
                     prompt: process.env.TASK_PROMPT,
-                    source: { github: '${REPO_FULL}', baseBranch: '${BASE_BRANCH}' },
+                    source: { github: process.env.JULES_REPO, baseBranch: process.env.JULES_BASE_BRANCH },
                   });
-                  console.log(session.id);
-                " 2>/dev/null)
+                  console.log(run.id);
+                ")
                 echo "  📝 New session: ${NEW_SESSION_ID}"
 
                 # Poll for new PR
@@ -118,8 +144,8 @@ jobs:
                 POLL_ELAPSED=0
                 NEW_PR_NUM=""
                 while [ $POLL_ELAPSED -lt $PR_POLL_TIMEOUT ]; do
-                  sleep 30
-                  POLL_ELAPSED=$((POLL_ELAPSED + 30))
+                  sleep "$POLL_INTERVAL"
+                  POLL_ELAPSED=$((POLL_ELAPSED + POLL_INTERVAL))
                   NEW_PR_NUM=$(gh pr list --state open --base "$BASE_BRANCH" --json number,headRefName,body \
                     --jq "[.[] | select(.headRefName | contains(\"${NEW_SESSION_ID}\")) // select(.body | contains(\"${NEW_SESSION_ID}\"))] | .[0].number // empty")
                   if [ -n "$NEW_PR_NUM" ]; then
@@ -139,16 +165,17 @@ jobs:
                 continue
               fi
 
-              # Wait for branch update to propagate
-              sleep 5
+              # Wait for branch update and checks to register before first poll
+              sleep "$POLL_INTERVAL"
 
               # Wait for CI checks to pass
               echo "  🧪 Waiting for CI checks..."
-              ELAPSED=0
+              ELAPSED=$POLL_INTERVAL
               CI_PASSED=false
+              CI_NONE_ELAPSED=0
 
               while [ $ELAPSED -lt $MAX_CI_WAIT ]; do
-                STATUS=$(gh pr checks "$PR_NUM" --json name,state --jq '[.[].state] | if length == 0 then "none" elif all(. == "SUCCESS" or . == "SKIPPED") then "pass" elif any(. == "FAILURE") then "fail" else "pending" end')
+                STATUS=$(gh pr checks "$PR_NUM" --json name,state --jq '[.[].state] | if length == 0 then "none" elif all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL") then "pass" elif any(. == "FAILURE" or . == "TIMED_OUT" or . == "CANCELLED" or . == "ACTION_REQUIRED") then "fail" else "pending" end')
 
                 case "$STATUS" in
                   "pass")
@@ -156,20 +183,25 @@ jobs:
                     break
                     ;;
                   "none")
-                    echo "  ℹ️  No CI checks configured. Proceeding."
-                    CI_PASSED=true
-                    break
+                    CI_NONE_ELAPSED=$((CI_NONE_ELAPSED + POLL_INTERVAL))
+                    if [ $CI_NONE_ELAPSED -ge $CI_NONE_THRESHOLD ]; then
+                      echo "  ℹ️  No CI checks registered after ${CI_NONE_ELAPSED}s. Proceeding."
+                      CI_PASSED=true
+                      break
+                    fi
+                    echo "  ⏳ Checks not yet registered... (${ELAPSED}s/${MAX_CI_WAIT}s)"
                     ;;
                   "fail")
                     echo "  ❌ CI failed for PR #${PR_NUM}. Skipping."
                     break
                     ;;
                   *)
+                    CI_NONE_ELAPSED=0
                     echo "  ⏳ CI pending... (${ELAPSED}s/${MAX_CI_WAIT}s)"
-                    sleep 30
-                    ELAPSED=$((ELAPSED + 30))
                     ;;
                 esac
+                sleep "$POLL_INTERVAL"
+                ELAPSED=$((ELAPSED + POLL_INTERVAL))
               done
 
               if [ "$CI_PASSED" = false ]; then

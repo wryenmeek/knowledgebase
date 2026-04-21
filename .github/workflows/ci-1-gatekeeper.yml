@@ -31,6 +31,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Assert CI-1 gatekeeper profile context
         run: |
           set -euo pipefail
@@ -165,6 +170,28 @@ jobs:
           if [[ "${#reason_list[@]}" -gt 0 ]]; then
             for reason in "${reason_list[@]}"; do
               echo "::error::CI-1 gatekeeper rejection reason=${reason}" >&2
+              case "${reason}" in
+                prereq_missing:ghaw_readiness:python3_unavailable)
+                  echo "::notice::FIX: ensure Python 3.12+ is available in the CI runner environment." ;;
+                prereq_missing:ghaw_readiness:missing_commit_sha|prereq_missing:ghaw_readiness:missing_*)
+                  echo "::notice::FIX: the required file referenced in reason code is missing from the repository. Add it before merging." ;;
+                reject:trusted_trigger_model:event_not_push)
+                  echo "::notice::FIX: CI-1 only runs on push events to the default branch. Use workflow_dispatch to test manually." ;;
+                reject:trusted_trigger_model:not_default_branch)
+                  echo "::notice::FIX: CI-1 only processes pushes to the default branch. Merge to main/master to trigger." ;;
+                reject:trusted_trigger_model:ref_not_protected)
+                  echo "::notice::FIX: the target branch must have branch protection enabled. Enable it in repository Settings → Branches." ;;
+                reject:path_filter:no_changed_paths_detected)
+                  echo "::notice::FIX: no paths matched the raw/inbox/** filter. Ensure your commit includes changes to raw/inbox/." ;;
+                reject:path_filter:outside_raw_inbox:*)
+                  echo "::notice::FIX: changed paths must be under raw/inbox/ only. Move files outside that directory to a separate commit." ;;
+                reject:permissions_scope:token_profile_mismatch)
+                  echo "::notice::FIX: the workflow must use the tp-gatekeeper token profile. Check the TOKEN_PROFILE env var in the workflow." ;;
+                reject:permissions_scope:minimum_permissions_mismatch|reject:permissions_scope:forbidden_write_scope_declared)
+                  echo "::notice::FIX: review the permissions block in this workflow. Only the minimum declared permissions are allowed." ;;
+                prereq_missing:concurrency_guard:*)
+                  echo "::notice::FIX: the concurrency block is missing or misconfigured. Ensure group and cancel-in-progress match the expected values." ;;
+              esac
             done
             exit 1
           fi
@@ -177,3 +204,12 @@ jobs:
           set -euo pipefail
           echo "CI-1 handoff gate passed for raw/inbox/**."
           echo "CI-3 PR-producing behavior is intentionally out of scope for this workflow."
+
+      - name: Upload CI-1 preflight artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci1-gatekeeper-preflight-${{ github.run_id }}
+          path: preflight/
+          if-no-files-found: warn
+          retention-days: 7

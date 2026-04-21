@@ -1,0 +1,1 @@
+sed -i 's/reject:permissions_scope:minimum_permissions_mismatch | \\n                reject:permissions_scope:forbidden_write_scope_declared)/reject:permissions_scope:minimum_permissions_mismatch|reject:permissions_scope:forbidden_write_scope_declared)/g' .github/workflows/ci-1-gatekeeper.yml
