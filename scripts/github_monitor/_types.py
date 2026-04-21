@@ -309,15 +309,12 @@ def _validate_registry_entry(entry: Any, idx: int) -> None:
             f"{entry['tracking_status']!r}; valid values: {sorted(_VALID_TRACKING_STATUSES)}"
         )
 
-    for sha_key in ("last_applied_commit_sha", "last_fetched_commit_sha"):
-        v = entry.get(sha_key)
-        if v is not None and not _COMMIT_SHA_RE.match(v):
-            raise ValueError(
-                f"Registry entry {idx} field {sha_key!r} must be a 40-char "
-                f"lowercase hex string or null, got {v!r}"
-            )
-
-    for sha_key in ("last_applied_blob_sha", "last_fetched_blob_sha"):
+    for sha_key in (
+        "last_applied_commit_sha",
+        "last_fetched_commit_sha",
+        "last_applied_blob_sha",
+        "last_fetched_blob_sha",
+    ):
         v = entry.get(sha_key)
         if v is not None and not _COMMIT_SHA_RE.match(v):
             raise ValueError(

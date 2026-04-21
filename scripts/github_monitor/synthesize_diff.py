@@ -25,9 +25,9 @@ import contextlib
 import difflib
 import hashlib
 import json
+import os
 import sys
 import tempfile
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -79,6 +79,11 @@ def _is_binary(data: bytes) -> bool:
     return b"\x00" in data
 
 
+def _make_error(path: str, reason_code: GitHubMonitorReasonCode | str, message: str) -> dict[str, Any]:
+    """Build a structured error entry for the synthesize_diff items list."""
+    return {"path": path, "reason_code": str(reason_code), "message": message}
+
+
 def _render_diff(
     old_text: str,
     new_text: str,
@@ -113,7 +118,6 @@ def _build_change_note(
     diff_text: str,
     *,
     is_binary: bool = False,
-    is_new: bool = False,
     is_oversized: bool = False,
     now: datetime | None = None,
 ) -> str:
@@ -216,22 +220,19 @@ def _synthesize_one(
     if len(new_bytes) > _DIFF_SIZE_LIMIT:
         return True, {
             "path": path,
-            "note_type": "oversized",
             "new_bytes": new_bytes,
             "diff_text": "",
             "is_binary": False,
-            "is_new": False,
             "oversized": True,
         }
 
     if _is_binary(new_bytes):
         return True, {
             "path": path,
-            "note_type": "binary",
-            "new_bytes": new_bytes,  # keep bytes so SHA256 is computed from the asset
+            "new_bytes": new_bytes,
             "diff_text": "",
             "is_binary": True,
-            "is_new": False,
+            "oversized": False,
         }
 
     new_text = new_bytes.decode("utf-8", errors="replace")
@@ -258,11 +259,10 @@ def _synthesize_one(
 
     return True, {
         "path": path,
-        "note_type": "text",
         "new_bytes": new_bytes,
         "diff_text": diff_text,
         "is_binary": False,
-        "is_new": not bool(last_applied_commit),
+        "oversized": False,
     }
 
 
@@ -316,26 +316,20 @@ def synthesize_diff(
                 # Find registry file.
                 registry_path = find_registry_for(repo_root, owner, repo)
                 if registry_path is None:
-                    errors.append(
-                        {
-                            "path": path,
-                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                            "message": f"No registry file found for {owner}/{repo}",
-                        }
-                    )
+                    errors.append(_make_error(
+                        path, GitHubMonitorReasonCode.FETCH_FAILED,
+                        f"No registry file found for {owner}/{repo}",
+                    ))
                     continue
 
                 # Check that fetch_content.py has run: last_fetched_blob_sha must match.
                 try:
                     raw_registry = json.loads(registry_path.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError) as exc:
-                    errors.append(
-                        {
-                            "path": path,
-                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                            "message": f"Failed to read registry: {exc}",
-                        }
-                    )
+                    errors.append(_make_error(
+                        path, GitHubMonitorReasonCode.FETCH_FAILED,
+                        f"Failed to read registry: {exc}",
+                    ))
                     continue
 
                 reg_entry = next(
@@ -343,78 +337,52 @@ def synthesize_diff(
                     None,
                 )
                 if reg_entry is None:
-                    errors.append(
-                        {
-                            "path": path,
-                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                            "message": f"Entry {path!r} not found in registry",
-                        }
-                    )
+                    errors.append(_make_error(
+                        path, GitHubMonitorReasonCode.FETCH_FAILED,
+                        f"Entry {path!r} not found in registry",
+                    ))
                     continue
 
                 if reg_entry.get("last_fetched_blob_sha") != entry["current_blob_sha"]:
-                    errors.append(
-                        {
-                            "path": path,
-                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                            "message": (
-                                f"last_fetched_blob_sha in registry does not match "
-                                f"drift report current_blob_sha; run fetch_content.py first"
-                            ),
-                        }
-                    )
+                    errors.append(_make_error(
+                        path, GitHubMonitorReasonCode.FETCH_FAILED,
+                        "last_fetched_blob_sha in registry does not match "
+                        "drift report current_blob_sha; run fetch_content.py first",
+                    ))
                     continue
 
                 # Find the wiki page and verify it stays inside wiki/.
                 wiki_page_rel = reg_entry.get("wiki_page")
                 if not wiki_page_rel:
-                    errors.append(
-                        {
-                            "path": path,
-                            "reason_code": str(GitHubMonitorReasonCode.UNINITIALIZED_SOURCE),
-                            "message": (
-                                f"Registry entry for {path!r} has no wiki_page set; "
-                                "complete initial ingest first"
-                            ),
-                        }
-                    )
+                    errors.append(_make_error(
+                        path, GitHubMonitorReasonCode.UNINITIALIZED_SOURCE,
+                        f"Registry entry for {path!r} has no wiki_page set; "
+                        "complete initial ingest first",
+                    ))
                     continue
 
                 wiki_page_path = (repo_root / wiki_page_rel).resolve()
                 if not wiki_page_path.is_relative_to(wiki_root) or wiki_page_path.suffix != ".md":
-                    errors.append(
-                        {
-                            "path": path,
-                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                            "message": (
-                                f"wiki_page {wiki_page_rel!r} escapes wiki/ boundary "
-                                "or is not a .md file"
-                            ),
-                        }
-                    )
+                    errors.append(_make_error(
+                        path, GitHubMonitorReasonCode.FETCH_FAILED,
+                        f"wiki_page {wiki_page_rel!r} escapes wiki/ boundary "
+                        "or is not a .md file",
+                    ))
                     continue
 
                 if not wiki_page_path.exists():
-                    errors.append(
-                        {
-                            "path": path,
-                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                            "message": f"Wiki page not found: {wiki_page_rel}",
-                        }
-                    )
+                    errors.append(_make_error(
+                        path, GitHubMonitorReasonCode.FETCH_FAILED,
+                        f"Wiki page not found: {wiki_page_rel}",
+                    ))
                     continue
 
                 # Build the change note.
                 ok, info = _synthesize_one(repo_root, entry)
                 if not ok:
-                    errors.append(
-                        {
-                            "path": info["path"],
-                            "status": STATUS_FAIL,
-                            "reason_code": info["reason_code"],
-                            "message": info["message"],
-                        }
-                    )
+                    errors.append(_make_error(
+                        info["path"], info["reason_code"], info["message"],
+                    ))
                     continue
 
                 change_note = _build_change_note(
@@ -422,7 +390,6 @@ def synthesize_diff(
                     info["diff_text"],
                     is_binary=info["is_binary"],
                     is_oversized=info.get("oversized", False),
-                    is_new=info["is_new"],
                     now=now,
                 )
 
@@ -443,13 +410,10 @@ def synthesize_diff(
                 except OSError as exc:
                     with contextlib.suppress(OSError):
                         tmp.unlink()
-                    errors.append(
-                        {
-                            "path": path,
-                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                            "message": f"Failed to write wiki page: {exc}",
-                        }
-                    )
+                    errors.append(_make_error(
+                        path, GitHubMonitorReasonCode.FETCH_FAILED,
+                        f"Failed to write wiki page: {exc}",
+                    ))
                     continue
 
                 # Advance last_applied_* in the registry (under registry lock, inside wiki lock).
@@ -467,13 +431,10 @@ def synthesize_diff(
                         applied_at=now.isoformat(),
                     )
                 except OSError as exc:
-                    errors.append(
-                        {
-                            "path": path,
-                            "reason_code": str(GitHubMonitorReasonCode.REGISTRY_LOCKED),
-                            "message": f"Registry update failed after wiki write: {exc}",
-                        }
-                    )
+                    errors.append(_make_error(
+                        path, GitHubMonitorReasonCode.REGISTRY_LOCKED,
+                        f"Registry update failed after wiki write: {exc}",
+                    ))
                     # Note: wiki page was already written but registry wasn't updated.
                     # The next run will re-synthesize this entry (idempotent change note append).
                     continue
@@ -492,13 +453,12 @@ def synthesize_diff(
         )
 
     status = STATUS_PASS if not errors else STATUS_FAIL
-    reason_code = (
-        str(GitHubMonitorReasonCode.FETCH_FAILED)
-        if errors
-        else str(GitHubMonitorReasonCode.DRIFT_DETECTED)
-        if synthesized
-        else str(GitHubMonitorReasonCode.NO_DRIFT)
-    )
+    if errors:
+        reason_code = str(GitHubMonitorReasonCode.FETCH_FAILED)
+    elif synthesized:
+        reason_code = str(GitHubMonitorReasonCode.DRIFT_DETECTED)
+    else:
+        reason_code = str(GitHubMonitorReasonCode.NO_DRIFT)
     message = (
         f"synthesis complete: {len(synthesized)} synthesized, {len(errors)} errors"
     )
