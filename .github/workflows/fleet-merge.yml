@@ -106,7 +106,7 @@ jobs:
                 SESSION_ID=$(gh pr view "$PR_NUM" --json body -q '.body' \
                   | grep -oE 'https://jules\.google\.com/task/[A-Za-z0-9_-]+' \
                   | sed 's|.*/||' || true)
-                FLEET_DIR=$(ls -d .fleet/*/ 2>/dev/null | sort | tail -1 || true)
+                FLEET_DIR=$(find .fleet/ -maxdepth 1 -type d -not -path .fleet/ 2>/dev/null | sort | tail -1 || true)
                 TASK_PROMPT=""
                 if [ -n "$SESSION_ID" ] && [ -n "$FLEET_DIR" ]; then
                   TASK_ID=$(jq -r --arg sid "$SESSION_ID" \
