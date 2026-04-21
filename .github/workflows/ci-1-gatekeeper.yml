@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
 
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -210,7 +210,7 @@ jobs:
 
       - name: Upload CI-1 preflight artifacts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v4
         with:
           name: ci1-gatekeeper-preflight-${{ github.run_id }}
           path: preflight/
