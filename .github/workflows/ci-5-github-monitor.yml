@@ -56,18 +56,21 @@ jobs:
         id: detect
         env:
           GITHUB_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          # SECURITY: pass workflow_dispatch input as env var, never interpolate
+          # ${{ inputs.* }} directly into a run: shell block (shell injection risk).
+          REGISTRY_PATH: ${{ inputs.registry_path }}
         run: |
           set -euo pipefail
 
-          REGISTRY_ARGS=""
-          if [ -n "${{ inputs.registry_path }}" ]; then
-            REGISTRY_ARGS="--registry ${{ inputs.registry_path }}"
+          REGISTRY_ARGS=()
+          if [ -n "${REGISTRY_PATH}" ]; then
+            REGISTRY_ARGS=(--registry "${REGISTRY_PATH}")
           fi
 
           # Run drift detection; exits 0 on success (even when drift is found),
           # exits 1 on API errors or configuration errors.
           python -m scripts.github_monitor.check_drift \
-            ${REGISTRY_ARGS} \
+            "${REGISTRY_ARGS[@]}" \
             --output drift-report.json
 
           # Parse has_drift from the report to set the job output.
@@ -100,7 +103,7 @@ jobs:
     # Protected environment gate — requires the same approval as CI-3.
     environment: protected-pr-write
     concurrency:
-      group: kb-write-${{ github.repository }}-${{ github.ref }}
+      group: kb-write-${{ github.repository }}
       cancel-in-progress: false
     permissions:
       contents: write
@@ -148,11 +151,13 @@ jobs:
   synthesize:
     name: CI-5 synthesize + open PR
     needs: [check-drift, fetch-and-update]
+    # Only run if fetch-and-update actually executed and succeeded.
+    if: needs.fetch-and-update.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: protected-pr-write
     concurrency:
-      group: kb-write-${{ github.repository }}-${{ github.ref }}
+      group: kb-write-${{ github.repository }}
       cancel-in-progress: false
     permissions:
       contents: write

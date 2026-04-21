@@ -19,6 +19,7 @@ The system is designed to keep knowledge:
 | `raw/inbox/**` | New source inputs pending ingest | Untrusted input |
 | `raw/processed/**` | Post-ingest source artifacts | Immutable source-of-truth |
 | `raw/assets/**` | Vendored external assets | Authoritative only when checksummed |
+| `raw/github-sources/**` | GitHub source monitor registries and pending-ingest handoffs | Mutable; governed by `schema/github-source-registry-contract.md` |
 | `wiki/**` | Synthesized knowledge artifacts | Controlled write surface |
 | `schema/**` | Page/ingest contracts | Controlled write surface |
 | `scripts/kb/**` + `tests/kb/**` | Automation implementation and verification | Controlled write surface |
@@ -52,6 +53,7 @@ Before implementing any new helper, check these four canonical modules. See ADR-
 | **CI-1** | Trusted-trigger gatekeeper/handoff | No |
 | **CI-2** | Read-only diagnostics and analysis | No |
 | **CI-3** | PR-producing write path with allowlists and preflight | Yes (allowlisted paths only) |
+| **CI-5** | GitHub source monitor: scheduled drift detection (read-only) + PR-producing fetch/synthesize path | Drift job: No. Write jobs: Yes (`raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**`) |
 
 This split is intentional: it isolates trust checks, diagnostics, and write operations
 so permission scope can stay minimal for each path.
@@ -105,6 +107,7 @@ though they are not all landed today:
 | `scripts/reporting/**` | Repository-scoped quality and coverage reporting | Packaging approval does not grant new write authority; undeclared paths remain deny-by-default. |
 | `scripts/context/**` + `scripts/maintenance/**` | Context-sync and maintenance orchestration invoked by thin skills | Heavy repo-wide logic still sits behind explicit wrappers and fail-closed checks. |
 | `scripts/ingest/**` | Heavyweight ingest/conversion helpers | ADR-006 still limits authoritative ingest inputs to `raw/inbox/**` plus checksummed `raw/assets/**`. |
+| `scripts/github_monitor/**` | GitHub source monitoring: drift detection, asset fetching, diff-aware wiki synthesis | ADR-012 governs the fetch-and-vendor cycle; `raw/assets/{owner}/{repo}/{sha}/**` assets are authoritative only when checksummed per ADR-006; write-capable surfaces must be declared in `AGENTS.md` before writing. |
 
 Any future post-MVP writer that touches shared wiki artifacts must keep the
 ADR-005 workflow-concurrency plus `wiki/.kb_write.lock` model, and any

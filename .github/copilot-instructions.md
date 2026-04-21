@@ -99,6 +99,34 @@ import { jules } from '@google/jules-sdk';
 
 Do not use `new Jules()`, `Jules({ apiKey })`, or `jules.createSession()` — none of these exist.
 
+## Codebase-specific patterns
+
+### Path bounds checking
+
+Always use `Path.is_relative_to(wiki_root.resolve())` to verify a resolved path stays inside `wiki_root`. Never use `str(resolved).startswith(str(wiki_root))` — it is not separator-safe and allows sibling directories (e.g. `wiki-extra/`) to pass a `wiki` prefix check. This is the canonical pattern per `docs/architecture.md` Write and safety controls.
+
+### Skill logic imports (ADR-011)
+
+Skill logic files live at `.github/skills/<name>/logic/<file>.py`. To import from `scripts.kb`, use:
+
+```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
+```
+
+`parents[4]` resolves to the repo root. Never inline-reimplement helpers already in `scripts/kb/page_template_utils.py`, `write_utils.py`, `contracts.py`, or `_optional_surface_common.py`.
+
+### Post-implementation quality-pass order
+
+For non-trivial changes, run these skill passes in order — later passes often find issues the earlier ones expose:
+
+1. `code-review-and-quality` — correctness, security, architecture
+2. `code-simplification` — clarity, dead code, loop invariants
+3. `test-driven-development` — coverage gaps, edge cases
+4. `documentation-and-adrs` — SKILL.md, architecture.md, README.md, docstrings
+5. `shipping-and-launch` — pre-launch checklist, write-surface matrix
+
 ## Boundaries
 
 - **Always:** follow skill workflow requirements when applicable.

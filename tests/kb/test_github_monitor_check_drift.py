@@ -49,7 +49,7 @@ def _make_registry(entries: list[dict]) -> dict:
 
 def _active_entry(
     path: str = "docs/guide.md",
-    last_applied_blob_sha: str = "blob" + "a" * 36,
+    last_applied_blob_sha: str = "a" * 40,
     last_applied_commit_sha: str = "c" * 40,
 ) -> dict:
     return {
@@ -66,7 +66,7 @@ def _active_entry(
     }
 
 
-def _contents_response(blob_sha: str = "blob" + "a" * 36) -> dict:
+def _contents_response(blob_sha: str = "a" * 40) -> dict:
     return {
         "sha": blob_sha,
         "content": "aGVsbG8=",

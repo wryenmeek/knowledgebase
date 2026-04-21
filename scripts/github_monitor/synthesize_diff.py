@@ -56,7 +56,7 @@ from scripts.github_monitor._types import (
     DriftedEntry,
     validate_drift_report,
 )
-from scripts.github_monitor._validators import validate_external_path
+from scripts.github_monitor._validators import build_asset_path, validate_external_path
 
 SURFACE = "github_monitor.synthesize_diff"
 MODE = "synthesize"
@@ -99,10 +99,11 @@ def _render_diff(
     if not diff_lines:
         return ""
     if len(diff_lines) > _DIFF_MAX_LINES:
+        original_count = len(diff_lines)
         diff_lines = diff_lines[:_DIFF_MAX_LINES]
         diff_lines.append(
             f"\n... diff truncated at {_DIFF_MAX_LINES} lines "
-            f"({len(diff_lines)} total) ...\n"
+            f"({original_count} total) ...\n"
         )
     return "".join(diff_lines)
 
@@ -113,6 +114,7 @@ def _build_change_note(
     *,
     is_binary: bool = False,
     is_new: bool = False,
+    is_oversized: bool = False,
     now: datetime | None = None,
 ) -> str:
     """Build the ``## Change Note`` markdown block to append to the wiki page."""
@@ -142,14 +144,12 @@ def _build_change_note(
         "",
     ]
 
-    if is_binary:
+    if is_oversized:
+        lines.append(
+            "*Oversize file — content exceeds diff limit; no diff available.*"
+        )
+    elif is_binary:
         lines.append("*Binary file changed — no diff available.*")
-    elif is_new:
-        lines += [
-            "~~~~diff",
-            diff_text.rstrip("\n"),
-            "~~~~",
-        ]
     elif diff_text:
         lines += [
             "~~~~diff",
@@ -189,25 +189,46 @@ def _synthesize_one(
     last_applied_commit = entry.get("last_applied_commit_sha")
     current_commit = entry["current_commit_sha"]
 
-    # New asset path (from fetch_content.py).
-    new_asset = repo_root / "raw" / "assets" / owner / repo / current_commit / path
+    # Use build_asset_path() for all asset paths — validates owner/repo/SHA
+    # against safe-segment regexes and performs is_relative_to() bounds check.
+    try:
+        new_asset = build_asset_path(repo_root, owner, repo, current_commit, path)
+    except ValueError as exc:
+        return False, {
+            "path": path,
+            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
+            "message": f"Asset path construction failed: {exc}",
+        }
+
     if not new_asset.exists():
         return False, {
             "path": path,
             "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
             "message": (
-                f"New asset not found at {new_asset.relative_to(repo_root)}; "
+                f"New asset not found at {new_asset.relative_to(repo_root.resolve())}; "
                 "run fetch_content.py first"
             ),
         }
 
     new_bytes = new_asset.read_bytes()
 
+    # Enforce byte-size limit before attempting diff computation.
+    if len(new_bytes) > _DIFF_SIZE_LIMIT:
+        return True, {
+            "path": path,
+            "note_type": "oversized",
+            "new_bytes": new_bytes,
+            "diff_text": "",
+            "is_binary": False,
+            "is_new": False,
+            "oversized": True,
+        }
+
     if _is_binary(new_bytes):
         return True, {
             "path": path,
             "note_type": "binary",
-            "new_bytes": None,
+            "new_bytes": new_bytes,  # keep bytes so SHA256 is computed from the asset
             "diff_text": "",
             "is_binary": True,
             "is_new": False,
@@ -216,16 +237,17 @@ def _synthesize_one(
     new_text = new_bytes.decode("utf-8", errors="replace")
 
     # Old asset path (from last applied version).
+    old_text = ""
     if last_applied_commit:
-        old_asset = (
-            repo_root / "raw" / "assets" / owner / repo / last_applied_commit / path
-        )
-        if old_asset.exists():
-            old_text = old_asset.read_bytes().decode("utf-8", errors="replace")
-        else:
-            old_text = ""
-    else:
-        old_text = ""
+        try:
+            old_asset = build_asset_path(
+                repo_root, owner, repo, last_applied_commit, path
+            )
+            if old_asset.exists():
+                old_text = old_asset.read_bytes().decode("utf-8", errors="replace")
+        except ValueError:
+            # last_applied_commit failed validation — treat as no prior version.
+            pass
 
     diff_text = _render_diff(
         old_text,
@@ -277,11 +299,187 @@ def synthesize_diff(
 
     synthesized: list[str] = []
     errors: list[dict[str, Any]] = []
+    wiki_root = (repo_root / "wiki").resolve()
 
     # Acquire wiki write lock first (ADR-012 lock ordering).
+    # LockUnavailableError is raised on __enter__ (inside the `with`), so the
+    # try/except must wrap the entire `with` block — not just the call site.
     try:
-        wiki_lock_ctx = write_utils.exclusive_write_lock(repo_root)
-        wiki_lock_ctx.__enter__()
+        with write_utils.exclusive_write_lock(repo_root):
+            now = datetime.now(timezone.utc)
+
+            for entry in drifted:
+                owner = entry["owner"]
+                repo = entry["repo"]
+                path = entry["path"]
+
+                # Find registry file.
+                registry_path = find_registry_for(repo_root, owner, repo)
+                if registry_path is None:
+                    errors.append(
+                        {
+                            "path": path,
+                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
+                            "message": f"No registry file found for {owner}/{repo}",
+                        }
+                    )
+                    continue
+
+                # Check that fetch_content.py has run: last_fetched_blob_sha must match.
+                try:
+                    raw_registry = json.loads(registry_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as exc:
+                    errors.append(
+                        {
+                            "path": path,
+                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
+                            "message": f"Failed to read registry: {exc}",
+                        }
+                    )
+                    continue
+
+                reg_entry = next(
+                    (e for e in raw_registry.get("entries", []) if e.get("path") == path),
+                    None,
+                )
+                if reg_entry is None:
+                    errors.append(
+                        {
+                            "path": path,
+                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
+                            "message": f"Entry {path!r} not found in registry",
+                        }
+                    )
+                    continue
+
+                if reg_entry.get("last_fetched_blob_sha") != entry["current_blob_sha"]:
+                    errors.append(
+                        {
+                            "path": path,
+                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
+                            "message": (
+                                f"last_fetched_blob_sha in registry does not match "
+                                f"drift report current_blob_sha; run fetch_content.py first"
+                            ),
+                        }
+                    )
+                    continue
+
+                # Find the wiki page and verify it stays inside wiki/.
+                wiki_page_rel = reg_entry.get("wiki_page")
+                if not wiki_page_rel:
+                    errors.append(
+                        {
+                            "path": path,
+                            "reason_code": str(GitHubMonitorReasonCode.UNINITIALIZED_SOURCE),
+                            "message": (
+                                f"Registry entry for {path!r} has no wiki_page set; "
+                                "complete initial ingest first"
+                            ),
+                        }
+                    )
+                    continue
+
+                wiki_page_path = (repo_root / wiki_page_rel).resolve()
+                if not wiki_page_path.is_relative_to(wiki_root) or wiki_page_path.suffix != ".md":
+                    errors.append(
+                        {
+                            "path": path,
+                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
+                            "message": (
+                                f"wiki_page {wiki_page_rel!r} escapes wiki/ boundary "
+                                "or is not a .md file"
+                            ),
+                        }
+                    )
+                    continue
+
+                if not wiki_page_path.exists():
+                    errors.append(
+                        {
+                            "path": path,
+                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
+                            "message": f"Wiki page not found: {wiki_page_rel}",
+                        }
+                    )
+                    continue
+
+                # Build the change note.
+                ok, info = _synthesize_one(repo_root, entry)
+                if not ok:
+                    errors.append(
+                        {
+                            "path": info["path"],
+                            "status": STATUS_FAIL,
+                            "reason_code": info["reason_code"],
+                            "message": info["message"],
+                        }
+                    )
+                    continue
+
+                change_note = _build_change_note(
+                    entry,
+                    info["diff_text"],
+                    is_binary=info["is_binary"],
+                    is_oversized=info.get("oversized", False),
+                    is_new=info["is_new"],
+                    now=now,
+                )
+
+                # Write the change note to the wiki page (atomic temp file).
+                existing_content = wiki_page_path.read_text(encoding="utf-8")
+                new_content = existing_content.rstrip("\n") + "\n" + change_note
+
+                fd, tmp_str = tempfile.mkstemp(
+                    dir=wiki_page_path.parent, prefix=f".{wiki_page_path.name}."
+                )
+                tmp = Path(tmp_str)
+                try:
+                    try:
+                        os.write(fd, new_content.encode("utf-8"))
+                    finally:
+                        os.close(fd)
+                    os.replace(tmp, wiki_page_path)
+                except OSError as exc:
+                    with contextlib.suppress(OSError):
+                        tmp.unlink()
+                    errors.append(
+                        {
+                            "path": path,
+                            "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
+                            "message": f"Failed to write wiki page: {exc}",
+                        }
+                    )
+                    continue
+
+                # Advance last_applied_* in the registry (under registry lock, inside wiki lock).
+                # info["new_bytes"] is always set (binary files now return their bytes, not None).
+                sha256_hex = hashlib.sha256(info["new_bytes"]).hexdigest()
+
+                try:
+                    update_last_applied(
+                        repo_root,
+                        registry_path,
+                        path,
+                        commit_sha=entry["current_commit_sha"],
+                        blob_sha=entry["current_blob_sha"],
+                        sha256=sha256_hex,
+                        applied_at=now.isoformat(),
+                    )
+                except OSError as exc:
+                    errors.append(
+                        {
+                            "path": path,
+                            "reason_code": str(GitHubMonitorReasonCode.REGISTRY_LOCKED),
+                            "message": f"Registry update failed after wiki write: {exc}",
+                        }
+                    )
+                    # Note: wiki page was already written but registry wasn't updated.
+                    # The next run will re-synthesize this entry (idempotent change note append).
+                    continue
+
+                synthesized.append(path)
+
     except write_utils.LockUnavailableError as exc:
         return SurfaceResult(
             surface=SURFACE,
@@ -292,176 +490,6 @@ def synthesize_diff(
             approval=APPROVAL_APPROVED,
             path_rules=_path_rules(),
         )
-
-    now = datetime.now(timezone.utc)
-
-    try:
-        for entry in drifted:
-            owner = entry["owner"]
-            repo = entry["repo"]
-            path = entry["path"]
-
-            # Find registry file.
-            registry_path = find_registry_for(repo_root, owner, repo)
-            if registry_path is None:
-                errors.append(
-                    {
-                        "path": path,
-                        "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                        "message": f"No registry file found for {owner}/{repo}",
-                    }
-                )
-                continue
-
-            # Check that fetch_content.py has run: last_fetched_blob_sha must match.
-            try:
-                raw_registry = json.loads(registry_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as exc:
-                errors.append(
-                    {
-                        "path": path,
-                        "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                        "message": f"Failed to read registry: {exc}",
-                    }
-                )
-                continue
-
-            reg_entry = next(
-                (e for e in raw_registry.get("entries", []) if e.get("path") == path),
-                None,
-            )
-            if reg_entry is None:
-                errors.append(
-                    {
-                        "path": path,
-                        "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                        "message": f"Entry {path!r} not found in registry",
-                    }
-                )
-                continue
-
-            if reg_entry.get("last_fetched_blob_sha") != entry["current_blob_sha"]:
-                errors.append(
-                    {
-                        "path": path,
-                        "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                        "message": (
-                            f"last_fetched_blob_sha in registry does not match "
-                            f"drift report current_blob_sha; run fetch_content.py first"
-                        ),
-                    }
-                )
-                continue
-
-            # Find the wiki page.
-            wiki_page_rel = reg_entry.get("wiki_page")
-            if not wiki_page_rel:
-                errors.append(
-                    {
-                        "path": path,
-                        "reason_code": str(GitHubMonitorReasonCode.UNINITIALIZED_SOURCE),
-                        "message": (
-                            f"Registry entry for {path!r} has no wiki_page set; "
-                            "complete initial ingest first"
-                        ),
-                    }
-                )
-                continue
-
-            wiki_page_path = repo_root / wiki_page_rel
-            if not wiki_page_path.exists():
-                errors.append(
-                    {
-                        "path": path,
-                        "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                        "message": (
-                            f"Wiki page not found: {wiki_page_rel}"
-                        ),
-                    }
-                )
-                continue
-
-            # Build the change note.
-            ok, info = _synthesize_one(repo_root, entry)
-            if not ok:
-                errors.append(
-                    {
-                        "path": info["path"],
-                        "status": STATUS_FAIL,
-                        "reason_code": info["reason_code"],
-                        "message": info["message"],
-                    }
-                )
-                continue
-
-            change_note = _build_change_note(
-                entry,
-                info["diff_text"],
-                is_binary=info["is_binary"],
-                is_new=info["is_new"],
-                now=now,
-            )
-
-            # Write the change note to the wiki page (atomic temp file).
-            existing_content = wiki_page_path.read_text(encoding="utf-8")
-            new_content = existing_content.rstrip("\n") + "\n" + change_note
-
-            fd, tmp_str = tempfile.mkstemp(
-                dir=wiki_page_path.parent, prefix=f".{wiki_page_path.name}."
-            )
-            tmp = Path(tmp_str)
-            try:
-                try:
-                    os.write(fd, new_content.encode("utf-8"))
-                finally:
-                    os.close(fd)
-                os.replace(tmp, wiki_page_path)
-            except OSError as exc:
-                with contextlib.suppress(OSError):
-                    tmp.unlink()
-                errors.append(
-                    {
-                        "path": path,
-                        "reason_code": str(GitHubMonitorReasonCode.FETCH_FAILED),
-                        "message": f"Failed to write wiki page: {exc}",
-                    }
-                )
-                continue
-
-            # Advance last_applied_* in the registry (under registry lock, inside wiki lock).
-            new_bytes = info.get("new_bytes") or (
-                wiki_page_path.read_bytes() if info["is_binary"] else
-                (repo_root / "raw" / "assets" / owner / repo
-                 / entry["current_commit_sha"] / path).read_bytes()
-            )
-            sha256_hex = hashlib.sha256(new_bytes).hexdigest()
-
-            try:
-                update_last_applied(
-                    repo_root,
-                    registry_path,
-                    path,
-                    commit_sha=entry["current_commit_sha"],
-                    blob_sha=entry["current_blob_sha"],
-                    sha256=sha256_hex,
-                    applied_at=now.isoformat(),
-                )
-            except OSError as exc:
-                errors.append(
-                    {
-                        "path": path,
-                        "reason_code": str(GitHubMonitorReasonCode.REGISTRY_LOCKED),
-                        "message": f"Registry update failed after wiki write: {exc}",
-                    }
-                )
-                # Note: wiki page was already written but registry wasn't updated.
-                # The next run will re-synthesize this entry (idempotent change note append).
-                continue
-
-            synthesized.append(path)
-
-    finally:
-        wiki_lock_ctx.__exit__(None, None, None)
 
     status = STATUS_PASS if not errors else STATUS_FAIL
     reason_code = (

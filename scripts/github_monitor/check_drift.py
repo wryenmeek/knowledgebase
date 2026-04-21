@@ -101,9 +101,11 @@ def _make_github_request(url: str, token: str) -> Any:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
-            if exc.code >= 500 and attempt < _MAX_RETRIES - 1:
+            if (exc.code >= 500 or exc.code == 429) and attempt < _MAX_RETRIES - 1:
                 last_exc = exc
-                time.sleep(_RETRY_DELAY_SECONDS[attempt])
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                delay = float(retry_after) if retry_after else _RETRY_DELAY_SECONDS[attempt]
+                time.sleep(delay)
                 continue
             raise GitHubAPIRequestError(
                 url=url, status_code=exc.code, detail=exc.reason
@@ -112,10 +114,10 @@ def _make_github_request(url: str, token: str) -> Any:
             raise GitHubAPIRequestError(
                 url=url, status_code=None, detail=str(exc.reason)
             ) from exc
-    # All retries exhausted on 5xx.
+    # All retries exhausted on 5xx or 429 — last_exc is always set here.
     raise GitHubAPIRequestError(
         url=url,
-        status_code=None,
+        status_code=getattr(last_exc, "code", None),
         detail=f"request failed after {_MAX_RETRIES} retries; last error: {last_exc}",
     )
 

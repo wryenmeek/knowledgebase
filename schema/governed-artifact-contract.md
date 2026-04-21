@@ -33,6 +33,18 @@ surfaces. Unlike the fixed-path artifacts above, report artifacts are
 dynamically named per run. Their schema and write semantics are declared in
 [`schema/report-artifact-contract.md`](report-artifact-contract.md).
 
+## GitHub source monitoring artifacts
+
+`raw/github-sources/` and `raw/assets/` are governed by the GitHub source
+monitoring pipeline introduced in ADR-012. Unlike the `wiki/` artifacts above,
+these use dynamic path names and require glob-pattern matching via
+`governed_artifact_contract_by_pattern()` in `scripts/kb/contracts.py`.
+
+| Artifact ID | Path pattern | Schema owner | Purpose | Mutation semantics | Lock requirement | Atomic write expectation |
+|---|---|---|---|---|---|---|
+| `github-source-registry` | `raw/github-sources/*.source-registry.json` | `schema/github-source-registry-contract.md` | Per-repo registry of tracked file paths with three-stage state machine (applied / fetched / checked). | Mutable; writers update entry fields and replace the full file. | `raw/.github-sources.lock` (separate from `wiki/.kb_write.lock`; see lock ordering in ADR-012). | Read full JSON under lock → mutate entry → atomic replace → release lock. |
+| `external-asset` | `raw/assets/**` | `docs/decisions/ADR-012-github-source-monitoring.md` | Immutable vendored copy of an external file at a specific commit SHA. Path encodes `{owner}/{repo}/{commit_sha}/{file_path}`. | Write-once (`exclusive_create_write_once()`); idempotent if bytes match; hard fail if bytes differ. | None (path includes commit SHA; no inter-run race possible). | `O_CREAT \| O_EXCL` open; SHA-256 verified before and after write. |
+
 | Artifact family | Path pattern | Schema owner | Mutability | Lock requirement |
 |---|---|---|---|---|
 | Report artifacts | `wiki/reports/<type>-<YYYY-MM-DD>[‑n].json` | `schema/report-artifact-contract.md` | Write-once per run; no mutation of existing files | ADR-005 + `wiki/.kb_write.lock` before every write |

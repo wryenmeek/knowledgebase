@@ -18,6 +18,8 @@ class SharedContractsTests(unittest.TestCase):
                 "wiki-open-questions",
                 "wiki-backlog",
                 "wiki-status",
+                "github-source-registry",
+                "external-asset",
             ),
         )
         self.assertEqual(
@@ -28,7 +30,52 @@ class SharedContractsTests(unittest.TestCase):
                 "wiki/open-questions.md",
                 "wiki/backlog.md",
                 "wiki/status.md",
+                # GitHub source monitoring artifacts use dynamic paths; the ``path``
+                # field for these contracts is the directory prefix, not a fixed file.
+                "raw/github-sources",
+                "raw/assets",
             ),
+        )
+
+    def test_governed_artifact_contract_by_pattern_matches_registry_files(self) -> None:
+        registry_path = "raw/github-sources/cms-gov-regulations.source-registry.json"
+        contract = contracts.governed_artifact_contract_by_pattern(registry_path)
+        self.assertIsNotNone(contract)
+        assert contract is not None
+        self.assertEqual(contract.artifact_id, "github-source-registry")
+        self.assertEqual(contract.lock_path, "raw/.github-sources.lock")
+        self.assertEqual(
+            contract.write_strategy,
+            contracts.ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK.value,
+        )
+
+    def test_governed_artifact_contract_by_pattern_matches_assets(self) -> None:
+        asset_path = "raw/assets/cms-gov/regulations/abc123def456/docs/guidance.md"
+        contract = contracts.governed_artifact_contract_by_pattern(asset_path)
+        self.assertIsNotNone(contract)
+        assert contract is not None
+        self.assertEqual(contract.artifact_id, "external-asset")
+        self.assertIsNone(contract.lock_path)
+        self.assertEqual(
+            contract.write_strategy,
+            contracts.ArtifactWriteStrategy.EXCLUSIVE_CREATE_WRITE_ONCE.value,
+        )
+        # Write-once assets must be declared IMMUTABLE, not MUTABLE.
+        self.assertEqual(
+            contract.mutability,
+            contracts.ArtifactMutability.IMMUTABLE.value,
+        )
+
+    def test_governed_artifact_contract_by_pattern_exact_match_takes_precedence(self) -> None:
+        # Exact-path lookup still works via governed_artifact_contract_by_pattern.
+        log_contract = contracts.governed_artifact_contract_by_pattern("wiki/log.md")
+        self.assertIsNotNone(log_contract)
+        assert log_contract is not None
+        self.assertEqual(log_contract.artifact_id, "wiki-log")
+
+    def test_governed_artifact_contract_by_pattern_no_match(self) -> None:
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("some/undeclared/path.txt")
         )
 
     def test_governed_artifact_contract_details_are_explicit(self) -> None:

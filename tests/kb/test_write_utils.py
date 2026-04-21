@@ -279,5 +279,49 @@ class CheckNoSymlinkPathTests(unittest.TestCase):
         self.assertIn("check_no_symlink_path", write_utils.__all__)
 
 
+class ExclusiveCreateWriteOnceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self._tmp.name).resolve()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_creates_new_file_in_new_parent_dirs(self) -> None:
+        target = self.tmp_path / "a" / "b" / "c.bin"
+        write_utils.exclusive_create_write_once(target, b"hello")
+        self.assertEqual(target.read_bytes(), b"hello")
+
+    def test_idempotent_same_bytes(self) -> None:
+        target = self.tmp_path / "asset.bin"
+        write_utils.exclusive_create_write_once(target, b"data")
+        write_utils.exclusive_create_write_once(target, b"data")  # second call: no-op
+        self.assertEqual(target.read_bytes(), b"data")
+
+    def test_raises_on_byte_mismatch(self) -> None:
+        target = self.tmp_path / "asset.bin"
+        write_utils.exclusive_create_write_once(target, b"original")
+        with self.assertRaises(OSError):
+            write_utils.exclusive_create_write_once(target, b"different")
+
+    def test_raises_on_symlink_path(self) -> None:
+        real = self.tmp_path / "real.bin"
+        real.write_bytes(b"content")
+        link = self.tmp_path / "link.bin"
+        link.symlink_to(real)
+        with self.assertRaises(OSError):
+            write_utils.exclusive_create_write_once(link, b"content")
+
+    def test_no_temp_file_remains_on_success(self) -> None:
+        target = self.tmp_path / "asset.bin"
+        write_utils.exclusive_create_write_once(target, b"hello")
+        # Only the target file should exist; no .asset.bin.* temp files.
+        files = list(self.tmp_path.iterdir())
+        self.assertEqual([target], files)
+
+    def test_is_in_public_api(self) -> None:
+        self.assertIn("exclusive_create_write_once", write_utils.__all__)
+
+
 if __name__ == "__main__":
     unittest.main()

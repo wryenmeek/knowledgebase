@@ -5,9 +5,11 @@ from __future__ import annotations
 import contextlib
 from contextlib import contextmanager
 import fcntl
+import hashlib
 import os
 from os import PathLike
 from pathlib import Path
+import tempfile
 from typing import Iterator, Sequence, TextIO
 
 from . import contracts
@@ -19,12 +21,17 @@ LOG_PATH = Path("wiki/log.md")
 def governed_artifact_contract_for_path(
     path: str | PathLike[str],
 ) -> contracts.GovernedArtifactContract | None:
-    """Return the governed artifact contract for a repo-relative path, if any."""
+    """Return the governed artifact contract for a repo-relative path, if any.
+
+    Uses glob-pattern matching so dynamic artifact families (e.g.,
+    ``raw/github-sources/*.source-registry.json``, ``raw/assets/**``) resolve
+    correctly via ``governed_artifact_contract_by_pattern()``.
+    """
     try:
         normalized_path = path_utils.normalize_repo_relative_path(path)
     except path_utils.RepoRelativePathError:
         return None
-    return contracts.governed_artifact_contract(normalized_path)
+    return contracts.governed_artifact_contract_by_pattern(normalized_path)
 
 
 def governed_artifact_requires_lock(path: str | PathLike[str]) -> bool:
@@ -62,28 +69,36 @@ class LockUnavailableError(RuntimeError):
 
 
 @contextmanager
-def exclusive_write_lock(repo_root: str | Path = ".") -> Iterator[Path]:
-    """Acquire an exclusive non-blocking write lock for wiki mutations.
+def exclusive_write_lock(
+    repo_root: str | Path = ".",
+    lock_path: str = contracts.WRITE_LOCK_PATH,
+) -> Iterator[Path]:
+    """Acquire an exclusive non-blocking write lock.
+
+    Uses *lock_path* relative to *repo_root*.  Defaults to the wiki write
+    lock (``wiki/.kb_write.lock``).  Pass
+    ``lock_path=contracts.GITHUB_SOURCES_LOCK_PATH`` for the separate
+    registry lock used by the github_monitor script family.
 
     A pre-existing unlocked lock file is treated as stale metadata and does not
     block acquisition; only an active advisory lock fails closed.
     """
-    lock_path = Path(repo_root) / contracts.WRITE_LOCK_PATH
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    abs_lock = Path(repo_root) / lock_path
+    abs_lock.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        lock_file = lock_path.open("a+", encoding="utf-8")
+        lock_file = abs_lock.open("a+", encoding="utf-8")
     except OSError as exc:
-        raise LockUnavailableError() from exc
+        raise LockUnavailableError(lock_path) from exc
 
     with lock_file:
         try:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
-            raise LockUnavailableError() from exc
+            raise LockUnavailableError(lock_path) from exc
 
         try:
-            yield lock_path
+            yield abs_lock
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
@@ -289,8 +304,72 @@ def validate_log_entry(entry: str) -> str:
     return normalized
 
 
+def exclusive_create_write_once(path: Path, data: bytes) -> None:
+    """Write binary *data* to *path* using exclusive-create semantics.
+
+    Intended for write-once assets whose path encodes content identity (e.g.,
+    ``raw/assets/{owner}/{repo}/{commit_sha}/{file}``).  Two concurrent calls
+    with the same path and identical bytes both succeed without error; a path
+    that already exists with *different* bytes is a hard failure.
+
+    Behaviour:
+    - Rejects symlinks anywhere in the resolved path chain.
+    - If *path* does not exist: creates parent directories, writes *data* to a
+      temp file in the same directory, then atomically hardlinks it to *path*
+      via ``os.link()`` (which fails with ``FileExistsError`` if the target
+      already exists, giving O_EXCL semantics while protecting against
+      partial-write poison on process interruption).
+    - If *path* already exists (including the TOCTOU case where a concurrent
+      process won the link race): computes sha256 of the existing bytes and
+      compares to sha256 of *data*.  Matching sha256 → silent no-op.
+      Mismatched sha256 → raises ``OSError`` (fail closed).
+    - The temp file is always removed in a ``finally`` block, so an interrupted
+      write does not leave a poisoned path at the target location.
+    """
+    check_no_symlink_path(path)
+
+    def _sha256_hex(b: bytes) -> str:
+        return hashlib.sha256(b).hexdigest()
+
+    def _check_existing(p: Path) -> None:
+        existing = p.read_bytes()
+        if _sha256_hex(existing) != _sha256_hex(data):
+            raise OSError(
+                f"exclusive_create_write_once: path exists with mismatched bytes: {p}"
+            )
+
+    if path.exists():
+        _check_existing(path)
+        return
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write to a sibling temp file, then hardlink atomically to the target.
+    # os.link() is atomic on POSIX and fails with FileExistsError if the target
+    # already exists — giving O_EXCL semantics.  Because the temp file is fully
+    # written before os.link(), a process interruption at any point leaves the
+    # target path either uncreated or verifiably complete; there is no partial-
+    # write poison scenario.
+    fd, tmp_str = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    tmp = Path(tmp_str)
+    try:
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            # Another process created the target between our exists() check and
+            # the hardlink attempt; verify the bytes are identical.
+            _check_existing(path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 __all__ = [
     "check_no_symlink_path",
+    "exclusive_create_write_once",
     "LockUnavailableError",
     "atomic_replace_governed_artifact",
     "exclusive_write_lock",

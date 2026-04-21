@@ -16,6 +16,8 @@ from typing import Any, TypedDict
 
 _COMMIT_SHA_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{64}$")
+# Same pattern as _validators._SAFE_SEGMENT_RE — keep in sync with scripts/github_monitor/_validators.py._SAFE_SEGMENT_RE
+_SAFE_SEGMENT_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._\-]+$")
 
 _VALID_TRACKING_STATUSES: frozenset[str] = frozenset(
     {"active", "paused", "archived", "unreachable", "uninitialized"}
@@ -179,6 +181,11 @@ def validate_contents_response(data: Any) -> dict[str, Any]:
             f"Contents API 'sha' must be a non-empty string, got {data['sha']!r}"
         )
 
+    if not _COMMIT_SHA_RE.match(data["sha"]):
+        raise GitHubAPIResponseError(
+            f"Contents API 'sha' must be a 40-char lowercase hex string, got {data['sha']!r}"
+        )
+
     if data["encoding"] != "base64":
         raise GitHubAPIResponseError(
             f"Contents API 'encoding' must be 'base64', got {data['encoding']!r}"
@@ -312,9 +319,10 @@ def _validate_registry_entry(entry: Any, idx: int) -> None:
 
     for sha_key in ("last_applied_blob_sha", "last_fetched_blob_sha"):
         v = entry.get(sha_key)
-        if v is not None and not isinstance(v, str):
+        if v is not None and not _COMMIT_SHA_RE.match(v):
             raise ValueError(
-                f"Registry entry {idx} field {sha_key!r} must be a string or null"
+                f"Registry entry {idx} field {sha_key!r} must be a 40-char "
+                f"lowercase hex string or null, got {v!r}"
             )
 
     sha256_v = entry.get("sha256_at_last_applied")
@@ -366,4 +374,42 @@ def validate_drift_report(data: Any) -> DriftReport:
             f"got {type(data['has_drift']).__name__!r}"
         )
 
+    for i, entry in enumerate(data["drifted"]):
+        _validate_drifted_entry(entry, i)
+
     return data  # type: ignore[return-value]
+
+
+def _validate_drifted_entry(entry: Any, idx: int) -> None:
+    """Validate one entry from the ``drifted`` list of a drift report."""
+    if not isinstance(entry, dict):
+        raise ValueError(f"drifted[{idx}] must be a JSON object")
+
+    for key in ("owner", "repo", "path", "current_commit_sha", "current_blob_sha"):
+        if key not in entry:
+            raise ValueError(f"drifted[{idx}] missing required field {key!r}")
+        if not isinstance(entry[key], str) or not entry[key]:
+            raise ValueError(
+                f"drifted[{idx}] field {key!r} must be a non-empty string"
+            )
+
+    if not _SAFE_SEGMENT_RE.match(entry["owner"]):
+        raise ValueError(
+            f"drifted[{idx}]['owner'] contains unsafe characters: {entry['owner']!r}"
+        )
+    if not _SAFE_SEGMENT_RE.match(entry["repo"]):
+        raise ValueError(
+            f"drifted[{idx}]['repo'] contains unsafe characters: {entry['repo']!r}"
+        )
+    if not _COMMIT_SHA_RE.match(entry["current_commit_sha"]):
+        raise ValueError(
+            f"drifted[{idx}]['current_commit_sha'] must be a 40-char lowercase hex string"
+        )
+
+    last_applied = entry.get("last_applied_commit_sha")
+    if last_applied is not None:
+        if not isinstance(last_applied, str) or not _COMMIT_SHA_RE.match(last_applied):
+            raise ValueError(
+                f"drifted[{idx}]['last_applied_commit_sha'] must be a 40-char "
+                f"lowercase hex string or null"
+            )

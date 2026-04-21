@@ -499,6 +499,143 @@ class SynthesizeDiffTests(unittest.TestCase):
         self.assertEqual(result.status, STATUS_FAIL)
         self.assertEqual(result.summary["error_count"], 1)
 
+    def test_wiki_lock_contention_returns_fail(self) -> None:
+        """Wiki lock unavailable → SurfaceResult STATUS_FAIL with lock_unavailable."""
+        from scripts.kb.write_utils import LockUnavailableError
+
+        new_commit = "d" * 40
+        blob_sha = "b" * 40
+        old_commit = "c" * 40
+
+        self._write_asset(old_commit, "docs/guide.md", b"old\n")
+        self._write_asset(new_commit, "docs/guide.md", b"new\n")
+        self._write_wiki_page("wiki/pages/topical/guide.md", "# Guide\n")
+
+        entry = _active_entry(
+            last_applied_commit_sha=old_commit,
+            last_fetched_commit_sha=new_commit,
+            last_fetched_blob_sha=blob_sha,
+        )
+        self._write_registry([entry])
+        report_path = self._write_drift_report([
+            _drifted_entry(
+                current_commit_sha=new_commit,
+                current_blob_sha=blob_sha,
+                last_applied_commit_sha=old_commit,
+            )
+        ])
+
+        with patch(
+            "scripts.github_monitor.synthesize_diff.write_utils.exclusive_write_lock"
+        ) as mock_lock:
+            mock_lock.return_value.__enter__.side_effect = LockUnavailableError("test lock")
+            mock_lock.return_value.__exit__ = lambda *a: None
+            result = synthesize_diff(repo_root=self._repo_root, drift_report_path=report_path)
+
+        self.assertEqual(result.status, STATUS_FAIL)
+        self.assertEqual(result.reason_code, "lock_unavailable")
+
+    def test_diff_size_limit_emits_oversize_note(self) -> None:
+        """File > _DIFF_SIZE_LIMIT bytes → OVERSIZE_FILE change note, no diff."""
+        from scripts.github_monitor.synthesize_diff import _DIFF_SIZE_LIMIT
+
+        new_commit = "d" * 40
+        blob_sha = "b" * 40
+        old_commit = "c" * 40
+
+        big = b"x" * (_DIFF_SIZE_LIMIT + 1)
+        self._write_asset(old_commit, "docs/big.md", b"old\n")
+        self._write_asset(new_commit, "docs/big.md", big)
+
+        entry = _active_entry(
+            path="docs/big.md",
+            last_applied_commit_sha=old_commit,
+            last_applied_blob_sha="a" * 40,
+            last_fetched_commit_sha=new_commit,
+            last_fetched_blob_sha=blob_sha,
+            wiki_page="wiki/pages/topical/guide.md",
+        )
+        wiki_page = self._write_wiki_page("wiki/pages/topical/guide.md", "# Guide\n")
+        self._write_registry([entry])
+
+        report_path = self._write_drift_report([
+            _drifted_entry(
+                path="docs/big.md",
+                current_commit_sha=new_commit,
+                current_blob_sha=blob_sha,
+                last_applied_commit_sha=old_commit,
+            )
+        ])
+        result = synthesize_diff(repo_root=self._repo_root, drift_report_path=report_path)
+        self.assertEqual(result.status, STATUS_PASS)
+        wiki_content = wiki_page.read_text()
+        self.assertIn("oversize", wiki_content.lower())
+        self.assertNotIn("~~~~diff", wiki_content)
+
+    def test_invalid_owner_in_drift_report_rejected(self) -> None:
+        """Drift report with traversal in owner field is rejected by validate_drift_report."""
+        entry = _active_entry()
+        self._write_registry([entry])
+        self._write_wiki_page("wiki/pages/topical/guide.md", "# Guide\n")
+
+        # Craft a drift report with an invalid (traversal) owner field.
+        report = _drift_report(
+            drifted=[{
+                "owner": "../evil",  # fails _SAFE_SEGMENT_RE
+                "repo": "test-repo",
+                "path": "docs/guide.md",
+                "current_commit_sha": "d" * 40,
+                "current_blob_sha": "b" * 40,
+                "last_applied_commit_sha": "c" * 40,
+                "last_applied_blob_sha": "a" * 40,
+                "compare_url": "https://github.com/evil/test-repo/compare/c...d",
+            }]
+        )
+        report_path = self._repo_root / "report.json"
+        report_path.write_text(json.dumps(report))
+
+        result = synthesize_diff(repo_root=self._repo_root, drift_report_path=report_path)
+        self.assertEqual(result.status, STATUS_FAIL)
+
+    def test_binary_sha256_reflects_asset_not_wiki_page(self) -> None:
+        """sha256_at_last_applied must reflect the asset bytes, not the wiki page bytes."""
+        new_commit = "d" * 40
+        blob_sha = "b" * 40
+        old_commit = "c" * 40
+
+        old_bytes = b"old content\n"
+        new_bytes = b"\x00binary asset\x00"
+        wiki_bytes = b"# Guide\nsome wiki text\n"
+
+        self._write_asset(old_commit, "docs/guide.md", old_bytes)
+        self._write_asset(new_commit, "docs/guide.md", new_bytes)
+        wiki_page = self._write_wiki_page("wiki/pages/topical/guide.md", wiki_bytes.decode())
+
+        entry = _active_entry(
+            last_applied_commit_sha=old_commit,
+            last_applied_blob_sha="a" * 40,
+            last_fetched_commit_sha=new_commit,
+            last_fetched_blob_sha=blob_sha,
+        )
+        reg_path = self._write_registry([entry])
+        report_path = self._write_drift_report([
+            _drifted_entry(
+                current_commit_sha=new_commit,
+                current_blob_sha=blob_sha,
+                last_applied_commit_sha=old_commit,
+            )
+        ])
+
+        synthesize_diff(repo_root=self._repo_root, drift_report_path=report_path)
+
+        updated = json.loads(reg_path.read_text())
+        stored_sha = updated["entries"][0]["sha256_at_last_applied"]
+        import hashlib
+        expected = hashlib.sha256(new_bytes).hexdigest()
+        self.assertEqual(stored_sha, expected)
+        # Must NOT equal the wiki page SHA
+        self.assertNotEqual(stored_sha, hashlib.sha256(wiki_bytes).hexdigest())
+
 
 # ---------------------------------------------------------------------------
 # run_cli tests

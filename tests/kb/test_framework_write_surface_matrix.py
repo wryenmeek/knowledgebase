@@ -199,6 +199,34 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("ADR-006", "ADR-010"),
         "Hard-fail behavior": ("raw/inbox", "output already exists", "lock unavailable", "fail closed"),
     },
+    "scripts/github_monitor/**": {
+        "Runtime mode": ("read-only only", "blocking-only"),
+        "Writable paths": ("raw/assets/**", "raw/github-sources/**", "wiki/**"),
+        "Lock requirements": ("raw/.github-sources.lock", "wiki/.kb_write.lock", "ADR-012"),
+        "Artifact / schema owners": ("scripts/kb/contracts.py", "schema/github-source-registry-contract.md", "ADR-012"),
+        "Hard-fail behavior": ("missing provenance", "partial validator result", "fail closed"),
+    },
+    "scripts/github_monitor/check_drift.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("schema/github-source-registry-contract.md", "schema/drift-report-contract.md", "ADR-012"),
+        "Hard-fail behavior": ("invalid registry json", "api shape violation", "path traversal", "fail closed"),
+    },
+    "scripts/github_monitor/fetch_content.py` — write mode only": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("raw/assets/", "raw/github-sources/", "last_fetched_"),
+        "Lock requirements": ("raw/.github-sources.lock", "--approval approved"),
+        "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/github-source-registry-contract.md"),
+        "Hard-fail behavior": ("sha-256 mismatch", "path traversal", "lock unavailable", "last_applied_", "fail closed"),
+    },
+    "scripts/github_monitor/synthesize_diff.py` — write mode only": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("wiki/**", "raw/github-sources/", "last_applied_"),
+        "Lock requirements": ("wiki/.kb_write.lock", "raw/.github-sources.lock", "--approval approved"),
+        "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/github-source-registry-contract.md"),
+        "Hard-fail behavior": ("diff injection", "lock unavailable", "last_applied_", "fail closed"),
+    },
 }
 
 

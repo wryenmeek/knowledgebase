@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+import fnmatch
 import json
 from typing import Any
 
@@ -43,13 +44,22 @@ WRITE_ALLOWLIST_PATHS: tuple[str, ...] = (
     "wiki/log.md",
     "raw/processed/**",
 )
-WRITE_LOCK_PATH = "wiki/.kb_write.lock"
 
+# Write allowlist for the CI-5 GitHub source monitor workflow (ADR-012).
+# CI-5 writes to raw/assets/ and raw/github-sources/ in addition to wiki/.
+GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS: tuple[str, ...] = (
+    "raw/assets/**",
+    "raw/github-sources/**",
+    "wiki/**",
+)
+WRITE_LOCK_PATH = "wiki/.kb_write.lock"
+GITHUB_SOURCES_LOCK_PATH = "raw/.github-sources.lock"
 
 class ArtifactMutability(StrEnum):
     """Allowed mutation modes for governed state artifacts."""
 
     APPEND_ONLY = "append_only"
+    IMMUTABLE = "immutable"
     MUTABLE = "mutable"
 
 
@@ -58,6 +68,7 @@ class ArtifactWriteStrategy(StrEnum):
 
     APPEND_UNDER_LOCK = "append_under_lock"
     ATOMIC_REPLACE_UNDER_LOCK = "atomic_replace_under_lock"
+    EXCLUSIVE_CREATE_WRITE_ONCE = "exclusive_create_write_once"
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +81,12 @@ class GovernedArtifactContract:
     mutability: ArtifactMutability | str
     write_strategy: ArtifactWriteStrategy | str
     lock_path: str | None = WRITE_LOCK_PATH
+    # Optional glob pattern for artifact families with dynamic path names
+    # (e.g. ``raw/github-sources/*.source-registry.json``).  When set,
+    # ``governed_artifact_contract_by_pattern()`` matches caller paths against
+    # this pattern.  Exact-path lookup via ``governed_artifact_contract()``
+    # still uses the ``path`` field and is unaffected.
+    path_pattern: str | None = None
 
     def __post_init__(self) -> None:
         # object.__setattr__ is required to mutate fields on a frozen dataclass.
@@ -77,6 +94,13 @@ class GovernedArtifactContract:
         # here ensures comparisons against .value strings always work.
         object.__setattr__(self, "mutability", str(self.mutability))
         object.__setattr__(self, "write_strategy", str(self.write_strategy))
+        # Cross-validate: EXCLUSIVE_CREATE_WRITE_ONCE implies IMMUTABLE.
+        if str(self.write_strategy) == ArtifactWriteStrategy.EXCLUSIVE_CREATE_WRITE_ONCE and str(self.mutability) != ArtifactMutability.IMMUTABLE:
+            raise ValueError(
+                f"GovernedArtifactContract '{self.artifact_id}': "
+                f"EXCLUSIVE_CREATE_WRITE_ONCE requires IMMUTABLE mutability, "
+                f"got {self.mutability!r}"
+            )
 
 
 GOVERNED_ARTIFACT_CONTRACTS: tuple[GovernedArtifactContract, ...] = (
@@ -115,6 +139,25 @@ GOVERNED_ARTIFACT_CONTRACTS: tuple[GovernedArtifactContract, ...] = (
         mutability=ArtifactMutability.MUTABLE,
         write_strategy=ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK,
     ),
+    # GitHub source monitoring artifacts (ADR-012)
+    GovernedArtifactContract(
+        artifact_id="github-source-registry",
+        path="raw/github-sources",
+        schema_owner="schema/github-source-registry-contract.md",
+        mutability=ArtifactMutability.MUTABLE,
+        write_strategy=ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK,
+        lock_path="raw/.github-sources.lock",
+        path_pattern="raw/github-sources/*.source-registry.json",
+    ),
+    GovernedArtifactContract(
+        artifact_id="external-asset",
+        path="raw/assets",
+        schema_owner="docs/decisions/ADR-012-github-source-monitoring.md",
+        mutability=ArtifactMutability.IMMUTABLE,
+        write_strategy=ArtifactWriteStrategy.EXCLUSIVE_CREATE_WRITE_ONCE,
+        lock_path=None,
+        path_pattern="raw/assets/**",
+    ),
 )
 GOVERNED_ARTIFACT_IDS: tuple[str, ...] = tuple(
     artifact.artifact_id for artifact in GOVERNED_ARTIFACT_CONTRACTS
@@ -125,11 +168,32 @@ GOVERNED_ARTIFACT_PATHS: tuple[str, ...] = tuple(
 _GOVERNED_ARTIFACTS_BY_PATH = {
     artifact.path: artifact for artifact in GOVERNED_ARTIFACT_CONTRACTS
 }
+_GOVERNED_ARTIFACTS_WITH_PATTERN = [
+    artifact for artifact in GOVERNED_ARTIFACT_CONTRACTS if artifact.path_pattern
+]
 
 
 def governed_artifact_contract(path: str) -> GovernedArtifactContract | None:
-    """Return the declared artifact contract for a repo-relative path."""
+    """Return the declared artifact contract for a repo-relative path (exact match)."""
     return _GOVERNED_ARTIFACTS_BY_PATH.get(path)
+
+
+def governed_artifact_contract_by_pattern(path: str) -> GovernedArtifactContract | None:
+    """Return the declared artifact contract for a repo-relative path using glob matching.
+
+    Tries exact-path lookup first; if not found, checks ``path_pattern`` fields on
+    artifact contracts using ``fnmatch.fnmatch``.  Returns the first match or ``None``.
+
+    Use this for dynamic artifact paths (e.g., per-repo registry files, per-commit
+    asset paths) where the exact path is not known at contract-declaration time.
+    """
+    exact = _GOVERNED_ARTIFACTS_BY_PATH.get(path)
+    if exact is not None:
+        return exact
+    for artifact in _GOVERNED_ARTIFACTS_WITH_PATTERN:
+        if artifact.path_pattern and fnmatch.fnmatch(path, artifact.path_pattern):
+            return artifact
+    return None
 
 
 class ResultStatus(StrEnum):
@@ -167,6 +231,21 @@ RESULT_ENVELOPE_KEYS: tuple[str, ...] = (
     "log_appended",
     "sources",
 )
+
+
+class GitHubMonitorReasonCode(StrEnum):
+    """Stable reason codes for the github_monitor script family (ADR-012)."""
+
+    NO_DRIFT = "no_drift"
+    DRIFT_DETECTED = "drift_detected"
+    FETCH_FAILED = "fetch_failed"
+    SHA256_MISMATCH = "sha256_mismatch"
+    REGISTRY_LOCKED = "registry_locked"
+    TRACKING_STATUS_ARCHIVED = "tracking_status_archived"
+    UNREACHABLE = "unreachable"
+    UNINITIALIZED_SOURCE = "uninitialized_source"
+    NON_TEXT_CHANGE = "non_text_change"
+    OVERSIZE_FILE = "oversize_file"
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,6 +290,8 @@ __all__ = [
     "POLICY_IDENTIFIERS",
     "TOKEN_PROFILE_IDS",
     "WRITE_ALLOWLIST_PATHS",
+    "GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS",
+    "GITHUB_SOURCES_LOCK_PATH",
     "WRITE_LOCK_PATH",
     "GOVERNED_ARTIFACT_CONTRACTS",
     "GOVERNED_ARTIFACT_IDS",
@@ -224,6 +305,8 @@ __all__ = [
     "TokenProfileId",
     "ResultStatus",
     "ReasonCode",
+    "GitHubMonitorReasonCode",
     "ResultEnvelope",
     "governed_artifact_contract",
+    "governed_artifact_contract_by_pattern",
 ]
