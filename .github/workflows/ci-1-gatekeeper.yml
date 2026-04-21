@@ -173,7 +173,7 @@ jobs:
               case "${reason}" in
                 prereq_missing:ghaw_readiness:python3_unavailable)
                   echo "::notice::FIX: ensure Python 3.12+ is available in the CI runner environment." ;;
-                prereq_missing:ghaw_readiness:missing_*)
+                "prereq_missing:ghaw_readiness:missing_"*)
                   echo "::notice::FIX: the required file referenced in reason code is missing from the repository. Add it before merging." ;;
                 prereq_missing:ghaw_readiness:missing_commit_sha)
                   echo "::notice::FIX: GITHUB_SHA is not set. This check requires a push or pull_request event context." ;;
@@ -185,13 +185,13 @@ jobs:
                   echo "::notice::FIX: the target branch must have branch protection enabled. Enable it in repository Settings → Branches." ;;
                 reject:path_filter:no_changed_paths_detected)
                   echo "::notice::FIX: no paths matched the raw/inbox/** filter. Ensure your commit includes changes to raw/inbox/." ;;
-                reject:path_filter:outside_raw_inbox:*)
+                "reject:path_filter:outside_raw_inbox:"*)
                   echo "::notice::FIX: changed paths must be under raw/inbox/ only. Move files outside that directory to a separate commit." ;;
                 reject:permissions_scope:token_profile_mismatch)
                   echo "::notice::FIX: the workflow must use the tp-gatekeeper token profile. Check the TOKEN_PROFILE env var in the workflow." ;;
                 reject:permissions_scope:minimum_permissions_mismatch | reject:permissions_scope:forbidden_write_scope_declared)
                   echo "::notice::FIX: review the permissions block in this workflow. Only the minimum declared permissions are allowed." ;;
-                prereq_missing:concurrency_guard:*)
+                "prereq_missing:concurrency_guard:"*)
                   echo "::notice::FIX: the concurrency block is missing or misconfigured. Ensure group and cancel-in-progress match the expected values." ;;
               esac
             done
