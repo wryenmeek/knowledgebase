@@ -106,7 +106,7 @@ jobs:
                 SESSION_ID=$(gh pr view "$PR_NUM" --json body -q '.body' \
                   | grep -oE 'https://jules\.google\.com/task/[A-Za-z0-9_-]+' \
                   | sed 's|.*/||' || true)
-                FLEET_DIR=$(ls -d .fleet/*/ 2>/dev/null | sort | tail -1 || true)
+                FLEET_DIR=$(find .fleet -mindepth 1 -maxdepth 1 -type d | sort | tail -1 || true)
                 TASK_PROMPT=""
                 if [ -n "$SESSION_ID" ] && [ -n "$FLEET_DIR" ]; then
                   TASK_ID=$(jq -r --arg sid "$SESSION_ID" \
@@ -171,7 +171,7 @@ jobs:
               # Wait for CI checks to pass
               echo "  🧪 Waiting for CI checks..."
               ELAPSED=$POLL_INTERVAL
-              CI_PASSED=false
+              CI_PASSED="false"
               CI_NONE_ELAPSED=0
 
               while [ $ELAPSED -lt $MAX_CI_WAIT ]; do
@@ -179,14 +179,14 @@ jobs:
 
                 case "$STATUS" in
                   "pass")
-                    CI_PASSED=true
+                    CI_PASSED="true"
                     break
                     ;;
                   "none")
                     CI_NONE_ELAPSED=$((CI_NONE_ELAPSED + POLL_INTERVAL))
                     if [ $CI_NONE_ELAPSED -ge $CI_NONE_THRESHOLD ]; then
                       echo "  ℹ️  No CI checks registered after ${CI_NONE_ELAPSED}s. Proceeding."
-                      CI_PASSED=true
+                      CI_PASSED="true"
                       break
                     fi
                     echo "  ⏳ Checks not yet registered... (${ELAPSED}s/${MAX_CI_WAIT}s)"
@@ -204,7 +204,7 @@ jobs:
                 ELAPSED=$((ELAPSED + POLL_INTERVAL))
               done
 
-              if [ "$CI_PASSED" = false ]; then
+              if [ "$CI_PASSED" = "false" ]; then
                 echo "  ⏭️  Skipping PR #${PR_NUM} (CI did not pass)"
               else
                 # Squash merge
