@@ -118,7 +118,7 @@ python3 scripts/kb/persist_query.py \
   --result-json
 
 # 7) regression/unit/integration workflow checks
-python3 -m unittest discover -s tests -p "test_*.py"
+python3 -m pytest tests/ -q
 ```
 
 ## Framework verification entrypoints
@@ -161,7 +161,7 @@ Framework test entrypoints already present under `tests/kb/`:
 | Repo script suites | `python3 -m unittest tests.kb.test_contracts tests.kb.test_sourceref tests.kb.test_ingest tests.kb.test_update_index tests.kb.test_lint_wiki tests.kb.test_qmd_preflight tests.kb.test_persist_query tests.kb.test_write_utils` | Required when `scripts/kb/**` or approved repo-level helper packages change. |
 | Workflow governance suites | `python3 -m unittest tests.kb.test_workflow_yaml_syntax tests.kb.test_ci1_workflow tests.kb.test_ci2_workflow tests.kb.test_ci3_workflow tests.kb.test_ci_permission_asserts` | Keep CI-1 no-write trusted handoff, CI-2 read-only diagnostics, and CI-3 allowlisted writes aligned with workflow YAML. |
 | Verification matrix suites | `python3 -m unittest tests.kb.test_unit_verification_matrix tests.kb.test_integration_verification_matrix tests.kb.test_regression_verification_matrix` | Final verification pass for unit, integration, and regression coverage expectations. |
-| Broad regression suite | `python3 -m unittest discover -s tests -p "test_*.py"` | Final merge gate after the focused lanes above stay green. |
+| Broad regression suite | `python3 -m pytest tests/ -q` | Final merge gate after the focused lanes above stay green. |
 
 | Approval lane | Authoritative entrypoint | Required control |
 |---|---|---|
@@ -189,7 +189,7 @@ approved, keep these existing MVP suites green:
 - Verification matrix suites:
   `python3 -m unittest tests.kb.test_unit_verification_matrix tests.kb.test_integration_verification_matrix tests.kb.test_regression_verification_matrix`
 - Broad regression suite:
-  `python3 -m unittest discover -s tests -p "test_*.py"`
+  `python3 -m pytest tests/ -q`
 
 ## Exit semantics and failure handling
 
@@ -235,7 +235,7 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 | CI | Normal role | If automation is unavailable/fails |
 |---|---|---|
 | **CI-1** (`.github/workflows/ci-1-gatekeeper.yml`) | trusted-trigger gatekeeper/handoff for `raw/inbox/**` | run local ingest → update_index → lint; open/update PR manually; keep fail-closed behavior and required checks. |
-| **CI-2** (`.github/workflows/ci-2-analyst-diagnostics.yml`) | read-only diagnostics (`lint_wiki --strict` + test suite) | run the same diagnostics locally (`lint_wiki`, `unittest discover`), attach findings to PR/issue; no repo-write automation needed. |
+| **CI-2** (`.github/workflows/ci-2-analyst-diagnostics.yml`) | read-only diagnostics (`lint_wiki --strict` + test suite) | run the same diagnostics locally (`lint_wiki`, `pytest tests/`), attach findings to PR/issue; no repo-write automation needed. |
 | **CI-3** (`.github/workflows/ci-3-pr-producer.yml`) | write-capable PR producer after trusted handoff/manual approval | execute the local sequence in this runbook, commit only allowlisted paths (`wiki/**`, `raw/processed/**`), and open/update PR manually through normal approvals/checks. Manual dispatch runs additionally require protected-environment reviewer approval (`ci3-manual-approval`). |
 
 - **CI-3 manual dispatch note:** `maintainer_approved` remains a required attestation input for `workflow_dispatch`, and manual runs are gated by protected-environment reviewer approval (`ci3-manual-approval`) for authoritative control.

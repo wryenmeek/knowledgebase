@@ -14,3 +14,8 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-005](ADR-005-write-concurrency-guards.md) | Enforce write concurrency with workflow group and local file lock | Accepted |
 | [ADR-006](ADR-006-authoritative-source-boundary.md) | Restrict authoritative ingestion scope to repository-local inputs | Accepted |
 | [ADR-007](ADR-007-control-plane-layering-and-packaging.md) | Layer the wiki-curation control plane over deterministic scripts | Accepted |
+| [ADR-008](ADR-008-agent-writes-to-framework-paths.md) | Authorize agent write paths for `.github/skills/**` and `docs/**` | Accepted |
+| [ADR-009](ADR-009-canonical-identity-and-anchor-management.md) | Canonical identity, slug normalization, and redirect management | Accepted |
+| [ADR-010](ADR-010-convert-sources-adr006-compliance-review.md) | ADR-006 compliance review for `convert_sources_to_md.py` | Accepted |
+| [ADR-011](ADR-011-canonical-utility-reuse.md) | Canonical utility modules and single-definition rule for shared helpers | Accepted |
+| [ADR-012](ADR-012-github-source-monitoring.md) | GitHub source monitoring pipeline | Accepted |

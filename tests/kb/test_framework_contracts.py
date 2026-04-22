@@ -292,7 +292,7 @@ class FrameworkContractAlignmentTests(unittest.TestCase):
         self.assertIn("verification-matrix-and-ci-migration-rules", runbook_text)
         self.assertIn("tests/kb/test_ci1_workflow.py", runbook_text)
         self.assertIn("tests/kb/test_unit_verification_matrix.py", runbook_text)
-        self.assertIn('python3 -m unittest discover -s tests -p "test_*.py"', runbook_text)
+        self.assertIn("python3 -m pytest tests/ -q", runbook_text)
 
         self.assertIn("## Verification matrix and CI migration rules", spec_text)
         self.assertIn("### Current MVP suites that stay green in every phase", spec_text)

@@ -46,13 +46,14 @@ Before implementing any new helper, check these four canonical modules. See ADR-
 5. Move successfully ingested inputs to `raw/processed/**`.
 6. Enforce strict lint and test gates before write-capable automation proceeds.
 
-## Automation model (CI-1..CI-3)
+## Automation model (CI-1..CI-5)
 
 | CI | Responsibility | Write capability |
 |---|---|---|
 | **CI-1** | Trusted-trigger gatekeeper/handoff | No |
 | **CI-2** | Read-only diagnostics and analysis | No |
 | **CI-3** | PR-producing write path with allowlists and preflight | Yes (allowlisted paths only) |
+| **CI-4** | Framework writer: staged agent-generated content for `docs/**` and `.github/skills/**` | Yes (`docs/**`, `.github/skills/**`; workflow_dispatch only; approval-gated) |
 | **CI-5** | GitHub source monitor: scheduled drift detection (read-only) + PR-producing fetch/synthesize path | Drift job: No. Write jobs: Yes (`raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**`) |
 
 This split is intentional: it isolates trust checks, diagnostics, and write operations
@@ -178,8 +179,8 @@ Operators can validate the landed framework with these repo-local entrypoints:
 | Backlink suggestions | `python3 .github/skills/suggest-backlinks/logic/suggest_backlinks.py <page> [--wiki-root wiki]` | Neighborhood-scoped (same namespace + linked pages); returns JSON `BacklinkProposal` list; read-only |
 | Read-only state-sync precheck | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only [--artifact wiki/index.md\|wiki/log.md\|wiki/open-questions.md\|wiki/backlog.md\|wiki/status.md]` | Confirms approved governed-artifact routing; index precheck still runs the allowlisted index/lint path |
 | Write-capable governed sync | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index` (or the typed log/open-questions/backlog/status sync flags) | Mutates only approved governed artifacts after mode-specific checks and ADR-005 locking succeed |
-| Focused framework suite | `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_skill_wrappers` | `tests/kb/test_framework_contracts.py`, `test_framework_skills.py`, `test_framework_agents.py`, `test_framework_references.py`, `test_skill_wrappers.py` |
-| Full repository suite | `python3 -m unittest discover -s tests -p "test_*.py"` | End-to-end regression safety beyond framework-specific checks |
+| Focused framework suite | `python3 -m pytest tests/kb/test_framework_contracts.py tests/kb/test_framework_skills.py tests/kb/test_framework_agents.py tests/kb/test_framework_references.py tests/kb/test_skill_wrappers.py -v` | `tests/kb/test_framework_contracts.py`, `test_framework_skills.py`, `test_framework_agents.py`, `test_framework_references.py`, `test_skill_wrappers.py` |
+| Full repository suite | `python3 -m pytest tests/ -q` | End-to-end regression safety beyond framework-specific checks |
 
 ## Write and safety controls
 
@@ -212,3 +213,8 @@ Key architecture decisions are captured in ADRs:
 - [`ADR-005`](decisions/ADR-005-write-concurrency-guards.md): workflow + local lock concurrency model
 - [`ADR-006`](decisions/ADR-006-authoritative-source-boundary.md): repository-local authoritative source boundary
 - [`ADR-007`](decisions/ADR-007-control-plane-layering-and-packaging.md): framework control-plane layering and packaging rule
+- [`ADR-008`](decisions/ADR-008-agent-writes-to-framework-paths.md): authorize agent write paths for `.github/skills/**` and `docs/**`
+- [`ADR-009`](decisions/ADR-009-canonical-identity-and-anchor-management.md): canonical identity, slug normalization, and redirect management
+- [`ADR-010`](decisions/ADR-010-convert-sources-adr006-compliance-review.md): ADR-006 compliance review for `convert_sources_to_md.py`
+- [`ADR-011`](decisions/ADR-011-canonical-utility-reuse.md): canonical utility modules and single-definition rule
+- [`ADR-012`](decisions/ADR-012-github-source-monitoring.md): GitHub source monitoring pipeline

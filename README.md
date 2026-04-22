@@ -16,7 +16,7 @@ python3 scripts/kb/update_index.py --wiki-root wiki --write
 python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 
 # 4) run tests
-python3 -m unittest discover -s tests -p "test_*.py"
+python3 -m pytest tests/ -q
 ```
 
 For full operational flow (including qmd and query-persist behavior), see
@@ -34,10 +34,10 @@ For full operational flow (including qmd and query-persist behavior), see
 | `python3 .github/skills/suggest-backlinks/logic/suggest_backlinks.py <page> [--wiki-root wiki]` | Suggest backlink opportunities for a wiki page; returns JSON `BacklinkProposal` list; read-only. |
 | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only` | Run read-only framework state-sync prechecks, including authoritative commit-bound SourceRef linting. |
 | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index` | Refresh `wiki/index.md` through the allowlisted framework wrapper after authoritative commit-bound SourceRef prechecks pass. |
-| `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_skill_wrappers` | Run the targeted framework contracts/skills/agents/reference plus wrapper test suite. |
+| `python3 -m pytest tests/kb/test_framework_contracts.py tests/kb/test_framework_skills.py tests/kb/test_framework_agents.py tests/kb/test_framework_references.py tests/kb/test_skill_wrappers.py -v` | Run the targeted framework contracts/skills/agents/reference plus wrapper test suite. |
 | `qmd collection add wiki --name wiki && qmd embed && qmd query "<query>"` | Build/query local semantic index. |
 | `python3 scripts/kb/persist_query.py ... --result-json` | Policy-gated persistence of high-value query outputs. |
-| `python3 -m unittest discover -s tests -p "test_*.py"` | Run repository test suite. |
+| `python3 -m pytest tests/ -q` | Run repository test suite. |
 
 ## Framework operator notes
 

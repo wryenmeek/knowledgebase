@@ -12,13 +12,17 @@ JSON to stdout and uses stable reason codes for machine-readable outcomes.
 | `kb/lint_wiki.py` | Core validator | Custom `main` | No |
 | `kb/persist_query.py` | Core KB | Custom `run_cli` | Yes (wiki/analyses) |
 | `kb/qmd_preflight.py` | Core validator | Custom `run_cli` | No |
-| `context/fill_context_pages.py` | Optional surface | `run_surface_cli` | Gated (apply mode) |
-| `context/manage_context_pages.py` | Optional surface | `run_surface_cli` | Gated (publish-status) |
-| `reporting/content_quality_report.py` | Optional surface | `run_surface_cli` | No (read-only) |
-| `maintenance/generate_docs.py` | Optional surface | `run_surface_cli` | Gated (apply mode) |
+| `context/fill_context_pages.py` | Optional surface | `run_surface_cli` | Gated (apply mode; `.github/skills/**`, `docs/**`) |
+| `context/manage_context_pages.py` | Optional surface | `run_surface_cli` | Gated (publish-status; delegates `wiki/status.md` via sync wrapper) |
+| `reporting/content_quality_report.py` | Optional surface | `run_surface_cli` | Gated (persist mode; `wiki/reports/content-quality-*.json`) |
+| `reporting/quality_runtime.py` | Optional surface | `run_surface_cli` | Gated (score-update: `wiki/reports/quality-scores-*.json`; report: `wiki/reports/quality-report-*.json`) |
+| `maintenance/generate_docs.py` | Optional surface | `run_surface_cli` | Gated (apply mode; `docs/**`) |
 | `validation/check_doc_freshness.py` | Validation | Custom `run_cli` | No |
 | `validation/snapshot_knowledgebase.py` | Validation | Custom `run_cli` | No |
-| `ingest/convert_sources_to_md.py` | Optional surface | `run_surface_cli` | No (preview only) |
+| `ingest/convert_sources_to_md.py` | Optional surface | `run_surface_cli` | Gated (apply mode; `raw/processed/**`) |
+| `github_monitor/check_drift.py` | GitHub monitor Phase 1 | Module CLI (`python -m`) | No (drift report to file only) |
+| `github_monitor/fetch_content.py` | GitHub monitor Phase 2 | Module CLI (`python -m`) | Gated (`raw/assets/**`, `raw/github-sources/**` registry) |
+| `github_monitor/synthesize_diff.py` | GitHub monitor Phase 3 | Module CLI (`python -m`) | Gated (`wiki/**` change notes, `raw/github-sources/**` registry) |
 
 ## Common patterns
 
