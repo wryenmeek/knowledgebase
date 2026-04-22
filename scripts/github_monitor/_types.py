@@ -16,8 +16,13 @@ from typing import Any, TypedDict
 
 _COMMIT_SHA_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{64}$")
-# Same pattern as _validators._SAFE_SEGMENT_RE — keep in sync with scripts/github_monitor/_validators.py._SAFE_SEGMENT_RE
+# Canonical definition — imported by scripts/github_monitor/_validators.py.
 _SAFE_SEGMENT_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._\-]+$")
+# GitHub compare URL: .../compare/{7hex}...{7hex}
+_COMPARE_URL_RE: re.Pattern[str] = re.compile(
+    r"^https://github\.com/[A-Za-z0-9._\-]+/[A-Za-z0-9._\-]+/compare/"
+    r"[0-9a-f]{7}\.\.\.[0-9a-f]{7}$"
+)
 
 _VALID_TRACKING_STATUSES: frozenset[str] = frozenset(
     {"active", "paused", "archived", "unreachable", "uninitialized"}
@@ -235,6 +240,12 @@ def validate_commits_response(data: Any) -> list[dict[str, Any]]:
             f"Commits API list item missing valid 'sha' field: {first!r}"
         )
 
+    if not _COMMIT_SHA_RE.match(first["sha"]):
+        raise GitHubAPIResponseError(
+            f"Commits API 'sha' must be a 40-char lowercase hex string, "
+            f"got {first['sha']!r}"
+        )
+
     return data
 
 
@@ -402,6 +413,10 @@ def _validate_drifted_entry(entry: Any, idx: int) -> None:
         raise ValueError(
             f"drifted[{idx}]['current_commit_sha'] must be a 40-char lowercase hex string"
         )
+    if not _COMMIT_SHA_RE.match(entry["current_blob_sha"]):
+        raise ValueError(
+            f"drifted[{idx}]['current_blob_sha'] must be a 40-char lowercase hex string"
+        )
 
     last_applied = entry.get("last_applied_commit_sha")
     if last_applied is not None:
@@ -409,4 +424,25 @@ def _validate_drifted_entry(entry: Any, idx: int) -> None:
             raise ValueError(
                 f"drifted[{idx}]['last_applied_commit_sha'] must be a 40-char "
                 f"lowercase hex string or null"
+            )
+
+    last_applied_blob = entry.get("last_applied_blob_sha")
+    if last_applied_blob is not None:
+        if not isinstance(last_applied_blob, str) or not _COMMIT_SHA_RE.match(last_applied_blob):
+            raise ValueError(
+                f"drifted[{idx}]['last_applied_blob_sha'] must be a 40-char "
+                f"lowercase hex string or null"
+            )
+
+    compare_url = entry.get("compare_url")
+    if compare_url is not None:
+        if not isinstance(compare_url, str):
+            raise ValueError(
+                f"drifted[{idx}]['compare_url'] must be a string or null"
+            )
+        if not _COMPARE_URL_RE.match(compare_url):
+            raise ValueError(
+                f"drifted[{idx}]['compare_url'] must be a GitHub compare URL "
+                f"(https://github.com/OWNER/REPO/compare/AAAAAAA...BBBBBBB), "
+                f"got {compare_url!r}"
             )

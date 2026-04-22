@@ -99,7 +99,10 @@ def _drifted_entry(
         "current_blob_sha": current_blob_sha,
         "last_applied_commit_sha": last_applied_commit_sha,
         "last_applied_blob_sha": last_applied_blob_sha,
-        "compare_url": f"https://github.com/{owner}/{repo}/compare/old...new",
+        "compare_url": (
+            f"https://github.com/{owner}/{repo}/compare/"
+            f"{last_applied_commit_sha[:7]}...{current_commit_sha[:7]}"
+        ),
     }
 
 
@@ -596,6 +599,56 @@ class SynthesizeDiffTests(unittest.TestCase):
 
         result = synthesize_diff(repo_root=self._repo_root, drift_report_path=report_path)
         self.assertEqual(result.status, STATUS_FAIL)
+
+    def test_wiki_page_outside_wiki_boundary_returns_error(self) -> None:
+        """wiki_page pointing outside wiki/ must be rejected with STATUS_FAIL."""
+        new_commit = "d" * 40
+        blob_sha = "b" * 40
+
+        self._write_asset(new_commit, "docs/guide.md", b"new\n")
+
+        entry = _active_entry(
+            last_fetched_commit_sha=new_commit,
+            last_fetched_blob_sha=blob_sha,
+            wiki_page="raw/assets/test-org/test-repo/guide.json",
+        )
+        self._write_registry([entry])
+
+        report_path = self._write_drift_report([
+            _drifted_entry(
+                current_commit_sha=new_commit,
+                current_blob_sha=blob_sha,
+            )
+        ])
+
+        result = synthesize_diff(repo_root=self._repo_root, drift_report_path=report_path)
+        self.assertEqual(result.status, STATUS_FAIL)
+        self.assertEqual(result.summary["error_count"], 1)
+
+    def test_wiki_page_non_md_suffix_returns_error(self) -> None:
+        """wiki_page with a non-.md suffix must be rejected with STATUS_FAIL."""
+        new_commit = "d" * 40
+        blob_sha = "b" * 40
+
+        self._write_asset(new_commit, "docs/guide.md", b"new\n")
+
+        entry = _active_entry(
+            last_fetched_commit_sha=new_commit,
+            last_fetched_blob_sha=blob_sha,
+            wiki_page="wiki/pages/topical/guide.json",
+        )
+        self._write_registry([entry])
+
+        report_path = self._write_drift_report([
+            _drifted_entry(
+                current_commit_sha=new_commit,
+                current_blob_sha=blob_sha,
+            )
+        ])
+
+        result = synthesize_diff(repo_root=self._repo_root, drift_report_path=report_path)
+        self.assertEqual(result.status, STATUS_FAIL)
+        self.assertEqual(result.summary["error_count"], 1)
 
     def test_binary_sha256_reflects_asset_not_wiki_page(self) -> None:
         """sha256_at_last_applied must reflect the asset bytes, not the wiki page bytes."""

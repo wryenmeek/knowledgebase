@@ -11,15 +11,14 @@ import re
 import urllib.parse
 from pathlib import Path, PurePosixPath
 
+from scripts.github_monitor._types import _SAFE_SEGMENT_RE
+
 
 _FORBIDDEN_COMPONENTS: frozenset[str] = frozenset({".."})
 # Note: "~" is intentionally absent here; it is caught by the ``startswith("~")``
 # check in ``_check_path_components`` which also covers ``~user`` forms.
 _MAX_PATH_DEPTH: int = 20  # Practical guard against unreasonably deep paths
 
-# Allowed characters for owner/repo registry fields.  Rejects slashes and
-# any traversal-capable sequences.
-_SAFE_SEGMENT_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._\-]+$")
 # Full 40-char lowercase hex string (git commit / blob SHA).
 _COMMIT_SHA_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{40}$")
 

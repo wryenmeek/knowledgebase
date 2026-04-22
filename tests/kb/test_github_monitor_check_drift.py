@@ -24,10 +24,15 @@ from scripts.github_monitor._types import (
 from scripts.github_monitor.check_drift import (
     SURFACE,
     _check_active_entry,
-    _make_github_request,
     check_drift,
     run_cli,
 )
+from scripts.github_monitor._http import (
+    _make_github_request,
+    _parse_retry_after,
+    _MAX_RETRY_DELAY,
+)
+from scripts.github_monitor._types import validate_commits_response
 from scripts._optional_surface_common import STATUS_PASS, STATUS_FAIL
 from scripts.kb.contracts import GitHubMonitorReasonCode
 
@@ -290,8 +295,172 @@ class MakeGitHubRequestTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _check_active_entry tests
+# _parse_retry_after tests
 # ---------------------------------------------------------------------------
+
+
+class ParseRetryAfterTests(unittest.TestCase):
+    def test_numeric_value_returned_as_float(self) -> None:
+        self.assertEqual(_parse_retry_after("5"), 5.0)
+
+    def test_numeric_value_capped_at_max(self) -> None:
+        result = _parse_retry_after(str(int(_MAX_RETRY_DELAY) + 3600))
+        self.assertEqual(result, _MAX_RETRY_DELAY)
+
+    def test_none_returns_none(self) -> None:
+        self.assertIsNone(_parse_retry_after(None))
+
+    def test_empty_string_returns_none(self) -> None:
+        self.assertIsNone(_parse_retry_after(""))
+
+    def test_http_date_returns_none(self) -> None:
+        # RFC 7231 HTTP-date format — must fall back to default delay, not crash.
+        self.assertIsNone(_parse_retry_after("Wed, 21 Oct 2015 07:28:00 GMT"))
+
+    def test_make_github_request_uses_retry_after_header(self) -> None:
+        """429 response with Retry-After: 2 sleeps for 2 s, not the default delay."""
+        header_mock = {"Retry-After": "2"}
+        err = urllib.error.HTTPError("url", 429, "Too Many Requests", header_mock, None)  # type: ignore[arg-type]
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"ok": true}'
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        with patch("urllib.request.urlopen", side_effect=[err, mock_resp]):
+            with patch("time.sleep") as mock_sleep:
+                _make_github_request("https://api.github.com/test", "tok")
+        mock_sleep.assert_called_once_with(2.0)
+
+    def test_make_github_request_http_date_falls_back_to_default(self) -> None:
+        """Non-numeric Retry-After must fall back to default without crashing."""
+        header_mock = {"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"}
+        err = urllib.error.HTTPError("url", 429, "Too Many Requests", header_mock, None)  # type: ignore[arg-type]
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"ok": true}'
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        with patch("urllib.request.urlopen", side_effect=[err, mock_resp]):
+            with patch("time.sleep") as mock_sleep:
+                _make_github_request("https://api.github.com/test", "tok")
+        # Must have slept (default back-off), not crashed.
+        mock_sleep.assert_called_once()
+        sleep_arg = mock_sleep.call_args[0][0]
+        self.assertIsInstance(sleep_arg, float)
+
+
+# ---------------------------------------------------------------------------
+# validate_commits_response SHA format tests
+# ---------------------------------------------------------------------------
+
+
+class ValidateCommitsResponseTests(unittest.TestCase):
+    def _valid(self) -> list:
+        return [{"sha": "a" * 40, "commit": {"message": "update"}}]
+
+    def test_valid_response_passes(self) -> None:
+        result = validate_commits_response(self._valid())
+        self.assertEqual(result[0]["sha"], "a" * 40)
+
+    def test_not_list_raises(self) -> None:
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_commits_response({"sha": "a" * 40})
+
+    def test_empty_list_raises(self) -> None:
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_commits_response([])
+
+    def test_first_item_not_dict_raises(self) -> None:
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_commits_response(["not-a-dict"])
+
+    def test_sha_missing_raises(self) -> None:
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_commits_response([{"commit": {}}])
+
+    def test_sha_wrong_format_raises(self) -> None:
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_commits_response([{"sha": "abc123"}])  # only 6 chars
+
+    def test_sha_uppercase_raises(self) -> None:
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_commits_response([{"sha": "A" * 40}])  # uppercase not allowed
+
+
+# ---------------------------------------------------------------------------
+# ValidateDriftReportTests — additional drifted entry validation
+# ---------------------------------------------------------------------------
+
+
+class ValidateDriftedEntryTests(unittest.TestCase):
+    def _valid_entry(self) -> dict:
+        return {
+            "owner": "test-org",
+            "repo": "test-repo",
+            "path": "docs/guide.md",
+            "current_commit_sha": "d" * 40,
+            "current_blob_sha": "b" * 40,
+            "last_applied_commit_sha": "c" * 40,
+            "last_applied_blob_sha": "a" * 40,
+            "compare_url": (
+                "https://github.com/test-org/test-repo/compare/"
+                + "c" * 7 + "..." + "d" * 7
+            ),
+        }
+
+    def _report_with(self, entry: dict) -> dict:
+        from scripts.github_monitor._types import DRIFT_REPORT_VERSION
+        return {
+            "version": DRIFT_REPORT_VERSION,
+            "generated_at": "2024-01-01T00:00:00+00:00",
+            "registry": "raw/github-sources/org-repo.source-registry.json",
+            "has_drift": True,
+            "drifted": [entry],
+            "up_to_date": [],
+            "uninitialized": [],
+            "errors": [],
+        }
+
+    def test_valid_drifted_entry_passes(self) -> None:
+        validate_drift_report(self._report_with(self._valid_entry()))
+
+    def test_invalid_current_blob_sha_format_raises(self) -> None:
+        entry = self._valid_entry()
+        entry["current_blob_sha"] = "not-a-sha"
+        with self.assertRaises(ValueError):
+            validate_drift_report(self._report_with(entry))
+
+    def test_invalid_last_applied_blob_sha_format_raises(self) -> None:
+        entry = self._valid_entry()
+        entry["last_applied_blob_sha"] = "abc123"  # too short
+        with self.assertRaises(ValueError):
+            validate_drift_report(self._report_with(entry))
+
+    def test_null_last_applied_blob_sha_passes(self) -> None:
+        entry = self._valid_entry()
+        entry["last_applied_blob_sha"] = None
+        validate_drift_report(self._report_with(entry))
+
+    def test_invalid_compare_url_raises(self) -> None:
+        entry = self._valid_entry()
+        entry["compare_url"] = "javascript:void(0)"
+        with self.assertRaises(ValueError):
+            validate_drift_report(self._report_with(entry))
+
+    def test_compare_url_short_sha_raises(self) -> None:
+        entry = self._valid_entry()
+        entry["compare_url"] = "https://github.com/org/repo/compare/abc...def"  # 3 chars
+        with self.assertRaises(ValueError):
+            validate_drift_report(self._report_with(entry))
+
+    def test_null_compare_url_passes(self) -> None:
+        entry = self._valid_entry()
+        entry["compare_url"] = None
+        validate_drift_report(self._report_with(entry))
+
+    def test_compare_url_non_string_raises(self) -> None:
+        entry = self._valid_entry()
+        entry["compare_url"] = 12345
+        with self.assertRaises(ValueError):
+            validate_drift_report(self._report_with(entry))
 
 
 class CheckActiveEntryTests(unittest.TestCase):

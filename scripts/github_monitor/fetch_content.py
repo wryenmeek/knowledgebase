@@ -55,12 +55,14 @@ from scripts.github_monitor._types import (
     GitHubAPIResponseError,
 )
 from scripts.github_monitor._validators import build_asset_path, validate_external_path
-from scripts.github_monitor.check_drift import _get_github_token, _make_github_request
+from scripts.github_monitor._http import (
+    _GITHUB_API_BASE,
+    _get_github_token,
+    _make_github_request,
+)
 
 SURFACE = "github_monitor.fetch_content"
 MODE = "fetch"
-
-_GITHUB_API_BASE = "https://api.github.com"
 
 
 def _path_rules() -> dict[str, Any]:

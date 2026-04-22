@@ -18,6 +18,7 @@ import contextlib
 import glob as glob_module
 import json
 import os
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,7 +40,11 @@ def find_registry_for(repo_root: Path, owner: str, repo: str) -> Path | None:
         p = Path(match)
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            print(
+                f"WARNING: skipping unreadable/corrupt registry file {p}: {exc}",
+                file=sys.stderr,
+            )
             continue
         if data.get("owner") == owner and data.get("repo") == repo:
             return p

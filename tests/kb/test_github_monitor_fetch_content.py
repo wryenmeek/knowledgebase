@@ -97,7 +97,10 @@ def _drifted_entry(
         "current_blob_sha": current_blob_sha,
         "last_applied_commit_sha": last_applied_commit_sha,
         "last_applied_blob_sha": last_applied_blob_sha,
-        "compare_url": f"https://github.com/{owner}/{repo}/compare/abc...def",
+        "compare_url": (
+            f"https://github.com/{owner}/{repo}/compare/"
+            f"{last_applied_commit_sha[:7]}...{current_commit_sha[:7]}"
+        ),
     }
 
 

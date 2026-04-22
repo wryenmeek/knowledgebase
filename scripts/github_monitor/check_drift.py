@@ -26,11 +26,7 @@ from __future__ import annotations
 
 import glob as glob_module
 import json
-import os
 import sys
-import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -59,66 +55,21 @@ from scripts.github_monitor._types import (
     validate_commits_response,
     validate_registry_file,
 )
+from scripts.github_monitor._http import (
+    _GITHUB_API_BASE,
+    _get_github_token,
+    _make_github_request,
+)
 from scripts.github_monitor._validators import validate_external_path
 
 SURFACE = "github_monitor.check_drift"
 MODE = "check"
-
-_GITHUB_API_BASE = "https://api.github.com"
-_MAX_RETRIES = 3
-_RETRY_DELAY_SECONDS = (1.0, 2.0, 4.0)
 
 
 def _path_rules() -> dict[str, Any]:
     return base_path_rules(
         allowed_roots=["raw/github-sources"],
         allowed_suffixes=[".json"],
-    )
-
-
-def _get_github_token() -> str | None:
-    return os.environ.get("GITHUB_APP_TOKEN") or os.environ.get("GITHUB_TOKEN")
-
-
-def _make_github_request(url: str, token: str) -> Any:
-    """Make an authenticated GET request to the GitHub API with retry on 5xx.
-
-    Returns the parsed JSON body.  Raises ``GitHubAPIRequestError`` on HTTP
-    4xx/5xx (after retries for 5xx) or network errors.
-    """
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github.v3+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "knowledgebase-github-monitor/1",
-        },
-    )
-    last_exc: Exception | None = None
-    for attempt in range(_MAX_RETRIES):
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            if (exc.code >= 500 or exc.code == 429) and attempt < _MAX_RETRIES - 1:
-                last_exc = exc
-                retry_after = exc.headers.get("Retry-After") if exc.headers else None
-                delay = float(retry_after) if retry_after else _RETRY_DELAY_SECONDS[attempt]
-                time.sleep(delay)
-                continue
-            raise GitHubAPIRequestError(
-                url=url, status_code=exc.code, detail=exc.reason
-            ) from exc
-        except urllib.error.URLError as exc:
-            raise GitHubAPIRequestError(
-                url=url, status_code=None, detail=str(exc.reason)
-            ) from exc
-    # All retries exhausted on 5xx or 429 — last_exc is always set here.
-    raise GitHubAPIRequestError(
-        url=url,
-        status_code=getattr(last_exc, "code", None),
-        detail=f"request failed after {_MAX_RETRIES} retries; last error: {last_exc}",
     )
 
 
