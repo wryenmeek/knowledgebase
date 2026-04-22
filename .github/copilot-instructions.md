@@ -127,6 +127,20 @@ For non-trivial changes, run these skill passes in order — later passes often 
 4. `documentation-and-adrs` — SKILL.md, architecture.md, README.md, docstrings
 5. `shipping-and-launch` — pre-launch checklist, write-surface matrix
 
+When a review pass produces test gap findings, address them in the same fix commit — not as a follow-up. Test coverage gaps are first-class review findings, not optional housekeeping.
+
+### Module boundaries within `scripts/` subpackages
+
+In any `scripts/<subpackage>/` directory, never import `_private_prefixed` symbols from a sibling module. If two modules in the same subpackage need to share logic, extract it to a dedicated common module (`_http.py`, `_common.py`, `_shared.py`, etc.) within that subpackage. Importing private internals from a sibling creates hidden coupling and makes the public surface unauditable.
+
+### Constants: import, don't duplicate
+
+Define every module-level constant once and import from the canonical location — even within the same subpackage. Never copy a constant to a sibling file, even with a `# keep in sync with <module>.<CONSTANT>` comment. "Keep in sync" comments are only acceptable when an import would create a genuine circular dependency; in that case, extract to a `_constants.py` module and resolve the cycle.
+
+### CI: `if: always()` on steps downstream of surface scripts
+
+`run_surface_cli`-backed scripts exit `1` on partial success (some entries succeeded, some failed). Any downstream CI step — commit, PR creation, artifact upload — that should run regardless of partial failure **must** have `if: always()`. Without it, successful writes are silently discarded whenever any entry fails.
+
 ## Boundaries
 
 - **Always:** follow skill workflow requirements when applicable.
