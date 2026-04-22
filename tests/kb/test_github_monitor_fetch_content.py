@@ -19,6 +19,7 @@ from scripts.github_monitor._types import (
 )
 from scripts.github_monitor._registry import (
     find_registry_for,
+    update_last_applied,
     update_last_fetched,
 )
 from scripts.github_monitor.fetch_content import (
@@ -225,6 +226,87 @@ class UpdateLastFetchedTests(unittest.TestCase):
             "docs/guide.md",
             commit_sha="d" * 40,
             blob_sha="b" * 40,
+        )
+        parsed = json.loads(self._reg_path.read_text())
+        self.assertEqual(parsed["version"], REGISTRY_VERSION)
+
+
+# ---------------------------------------------------------------------------
+# update_last_applied tests
+# ---------------------------------------------------------------------------
+
+
+class UpdateLastAppliedTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.mkdtemp()
+        self._repo_root = Path(self._tmpdir)
+        (self._repo_root / "raw" / "github-sources").mkdir(parents=True)
+        self._reg_path = (
+            self._repo_root / "raw" / "github-sources" / "test.source-registry.json"
+        )
+
+    def _write_registry(self, entries: list) -> None:
+        reg = _make_registry(entries=entries)
+        self._reg_path.write_text(json.dumps(reg))
+
+    def test_updates_last_applied_fields(self) -> None:
+        self._write_registry([_active_entry()])
+        result = update_last_applied(
+            self._repo_root,
+            self._reg_path,
+            "docs/guide.md",
+            commit_sha="d" * 40,
+            blob_sha="b" * 40,
+            sha256="e" * 64,
+        )
+        self.assertTrue(result)
+        updated = json.loads(self._reg_path.read_text())
+        entry = updated["entries"][0]
+        self.assertEqual(entry["last_applied_commit_sha"], "d" * 40)
+        self.assertEqual(entry["last_applied_blob_sha"], "b" * 40)
+        self.assertEqual(entry["sha256_at_last_applied"], "e" * 64)
+        self.assertIsNotNone(entry["last_applied_at"])
+
+    def test_does_not_modify_last_fetched(self) -> None:
+        """update_last_applied must NOT touch last_fetched_* fields."""
+        entry = _active_entry()
+        entry["last_fetched_commit_sha"] = "f" * 40
+        entry["last_fetched_blob_sha"] = "b" * 40
+        self._write_registry([entry])
+        update_last_applied(
+            self._repo_root,
+            self._reg_path,
+            "docs/guide.md",
+            commit_sha="d" * 40,
+            blob_sha="b" * 40,
+            sha256="e" * 64,
+        )
+        updated = json.loads(self._reg_path.read_text())
+        e = updated["entries"][0]
+        self.assertEqual(e["last_fetched_commit_sha"], "f" * 40)
+        self.assertEqual(e["last_fetched_blob_sha"], "b" * 40)
+
+    def test_returns_false_for_missing_path(self) -> None:
+        self._write_registry([_active_entry()])
+        result = update_last_applied(
+            self._repo_root,
+            self._reg_path,
+            "nonexistent/path.md",
+            commit_sha="d" * 40,
+            blob_sha="b" * 40,
+            sha256="e" * 64,
+        )
+        self.assertFalse(result)
+
+    def test_atomic_replace_is_valid_json(self) -> None:
+        self._write_registry([_active_entry()])
+        update_last_applied(
+            self._repo_root,
+            self._reg_path,
+            "docs/guide.md",
+            commit_sha="d" * 40,
+            blob_sha="b" * 40,
+            sha256="e" * 64,
         )
         parsed = json.loads(self._reg_path.read_text())
         self.assertEqual(parsed["version"], REGISTRY_VERSION)

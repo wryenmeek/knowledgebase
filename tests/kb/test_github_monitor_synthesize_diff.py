@@ -689,6 +689,127 @@ class SynthesizeDiffTests(unittest.TestCase):
         # Must NOT equal the wiki page SHA
         self.assertNotEqual(stored_sha, hashlib.sha256(wiki_bytes).hexdigest())
 
+    def test_reg_entry_not_in_registry_returns_error(self) -> None:
+        """Drift report references a path not present in the registry (race window)."""
+        new_commit = "d" * 40
+        blob_sha = "b" * 40
+
+        self._write_asset(new_commit, "docs/guide.md", b"new\n")
+        self._write_wiki_page("wiki/pages/topical/guide.md", "# Guide\n")
+
+        # Registry has a different path — simulates entry removed between Phase 1 and 3.
+        entry = _active_entry(
+            path="docs/other.md",
+            last_fetched_commit_sha=new_commit,
+            last_fetched_blob_sha=blob_sha,
+            wiki_page="wiki/pages/topical/other.md",
+        )
+        self._write_registry([entry])
+
+        report_path = self._write_drift_report([
+            _drifted_entry(
+                path="docs/guide.md",
+                current_commit_sha=new_commit,
+                current_blob_sha=blob_sha,
+            )
+        ])
+
+        result = synthesize_diff(repo_root=self._repo_root, drift_report_path=report_path)
+        self.assertEqual(result.status, STATUS_FAIL)
+        self.assertEqual(result.summary["error_count"], 1)
+        self.assertEqual(result.summary["synthesized_count"], 0)
+
+    def test_registry_update_failure_after_wiki_write_returns_error(self) -> None:
+        """Wiki page written successfully but registry update fails → STATUS_FAIL."""
+        new_commit = "d" * 40
+        blob_sha = "b" * 40
+        old_commit = "c" * 40
+
+        self._write_asset(old_commit, "docs/guide.md", b"old\n")
+        self._write_asset(new_commit, "docs/guide.md", b"new\n")
+        self._write_wiki_page("wiki/pages/topical/guide.md", "# Guide\n")
+
+        entry = _active_entry(
+            last_applied_commit_sha=old_commit,
+            last_fetched_commit_sha=new_commit,
+            last_fetched_blob_sha=blob_sha,
+        )
+        self._write_registry([entry])
+        report_path = self._write_drift_report([
+            _drifted_entry(
+                current_commit_sha=new_commit,
+                current_blob_sha=blob_sha,
+                last_applied_commit_sha=old_commit,
+            )
+        ])
+
+        with patch(
+            "scripts.github_monitor.synthesize_diff.update_last_applied",
+            side_effect=OSError("registry lock held by another process"),
+        ):
+            result = synthesize_diff(
+                repo_root=self._repo_root, drift_report_path=report_path
+            )
+
+        self.assertEqual(result.status, STATUS_FAIL)
+        self.assertEqual(result.summary["error_count"], 1)
+        self.assertEqual(result.summary["synthesized_count"], 0)
+        self.assertIn("registry_locked", result.items[0]["reason_code"])
+
+    def test_partial_failure_first_fails_second_succeeds(self) -> None:
+        """Two drifted entries: first missing asset → error; second full → synthesized."""
+        good_commit = "d" * 40
+        good_blob = "b" * 40
+        old_commit = "c" * 40
+        bad_commit = "e" * 40
+        bad_blob = "f" * 40
+
+        # Only write the asset for the second entry.
+        self._write_asset(old_commit, "docs/guide.md", b"old\n")
+        self._write_asset(good_commit, "docs/guide.md", b"new\n")
+        self._write_wiki_page("wiki/pages/topical/guide.md", "# Guide\n")
+        # Also set up second wiki page.
+        self._write_wiki_page("wiki/pages/topical/reference.md", "# Reference\n")
+        # No asset for reference.md at bad_commit — causes FETCH_FAILED.
+
+        entries = [
+            _active_entry(
+                path="docs/reference.md",
+                last_fetched_commit_sha=bad_commit,
+                last_fetched_blob_sha=bad_blob,
+                wiki_page="wiki/pages/topical/reference.md",
+            ),
+            _active_entry(
+                path="docs/guide.md",
+                last_applied_commit_sha=old_commit,
+                last_fetched_commit_sha=good_commit,
+                last_fetched_blob_sha=good_blob,
+                wiki_page="wiki/pages/topical/guide.md",
+            ),
+        ]
+        self._write_registry(entries)
+
+        drifted = [
+            _drifted_entry(
+                path="docs/reference.md",
+                current_commit_sha=bad_commit,
+                current_blob_sha=bad_blob,
+            ),
+            _drifted_entry(
+                path="docs/guide.md",
+                current_commit_sha=good_commit,
+                current_blob_sha=good_blob,
+                last_applied_commit_sha=old_commit,
+            ),
+        ]
+        report_path = self._write_drift_report(drifted)
+
+        result = synthesize_diff(repo_root=self._repo_root, drift_report_path=report_path)
+
+        self.assertEqual(result.status, STATUS_FAIL)
+        self.assertEqual(result.summary["error_count"], 1)
+        self.assertEqual(result.summary["synthesized_count"], 1)
+
 
 # ---------------------------------------------------------------------------
 # run_cli tests

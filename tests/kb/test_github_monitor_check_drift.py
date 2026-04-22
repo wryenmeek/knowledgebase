@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch, call
 from scripts.github_monitor._types import (
     GitHubAPIResponseError,
     GitHubAPIRequestError,
+    validate_contents_response,
     validate_registry_file,
     validate_drift_report,
     REGISTRY_VERSION,
@@ -168,6 +169,68 @@ class ValidateRegistryFileTests(unittest.TestCase):
         }
         result = validate_registry_file(_make_registry([entry]))
         self.assertEqual(result["entries"][0]["tracking_status"], "uninitialized")
+
+    def test_entry_not_dict_raises(self) -> None:
+        """A list entry that isn't a dict (e.g. a string) must fail validation."""
+        data = _make_registry([])
+        data["entries"] = ["not-a-dict"]
+        with self.assertRaises(ValueError):
+            validate_registry_file(data)
+
+
+# ---------------------------------------------------------------------------
+# validate_contents_response tests
+# ---------------------------------------------------------------------------
+
+
+class ValidateContentsResponseTests(unittest.TestCase):
+    def _valid(self) -> dict:
+        return {
+            "sha": "a" * 40,
+            "content": "aGVsbG8=",
+            "encoding": "base64",
+            "size": 5,
+        }
+
+    def test_valid_response_passes(self) -> None:
+        result = validate_contents_response(self._valid())
+        self.assertEqual(result["sha"], "a" * 40)
+
+    def test_not_dict_raises(self) -> None:
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_contents_response(["list"])
+
+    def test_missing_sha_raises(self) -> None:
+        data = self._valid()
+        del data["sha"]
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_contents_response(data)
+
+    def test_sha_wrong_format_raises(self) -> None:
+        """Short SHA (fewer than 40 chars) must be rejected."""
+        data = self._valid()
+        data["sha"] = "abc123"
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_contents_response(data)
+
+    def test_sha_uppercase_raises(self) -> None:
+        """Uppercase hex SHA must be rejected (git SHAs are always lowercase)."""
+        data = self._valid()
+        data["sha"] = "A" * 40
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_contents_response(data)
+
+    def test_wrong_encoding_raises(self) -> None:
+        data = self._valid()
+        data["encoding"] = "utf-8"
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_contents_response(data)
+
+    def test_size_not_int_raises(self) -> None:
+        data = self._valid()
+        data["size"] = "5"
+        with self.assertRaises(GitHubAPIResponseError):
+            validate_contents_response(data)
 
 
 # ---------------------------------------------------------------------------
