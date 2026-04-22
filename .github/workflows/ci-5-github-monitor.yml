@@ -82,8 +82,8 @@ jobs:
           ")
           ARTIFACT_NAME="drift-report-${{ github.run_id }}"
 
-          echo "drift_detected=${HAS_DRIFT}" >> $GITHUB_OUTPUT
-          echo "artifact_name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+          echo "drift_detected=${HAS_DRIFT}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
           echo "Drift detected: ${HAS_DRIFT}"
 
       - name: Upload drift report artifact
