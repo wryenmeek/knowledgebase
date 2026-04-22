@@ -15,6 +15,7 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "source": ("## Summary", "## Evidence", "## Open Questions"),
     "analysis": ("## Summary", "## Evidence", "## Open Questions"),
 }
+_FRONTMATTER_BLOCK_RE = re.compile(r"^---[ \t]*\r?\n(.*?)?\r?\n---[ \t]*(?:\r?\n|$)", re.DOTALL)
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
@@ -99,12 +100,12 @@ def validate_page_template_path(
 
 
 def extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    if not text.startswith("---"):
         return None, text
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
+
+    match = _FRONTMATTER_BLOCK_RE.match(text)
+    if match:
+        return match.group(1) or "", text[match.end():]
     return None, text
 
 
