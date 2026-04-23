@@ -32,3 +32,7 @@
 ## 2026-04-21 - [File chunk reading optimization]
 **Learning:** When reading files in chunks (e.g., for hashing), using `iter(lambda: handle.read(size), b"")` introduces significant lambda closure overhead, which hurts efficiency in hot loops.
 **Action:** Always prefer using a `while` loop with the walrus operator (`while chunk := handle.read(size):`) to eliminate lambda closure overhead and improve performance.
+
+## 2024-03-24 - [Avoid `splitlines` for parsing frontmatter]
+**Learning:** `string.splitlines()` on large text files allocates an array of strings in memory. For extracting YAML frontmatter from large markdown files, this memory and processing overhead is significant.
+**Action:** Use string fast paths (`text.startswith('---')`) and pre-compiled regex with `re.DOTALL` to efficiently extract frontmatter blocks without allocating arrays for the entire file.
