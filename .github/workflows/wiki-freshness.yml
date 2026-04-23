@@ -27,6 +27,7 @@ jobs:
     timeout-minutes: 10
     env:
       ENFORCEMENT_MODE: ${{ inputs.enforcement_mode || 'signal' }}
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
       - name: Checkout repository snapshot
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
