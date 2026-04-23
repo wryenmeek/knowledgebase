@@ -282,8 +282,7 @@ def repo_relative(repo_root: Path, path: Path) -> str:
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
-        # ⚡ Bolt: Replace iter(lambda: ...) with walrus operator to eliminate lambda closure overhead in hot IO loop
-        while chunk := handle.read(65536):
+        for chunk in iter(lambda: handle.read(65536), b""):
             digest.update(chunk)
     return digest.hexdigest()
 

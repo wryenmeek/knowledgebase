@@ -173,10 +173,10 @@ jobs:
               case "${reason}" in
                 prereq_missing:ghaw_readiness:python3_unavailable)
                   echo "::notice::FIX: ensure Python 3.12+ is available in the CI runner environment." ;;
-                prereq_missing:ghaw_readiness:missing_commit_sha)
-                  echo "::notice::FIX: GITHUB_SHA is not set. This check requires a push or pull_request event context." ;;
                 prereq_missing:ghaw_readiness:missing_*)
                   echo "::notice::FIX: the required file referenced in reason code is missing from the repository. Add it before merging." ;;
+                prereq_missing:ghaw_readiness:missing_commit_sha)
+                  echo "::notice::FIX: GITHUB_SHA is not set. This check requires a push or pull_request event context." ;;
                 reject:trusted_trigger_model:event_not_push)
                   echo "::notice::FIX: CI-1 only runs on push events to the default branch. Use workflow_dispatch to test manually." ;;
                 reject:trusted_trigger_model:not_default_branch)

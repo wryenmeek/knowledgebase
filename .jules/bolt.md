@@ -28,7 +28,3 @@
 ## 2026-04-15 - [Path bounds checking optimization]
 **Learning:** Using `try/except Path.relative_to()` is slower than the natively implemented string comparison under the hood of `Path.is_relative_to()` for bounds checking. This is an anti-pattern that slows down path validation logic.
 **Action:** Replace `try/except Path.relative_to()` with `Path.is_relative_to()` for performance gains across the python codebase.
-
-## 2026-04-20 - [File Chunk Reading Optimization]
-**Learning:** Using `iter(lambda: handle.read(size), b"")` creates lambda closure overhead which slows down execution when processing large files or large amounts of files in a hot loop.
-**Action:** Replace `iter(lambda: handle.read(size), b"")` with a `while chunk := handle.read(size):` loop using the walrus operator to eliminate the lambda overhead and optimize IO hot loops.
