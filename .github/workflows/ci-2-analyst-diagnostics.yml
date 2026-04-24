@@ -54,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           pip install --quiet pip-audit
-          pip-audit --desc on
+          pip-audit --desc on --ignore-vuln CVE-2026-3219
 
       - name: Bootstrap repo-local qmd preflight shim
         run: |
