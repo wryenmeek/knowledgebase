@@ -12,24 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import "./env.js";
 import fs from 'node:fs'
 import { jules } from '@google/jules-sdk'
 import { analyzeIssuesPrompt } from './prompts/analyze-issues.js'
 import { getIssuesAsMarkdown } from './github/markdown.js'
 import { getGitRepoInfo, getCurrentBranch } from './github/git.js'
-
-const JULES_API_KEY = process.env.JULES_API_KEY;
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-
-if (!JULES_API_KEY) {
-  console.error("❌ JULES_API_KEY environment variable is required.");
-  process.exit(1);
-}
-
-if (!GITHUB_TOKEN) {
-  console.error("❌ GITHUB_TOKEN environment variable is required.");
-  process.exit(1);
-}
 
 const repoInfo = await getGitRepoInfo()
 const baseBranch = process.env.FLEET_BASE_BRANCH ?? await getCurrentBranch()
