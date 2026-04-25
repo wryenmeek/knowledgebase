@@ -1,0 +1,52 @@
+# Pre-commit hook configuration for knowledgebase governance guardrails.
+# Run locally: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+# See docs/ideas/pre-commit-guardrails.md for design rationale.
+
+repos:
+  - repo: local
+    hooks:
+      - id: no-staged-lock-files
+        name: Governance lock files must not be staged
+        language: python
+        entry: python -m scripts.hooks.check_no_staged_locks
+        types: [file]
+        pass_filenames: true
+
+      - id: frontmatter-validation
+        name: Wiki and skill frontmatter validation
+        language: python
+        entry: python -m scripts.hooks.check_frontmatter
+        types: [markdown]
+        pass_filenames: true
+
+      - id: sourceref-format
+        name: SourceRef citation format validation
+        language: python
+        entry: python -m scripts.hooks.check_sourceref_format
+        types: [markdown]
+        pass_filenames: true
+
+      - id: context-md-format
+        name: CONTEXT.md format validation
+        language: python
+        entry: python -m scripts.hooks.check_context_md_format
+        files: 'CONTEXT\.md$'
+        language_files_all: false
+        pass_filenames: true
+
+      - id: write-surface-matrix-lint
+        name: Write-surface matrix coverage lint
+        language: python
+        entry: python -m scripts.hooks.check_matrix_coverage
+        types: [python]
+        pass_filenames: true
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args:
+          - --baseline
+          - .secrets.baseline
+        exclude: "^(tests/|docs/ideas/)"
