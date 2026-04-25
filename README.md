@@ -19,6 +19,29 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 python3 -m pytest tests/ -q
 ```
 
+## Local development setup
+
+Install dev dependencies and register the pre-commit hooks so governance
+guardrails run before every commit:
+
+```bash
+pip install -e ".[dev]"
+pre-commit install
+```
+
+To run all hooks manually on every file in the repo:
+
+```bash
+pre-commit run --all-files
+```
+
+Hooks enforce:
+- No staged governance lock files (`.kb_write.lock`, etc.)
+- Wiki page and SKILL.md frontmatter validation
+- SourceRef citation format in markdown files
+- `CONTEXT.md` structure (required sections, ≤200 lines)
+- Write-surface matrix coverage for newly added scripts
+
 For full operational flow (including qmd and query-persist behavior), see
 [`docs/mvp-runbook.md`](docs/mvp-runbook.md).
 

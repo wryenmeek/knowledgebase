@@ -1,0 +1,39 @@
+name: Pre-commit hooks
+
+# Runs all pre-commit hooks on push and PRs targeting main so that local
+# governance guardrails are verified in CI as well as locally.
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    name: Run pre-commit hooks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install package and pre-commit
+        run: |
+          pip install --quiet ".[dev]" pre-commit
+
+      - name: Run pre-commit on all files
+        # Skip the detect-secrets hook in CI — it requires a committed
+        # .secrets.baseline and the hook re-scans all files. The baseline
+        # is committed so drift is caught; a dedicated security scan can
+        # run detect-secrets scan separately if desired.
+        env:
+          SKIP: detect-secrets
+        run: pre-commit run --all-files
