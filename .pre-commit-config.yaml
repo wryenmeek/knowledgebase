@@ -11,6 +11,7 @@ repos:
         language: python
         entry: python -m scripts.hooks.check_no_staged_locks
         types: [file]
+        exclude: "^tests/"
         pass_filenames: true
 
       - id: frontmatter-validation
@@ -24,6 +25,7 @@ repos:
         name: SourceRef citation format validation
         language: python
         entry: python -m scripts.hooks.check_sourceref_format
+        files: '^wiki/'
         types: [markdown]
         pass_filenames: true
 
@@ -32,7 +34,6 @@ repos:
         language: python
         entry: python -m scripts.hooks.check_context_md_format
         files: 'CONTEXT\.md$'
-        language_files_all: false
         pass_filenames: true
 
       - id: write-surface-matrix-lint

@@ -1,10 +1,14 @@
-"""Pre-commit hook: validate SourceRef citation format in markdown files.
+"""Pre-commit hook: validate SourceRef citation format in wiki markdown files.
 
-Validates that every ``repo://`` citation in a staged markdown file matches the
-canonical SourceRef format.  Skips content inside:
+Validates that every ``repo://`` citation in a staged wiki markdown file matches
+the canonical SourceRef format.  Skips content inside:
 
 - YAML frontmatter blocks (between leading ``---`` delimiters).
 - Fenced code blocks (``` or ~~~).
+
+Scoped to ``wiki/**`` files only via pre-commit ``files:`` filter.  Documentation
+files (docs/, schema/, AGENTS.md, etc.) contain template examples that are not
+real SourceRefs and are intentionally excluded.
 
 Reports all malformed citations (not just the first) so authors can fix them
 in a single pass.
@@ -71,17 +75,18 @@ def _check_file(path_str: str) -> list[str]:
             idx = line.find(_REPO_PREFIX, pos)
             if idx == -1:
                 break
-            # Extract the citation token: everything from repo:// up to the
-            # first whitespace or structural delimiter.
+            # SOURCEREF_RE extracts what it considers the SourceRef token.
+            # Strip trailing markdown structural chars from both sides before
+            # comparing: backticks appear in code spans (``repo://...``);
+            # SOURCEREF_RE's exclusion set stops at ), ], , but not `.
             token_match = SOURCEREF_RE.match(line, idx)
-            # Also try to find what the raw token looks like (may include
-            # trailing junk like ) or . that SOURCEREF_RE excludes).
             raw_end = idx
             while raw_end < len(line) and not line[raw_end].isspace():
                 raw_end += 1
-            raw_token = line[idx:raw_end].rstrip(".,;:!?")
+            raw_token = line[idx:raw_end].rstrip(".,;:!?`")
+            match_clean = token_match.group().rstrip(".,;:!?`") if token_match else ""
 
-            if token_match is None or token_match.group() != raw_token:
+            if match_clean != raw_token:
                 errors.append(
                     f"{path_str}:{lineno}: malformed SourceRef citation: {raw_token!r}"
                 )
