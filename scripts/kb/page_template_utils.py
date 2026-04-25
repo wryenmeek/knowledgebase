@@ -32,6 +32,22 @@ REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
     "tags",
 )
 
+# Pre-commit fast-path subsets — keep in sync with REQUIRED_FRONTMATTER_KEYS.
+# These are the minimum fields checked by the frontmatter validation hook for
+# each file type. They are strict subsets: every field here must also appear
+# in REQUIRED_FRONTMATTER_KEYS (for wiki pages) or match the canonical SKILL.md
+# schema (for skills).
+REQUIRED_WIKI_FIELDS: tuple[str, ...] = (
+    "type",
+    "title",
+    "status",
+    "updated_at",
+)
+REQUIRED_SKILL_FIELDS: tuple[str, ...] = (
+    "name",
+    "description",
+)
+
 
 def is_nested_topical_page(path: Path, wiki_root: Path) -> bool:
     parts = path.relative_to(wiki_root).parts
@@ -200,6 +216,8 @@ def extract_headings(body: str) -> set[str]:
 
 __all__ = [
     "REQUIRED_FRONTMATTER_KEYS",
+    "REQUIRED_SKILL_FIELDS",
+    "REQUIRED_WIKI_FIELDS",
     "TEMPLATE_SECTION_REQUIREMENTS",
     "TOPICAL_NAMESPACES",
     "extract_frontmatter",
