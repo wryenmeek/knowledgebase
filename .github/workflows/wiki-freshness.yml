@@ -85,14 +85,14 @@ jobs:
             exit 0
           fi
           python3 - <<'CLASSIFY_EOF'
-          import json, sys
+          import json
           with open("freshness-reports/wiki-freshness.json") as f:
               report = json.load(f)
           files = report.get("files", [])
           classified = []
           for entry in files:
               path = entry.get("path", "")
-              days = entry.get("days_stale", 0)
+              days = entry.get("days_stale", 999)  # missing data → HITL (deny-by-default)
               # Advisory classification only — this artifact has no downstream
               # consumer yet and does not gate any write path.  The output is
               # "afk-candidate" (not "afk") because age alone is insufficient

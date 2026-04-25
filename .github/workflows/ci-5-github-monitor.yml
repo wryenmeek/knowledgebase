@@ -220,7 +220,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'ISSUE_EOF'
-          import json, os, subprocess
+          import json, os, subprocess, sys
 
           with open("hitl-entries.json") as f:
               hitl = json.load(f)
@@ -237,7 +237,11 @@ jobs:
                   ["gh", "issue", "list", "--search", f'"{dedupe_key}" in:body', "--json", "number", "--limit", "1"],
                   capture_output=True, text=True
               )
-              existing = json.loads(result.stdout) if result.returncode == 0 else []
+              try:
+                  existing = json.loads(result.stdout) if result.returncode == 0 else []
+              except json.JSONDecodeError:
+                  existing = []
+                  print(f"::warning::Dedupe search returned unparseable JSON for {source_key}; creating issue anyway.", flush=True)
               if result.returncode != 0:
                   print(f"::warning::Dedupe search failed for {source_key}; creating issue anyway. stderr: {result.stderr}", flush=True)
 

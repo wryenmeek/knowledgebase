@@ -160,7 +160,11 @@ GOVERNED_ARTIFACT_CONTRACTS: tuple[GovernedArtifactContract, ...] = (
         lock_path=None,
         path_pattern="raw/assets/**",
     ),
-    # Rejected source registry (ADR-013)
+    # Rejected source registry (ADR-013).
+    # Declared IMMUTABLE because records are write-once at creation time.
+    # The reconsidered_date field is the sole exception: it may be updated
+    # once via the manual reconsider-rejected-source workflow (not a
+    # programmatic mutation through this contract's write strategy).
     GovernedArtifactContract(
         artifact_id="rejection-record",
         path="raw/rejected",

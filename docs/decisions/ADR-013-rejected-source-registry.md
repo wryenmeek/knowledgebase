@@ -170,8 +170,10 @@ deletion of rejection records requires explicit Human Steward sign-off.
 2. Check `raw/rejected/` for any file whose frontmatter `sha256` field matches.
 3. If a matching rejection record exists and `reconsidered_date` is `null`, halt intake
    and surface the prior rejection reason to the operator.
-4. If a matching rejection record exists and `reconsidered_date` is non-null, proceed
-   with intake (the source was explicitly reconsidered).
+4. If a matching rejection record exists and `reconsidered_date` is non-null, the source
+   was previously reconsidered. It may have been re-rejected after reconsideration.
+   Surface both dates and require explicit operator justification with significant new
+   evidence before proceeding.
 5. If no matching rejection record exists, proceed with intake normally.
 
 ### 10. Contracts integration
