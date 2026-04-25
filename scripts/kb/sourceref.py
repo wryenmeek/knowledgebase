@@ -400,10 +400,16 @@ def _raise(reason_code: SourceRefReasonCode, message: str) -> None:
     raise SourceRefValidationError(reason_code, message)
 
 
+# Exported regex for matching SourceRef citations in markdown content.
+# Excludes whitespace, closing brackets, closing parens, and commas — but NOT
+# dots, so file extensions like .md and .json in paths are not truncated.
+SOURCEREF_RE = re.compile(r"repo://[^\s\]),]+")
+
 __all__ = [
     "SourceRef",
     "SourceRefReasonCode",
     "SourceRefValidationError",
+    "SOURCEREF_RE",
     "parse_sourceref",
     "validate_sourceref",
 ]

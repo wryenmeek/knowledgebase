@@ -16,11 +16,11 @@ proceeds.  It implements the semantic whitelist from ADR-014.
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 from typing import Any, Sequence
 
+import re
 import yaml
 
 from scripts._optional_surface_common import (
@@ -31,6 +31,7 @@ from scripts._optional_surface_common import (
     base_path_rules,
     run_surface_cli,
 )
+from scripts.kb.sourceref import SOURCEREF_RE
 
 SURFACE = "validation.validate_afk_output"
 MODE = "validate"
@@ -43,7 +44,6 @@ _AFK_ALLOWED_FIELDS: frozenset[str] = frozenset({
     "quality_assessment",
 })
 
-_SOURCEREF_RE = re.compile(r"repo://[^\s\])\.,]+")
 _WIKI_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+\.md(?:#[^)]*)?)\)")
 
 
@@ -144,8 +144,8 @@ def validate_afk_output(
     })
 
     # Check 3: No citation/SourceRef changes.
-    orig_refs = set(_SOURCEREF_RE.findall(orig_body))
-    prop_refs = set(_SOURCEREF_RE.findall(prop_body))
+    orig_refs = set(SOURCEREF_RE.findall(orig_body))
+    prop_refs = set(SOURCEREF_RE.findall(prop_body))
     refs_unchanged = orig_refs == prop_refs
     checks.append({
         "check": "citations_unchanged",
