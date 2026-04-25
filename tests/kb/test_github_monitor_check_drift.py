@@ -550,7 +550,7 @@ class CheckActiveEntryTests(unittest.TestCase):
         entry = _active_entry(last_applied_blob_sha=self._BLOB_SHA)
         side_effects = self._side_effects(self._BLOB_SHA, self._COMMIT_SHA)
         with patch("urllib.request.urlopen", side_effect=side_effects):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok")
+            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
         self.assertEqual(category, "up_to_date")
         self.assertEqual(data["blob_sha"], self._BLOB_SHA)
 
@@ -564,7 +564,7 @@ class CheckActiveEntryTests(unittest.TestCase):
         different_commit = "e" * 40
         side_effects = self._side_effects(self._BLOB_SHA, different_commit)
         with patch("urllib.request.urlopen", side_effect=side_effects):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok")
+            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
         self.assertEqual(category, "up_to_date")
 
     def test_drift_detected_different_blob_sha(self) -> None:
@@ -574,7 +574,7 @@ class CheckActiveEntryTests(unittest.TestCase):
         )
         side_effects = self._side_effects(self._NEW_BLOB_SHA, self._NEW_COMMIT_SHA)
         with patch("urllib.request.urlopen", side_effect=side_effects):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok")
+            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
         self.assertEqual(category, "drifted")
         self.assertEqual(data["current_blob_sha"], self._NEW_BLOB_SHA)
         self.assertEqual(data["last_applied_blob_sha"], self._BLOB_SHA)
@@ -589,7 +589,7 @@ class CheckActiveEntryTests(unittest.TestCase):
         entry["last_applied_commit_sha"] = None
         side_effects = self._side_effects(self._NEW_BLOB_SHA, self._NEW_COMMIT_SHA)
         with patch("urllib.request.urlopen", side_effect=side_effects):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok")
+            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
         self.assertEqual(category, "drifted")
         self.assertIsNone(data["compare_url"])
 
@@ -599,7 +599,7 @@ class CheckActiveEntryTests(unittest.TestCase):
             "url", 404, "Not Found", {}, None  # type: ignore[arg-type]
         )
         with patch("urllib.request.urlopen", side_effect=http_err):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok")
+            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
         self.assertEqual(category, "errors")
         self.assertEqual(data["reason_code"], str(GitHubMonitorReasonCode.UNREACHABLE))
 
@@ -609,7 +609,7 @@ class CheckActiveEntryTests(unittest.TestCase):
             "url", 403, "Forbidden", {}, None  # type: ignore[arg-type]
         )
         with patch("urllib.request.urlopen", side_effect=http_err):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok")
+            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
         self.assertEqual(category, "errors")
         self.assertEqual(data["reason_code"], str(GitHubMonitorReasonCode.UNREACHABLE))
 
@@ -620,12 +620,12 @@ class CheckActiveEntryTests(unittest.TestCase):
         )
         with patch("urllib.request.urlopen", side_effect=http_err):
             with patch("time.sleep"):
-                category, data = _check_active_entry(entry, "test-org", "test-repo", "tok")
+                category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
         self.assertEqual(category, "errors")
 
     def test_invalid_path_in_entry_returns_error(self) -> None:
         entry = _active_entry(path="../traversal/attack.md")
-        category, data = _check_active_entry(entry, "test-org", "test-repo", "tok")
+        category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
         self.assertEqual(category, "errors")
         self.assertEqual(data["reason_code"], str(GitHubMonitorReasonCode.FETCH_FAILED))
 
@@ -645,7 +645,7 @@ class CheckActiveEntryTests(unittest.TestCase):
             make_resp(_commits_response(self._COMMIT_SHA)),
         ]
         with patch("urllib.request.urlopen", side_effect=side_effects):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok")
+            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
         self.assertEqual(category, "errors")
 
     def test_commits_api_failure_returns_error(self) -> None:
@@ -670,7 +670,7 @@ class CheckActiveEntryTests(unittest.TestCase):
             ],
         ):
             with patch("time.sleep"):
-                category, data = _check_active_entry(entry, "test-org", "test-repo", "tok")
+                category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
         self.assertEqual(category, "errors")
 
 

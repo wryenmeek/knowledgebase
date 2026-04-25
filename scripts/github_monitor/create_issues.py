@@ -138,6 +138,37 @@ def _create_issue(title: str, body: str, labels: str) -> bool:
     return True
 
 
+def _close_issue(issue_num: int, run_id: str) -> bool:
+    """Close an issue with a resolution comment. Returns ``True`` on success."""
+    comment_result = subprocess.run(
+        [
+            "gh", "issue", "comment", str(issue_num),
+            "--body", f"Resolved: applied in run {run_id}.",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if comment_result.returncode != 0:
+        print(
+            f"::warning::Failed to comment on issue #{issue_num} before closing: "
+            f"{comment_result.stderr}",
+            flush=True,
+        )
+
+    close_result = subprocess.run(
+        ["gh", "issue", "close", str(issue_num)],
+        capture_output=True,
+        text=True,
+    )
+    if close_result.returncode != 0:
+        print(
+            f"::warning::Failed to close issue #{issue_num}: {close_result.stderr}",
+            flush=True,
+        )
+        return False
+    return True
+
+
 def process_hitl_entries(hitl_entries_path: Path) -> SurfaceResult:
     """Create or update GitHub Issues for every HITL entry."""
     try:
@@ -236,6 +267,85 @@ def process_hitl_entries(hitl_entries_path: Path) -> SurfaceResult:
         },
     )
 
+def close_resolved_entries(drift_report_path: Path) -> SurfaceResult:
+    """Close GitHub Issues for entries that are now up-to-date.
+
+    An entry is "resolved" when it appears in the drift report's
+    ``up_to_date`` list, meaning ``last_applied_blob_sha`` matches the
+    current remote blob SHA.
+    """
+    try:
+        raw = drift_report_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return SurfaceResult(
+            surface=SURFACE,
+            mode="close",
+            status=STATUS_FAIL,
+            reason_code="invalid_input",
+            message=f"Cannot read drift report: {exc}",
+            path_rules=_path_rules(),
+        )
+
+    try:
+        report = json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return SurfaceResult(
+            surface=SURFACE,
+            mode="close",
+            status=STATUS_FAIL,
+            reason_code="invalid_input",
+            message=f"Malformed drift report JSON: {exc}",
+            path_rules=_path_rules(),
+        )
+
+    up_to_date = report.get("up_to_date", [])
+    if not up_to_date:
+        return SurfaceResult(
+            surface=SURFACE,
+            mode="close",
+            status=STATUS_PASS,
+            reason_code="ok",
+            message="No up-to-date entries to close.",
+            path_rules=_path_rules(),
+        )
+
+    run_id = os.environ.get("GITHUB_RUN_ID", "unknown")
+    closed = 0
+    not_found = 0
+    failed = 0
+
+    for entry in up_to_date:
+        registry = f"{entry.get('owner', 'unknown')}/{entry.get('repo', 'unknown')}"
+        source_key = entry.get("path", "unknown")
+        dedupe_key = f"ci5-drift:{registry}:{source_key}"
+        safe_dedupe_key = _sanitize_gh_md(dedupe_key.replace('"', ""))
+
+        existing_num = _search_existing_issue(safe_dedupe_key)
+        if existing_num is None:
+            not_found += 1
+            continue
+
+        if _close_issue(existing_num, run_id):
+            print(f"Closed resolved issue #{existing_num} for {source_key}")
+            closed += 1
+        else:
+            failed += 1
+
+    message = f"Close-resolved: {closed} closed, {not_found} no issue found, {failed} failed"
+    return SurfaceResult(
+        surface=SURFACE,
+        mode="close",
+        status=STATUS_PASS if failed == 0 else STATUS_FAIL,
+        reason_code="ok" if failed == 0 else "close_failed",
+        message=message,
+        path_rules=_path_rules(),
+        summary={
+            "closed": closed,
+            "not_found": not_found,
+            "failed": failed,
+        },
+    )
+
 
 # ---------------------------------------------------------------------------
 # CLI plumbing
@@ -252,19 +362,52 @@ def _build_parser() -> JsonArgumentParser:
         required=True,
         help="Path to hitl-entries.json produced by classify_drift.",
     )
+    parser.add_argument(
+        "--close-resolved",
+        action="store_true",
+        default=False,
+        help="Close issues for entries that are now up-to-date.",
+    )
+    parser.add_argument(
+        "--drift-report",
+        metavar="PATH",
+        help="Path to drift-report.json (required when --close-resolved is set).",
+    )
     return parser
 
 
 def _args_to_kwargs(args: Any) -> dict[str, Any]:
     return {
         "hitl_entries_path": Path(args.hitl_entries),
+        "close_resolved": args.close_resolved,
+        "drift_report_path": Path(args.drift_report) if args.drift_report else None,
     }
 
 
 def _runner(**kwargs: Any) -> SurfaceResult:
-    return process_hitl_entries(
+    result = process_hitl_entries(
         hitl_entries_path=kwargs["hitl_entries_path"],
     )
+
+    if kwargs.get("close_resolved") and kwargs.get("drift_report_path"):
+        close_result = close_resolved_entries(
+            drift_report_path=kwargs["drift_report_path"],
+        )
+        if close_result.status == STATUS_FAIL:
+            return close_result
+        # Merge summaries
+        combined_summary = {**(result.summary or {}), "close_resolved": close_result.summary}
+        result = SurfaceResult(
+            surface=SURFACE,
+            mode=MODE,
+            status=result.status,
+            reason_code=result.reason_code,
+            message=f"{result.message}; {close_result.message}",
+            path_rules=result.path_rules,
+            summary=combined_summary,
+        )
+
+    return result
 
 
 def run_cli(

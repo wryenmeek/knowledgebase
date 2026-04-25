@@ -24,6 +24,8 @@ Authentication:
 
 from __future__ import annotations
 
+import base64
+import difflib
 import glob as glob_module
 import json
 import sys
@@ -65,6 +67,9 @@ from scripts.github_monitor._validators import validate_external_path
 SURFACE = "github_monitor.check_drift"
 MODE = "check"
 
+# Files larger than this are skipped for line-level metric computation.
+_MAX_METRIC_FILE_BYTES = 1_048_576  # 1 MiB
+
 
 def _path_rules() -> dict[str, Any]:
     return base_path_rules(
@@ -73,11 +78,129 @@ def _path_rules() -> dict[str, Any]:
     )
 
 
+def _is_binary(data: bytes) -> bool:
+    """Return True if *data* looks like binary content (null byte in first 8000 bytes)."""
+    return b"\x00" in data[:8000]
+
+
+def _compute_line_metrics(
+    repo_root: Path,
+    owner: str,
+    repo: str,
+    path: str,
+    last_applied_commit_sha: str | None,
+    current_bytes: bytes | None,
+) -> dict[str, int | bool | None]:
+    """Compute line-level diff metrics between prior asset and current bytes.
+
+    Returns a dict with ``lines_added``, ``lines_removed``, ``is_binary``,
+    and ``file_size_bytes``.  All values are ``None`` when metrics cannot be
+    computed (missing prior asset, binary content, file too large, decode
+    failure).
+    """
+    null_metrics: dict[str, int | bool | None] = {
+        "lines_added": None,
+        "lines_removed": None,
+        "is_binary": None,
+        "file_size_bytes": None,
+    }
+
+    if current_bytes is None:
+        return null_metrics
+
+    file_size = len(current_bytes)
+
+    if _is_binary(current_bytes):
+        return {
+            "lines_added": None,
+            "lines_removed": None,
+            "is_binary": True,
+            "file_size_bytes": file_size,
+        }
+
+    if file_size > _MAX_METRIC_FILE_BYTES:
+        return {
+            "lines_added": None,
+            "lines_removed": None,
+            "is_binary": False,
+            "file_size_bytes": file_size,
+        }
+
+    if not last_applied_commit_sha:
+        return {
+            "lines_added": None,
+            "lines_removed": None,
+            "is_binary": False,
+            "file_size_bytes": file_size,
+        }
+
+    prior_path = repo_root / "raw" / "assets" / owner / repo / last_applied_commit_sha / path
+    if not prior_path.is_file():
+        return {
+            "lines_added": None,
+            "lines_removed": None,
+            "is_binary": False,
+            "file_size_bytes": file_size,
+        }
+
+    try:
+        prior_bytes = prior_path.read_bytes()
+    except OSError:
+        return {
+            "lines_added": None,
+            "lines_removed": None,
+            "is_binary": False,
+            "file_size_bytes": file_size,
+        }
+
+    if _is_binary(prior_bytes):
+        return {
+            "lines_added": None,
+            "lines_removed": None,
+            "is_binary": True,
+            "file_size_bytes": file_size,
+        }
+
+    try:
+        prior_text = prior_bytes.decode("utf-8")
+        current_text = current_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return {
+            "lines_added": None,
+            "lines_removed": None,
+            "is_binary": None,
+            "file_size_bytes": file_size,
+        }
+
+    prior_lines = prior_text.splitlines(keepends=True)
+    current_lines = current_text.splitlines(keepends=True)
+
+    matcher = difflib.SequenceMatcher(None, prior_lines, current_lines)
+    added = 0
+    removed = 0
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "replace":
+            removed += i2 - i1
+            added += j2 - j1
+        elif tag == "delete":
+            removed += i2 - i1
+        elif tag == "insert":
+            added += j2 - j1
+
+    return {
+        "lines_added": added,
+        "lines_removed": removed,
+        "is_binary": False,
+        "file_size_bytes": file_size,
+    }
+
+
 def _check_active_entry(
     entry: dict[str, Any],
     owner: str,
     repo: str,
     token: str,
+    repo_root: Path,
 ) -> tuple[str, dict[str, Any]]:
     """Check one active registry entry against the GitHub API.
 
@@ -153,6 +276,20 @@ def _check_active_entry(
             blob_sha=current_blob_sha,
         )
 
+    # Decode current file content for line-level metrics.
+    current_bytes: bytes | None = None
+    try:
+        raw_b64 = contents.get("content", "")
+        if raw_b64:
+            current_bytes = base64.b64decode(raw_b64)
+    except Exception:
+        current_bytes = None
+
+    metrics = _compute_line_metrics(
+        repo_root, owner, repo, validated_path,
+        last_applied_commit_sha, current_bytes,
+    )
+
     compare_url: str | None = None
     if last_applied_commit_sha:
         compare_url = (
@@ -168,6 +305,10 @@ def _check_active_entry(
         last_applied_commit_sha=last_applied_commit_sha,
         last_applied_blob_sha=last_applied_blob_sha,
         compare_url=compare_url,
+        lines_added=metrics["lines_added"],
+        lines_removed=metrics["lines_removed"],
+        is_binary=metrics["is_binary"],
+        file_size_bytes=metrics["file_size_bytes"],
     )
 
 
@@ -235,7 +376,7 @@ def check_drift(
                 )
                 continue
 
-            category, entry_data = _check_active_entry(entry, owner, repo, github_token)
+            category, entry_data = _check_active_entry(entry, owner, repo, github_token, repo_root)
             if category == "drifted":
                 drifted.append(entry_data)  # type: ignore[arg-type]
             elif category == "up_to_date":

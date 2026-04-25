@@ -10,7 +10,8 @@ Usage::
 
     python -m scripts.github_monitor.classify_drift \\
         --drift-report drift-report.json \\
-        [--output-dir .]
+        [--output-dir .] \\
+        [--afk-max-lines 0]
 """
 
 from __future__ import annotations
@@ -52,9 +53,34 @@ def _write_github_output(has_afk: bool, has_hitl: bool) -> None:
         fh.write(f"has_hitl={'true' if has_hitl else 'false'}\n")
 
 
+def _is_afk_eligible(entry: dict[str, Any], afk_max_lines: int) -> bool:
+    """Return True if *entry* qualifies for AFK classification.
+
+    AFK requires ALL of:
+    - ``afk_max_lines > 0`` (0 = deny-by-default)
+    - ``lines_added`` and ``lines_removed`` both non-None
+    - ``is_binary`` is not True
+    - Total changed lines ``<= afk_max_lines``
+
+    Line-count is a preliminary signal only.  Full AFK eligibility requires
+    the safety-net validator (Phase 3) to confirm no citation/claim/topology
+    changes.
+    """
+    if afk_max_lines <= 0:
+        return False
+    lines_added = entry.get("lines_added")
+    lines_removed = entry.get("lines_removed")
+    if lines_added is None or lines_removed is None:
+        return False
+    if entry.get("is_binary") is True:
+        return False
+    return (lines_added + lines_removed) <= afk_max_lines
+
+
 def classify_drift(
     drift_report_path: Path,
     output_dir: Path,
+    afk_max_lines: int = 0,
 ) -> SurfaceResult:
     """Classify drifted entries from a drift report as HITL or AFK.
 
@@ -86,11 +112,14 @@ def classify_drift(
 
     drifted = report.get("drifted", [])
 
-    # Deny-by-default (ADR-014): all drifted entries classify as HITL.
-    # When line-level diff metrics become available in the drift report,
-    # add --afk-max-lines threshold logic here (Phase 2).
     afk_entries: list[dict[str, Any]] = []
-    hitl_entries: list[dict[str, Any]] = list(drifted)
+    hitl_entries: list[dict[str, Any]] = []
+
+    for entry in drifted:
+        if _is_afk_eligible(entry, afk_max_lines):
+            afk_entries.append(entry)
+        else:
+            hitl_entries.append(entry)
 
     has_afk = len(afk_entries) > 0
     has_hitl = len(hitl_entries) > 0
@@ -143,6 +172,13 @@ def _build_parser() -> JsonArgumentParser:
         default=".",
         help="Directory to write afk-entries.json and hitl-entries.json (default: current directory).",
     )
+    parser.add_argument(
+        "--afk-max-lines",
+        metavar="N",
+        type=int,
+        default=0,
+        help="Max total changed lines for AFK eligibility (default: 0 = deny-by-default, all HITL).",
+    )
     return parser
 
 
@@ -150,6 +186,7 @@ def _args_to_kwargs(args: Any) -> dict[str, Any]:
     return {
         "drift_report_path": Path(args.drift_report),
         "output_dir": Path(args.output_dir),
+        "afk_max_lines": args.afk_max_lines,
     }
 
 
@@ -157,6 +194,7 @@ def _runner(**kwargs: Any) -> SurfaceResult:
     return classify_drift(
         drift_report_path=kwargs["drift_report_path"],
         output_dir=kwargs["output_dir"],
+        afk_max_lines=kwargs["afk_max_lines"],
     )
 
 

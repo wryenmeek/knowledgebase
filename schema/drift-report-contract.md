@@ -59,7 +59,11 @@ with 7-day retention) — it is **not** a governed repository write.
   "current_blob_sha": "deadbeef...",
   "last_applied_commit_sha": "old123...",
   "last_applied_blob_sha": "oldblob...",
-  "compare_url": "https://github.com/some-org/some-repo/compare/old123...abc123d"
+  "compare_url": "https://github.com/some-org/some-repo/compare/old123...abc123d",
+  "lines_added": 5,
+  "lines_removed": 2,
+  "is_binary": false,
+  "file_size_bytes": 1234
 }
 ```
 
@@ -73,6 +77,10 @@ with 7-day retention) — it is **not** a governed repository write.
 | `last_applied_commit_sha` | string \| null | Commit SHA at last successful wiki update; null if unknown. |
 | `last_applied_blob_sha` | string \| null | Blob SHA at last successful wiki update. |
 | `compare_url` | string \| null | GitHub compare URL (`old...new`) for human review; null if no prior SHA. |
+| `lines_added` | integer \| null | Lines added vs. last applied asset. Null if metrics unavailable (binary, missing prior asset, oversized, or decode failure). |
+| `lines_removed` | integer \| null | Lines removed vs. last applied asset. Same null semantics as `lines_added`. |
+| `is_binary` | boolean \| null | True if file appears binary (null byte in first 8000 bytes). Null if detection could not be performed. |
+| `file_size_bytes` | integer \| null | Current file size in bytes. Null if content was not available. |
 
 ---
 
