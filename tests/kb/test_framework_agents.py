@@ -125,6 +125,25 @@ class FrameworkPersonaTests(unittest.TestCase):
         self.assertIn("`query-synthesist`", text)
         self.assertIn("`topology-librarian`", text)
 
+    def test_orchestrator_afk_lane_declared_per_adr014(self) -> None:
+        """ADR-014 §9: The orchestrator must declare an AFK lane and its constraints.
+
+        This test enforces that the AFK lane is explicitly documented in the
+        orchestrator persona so future persona additions cannot silently fall into
+        the bypass scope.  Three properties are required:
+        1. The AFK lane is named and references ADR-014.
+        2. The lane requires a lock and audit log entry.
+        3. The lane is post-publication subject to change-patrol review.
+        """
+        text = PERSONA_FILES["knowledgebase-orchestrator"].read_text(encoding="utf-8")
+        with self.subTest("afk_lane_references_adr014"):
+            self.assertIn("ADR-014", text)
+        with self.subTest("afk_lane_requires_lock_and_log"):
+            self.assertIn("lock", text.lower())
+            self.assertIn("classification: afk", text)
+        with self.subTest("afk_lane_requires_change_patrol"):
+            self.assertIn("change-patrol", text)
+
     def test_persona_handoffs_follow_ingest_and_controlled_downstream_lanes(self) -> None:
         self.assertIn(
             "- Normal ingest-safe handoff: `source-intake-steward`",

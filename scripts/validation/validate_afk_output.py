@@ -21,6 +21,8 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
+import yaml
+
 from scripts._optional_surface_common import (
     STATUS_FAIL,
     STATUS_PASS,
@@ -34,8 +36,10 @@ SURFACE = "validation.validate_afk_output"
 MODE = "validate"
 
 # Frontmatter fields that AFK updates may change.
+# For ``quality_assessment``, only the ``freshness_date`` sub-field may change
+# per ADR-014 §4.  The ``updated_at`` field records the AFK timestamp.
 _AFK_ALLOWED_FIELDS: frozenset[str] = frozenset({
-    "last_updated",
+    "updated_at",
     "quality_assessment",
 })
 
@@ -50,29 +54,26 @@ def _path_rules() -> dict[str, Any]:
     )
 
 
-def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
+def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     """Split YAML frontmatter from body.  Returns (fields, body).
 
-    Note: This is a deliberately simple parser that handles single-line
-    ``key: value`` pairs.  Multi-line YAML values (block scalars, lists)
-    are not fully parsed — only the first line is captured.  This is
-    acceptable because the AFK allowlist checks only single-line fields
-    (``last_updated``, ``quality_assessment``).  The ``aliases`` identity
-    check compares raw frontmatter text blocks as a fallback.
+    Uses ``yaml.safe_load`` to correctly handle multi-line values such as
+    ``quality_assessment`` block scalars, ``aliases`` lists, and other
+    structured fields.
     """
     if not text.startswith("---"):
         return {}, text
     end = text.find("\n---", 3)
     if end == -1:
         return {}, text
-    fm_block = text[4:end].strip()
-    fm_lines = fm_block.splitlines()
-    fields: dict[str, str] = {}
-    for line in fm_lines:
-        if ":" in line:
-            key, _, val = line.partition(":")
-            fields[key.strip()] = val.strip()
+    fm_block = text[4:end]
     body = text[end + 4:].strip()
+    try:
+        fields = yaml.safe_load(fm_block) or {}
+        if not isinstance(fields, dict):
+            fields = {}
+    except yaml.YAMLError:
+        fields = {}
     return fields, body
 
 
@@ -105,24 +106,27 @@ def validate_afk_output(
     orig_fm, orig_body = _parse_frontmatter(original_text)
     prop_fm, prop_body = _parse_frontmatter(proposed_text)
 
-    # Extract raw frontmatter blocks for multi-line field comparison.
-    def _raw_fm_block(text: str) -> str:
-        if not text.startswith("---"):
-            return ""
-        end = text.find("\n---", 3)
-        return text[4:end].strip() if end != -1 else ""
-
-    orig_fm_raw = _raw_fm_block(original_text)
-    prop_fm_raw = _raw_fm_block(proposed_text)
-
     # Check 1: Only allowed frontmatter fields changed.
+    # ``quality_assessment`` is allowed but only its ``freshness_date``
+    # sub-field may change per ADR-014 §4.
     changed_fields: list[str] = []
+    disallowed: list[str] = []
     all_keys = set(orig_fm) | set(prop_fm)
     for key in all_keys:
         if orig_fm.get(key) != prop_fm.get(key):
             changed_fields.append(key)
-
-    disallowed = [f for f in changed_fields if f not in _AFK_ALLOWED_FIELDS]
+            if key == "quality_assessment":
+                orig_qa = orig_fm.get("quality_assessment")
+                prop_qa = prop_fm.get("quality_assessment")
+                if not isinstance(orig_qa, dict):
+                    orig_qa = {}
+                if not isinstance(prop_qa, dict):
+                    prop_qa = {}
+                for qa_key in set(orig_qa) | set(prop_qa):
+                    if qa_key != "freshness_date" and orig_qa.get(qa_key) != prop_qa.get(qa_key):
+                        disallowed.append(f"quality_assessment.{qa_key}")
+            elif key not in _AFK_ALLOWED_FIELDS:
+                disallowed.append(key)
     checks.append({
         "check": "frontmatter_fields",
         "pass": len(disallowed) == 0,
@@ -160,21 +164,12 @@ def validate_afk_output(
     })
 
     # Check 5: No entity/alias/title changes.
-    # For aliases (which may be multi-line YAML lists), compare raw
-    # frontmatter blocks after stripping allowed fields.
+    # With proper YAML parsing, compare title and aliases directly.
     title_unchanged = orig_fm.get("title") == prop_fm.get("title")
-    # Strip allowed fields from raw blocks to detect identity changes
-    # in multi-line YAML values the simple parser can't fully capture.
-    def _strip_allowed(raw: str) -> str:
-        lines = raw.splitlines()
-        return "\n".join(
-            line for line in lines
-            if not any(line.lstrip().startswith(f"{f}:") for f in _AFK_ALLOWED_FIELDS)
-        )
-    identity_raw_unchanged = _strip_allowed(orig_fm_raw) == _strip_allowed(prop_fm_raw)
+    aliases_unchanged = orig_fm.get("aliases") == prop_fm.get("aliases")
     checks.append({
         "check": "identity_unchanged",
-        "pass": title_unchanged and identity_raw_unchanged,
+        "pass": title_unchanged and aliases_unchanged,
     })
 
     all_passed = all(c["pass"] for c in checks)

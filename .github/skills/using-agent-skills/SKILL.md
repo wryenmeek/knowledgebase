@@ -168,13 +168,13 @@ Skills fall into two routing categories:
 These drive a self-contained procedure and do not require persona mediation:
 `zoom-out`, `grill-me`, `edit-article`, `caveman`, `quality-pass-chain`,
 `write-a-skill`, `request-refactor-plan`, `triage-issue`,
-`improve-codebase-architecture`.
+`improve-codebase-architecture`, `reconsider-rejected-source`.
 
 **Persona-routed skills** — invoked by agent personas (e.g.,
 `knowledgebase-orchestrator`, `synthesis-curator`, `source-intake-steward`) as
 part of a governed pipeline. These skills are called during lane execution and
 generally should not be invoked directly:
-`log-intake-rejection`, `reconsider-rejected-source`, `route-wiki-task`,
+`log-intake-rejection`, `route-wiki-task`,
 `plan-wiki-job`, `enforce-page-template`, `validate-inbox-source`,
 `enforce-repository-boundaries`, `run-deterministic-validators`,
 `validate-wiki-governance`.

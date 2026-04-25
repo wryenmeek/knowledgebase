@@ -30,6 +30,20 @@ class TestParserFrontmatter:
         assert fm == {}
         assert body == "Just text"
 
+    def test_multiline_quality_assessment_parsed_as_dict(self) -> None:
+        import datetime
+        text = "---\ntitle: T\nquality_assessment:\n  freshness_date: 2025-01-01\n  score: high\n---\nBody"
+        fm, body = _parse_frontmatter(text)
+        assert isinstance(fm["quality_assessment"], dict)
+        # yaml.safe_load parses bare ISO dates as datetime.date objects.
+        assert fm["quality_assessment"]["freshness_date"] == datetime.date(2025, 1, 1)
+        assert fm["quality_assessment"]["score"] == "high"
+
+    def test_aliases_list_parsed_correctly(self) -> None:
+        text = "---\ntitle: T\naliases:\n  - old-name\n  - other-name\n---\nBody"
+        fm, _ = _parse_frontmatter(text)
+        assert fm["aliases"] == ["old-name", "other-name"]
+
 
 class TestNormalizeWhitespace:
     def test_trailing_whitespace_stripped(self) -> None:
@@ -38,7 +52,7 @@ class TestNormalizeWhitespace:
 
 class TestBodyUnchanged:
     def test_identical_body_passes(self, tmp_path: Path) -> None:
-        text = _page("title: A\nlast_updated: 2025-01-01", "Hello world")
+        text = _page("title: A\nupdated_at: 2025-01-01", "Hello world")
         (tmp_path / "orig.md").write_text(text)
         (tmp_path / "prop.md").write_text(text)
         result = validate_afk_output(tmp_path / "orig.md", tmp_path / "prop.md")
@@ -56,8 +70,8 @@ class TestBodyUnchanged:
 
 class TestFrontmatterAllowedFields:
     def test_allowed_field_change_passes(self, tmp_path: Path) -> None:
-        orig = _page("title: A\nlast_updated: 2025-01-01", "Body")
-        prop = _page("title: A\nlast_updated: 2025-07-01", "Body")
+        orig = _page("title: A\nupdated_at: 2025-01-01", "Body")
+        prop = _page("title: A\nupdated_at: 2025-07-01", "Body")
         (tmp_path / "orig.md").write_text(orig)
         (tmp_path / "prop.md").write_text(prop)
         result = validate_afk_output(tmp_path / "orig.md", tmp_path / "prop.md")
@@ -112,6 +126,15 @@ class TestIdentityUnchanged:
         assert result.status == "fail"
         assert "identity_unchanged" in result.message
 
+    def test_aliases_change_fails(self, tmp_path: Path) -> None:
+        orig = "---\ntitle: T\naliases:\n  - old-name\n---\nBody"
+        prop = "---\ntitle: T\naliases:\n  - new-name\n---\nBody"
+        (tmp_path / "orig.md").write_text(orig)
+        (tmp_path / "prop.md").write_text(prop)
+        result = validate_afk_output(tmp_path / "orig.md", tmp_path / "prop.md")
+        assert result.status == "fail"
+        assert "identity_unchanged" in result.message
+
 
 class TestFileReadError:
     def test_missing_file_fails(self, tmp_path: Path) -> None:
@@ -124,9 +147,56 @@ class TestFileReadError:
 
 
 class TestAllowedFields:
-    def test_quality_assessment_allowed(self, tmp_path: Path) -> None:
-        orig = _page("title: A\nquality_assessment: old", "Body")
-        prop = _page("title: A\nquality_assessment: new", "Body")
+    def test_quality_assessment_freshness_date_change_passes(self, tmp_path: Path) -> None:
+        """Multi-line quality_assessment with only freshness_date changing: pass."""
+        orig = (
+            "---\n"
+            "title: A\n"
+            "quality_assessment:\n"
+            "  freshness_date: 2025-01-01\n"
+            "  score: high\n"
+            "---\nBody"
+        )
+        prop = (
+            "---\n"
+            "title: A\n"
+            "quality_assessment:\n"
+            "  freshness_date: 2025-07-01\n"
+            "  score: high\n"
+            "---\nBody"
+        )
+        (tmp_path / "orig.md").write_text(orig)
+        (tmp_path / "prop.md").write_text(prop)
+        result = validate_afk_output(tmp_path / "orig.md", tmp_path / "prop.md")
+        assert result.status == "pass"
+
+    def test_quality_assessment_non_freshness_change_fails(self, tmp_path: Path) -> None:
+        """Changing quality_assessment.score (non-allowed sub-field) must fail."""
+        orig = (
+            "---\n"
+            "title: A\n"
+            "quality_assessment:\n"
+            "  freshness_date: 2025-01-01\n"
+            "  score: high\n"
+            "---\nBody"
+        )
+        prop = (
+            "---\n"
+            "title: A\n"
+            "quality_assessment:\n"
+            "  freshness_date: 2025-01-01\n"
+            "  score: low\n"
+            "---\nBody"
+        )
+        (tmp_path / "orig.md").write_text(orig)
+        (tmp_path / "prop.md").write_text(prop)
+        result = validate_afk_output(tmp_path / "orig.md", tmp_path / "prop.md")
+        assert result.status == "fail"
+        assert "frontmatter_fields" in result.message
+
+    def test_updated_at_change_passes(self, tmp_path: Path) -> None:
+        orig = _page("title: A\nupdated_at: 2025-01-01", "Body")
+        prop = _page("title: A\nupdated_at: 2025-07-25", "Body")
         (tmp_path / "orig.md").write_text(orig)
         (tmp_path / "prop.md").write_text(prop)
         result = validate_afk_output(tmp_path / "orig.md", tmp_path / "prop.md")

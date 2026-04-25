@@ -207,12 +207,21 @@ jobs:
           retention-days: 7
 
       - name: Create GitHub Issues for HITL entries
-        if: steps.classify.outputs.has_hitl == 'true'
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 -m scripts.github_monitor.create_issues \
             --hitl-entries hitl-entries.json
+
+      - name: Close resolved HITL issues
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -m scripts.github_monitor.create_issues \
+            --hitl-entries hitl-entries.json \
+            --close-resolved
 
   synthesize:
     name: CI-5 synthesize + open PR

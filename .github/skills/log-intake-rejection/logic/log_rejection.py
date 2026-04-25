@@ -27,6 +27,7 @@ Implements:
 
 from __future__ import annotations
 
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,6 +54,49 @@ SURFACE = "skill.log-intake-rejection"
 MODE = "write"
 
 _REJECTED_DIR = Path("raw/rejected")
+
+# Maximum length for free-text operator-supplied fields.
+_MAX_FIELD_LEN = 2000
+
+
+def _yaml_quote(val: str) -> str:
+    """Quote a YAML scalar if it contains YAML-significant characters.
+
+    Handles all characters that would break a plain YAML scalar:
+    ``:``, ``#``, newline, carriage-return, tab, double-quote, single-quote,
+    ``{``, ``}``, ``[``, ``]``, ``&`` (anchor), ``*`` (alias), ``!`` (tag).
+    """
+    needs_quoting = any(
+        c in val
+        for c in (":", "#", "\n", "\r", "\t", '"', "'", "{", "}", "[", "]", "&", "*", "!")
+    )
+    if needs_quoting:
+        escaped = (
+            val
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+        )
+        return f'"{escaped}"'
+    return val
+
+
+def _sanitize_markdown(val: str) -> str:
+    """Strip control characters and prevent frontmatter boundary injection.
+
+    Prevents a ``---`` on its own line from terminating the YAML frontmatter
+    block that appears earlier in the rejection record.  Also caps length and
+    removes non-printable ASCII control characters.
+    """
+    val = val[:_MAX_FIELD_LEN]
+    val = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", val)
+    lines = val.splitlines()
+    sanitized = [
+        ("\\-\\-\\-" if line.strip() == "---" else line) for line in lines
+    ]
+    return "\n".join(sanitized)
 
 
 def _path_rules() -> dict[str, Any]:
@@ -154,18 +198,11 @@ def log_rejection(
         )
 
     # --- compose record -----------------------------------------------------
-    def _yaml_quote(val: str) -> str:
-        """Quote a YAML value if it contains special characters."""
-        if any(c in val for c in (":", "#", "\n", '"', "'", "{", "}", "[", "]")):
-            escaped = val.replace("\\", "\\\\").replace('"', '\\"')
-            return f'"{escaped}"'
-        return val
-
     record = (
         f"---\n"
         f"slug: {slug}\n"
         f"sha256: {sha256}\n"
-        f"rejected_date: {rejected_date}\n"
+        f"rejected_date: {_yaml_quote(rejected_date)}\n"
         f"source_path: {_yaml_quote(source_path)}\n"
         f"rejection_reason: {_yaml_quote(rejection_reason)}\n"
         f"rejection_category: {rejection_category}\n"
@@ -174,11 +211,11 @@ def log_rejection(
         f"---\n\n"
         f"# {slug}\n\n"
         f"## What was attempted\n\n"
-        f"Source `{source_path}` was submitted for intake.\n\n"
+        f"Source `{_sanitize_markdown(source_path)}` was submitted for intake.\n\n"
         f"## What was missing\n\n"
-        f"{rejection_reason}\n\n"
+        f"{_sanitize_markdown(rejection_reason)}\n\n"
         f"## Notes\n\n"
-        f"Rejected by {reviewed_by} on {rejected_date}.\n"
+        f"Rejected by {_sanitize_markdown(reviewed_by)} on {_sanitize_markdown(rejected_date)}.\n"
     )
 
     # --- acquire lock and write ---------------------------------------------
@@ -196,6 +233,19 @@ def log_rejection(
                     status=STATUS_FAIL,
                     reason_code="record_exists",
                     message=f"Record appeared during lock: {target}",
+                    path_rules=_path_rules(),
+                )
+            # Re-scan for SHA-256 duplicates inside the lock to prevent TOCTOU
+            # races where a concurrent writer registers the same source under a
+            # different slug between our pre-lock check and the write.
+            existing_inside_lock = _scan_existing_sha256(rejected_dir)
+            if sha256 in existing_inside_lock:
+                return SurfaceResult(
+                    surface=SURFACE,
+                    mode=MODE,
+                    status=STATUS_FAIL,
+                    reason_code="duplicate_sha256",
+                    message=f"Duplicate sha256 detected inside lock: {sha256[:16]}…",
                     path_rules=_path_rules(),
                 )
             target.write_text(record, encoding="utf-8")

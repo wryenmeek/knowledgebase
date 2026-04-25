@@ -55,10 +55,7 @@ jobs:
             --as-of "$(date -u +%Y-%m-%d)" \
             --max-age-days 90 \
             --failures-only \
-            > freshness-reports/wiki-freshness.json 2>&1
-          freshness_exit=$?
-          echo "exit_code=${freshness_exit}" >> "${GITHUB_OUTPUT}"
-          exit "${freshness_exit}"
+            > freshness-reports/wiki-freshness.json
 
       - name: Annotate stale pages
         if: always()

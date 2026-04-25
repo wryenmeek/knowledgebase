@@ -129,6 +129,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("schema/**", "scripts/kb/contracts.py"),
         "Hard-fail behavior": ("unsupported checks", "partial validator results", "write attempt"),
     },
+    "scripts/validation/validate_afk_output.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None",),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("schema/page-template.md", "ADR-014"),
+        "Hard-fail behavior": ("path outside", "missing input file", "write attempt", "fail closed"),
+    },
     "scripts/reporting/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "narrower contract"),
