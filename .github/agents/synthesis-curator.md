@@ -38,6 +38,8 @@ Turn a policy-cleared, evidence-backed package into a proposed wiki create/updat
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `.github/skills/enforce-page-template/SKILL.md`
 - `.github/skills/append-log-entry/SKILL.md`
+- `.github/skills/edit-article/SKILL.md`
+- `.github/skills/detect-ai-tells/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`
@@ -68,4 +70,5 @@ Turn a policy-cleared, evidence-backed package into a proposed wiki create/updat
 - Draft package: `policy-arbiter` for the current MVP governed publication decision
 - Future-state expanded verification lane: `evidence-verifier` only if/when post-draft claim/citation review is intentionally added beyond the current MVP contract
 - Blocked or ambiguous cases: return to `knowledgebase-orchestrator` with the escalation record
+- After the draft package is complete, NPOV-enforced, and AI-tells checked, invoke `edit-article` to tighten prose and improve readability. The `edit-article` pass must not alter citations, frontmatter, or factual claims — it is a prose restructuring step, not a validation step
 - No direct write, redirect, or out-of-band persistence is permitted from this persona

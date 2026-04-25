@@ -24,6 +24,7 @@ Own the trust boundary between `raw/inbox/` and the rest of the repository. This
 - Handoff artifact: an intake bundle containing source location, checksum, provenance status, and the proposed reviewed destination
 - Escalation artifact: an intake exception record describing authenticity, identity, or policy disputes requiring Human Steward review
 - Handoff package for `evidence-verifier`
+- On rejection: handoff to `log-intake-rejection` skill to persist rejection record in `raw/rejected/` (ADR-013)
 
 ## Required skills / upstream references
 
@@ -38,6 +39,8 @@ Own the trust boundary between `raw/inbox/` and the rest of the repository. This
 - `schema/ingest-checklist.md`
 - `raw/processed/SPEC.md`
 - `docs/architecture.md`
+- `.github/skills/log-intake-rejection/SKILL.md`
+- `schema/rejection-registry-contract.md`
 
 ## Stop conditions / fail-closed behavior
 
@@ -57,5 +60,5 @@ Own the trust boundary between `raw/inbox/` and the rest of the repository. This
 
 - Downstream artifact: transfer the intake bundle, provenance record, and any explicit blocking notes without rewriting the source package
 - Success: `evidence-verifier` receives the intake package and provenance record
-- Failure: return a fail-closed rejection to `knowledgebase-orchestrator`
+- Failure: invoke `log-intake-rejection` to persist a rejection record in `raw/rejected/`, then return a fail-closed rejection to `knowledgebase-orchestrator`. If `log-intake-rejection` fails closed (e.g., sha256 dedupe on a reconsidered source that was re-rejected), the steward still returns a fail-closed rejection to `knowledgebase-orchestrator` with the dedupe error as context — the intake rejection stands even if the record could not be written.
 - No handoff to any synthesis or topology persona is allowed from this role

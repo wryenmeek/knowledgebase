@@ -36,6 +36,9 @@ it does not remediate content directly.
   (low/medium/high), affected policy areas, and recommended next lane
 - Handoff: high-risk findings route to `log-patrol-incident`; low-risk findings
   allow the normal downstream lane to proceed
+- AFK safety net: for changes classified as AFK (per ADR-014), apply stricter
+  review thresholds — flag any citation changes, new claims, topology changes,
+  or entity references that should not appear in an AFK-classified task
 
 ## Assertions
 
@@ -45,6 +48,9 @@ it does not remediate content directly.
 - The patrol result is the required input for any downstream maintenance or quality
   lane that follows a human edit
 - Missing or ambiguous diff input fails closed
+- Changes classified as AFK are subject to stricter review: citation modifications,
+  new claim introductions, topology changes, and new entity references are always
+  flagged as potential misclassifications requiring reclassification to HITL
 
 ## References
 
@@ -54,3 +60,4 @@ it does not remediate content directly.
 - `.github/skills/policy-diff-review/SKILL.md`
 - `.github/skills/log-patrol-incident/SKILL.md`
 - `.github/agents/change-patrol.md`
+- `docs/decisions/ADR-014-hitl-afk-work-classification.md`

@@ -37,7 +37,7 @@ not a write-capable action — and must be reviewed before any lane is activated
 - Input: a work item or job description, available context from prior steps, and
   current repo state (index, log, open-questions)
 - Output: a structured plan with ordered steps, prerequisite checks, expected
-  outputs, and stop conditions
+  outputs, stop conditions, and HITL/AFK classification per step (ADR-014)
 - Handoff: the plan is the entry artifact for the first lane step; no lane is
   activated without a confirmed plan
 
@@ -48,6 +48,13 @@ not a write-capable action — and must be reviewed before any lane is activated
   not be activated
 - The plan does not promise outcomes that would require undeclared write surfaces
 - Plan revision requires re-confirmation of all prerequisites
+- Each step in the plan must be classified HITL or AFK per the ADR-014 allowlist
+- Steps classified AFK must match an allowlist rule; unmatched steps default to HITL
+
+## Issue tracking
+
+See `route-wiki-task` for issue tracking guidance. HITL-classified steps
+should have a tracking Issue; AFK-classified steps may skip Issue creation.
 
 ## References
 
@@ -55,3 +62,4 @@ not a write-capable action — and must be reviewed before any lane is activated
 - `docs/architecture.md`
 - `raw/processed/SPEC.md`
 - `.github/agents/knowledgebase-orchestrator.md`
+- `docs/decisions/ADR-014-hitl-afk-work-classification.md`

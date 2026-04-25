@@ -20,6 +20,7 @@ The system is designed to keep knowledge:
 | `raw/processed/**` | Post-ingest source artifacts | Immutable source-of-truth |
 | `raw/assets/**` | Vendored external assets | Authoritative only when checksummed |
 | `raw/github-sources/**` | GitHub source monitor registries and pending-ingest handoffs | Mutable; governed by `schema/github-source-registry-contract.md` |
+| `raw/rejected/` | Write-once rejection records for sources that failed intake (ADR-013) | Immutable post-write |
 | `wiki/**` | Synthesized knowledge artifacts | Controlled write surface |
 | `schema/**` | Page/ingest contracts | Controlled write surface |
 | `scripts/kb/**` + `tests/kb/**` | Automation implementation and verification | Controlled write surface |
@@ -121,9 +122,11 @@ the following order as mandatory:
 
 | Phase | Required order | Operator rule |
 |---|---|---|
+| HITL/AFK classification | `knowledgebase-orchestrator` | Work items are classified as HITL (human-in-the-loop, full persona pipeline) or AFK (away-from-keyboard, eligible for fast-path per ADR-014 allowlist) at routing time by the orchestrator. Unmatched items default to HITL (deny-by-default). |
 | Entry + ingest-safe gate | `knowledgebase-orchestrator` → `source-intake-steward` → `evidence-verifier` → `policy-arbiter` | No downstream wiki/content/topology lane opens before this sequence succeeds. |
 | Policy-cleared drafting | `synthesis-curator` | Drafting is limited to the cleared scope and remains subject to governed publication checks; any richer post-draft `evidence-verifier` lane is future-state follow-on work rather than a current MVP runtime guarantee. |
 | Policy-cleared query/discovery | `query-synthesist` or `topology-librarian` | Query answers read the curated wiki first; durable follow-up stays on governed persistence or index-sync paths. |
+| AFK maintenance lane | Eligible skill (direct) | AFK-classified tasks route directly to the eligible skill, skipping evidence-verifier and policy-arbiter review but still requiring lock, log, and post-publication patrol. |
 | Maintenance/quality follow-up | `maintenance-auditor`, `change-patrol`, `quality-analyst` | These personas triage, audit, and recommend; any content-changing follow-up routes back through `knowledgebase-orchestrator`. |
 | Human escalation | Human Steward | Required when contradictions, deletions, identity ambiguity, or policy conflicts remain unresolved. |
 
@@ -161,7 +164,11 @@ prevents ADR-007 drift into a second runtime.
 | Synthesis workflows | Active, doc-only | `synthesize-entity-page`, `synthesize-concept-page`, `claim-inventory` |
 | Maintenance-arm workflows | Active, doc-only | `semantic-wiki-lint`, `freshness-audit`, `cross-reference-symmetry-check`, `propose-supersede-or-archive`, `append-maintenance-log`, `patrol-human-edits`, `route-noncompliant-edit-for-review`, `manage-redirects-and-anchors`, `detect-original-research`, `compare-against-existing-pages`, `escalate-contradictions` |
 | Topology / discovery workflows | Active, has logic/ | `suggest-backlinks` — neighborhood-scoped scanner (`logic/suggest_backlinks.py`) proposes backlink candidates; no direct page mutation |
-| Quality and orchestration workflows | Active, doc-only | `score-page-quality`, `compute-kpis`, `analyze-missed-queries`, `prioritize-curation-backlog`, `route-wiki-task`, `plan-wiki-job`, `fail-closed-on-errors` |
+| Quality and orchestration workflows | Active, doc-only | `score-page-quality`, `compute-kpis`, `analyze-missed-queries`, `prioritize-curation-backlog`, `route-wiki-task`, `plan-wiki-job`, `fail-closed-on-errors`, `quality-pass-chain` |
+| Orientation and stress-test workflows | Active, doc-only | `zoom-out`, `grill-me` |
+| Agent-to-agent workflows | Active, doc-only | `caveman` |
+| Prose and editorial workflows | Active, doc-only | `edit-article` |
+| Rejection registry workflows | Active, mixed | `log-intake-rejection` (has `logic/` scaffold), `reconsider-rejected-source` (doc-only) |
 
 The skill layer carries workflow procedure and thin wrapper logic while leaving
 deterministic execution in `scripts/kb/**`. No framework skill should add a new
@@ -184,7 +191,7 @@ Operators can validate the landed framework with these repo-local entrypoints:
 
 ## Write and safety controls
 
-- Canonical write allowlist for automation: `wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`.
+- Canonical write allowlist for automation: `wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`, `raw/rejected/**`.
 - The current CI/runtime write allowlist above is unchanged by the approved
   post-MVP package surfaces; those surfaces only widen where future code may
   live, not what automation may write by default.
@@ -218,3 +225,5 @@ Key architecture decisions are captured in ADRs:
 - [`ADR-010`](decisions/ADR-010-convert-sources-adr006-compliance-review.md): ADR-006 compliance review for `convert_sources_to_md.py`
 - [`ADR-011`](decisions/ADR-011-canonical-utility-reuse.md): canonical utility modules and single-definition rule
 - [`ADR-012`](decisions/ADR-012-github-source-monitoring.md): GitHub source monitoring pipeline
+- [`ADR-013`](decisions/ADR-013-rejected-source-registry.md): write-once intake rejection records
+- [`ADR-014`](decisions/ADR-014-hitl-afk-work-classification.md): HITL/AFK work classification and deny-by-default routing

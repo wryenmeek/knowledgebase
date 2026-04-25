@@ -43,6 +43,7 @@ WRITE_ALLOWLIST_PATHS: tuple[str, ...] = (
     "wiki/index.md",
     "wiki/log.md",
     "raw/processed/**",
+    "raw/rejected/**",
 )
 
 # Write allowlist for the CI-5 GitHub source monitor workflow (ADR-012).
@@ -54,6 +55,7 @@ GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS: tuple[str, ...] = (
 )
 WRITE_LOCK_PATH = "wiki/.kb_write.lock"
 GITHUB_SOURCES_LOCK_PATH = "raw/.github-sources.lock"
+REJECTION_REGISTRY_LOCK_PATH = "raw/.rejection-registry.lock"
 
 class ArtifactMutability(StrEnum):
     """Allowed mutation modes for governed state artifacts."""
@@ -157,6 +159,16 @@ GOVERNED_ARTIFACT_CONTRACTS: tuple[GovernedArtifactContract, ...] = (
         write_strategy=ArtifactWriteStrategy.EXCLUSIVE_CREATE_WRITE_ONCE,
         lock_path=None,
         path_pattern="raw/assets/**",
+    ),
+    # Rejected source registry (ADR-013)
+    GovernedArtifactContract(
+        artifact_id="rejection-record",
+        path="raw/rejected",
+        schema_owner="schema/rejection-registry-contract.md",
+        mutability=ArtifactMutability.IMMUTABLE,
+        write_strategy=ArtifactWriteStrategy.EXCLUSIVE_CREATE_WRITE_ONCE,
+        lock_path=REJECTION_REGISTRY_LOCK_PATH,
+        path_pattern="raw/rejected/*.rejection.md",
     ),
 )
 GOVERNED_ARTIFACT_IDS: tuple[str, ...] = tuple(
@@ -292,6 +304,7 @@ __all__ = [
     "WRITE_ALLOWLIST_PATHS",
     "GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS",
     "GITHUB_SOURCES_LOCK_PATH",
+    "REJECTION_REGISTRY_LOCK_PATH",
     "WRITE_LOCK_PATH",
     "GOVERNED_ARTIFACT_CONTRACTS",
     "GOVERNED_ARTIFACT_IDS",

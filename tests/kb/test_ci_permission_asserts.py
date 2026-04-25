@@ -278,7 +278,7 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
 
         required_allowlist_controls = (
             'case "${changed_path}" in',
-            "wiki/*|raw/processed/*)",
+            "wiki/*|raw/processed/*|raw/rejected/*)",
             'allowlist_failures+=("${status_code}:${changed_path}")',
             "reject:permissions_scope:out_of_allowlist_write:",
             "CI-3 write allowlist is restricted to ${WRITE_ALLOWLIST}.",

@@ -87,6 +87,14 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     "route-wiki-task": {"logic": False, "classification": "Doc-only workflow"},
     "plan-wiki-job": {"logic": False, "classification": "Doc-only workflow"},
     "fail-closed-on-errors": {"logic": False, "classification": "Doc-only workflow"},
+    # mattpocock-inspired skills (ADR-014, research adoption)
+    "zoom-out": {"logic": False, "classification": "Doc-only workflow"},
+    "caveman": {"logic": False, "classification": "Doc-only workflow"},
+    "grill-me": {"logic": False, "classification": "Doc-only workflow"},
+    "edit-article": {"logic": False, "classification": "Doc-only workflow"},
+    "quality-pass-chain": {"logic": False, "classification": "Doc-only workflow"},
+    "log-intake-rejection": {"logic": True},
+    "reconsider-rejected-source": {"logic": False, "classification": "Doc-only workflow"},
 }
 HELPER_OWNING_SKILLS: dict[str, tuple[str, ...]] = {
     "context-engineering": (
@@ -130,7 +138,11 @@ class FrameworkSkillTests(unittest.TestCase):
             with self.subTest(skill=skill_name):
                 if expectations["logic"]:
                     self.assertTrue(logic_dir.is_dir())
-                    self.assertTrue(any(logic_dir.glob("*.py")))
+                    # Scaffolded logic dirs (e.g. .gitkeep only) are valid;
+                    # populated dirs must contain at least one .py file.
+                    has_gitkeep = (logic_dir / ".gitkeep").is_file()
+                    if not has_gitkeep:
+                        self.assertTrue(any(logic_dir.glob("*.py")))
                 else:
                     self.assertFalse(logic_dir.exists())
 

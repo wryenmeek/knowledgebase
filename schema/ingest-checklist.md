@@ -2,6 +2,16 @@
 
 Deterministic preflight checklist for ingest operations.
 
+- [ ] Rejection registry check: compute `sha256` of candidate source bytes and
+      check `raw/rejected/` for a record with matching checksum. Three-way
+      branch per ADR-013 §9:
+      - **No match:** proceed to next checklist item.
+      - **Match found, `reconsidered_date` is null:** surface the prior rejection
+        to the operator. Re-submission requires the `reconsider-rejected-source`
+        workflow.
+      - **Match found, `reconsidered_date` is set:** source was previously
+        reconsidered and rejected again. Surface both dates and require explicit
+        operator justification with new evidence to proceed.
 - [ ] Input path is under `raw/inbox/` and inside repository boundaries.
 - [ ] Source checksum (`sha256`) is computed and recorded.
 - [ ] Canonical SourceRef can be formed with required anchor and checksum, and

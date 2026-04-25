@@ -58,6 +58,23 @@ python3 .github/skills/validate-inbox-source/logic/validate_source_registry.py -
 
 ## Procedure
 
+### Step 0: Check rejection registry
+
+Compute the `sha256` checksum of the candidate source bytes. Check `raw/rejected/`
+for a record with a matching `sha256` frontmatter field.
+
+- **Match found, `reconsidered_date` is null:** Surface the prior rejection to
+  the operator: "This source was rejected on [date] because [reason]. Has
+  anything changed? Proceed or close?" If the operator proceeds, route through
+  `reconsider-rejected-source`. If the operator closes, stop.
+- **Match found, `reconsidered_date` is set (non-null):** This source was
+  previously reconsidered but rejected again (same `sha256`). Surface both the
+  original rejection and the reconsideration date: "This source was rejected on
+  [date], reconsidered on [reconsidered_date], and rejected again. Significant
+  new evidence is required to proceed." Route through
+  `reconsider-rejected-source` only with explicit operator justification.
+- **No match:** Continue to Step 1.
+
 ### Step 1: Confirm boundary placement
 
 Verify that the candidate is staged under `raw/inbox/` and has not already been
@@ -91,6 +108,7 @@ lane such as provenance registration, evidence verification, or human review.
 
 ## Verification
 
+- [ ] Rejection registry check performed before intake proceeds
 - [ ] Candidate path is checked against the inbox boundary
 - [ ] Intake outcome is `accept`, `reject`, or `escalate`
 - [ ] Missing provenance prerequisites are explicit
@@ -104,3 +122,5 @@ lane such as provenance registration, evidence verification, or human review.
 - [`raw/processed/SPEC.md`](../../../raw/processed/SPEC.md)
 - [`schema/ingest-checklist.md`](../../../schema/ingest-checklist.md)
 - [`schema/metadata-schema-contract.md`](../../../schema/metadata-schema-contract.md)
+- [`schema/rejection-registry-contract.md`](../../../schema/rejection-registry-contract.md)
+- [`docs/decisions/ADR-013-rejected-source-registry.md`](../../../docs/decisions/ADR-013-rejected-source-registry.md)

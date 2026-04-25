@@ -76,6 +76,42 @@ jobs:
               print(f"::warning file={path}::{msg} FIX: update page content and set updated_at to today's date in the YAML frontmatter.")
           EOF
 
+      - name: Classify stale pages for routing
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ ! -f freshness-reports/wiki-freshness.json ]]; then
+            echo '{"stale_pages":[]}' > freshness-reports/freshness-routing.json
+            exit 0
+          fi
+          python3 - <<'CLASSIFY_EOF'
+          import json, sys
+          with open("freshness-reports/wiki-freshness.json") as f:
+              report = json.load(f)
+          files = report.get("files", [])
+          classified = []
+          for entry in files:
+              path = entry.get("path", "")
+              days = entry.get("days_stale", 0)
+              # Advisory classification only — this artifact has no downstream
+              # consumer yet and does not gate any write path.  The output is
+              # "afk-candidate" (not "afk") because age alone is insufficient
+              # to confirm AFK eligibility per ADR-014 §4; a downstream step
+              # must verify no open questions, patrol findings, or source
+              # staleness before the classification becomes operative.
+              classification = "afk-candidate" if days < 180 else "hitl"
+              classified.append({
+                  "path": path,
+                  "last_updated": entry.get("last_updated", ""),
+                  "days_stale": days,
+                  "classification": classification,
+                  "recommended_action": "verify AFK eligibility then update freshness_date metadata" if classification == "afk-candidate" else "review content for accuracy and re-source if needed",
+              })
+          with open("freshness-reports/freshness-routing.json", "w") as f:
+              json.dump({"stale_pages": classified}, f, indent=2)
+          print(f"Classified {len(classified)} stale pages: {sum(1 for p in classified if p['classification'] == 'afk-candidate')} AFK-candidate, {sum(1 for p in classified if p['classification'] == 'hitl')} HITL")
+          CLASSIFY_EOF
+
       - name: Advisory governance signal sweep
         continue-on-error: true  # advisory; crashes must not fail the scheduled run
         run: |

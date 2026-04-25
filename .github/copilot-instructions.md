@@ -51,8 +51,11 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 
 ### Lifecycle mapping
 
+- **Orient** → `zoom-out`
 - **Explore** → `idea-refine`
+- **Stress-test** → `grill-me`
 - **Define** → `spec-driven-development`
+- **Design** → `api-and-interface-design`
 - **Plan** → `planning-and-task-breakdown`
 - **Build** → `incremental-implementation`, `test-driven-development`
 - **Verify** → `debugging-and-error-recovery`
@@ -119,13 +122,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
 
 ### Post-implementation quality-pass order
 
-For non-trivial changes, run these skill passes in order — later passes often find issues the earlier ones expose:
+For non-trivial changes, run these skill passes in order — later passes often find issues the earlier ones expose. See `.github/skills/quality-pass-chain/SKILL.md` for the full procedural contract.
+
+**Development quality gate** (4 steps, run in order):
 
 1. `code-review-and-quality` — correctness, security, architecture
 2. `code-simplification` — clarity, dead code, loop invariants
 3. `test-driven-development` — coverage gaps, edge cases
 4. `documentation-and-adrs` — SKILL.md, architecture.md, README.md, docstrings
-5. `shipping-and-launch` — pre-launch checklist, write-surface matrix
+
+**Pre-deployment gate** (separate from development quality):
+
+- `shipping-and-launch` — pre-launch checklist, write-surface matrix. Runs before merge to production branch, not during development review.
 
 When a review pass produces test gap findings, address them in the same fix commit — not as a follow-up. Test coverage gaps are first-class review findings, not optional housekeeping.
 

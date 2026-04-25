@@ -16,7 +16,9 @@ When a task arrives, identify the development phase and apply the corresponding 
 ```
 Task arrives
     │
+    ├── Unfamiliar territory? ──────→ zoom-out
     ├── Vague idea/need refinement? ──→ idea-refine
+    ├── Need to stress-test a plan? ──→ grill-me
     ├── New project/feature/change? ──→ spec-driven-development
     ├── Have a spec, need tasks? ──────→ planning-and-task-breakdown
     ├── Implementing code? ────────────→ incremental-implementation
@@ -28,12 +30,17 @@ Task arrives
     │   └── Browser-based? ───────────→ browser-testing-with-devtools
     ├── Something broke? ──────────────→ debugging-and-error-recovery
     ├── Reviewing code? ───────────────→ code-review-and-quality
+    │   ├── Multi-step quality gate? ──→ quality-pass-chain
     │   ├── Security concerns? ───────→ security-and-hardening
     │   └── Performance concerns? ────→ performance-optimization
     ├── Committing/branching? ─────────→ git-workflow-and-versioning
     ├── CI/CD pipeline work? ──────────→ ci-cd-and-automation
     ├── Writing docs/ADRs? ───────────→ documentation-and-adrs
-    └── Deploying/launching? ─────────→ shipping-and-launch
+    │   └── Restructuring prose? ─────→ edit-article
+    ├── Deploying/launching? ─────────→ shipping-and-launch
+    ├── Agent-to-agent handoff? ──────→ caveman
+    └── Wiki intake rejected? ────────→ log-intake-rejection
+        └── Reconsidering rejection? ─→ reconsider-rejected-source
 ```
 
 ## Core Operating Behaviors
@@ -135,8 +142,11 @@ These are the subtle errors that look like productivity but create problems:
 For a complete feature, the typical skill sequence is:
 
 ```
+0. zoom-out                    → Orient in unfamiliar territory
 1. idea-refine                 → Refine vague ideas
+1.5 grill-me                   → Stress-test before committing
 2. spec-driven-development     → Define what we're building
+2.5 api-and-interface-design   → Explore interface alternatives
 3. planning-and-task-breakdown → Break into verifiable chunks
 4. context-engineering         → Load the right context
 5. source-driven-development   → Verify against official docs
@@ -154,7 +164,9 @@ Not every task needs every skill. A bug fix might only need: `debugging-and-erro
 
 | Phase | Skill | One-Line Summary |
 |-------|-------|-----------------|
+| Orient | zoom-out | Map modules, callers, and abstractions before diving in |
 | Define | idea-refine | Refine ideas through structured divergent and convergent thinking |
+| Define | grill-me | Stress-test plans through adversarial questioning |
 | Define | spec-driven-development | Requirements and acceptance criteria before code |
 | Plan | planning-and-task-breakdown | Decompose into small, verifiable tasks |
 | Build | incremental-implementation | Thin vertical slices, test each before expanding |
@@ -166,9 +178,14 @@ Not every task needs every skill. A bug fix might only need: `debugging-and-erro
 | Verify | browser-testing-with-devtools | Chrome DevTools MCP for runtime verification |
 | Verify | debugging-and-error-recovery | Reproduce → localize → fix → guard |
 | Review | code-review-and-quality | Five-axis review with quality gates |
+| Review | quality-pass-chain | Orchestrate 4-step quality gate sequence |
 | Review | security-and-hardening | OWASP prevention, input validation, least privilege |
 | Review | performance-optimization | Measure first, optimize only what matters |
 | Ship | git-workflow-and-versioning | Atomic commits, clean history |
 | Ship | ci-cd-and-automation | Automated quality gates on every change |
 | Ship | documentation-and-adrs | Document the why, not just the what |
+| Ship | edit-article | Restructure prose for clarity without changing facts |
 | Ship | shipping-and-launch | Pre-launch checklist, monitoring, rollback plan |
+| Operate | caveman | Compress agent-to-agent handoffs for efficiency |
+| Operate | log-intake-rejection | Persist write-once rejection records to raw/rejected/ |
+| Operate | reconsider-rejected-source | Re-evaluate previously rejected sources |

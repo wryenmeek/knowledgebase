@@ -185,6 +185,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/_optional_surface_common.py", "scripts/kb/write_utils.py"),
         "Hard-fail behavior": ("path outside docs/**", "SHA drift", "lock unavailable", "fail closed"),
     },
+    ".github/skills/log-intake-rejection/logic/**": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("raw/rejected/", "write-once", "wiki/log.md"),
+        "Lock requirements": ("raw/.rejection-registry.lock", "wiki/.kb_write.lock"),
+        "Artifact / schema owners": ("schema/rejection-registry-contract.md", "docs/decisions/ADR-013-rejected-source-registry.md"),
+        "Hard-fail behavior": ("duplicate sha256", "path outside", "lock unavailable", "fail closed", "append failure"),
+    },
     "scripts/ingest/**": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("None by default", "raw/processed/**", "wiki/**"),

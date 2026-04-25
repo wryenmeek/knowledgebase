@@ -36,6 +36,7 @@ hands off to the correct first-contact persona. No work bypasses this step.
   and lane entry conditions
 - Handoff: the routing decision is the required input for the first-contact persona
   in the selected lane
+- HITL/AFK classification: each work item is classified as HITL (requires full persona pipeline) or AFK (eligible for fast-path per ADR-014 allowlist) based on the deny-by-default AFK criteria
 
 ## Assertions
 
@@ -45,6 +46,15 @@ hands off to the correct first-contact persona. No work bypasses this step.
   declared downstream writer surfaces
 - A work item that cannot be classified as intake, synthesis, maintenance, or quality
   routes to human steward review, not to an arbitrary lane
+- Tasks not on the ADR-014 AFK allowlist default to HITL and route through the full persona pipeline
+- Operator may override any classification to HITL but NEVER to AFK (deny-by-default)
+- AFK-classified tasks still require `wiki/.kb_write.lock`, `wiki/log.md` entry with `classification: afk`, and post-publication `change-patrol` review
+
+## Issue tracking recommendation
+
+For HITL-classified work, create a GitHub Issue as a tracking artifact before
+beginning the persona pipeline. Suggested labels: `wiki-change`, `hitl`,
+`lane:<ingest|query|maintenance|review>`.
 
 ## References
 
@@ -52,3 +62,4 @@ hands off to the correct first-contact persona. No work bypasses this step.
 - `docs/architecture.md`
 - `raw/processed/SPEC.md`
 - `.github/agents/knowledgebase-orchestrator.md`
+- `docs/decisions/ADR-014-hitl-afk-work-classification.md`

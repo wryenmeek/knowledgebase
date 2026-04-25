@@ -34,7 +34,7 @@ jobs:
     env:
       CI_ID: CI-3
       TOKEN_PROFILE: tp-pr-producer
-      WRITE_ALLOWLIST: wiki/**,wiki/index.md,wiki/log.md,raw/processed/**
+      WRITE_ALLOWLIST: wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**
       FALLBACK_MANUAL_INSTRUCTIONS: Follow SPEC.md fallback/manual execution path and open a PR through required checks.
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
@@ -254,7 +254,7 @@ jobs:
             prereq_permissions_scope="FAIL"
           fi
 
-          if ! grep -Eq 'WRITE_ALLOWLIST:[[:space:]]*wiki/\*\*,wiki/index\.md,wiki/log\.md,raw/processed/\*\*' "${WORKFLOW_FILE}"; then
+          if ! grep -Eq 'WRITE_ALLOWLIST:[[:space:]]*wiki/\*\*,wiki/index\.md,wiki/log\.md,raw/processed/\*\*,raw/rejected/\*\*' "${WORKFLOW_FILE}"; then
             reason_list+=("reject:permissions_scope:write_allowlist_mismatch")
             prereq_permissions_scope="FAIL"
           fi
@@ -341,7 +341,7 @@ jobs:
     env:
       CI_ID: CI-3
       TOKEN_PROFILE: tp-pr-producer
-      WRITE_ALLOWLIST: wiki/**,wiki/index.md,wiki/log.md,raw/processed/**
+      WRITE_ALLOWLIST: wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout trusted source revision
@@ -538,7 +538,7 @@ jobs:
             fi
 
             case "${changed_path}" in
-              wiki/*|raw/processed/*)
+              wiki/*|raw/processed/*|raw/rejected/*)
                 ;;
               *)
                 allowlist_failures+=("${status_code}:${changed_path}")
@@ -603,7 +603,7 @@ jobs:
           } || true)"
 
           pr_title="CI-3: deterministic knowledgebase updates"
-          pr_body=$'Automated by CI-3 PR producer.\n\n- Profile: tp-pr-producer\n- Allowlist: wiki/**, wiki/index.md, wiki/log.md, raw/processed/**\n- Merge remains gated by required checks and approvals.'
+          pr_body=$'Automated by CI-3 PR producer.\n\n- Profile: tp-pr-producer\n- Allowlist: wiki/**, wiki/index.md, wiki/log.md, raw/processed/**, raw/rejected/**\n- Merge remains gated by required checks and approvals.'
 
           if [[ -n "${pr_number}" ]]; then
             gh pr edit "${pr_number}" --title "${pr_title}" --body "${pr_body}"

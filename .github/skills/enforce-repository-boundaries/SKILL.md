@@ -12,7 +12,7 @@ Use this skill to classify repository-relative paths against the knowledgebase b
 ## When to Use
 
 - Before a helper reads repo-local evidence from a boundary-sensitive path
-- Before any write-capable helper touches `wiki/**` or `raw/processed/**`
+- Before any write-capable helper touches `wiki/**`, `raw/processed/**`, or `raw/rejected/**`
 - When proving a path stays inside the MVP allowlist from `AGENTS.md` and `scripts/kb/contracts.py`
 
 ## Contract

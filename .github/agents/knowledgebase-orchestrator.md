@@ -31,6 +31,7 @@ This persona is the entry gate. It does not bypass governance and does not autho
 - Explicit go / no-go decision for downstream execution
 - Handoff artifact: a routing brief naming the next persona, allowed scope, blocking gates, and required repository references
 - Escalation artifact: a blocked-routing record capturing the failed gate, unresolved ambiguity, and required Human Steward decision
+- HITL/AFK classification with matched allowlist rule and audit metadata (ADR-014)
 - Escalation record when the request cannot proceed safely
 
 ## Required skills / upstream references
@@ -44,6 +45,8 @@ This persona is the entry gate. It does not bypass governance and does not autho
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`
 - `docs/ideas/wiki-curation-agent-framework.md`
+- `docs/decisions/ADR-014-hitl-afk-work-classification.md`
+- `.github/skills/route-wiki-task/SKILL.md`
 
 ## Stop conditions / fail-closed behavior
 
@@ -51,6 +54,7 @@ This persona is the entry gate. It does not bypass governance and does not autho
 - Stop when the requested path is outside repository allowlists or conflicts with `AGENTS.md` guardrails.
 - Stop when required references, source paths, or deterministic tooling contracts are missing.
 - Stop instead of improvising a new lane or skipping an absent persona.
+- Stop if an AFK-classified task does not match any rule in the ADR-014 AFK allowlist.
 
 ## Escalate to the Human Steward when
 
@@ -64,5 +68,7 @@ This persona is the entry gate. It does not bypass governance and does not autho
 - Downstream artifact: pass the routing brief, scope note, and named gate status with every transfer
 - Normal ingest-safe handoff: `source-intake-steward`
 - Controlled post-governance handoff: `synthesis-curator`, `query-synthesist`, or `topology-librarian`, but only after `policy-arbiter` clearance exists for the request scope
+- AFK maintenance handoff: tasks matching the ADR-014 AFK allowlist route directly to the eligible skill, skipping persona pipeline but requiring lock, log (with `classification: afk`), and post-publication `change-patrol` review
+- After `query-synthesist` produces a durable result intended for wiki persistence, `topology-librarian` MUST be invoked to maintain discoverability
 - If intake cannot start safely: escalate to the Human Steward
 - No direct wiki-writing handoff is permitted before evidence and policy gates succeed

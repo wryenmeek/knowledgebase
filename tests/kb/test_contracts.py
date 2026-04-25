@@ -20,6 +20,7 @@ class SharedContractsTests(unittest.TestCase):
                 "wiki-status",
                 "github-source-registry",
                 "external-asset",
+                "rejection-record",
             ),
         )
         self.assertEqual(
@@ -34,6 +35,7 @@ class SharedContractsTests(unittest.TestCase):
                 # field for these contracts is the directory prefix, not a fixed file.
                 "raw/github-sources",
                 "raw/assets",
+                "raw/rejected",
             ),
         )
 
@@ -61,6 +63,22 @@ class SharedContractsTests(unittest.TestCase):
             contracts.ArtifactWriteStrategy.EXCLUSIVE_CREATE_WRITE_ONCE.value,
         )
         # Write-once assets must be declared IMMUTABLE, not MUTABLE.
+        self.assertEqual(
+            contract.mutability,
+            contracts.ArtifactMutability.IMMUTABLE.value,
+        )
+
+    def test_governed_artifact_contract_by_pattern_matches_rejection_records(self) -> None:
+        rejection_path = "raw/rejected/example-source--a1b2c3d4.rejection.md"
+        contract = contracts.governed_artifact_contract_by_pattern(rejection_path)
+        self.assertIsNotNone(contract)
+        assert contract is not None
+        self.assertEqual(contract.artifact_id, "rejection-record")
+        self.assertEqual(contract.lock_path, "raw/.rejection-registry.lock")
+        self.assertEqual(
+            contract.write_strategy,
+            contracts.ArtifactWriteStrategy.EXCLUSIVE_CREATE_WRITE_ONCE.value,
+        )
         self.assertEqual(
             contract.mutability,
             contracts.ArtifactMutability.IMMUTABLE.value,
@@ -141,9 +159,14 @@ class SharedContractsTests(unittest.TestCase):
                 "wiki/index.md",
                 "wiki/log.md",
                 "raw/processed/**",
+                "raw/rejected/**",
             ),
         )
         self.assertEqual(contracts.WRITE_LOCK_PATH, "wiki/.kb_write.lock")
+        self.assertEqual(
+            contracts.REJECTION_REGISTRY_LOCK_PATH,
+            "raw/.rejection-registry.lock",
+        )
 
     def test_reason_codes_include_spec_required_values(self) -> None:
         self.assertIn("lock_unavailable", contracts.REASON_CODES)
