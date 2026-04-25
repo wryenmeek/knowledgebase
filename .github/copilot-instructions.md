@@ -66,6 +66,7 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - **Automate** → `ci-cd-and-automation`
 - **Ship** → `shipping-and-launch`
 - **Self-audit** → `audit-knowledgebase-workspace`
+- **Operate** → `caveman`, `log-intake-rejection`, `reconsider-rejected-source`
 
 ### Intent to skill mapping
 
@@ -78,6 +79,9 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - UI work → `frontend-ui-engineering`
 - Quality gate / multi-pass review → `quality-pass-chain`
 - Prose restructuring / AI-tell cleanup → `edit-article`
+- Source intake rejection → `log-intake-rejection`
+- Reconsidering prior rejection → `reconsider-rejected-source`
+- Agent-to-agent context compression → `caveman`
 
 ## Quality and safety
 

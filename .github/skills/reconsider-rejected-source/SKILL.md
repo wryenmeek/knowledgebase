@@ -40,6 +40,8 @@ justification for reconsideration.
 5. Release `raw/.rejection-registry.lock`.
 6. Acquire `wiki/.kb_write.lock` and append a reconsideration event to
    `wiki/log.md` (via `append-log-entry`). Release `wiki/.kb_write.lock`.
+   If log append fails, the `reconsidered_date` update is already persisted;
+   log the failure for operator remediation.
 7. If the source is not in `raw/inbox/`, instruct the operator to re-submit it.
 8. The source then re-enters the full intake pipeline
    (`source-intake-steward` → `evidence-verifier` → `policy-arbiter` →

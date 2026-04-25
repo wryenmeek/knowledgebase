@@ -114,9 +114,10 @@ reconsidered_date: null
 - When an operator invokes `reconsider-rejected-source`, the existing record's
   `reconsidered_date` field is updated.
 - The source is moved back to `raw/inbox/` and re-enters the full intake pipeline.
-- A new rejection of the same source (same sha256) after reconsideration creates a new
-  rejection record only if the source bytes have changed (different sha256). If the bytes
-  are identical, the writer must fail closed because the sha256 match still exists.
+- After reconsideration, if the re-submitted source has different bytes (and therefore a
+  different sha256), it is treated as a new source and may receive a new rejection record.
+- If the bytes are identical (same sha256), the existing record still matches and the
+  dedupe check fails closed — no new record is created.
 
 ## Write semantics
 
@@ -136,5 +137,5 @@ reconsidered_date: null
 | Lock path | `raw/.rejection-registry.lock` |
 | Lock semantics | Same acquire/release semantics as `wiki/.kb_write.lock` per ADR-005. |
 | Scope | Must be acquired before any write to `raw/rejected/`. |
-| Ordering | No ordering relationship with `wiki/.kb_write.lock` — rejection writes do not touch wiki paths. |
+| Ordering | No simultaneous holding required. The `log-intake-rejection` procedure releases `raw/.rejection-registry.lock` before acquiring `wiki/.kb_write.lock` for the `wiki/log.md` audit entry (sequential, never held simultaneously). |
 | Failure mode | If the lock is unavailable, the write MUST fail closed. |

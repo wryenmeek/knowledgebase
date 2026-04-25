@@ -97,8 +97,9 @@ rejection writes do not touch wiki paths.
 
 No ordering relationship with `wiki/.kb_write.lock` is required. Unlike ADR-012, which
 needs ordered dual-lock acquisition for CI-5, the rejection registry operates on a fully
-independent path family. The lock uses the same `fcntl`-based advisory lock pattern as
-`wiki/.kb_write.lock`.
+independent path family and the `log-intake-rejection` procedure acquires/releases each
+lock sequentially (never held simultaneously), so no ordering constraint is needed. The
+lock uses the same `fcntl`-based advisory lock pattern as `wiki/.kb_write.lock`.
 
 ### 6. Rejection record format
 
@@ -137,7 +138,7 @@ Body sections:
 
 An operator invokes the `reconsider-rejected-source` skill, which:
 
-1. Appends `reconsidered_date: <ISO-8601>` to the existing rejection record's frontmatter
+1. Sets `reconsidered_date: <ISO-8601>` in the existing rejection record's frontmatter
    (setting or updating the value — supports both initial and subsequent reconsiderations).
 2. Moves the source back to `raw/inbox/` for full re-evaluation through the standard
    intake pipeline.
@@ -235,3 +236,6 @@ recognize `raw/rejected/` as an allowlisted write zone, gated to the
 - `.github/agents/source-intake-steward.md`
 - `.github/skills/validate-inbox-source/SKILL.md`
 - `.github/skills/enforce-repository-boundaries/SKILL.md`
+- `schema/rejection-registry-contract.md`
+- `.github/skills/log-intake-rejection/SKILL.md`
+- `.github/skills/reconsider-rejected-source/SKILL.md`

@@ -199,3 +199,5 @@ lock/log/patrol but can skip persona review.
 - `test_framework_agents.py`
 - `.github/skills/route-wiki-task/SKILL.md`
 - `.github/agents/knowledgebase-orchestrator.md`
+- `.github/workflows/wiki-freshness.yml`
+- `.github/skills/patrol-human-edits/SKILL.md`

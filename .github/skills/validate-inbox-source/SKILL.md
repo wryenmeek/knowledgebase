@@ -68,7 +68,7 @@ for a record with a matching `sha256` frontmatter field.
   anything changed? Proceed or close?" If the operator proceeds, route through
   `reconsider-rejected-source`. If the operator closes, stop.
 - **Match found, `reconsidered_date` is set (non-null):** This source was
-  previously reconsidered but rejected again (same `sha256`). Surface both the
+  previously reconsidered and may have been rejected again (same `sha256`). Surface both the
   original rejection and the reconsideration date: "This source was rejected on
   [date], reconsidered on [reconsidered_date], and rejected again. Significant
   new evidence is required to proceed." Route through
