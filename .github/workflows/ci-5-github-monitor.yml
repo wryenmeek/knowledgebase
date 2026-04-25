@@ -231,10 +231,14 @@ jobs:
               registry = entry.get("registry_path", "unknown")
               source_key = entry.get("path", "unknown")
               dedupe_key = f"ci5-drift:{registry}:{source_key}"
-              title = f"[CI-5 HITL] Drift detected: {source_key}"
+              # Sanitize for GitHub search query — strip characters that break search syntax
+              safe_dedupe_key = dedupe_key.replace('"', '')
+              # Strip markdown-significant characters from title to prevent injection
+              safe_key = source_key.replace('`', '').replace('[', '').replace(']', '')[:120]
+              title = f"[CI-5 HITL] Drift detected: {safe_key}"
 
               result = subprocess.run(
-                  ["gh", "issue", "list", "--search", f'"{dedupe_key}" in:body', "--json", "number", "--limit", "1"],
+                  ["gh", "issue", "list", "--search", f'"{safe_dedupe_key}" in:body', "--json", "number", "--limit", "1"],
                   capture_output=True, text=True
               )
               existing = []

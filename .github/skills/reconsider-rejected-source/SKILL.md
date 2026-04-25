@@ -33,16 +33,18 @@ justification for reconsideration.
    re-submitted). If the source is unavailable, stop — the operator must
    re-submit before reconsideration can proceed.
 3. Acquire `raw/.rejection-registry.lock`.
-4. Append `reconsidered_date: <ISO-8601>` to the rejection record's
-   frontmatter (replacing the `null` value). **Do not modify any other
-   field or body section.** The rejection reason, category, body sections,
-   and all other fields are immutable.
+4. Set `reconsidered_date: <ISO-8601>` in the rejection record's frontmatter
+   (updating from `null` or from a prior reconsideration timestamp).
+   **Do not modify any other field or body section.** The rejection reason,
+   category, body sections, and all other fields are immutable.
 5. Release `raw/.rejection-registry.lock`.
-6. If the source is not in `raw/inbox/`, instruct the operator to re-submit it.
-7. The source then re-enters the full intake pipeline
+6. Acquire `wiki/.kb_write.lock` and append a reconsideration event to
+   `wiki/log.md` (via `append-log-entry`). Release `wiki/.kb_write.lock`.
+7. If the source is not in `raw/inbox/`, instruct the operator to re-submit it.
+8. The source then re-enters the full intake pipeline
    (`source-intake-steward` → `evidence-verifier` → `policy-arbiter` →
    downstream).
-8. If the source is rejected again (same `sha256`), `log-intake-rejection`
+9. If the source is rejected again (same `sha256`), `log-intake-rejection`
    will fail closed on the sha256 dedupe check — this is expected behavior.
    The original rejection record (with `reconsidered_date` set) serves as
    the complete audit trail. No new record is needed.

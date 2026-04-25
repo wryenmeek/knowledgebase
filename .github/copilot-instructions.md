@@ -60,7 +60,9 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - **Build** → `incremental-implementation`, `test-driven-development`
 - **Verify** → `debugging-and-error-recovery`
 - **Review** → `code-review-and-quality`
+- **Review (quality gate)** → `quality-pass-chain`
 - **Document** → `documentation-and-adrs`
+- **Edit** → `edit-article`
 - **Automate** → `ci-cd-and-automation`
 - **Ship** → `shipping-and-launch`
 - **Self-audit** → `audit-knowledgebase-workspace`
@@ -74,6 +76,8 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - Refactoring / simplification → `code-simplification`
 - API / interface design → `api-and-interface-design`
 - UI work → `frontend-ui-engineering`
+- Quality gate / multi-pass review → `quality-pass-chain`
+- Prose restructuring / AI-tell cleanup → `edit-article`
 
 ## Quality and safety
 

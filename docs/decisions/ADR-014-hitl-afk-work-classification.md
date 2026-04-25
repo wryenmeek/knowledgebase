@@ -118,6 +118,10 @@ to HITL. There is no "probably AFK" tier.
   metadata `reclassified_from: afk`.
 - There is no automatic reclassification from HITL → AFK. Reclassification only
   goes AFK → HITL.
+- Deterministic enforcement of the AFK safety net is deferred — the current
+  implementation relies on the `patrol-human-edits` agent-interpreted contract.
+  When AFK-classified writes become operative, a deterministic validator should
+  be added to verify AFK outputs against the §4 allowlist boundaries.
 
 ### 8. Audit trail
 
@@ -148,6 +152,16 @@ decided_by: <patrol|maintenance-auditor|operator>
 AFK-classified work is an explicit exception to this sequence, documented here.
 Test updates must account for the AFK lane exception without weakening the HITL
 pipeline enforcement.
+
+### 10. Advisory pre-classification (`afk-candidate`)
+
+CI workflows that assess AFK eligibility from a single signal (e.g., page age in
+`wiki-freshness.yml`) use the term `afk-candidate` — not `afk` — for their
+output. This distinction exists because a single signal is insufficient to
+confirm full AFK eligibility per §4; a downstream step must verify no open
+questions, patrol findings, or source staleness before the classification
+becomes the governed `afk` value. `afk-candidate` is advisory only and does not
+gate any write path.
 
 ## Consequences
 

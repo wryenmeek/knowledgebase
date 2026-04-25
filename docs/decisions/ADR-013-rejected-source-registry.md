@@ -138,7 +138,7 @@ Body sections:
 An operator invokes the `reconsider-rejected-source` skill, which:
 
 1. Appends `reconsidered_date: <ISO-8601>` to the existing rejection record's frontmatter
-   (replacing the `null` value).
+   (setting or updating the value — supports both initial and subsequent reconsiderations).
 2. Moves the source back to `raw/inbox/` for full re-evaluation through the standard
    intake pipeline.
 
@@ -161,6 +161,13 @@ whether the source bytes have changed:
 Rejection records are immutable after creation (except for the `reconsidered_date` field
 added during reconsideration). There is no automatic cleanup or expiration. Archive or
 deletion of rejection records requires explicit Human Steward sign-off.
+
+**Audit trail note:** When a reconsidered source is re-rejected (same sha256), the
+`log-intake-rejection` skill fails closed on the sha256 dedupe check — no second record
+is created and no `wiki/log.md` entry is written for the re-rejection. The audit trail
+for this event is the `reconsidered_date` timestamp on the original record combined with
+git history. The `reconsider-rejected-source` workflow does append a reconsideration event
+to `wiki/log.md`, so the reconsideration attempt itself is logged.
 
 ### 9. Ingest checklist integration
 
@@ -214,9 +221,13 @@ recognize `raw/rejected/` as an allowlisted write zone, gated to the
   addition is a sha256 prerequisite check at the start of intake.
 - Two new skill surfaces (`log-intake-rejection`, `reconsider-rejected-source`) must be
   declared in the `AGENTS.md` write-surface matrix before they can write.
+  `reconsider-rejected-source` is doc-only (no `logic/` directory) so its governance
+  surface is declared in the schema contract's "Authorized updater" column rather than
+  as a code-path matrix row.
 
 ## References
 
+- `ADR-005-write-concurrency-guards.md`
 - `ADR-006-authoritative-source-boundary.md`
 - `schema/ingest-checklist.md`
 - `AGENTS.md` (write-surface matrix)

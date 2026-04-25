@@ -23,7 +23,7 @@ re-evaluation churn.
 
 ## Writable paths
 
-`raw/rejected/<slug>--<sha256-prefix>.rejection.md` only (write-once).
+`raw/rejected/<slug>--<sha256-prefix-8>.rejection.md` only (write-once).
 
 ## Lock
 

@@ -24,3 +24,10 @@ bytes (`sha256` frontmatter field), not by filename or path.
 - **Allowed writer:** Only the `log-intake-rejection` skill surface
 - **Lock:** `raw/.rejection-registry.lock`
 - **Deletion:** Requires explicit Human Steward sign-off
+
+## Monitoring
+
+There is no automatic cleanup or expiration. The Human Steward should review
+this directory when the file count exceeds 50 records and assess whether an
+archive or cleanup policy is needed. Retention policy is deferred to a follow-on
+ADR if growth warrants it.
