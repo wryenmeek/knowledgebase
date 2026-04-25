@@ -214,3 +214,8 @@ node_modules/
 tests/kb/.runtime/
 tests/kb/.runtime_skill_wrappers/
 .DS_Store
+
+# Governance lock files — never commit runtime state
+.kb_write.lock
+.github-sources.lock
+.rejection-registry.lock

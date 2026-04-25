@@ -248,6 +248,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/github-source-registry-contract.md"),
         "Hard-fail behavior": ("diff injection", "lock unavailable", "last_applied_", "fail closed"),
     },
+    "scripts/hooks/**": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None",),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("scripts/kb/contracts.py", "scripts/kb/page_template_utils.py", "scripts/kb/agents_matrix_utils.py"),
+        "Hard-fail behavior": ("staged governance lock file", "missing required frontmatter field", "fail closed"),
+    },
 }
 
 
