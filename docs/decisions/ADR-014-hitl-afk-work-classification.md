@@ -196,7 +196,7 @@ lock/log/patrol but can skip persona review.
 
 - `ADR-005-write-concurrency-guards.md`
 - `AGENTS.md` (persona pipeline, write-surface matrix)
-- `test_framework_agents.py`
+- `tests/kb/test_framework_agents.py`
 - `.github/skills/route-wiki-task/SKILL.md`
 - `.github/agents/knowledgebase-orchestrator.md`
 - `.github/workflows/wiki-freshness.yml`

@@ -10,7 +10,7 @@ Deterministic preflight checklist for ingest operations.
         to the operator. Re-submission requires the `reconsider-rejected-source`
         workflow.
       - **Match found, `reconsidered_date` is set:** source was previously
-        reconsidered and rejected again. Surface both dates and require explicit
+        reconsidered and may have been rejected again. Surface both dates and require explicit
         operator justification with new evidence to proceed.
 - [ ] Input path is under `raw/inbox/` and inside repository boundaries.
 - [ ] Source checksum (`sha256`) is computed and recorded.

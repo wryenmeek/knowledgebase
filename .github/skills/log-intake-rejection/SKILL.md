@@ -23,12 +23,14 @@ re-evaluation churn.
 
 ## Writable paths
 
-`raw/rejected/<slug>--<sha256-prefix-8>.rejection.md` only (write-once).
+- `raw/rejected/<slug>--<sha256-prefix-8>.rejection.md` (write-once).
+- `wiki/log.md` (append-only rejection event via `append-log-entry`).
 
 ## Lock
 
-`raw/.rejection-registry.lock` — acquired before write, released after.
-Separate from `wiki/.kb_write.lock`.
+`raw/.rejection-registry.lock` — acquired before rejection record write, released after.
+Then `wiki/.kb_write.lock` — acquired for `wiki/log.md` append, released after.
+The two locks are never held simultaneously (sequential acquisition).
 
 ## Prerequisites
 
