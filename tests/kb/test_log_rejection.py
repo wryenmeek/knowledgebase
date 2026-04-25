@@ -49,10 +49,21 @@ def _valid_kwargs(tmp_path: Path) -> dict:
         "rejection_reason": "Missing provenance",
         "rejection_category": "provenance_missing",
         "reviewed_by": "operator",
+        "approved": True,
     }
 
 
 class TestLogRejection:
+    def test_unapproved_call_fails_closed(self, tmp_path: Path) -> None:
+        """SF-004: log_rejection() without approved=True must fail closed."""
+        kwargs = {k: v for k, v in _valid_kwargs(tmp_path).items() if k != "approved"}
+        result = log_rejection(**kwargs)
+        assert result.status == "fail"
+        assert result.reason_code == "approval_required"
+        # No file written
+        rejected_dir = tmp_path / "raw" / "rejected"
+        assert not rejected_dir.exists() or list(rejected_dir.iterdir()) == []
+
     def test_successful_write(self, tmp_path: Path) -> None:
         result = log_rejection(**_valid_kwargs(tmp_path))
         assert result.status == "pass"

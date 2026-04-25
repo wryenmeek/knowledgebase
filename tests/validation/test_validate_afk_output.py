@@ -201,3 +201,23 @@ class TestAllowedFields:
         (tmp_path / "prop.md").write_text(prop)
         result = validate_afk_output(tmp_path / "orig.md", tmp_path / "prop.md")
         assert result.status == "pass"
+
+    def test_removed_citation_fails(self, tmp_path: Path) -> None:
+        """FU-005: Removing a SourceRef citation must fail (non-AFK)."""
+        orig = _page("title: A", "Body with repo://owner/repo/file.md@abc123#section?sha256=" + "a" * 64)
+        prop = _page("title: A", "Body with no citation")
+        (tmp_path / "orig.md").write_text(orig)
+        (tmp_path / "prop.md").write_text(prop)
+        result = validate_afk_output(tmp_path / "orig.md", tmp_path / "prop.md")
+        assert result.status == "fail"
+        assert "citation" in result.message.lower() or "sourceref" in result.message.lower()
+
+    def test_removed_link_fails(self, tmp_path: Path) -> None:
+        """FU-005: Removing a wiki link must fail (non-AFK)."""
+        orig = _page("title: A", "Body with [link](other-page.md).")
+        prop = _page("title: A", "Body with no link.")
+        (tmp_path / "orig.md").write_text(orig)
+        (tmp_path / "prop.md").write_text(prop)
+        result = validate_afk_output(tmp_path / "orig.md", tmp_path / "prop.md")
+        assert result.status == "fail"
+        assert "link" in result.message.lower() or "topology" in result.message.lower()

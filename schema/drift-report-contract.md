@@ -67,20 +67,20 @@ with 7-day retention) — it is **not** a governed repository write.
 }
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `owner` | string | GitHub organisation or user name. |
-| `repo` | string | GitHub repository name. |
-| `path` | string | Repo-relative file path in the external repo. |
-| `current_commit_sha` | string (40-char hex) | HEAD commit SHA for this file. |
-| `current_blob_sha` | string | Blob SHA from the GitHub contents API. |
-| `last_applied_commit_sha` | string \| null | Commit SHA at last successful wiki update; null if unknown. |
-| `last_applied_blob_sha` | string \| null | Blob SHA at last successful wiki update. |
-| `compare_url` | string \| null | GitHub compare URL (`old...new`) for human review; null if no prior SHA. |
-| `lines_added` | integer \| null | Lines added vs. last applied asset. Null if metrics unavailable (binary, missing prior asset, oversized, or decode failure). |
-| `lines_removed` | integer \| null | Lines removed vs. last applied asset. Same null semantics as `lines_added`. |
-| `is_binary` | boolean \| null | True if file appears binary (null byte in first 8000 bytes). Null if detection could not be performed. |
-| `file_size_bytes` | integer \| null | Current file size in bytes. Null if content was not available. |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `owner` | string | ✅ | GitHub organisation or user name. |
+| `repo` | string | ✅ | GitHub repository name. |
+| `path` | string | ✅ | Repo-relative file path in the external repo. |
+| `current_commit_sha` | string (40-char hex) | ✅ | HEAD commit SHA for this file. |
+| `current_blob_sha` | string | ✅ | Blob SHA from the GitHub contents API. |
+| `last_applied_commit_sha` | string \| null | ✅ | Commit SHA at last successful wiki update; null if unknown. |
+| `last_applied_blob_sha` | string \| null | ✅ | Blob SHA at last successful wiki update. |
+| `compare_url` | string \| null | ✅ | GitHub compare URL (`old...new`) for human review; null if no prior SHA. |
+| `lines_added` | integer \| null | ⚪ optional | Lines added vs. last applied asset. Null if metrics unavailable (binary, missing prior asset, oversized, or decode failure). |
+| `lines_removed` | integer \| null | ⚪ optional | Lines removed vs. last applied asset. Same null semantics as `lines_added`. |
+| `is_binary` | boolean \| null | ⚪ optional | `true` if the *current* file appears binary (null byte in first 8000 bytes); `false` if current is text (even if prior was binary). Null if content unavailable. |
+| `file_size_bytes` | integer \| null | ⚪ optional | Current file size in bytes. Null if content was not available. |
 
 ---
 

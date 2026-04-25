@@ -165,10 +165,13 @@ def _compute_line_metrics(
         }
 
     if _is_binary(prior_bytes):
+        # Prior asset was binary but current is text (already passed the
+        # current-binary check above).  AFK denial is still correct (null
+        # metrics), but is_binary reflects the *current* file state.
         return {
             "lines_added": None,
             "lines_removed": None,
-            "is_binary": True,
+            "is_binary": False,
             "file_size_bytes": file_size,
         }
 

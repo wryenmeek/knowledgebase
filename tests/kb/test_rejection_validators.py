@@ -82,6 +82,18 @@ class TestValidateSha256:
         errors = validate_sha256("g" * 64)
         assert any("hex" in e for e in errors)
 
+    def test_63_chars_rejected(self) -> None:
+        """FU-006: 63-char hex string (one short) must be rejected."""
+        errors = validate_sha256("a" * 63)
+        assert errors, "63-char sha256 must fail"
+        assert any("64" in e for e in errors)
+
+    def test_65_chars_rejected(self) -> None:
+        """FU-006: 65-char hex string (one over) must be rejected."""
+        errors = validate_sha256("a" * 65)
+        assert errors, "65-char sha256 must fail"
+        assert any("64" in e for e in errors)
+
 
 class TestValidateCategory:
     def test_all_valid_categories(self) -> None:

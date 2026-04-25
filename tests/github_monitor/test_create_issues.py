@@ -152,3 +152,99 @@ class TestCloseResolvedEntries:
         assert result.status == "fail"
         assert result.reason_code == "close_failed"
         assert result.summary["failed"] == 1
+
+
+class TestCloseResolvedEntriesEdgeCases:
+    """FU-004: idempotency and API-failure edge cases for close_resolved_entries."""
+
+    def test_already_closed_issue_is_idempotent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Already-closed issue: search returns None → treated as not_found (no error)."""
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps({
+            "drifted": [],
+            "up_to_date": [{"owner": "org", "repo": "repo", "path": "docs/guide.md"}],
+        }))
+        # search returns None → issue already gone / never opened
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._search_existing_issue",
+            lambda key: None,
+        )
+        result = close_resolved_entries(drift_report_path=report)
+        assert result.status == "pass"
+        assert result.summary["not_found"] == 1
+
+    def test_auth_failure_propagates_as_fail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FU-004: auth failure in _close_issue → status fail, reason close_failed."""
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps({
+            "drifted": [],
+            "up_to_date": [{"owner": "org", "repo": "repo", "path": "docs/guide.md"}],
+        }))
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._search_existing_issue",
+            lambda key: 42,
+        )
+        # Simulate auth failure: _close_issue returns False
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._close_issue",
+            lambda num, run_id: False,
+        )
+        result = close_resolved_entries(drift_report_path=report)
+        assert result.status == "fail"
+        assert result.reason_code == "close_failed"
+
+    def test_network_failure_propagates_as_fail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FU-004: network error in search → treats as not_found (no crash)."""
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps({
+            "drifted": [],
+            "up_to_date": [{"owner": "org", "repo": "repo", "path": "docs/guide.md"}],
+        }))
+        # Simulate search returning None (network error treated as no issue found)
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._search_existing_issue",
+            lambda key: None,
+        )
+        result = close_resolved_entries(drift_report_path=report)
+        # Should not crash; treated as not_found
+        assert result.status == "pass"
+        assert result.summary["not_found"] == 1
+
+    def test_multiple_entries_partial_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FU-004: partial close failure across multiple entries → status fail."""
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps({
+            "drifted": [],
+            "up_to_date": [
+                {"owner": "org", "repo": "repo", "path": "docs/a.md"},
+                {"owner": "org", "repo": "repo", "path": "docs/b.md"},
+            ],
+        }))
+        call_count = [0]
+
+        def mock_search(key: str) -> int | None:
+            return call_count[0] + 10
+
+        def mock_close(num: int, run_id: str) -> bool:
+            call_count[0] += 1
+            # First entry succeeds, second fails
+            return call_count[0] == 1
+
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._search_existing_issue", mock_search
+        )
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._close_issue", mock_close
+        )
+        result = close_resolved_entries(drift_report_path=report)
+        assert result.status == "fail"
+        assert result.summary["closed"] == 1
+        assert result.summary["failed"] == 1

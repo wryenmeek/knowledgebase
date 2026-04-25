@@ -37,6 +37,19 @@ from scripts._optional_surface_common import (
     run_surface_cli,
 )
 
+def _redact_stderr(stderr: str, max_len: int = 200) -> str:
+    """Truncate and redact stderr before logging to guard against credential leakage.
+
+    GitHub API error messages may contain token fragments or sensitive path
+    information.  We keep only the first ``max_len`` characters and strip any
+    token-like hex strings.
+    """
+    truncated = stderr[:max_len]
+    # Redact 40-char hex strings (git SHAs / token fragments).
+    truncated = re.sub(r"[0-9a-fA-F]{40,}", "<redacted>", truncated)
+    return truncated.strip()
+
+
 SURFACE = "github_monitor.create_issues"
 MODE = "create"
 
@@ -81,7 +94,7 @@ def _search_existing_issue(dedupe_key: str) -> int | None:
     if result.returncode != 0:
         print(
             f"::warning::Dedupe search failed; creating issue anyway. "
-            f"stderr: {result.stderr}",
+            f"stderr: {_redact_stderr(result.stderr)}",
             flush=True,
         )
         return None
@@ -110,7 +123,7 @@ def _comment_on_issue(issue_num: int, run_id: str) -> bool:
     )
     if result.returncode != 0:
         print(
-            f"::warning::Failed to comment on issue #{issue_num}: {result.stderr}",
+            f"::warning::Failed to comment on issue #{issue_num}: {_redact_stderr(result.stderr)}",
             flush=True,
         )
         return False
@@ -131,7 +144,7 @@ def _create_issue(title: str, body: str, labels: str) -> bool:
     )
     if result.returncode != 0:
         print(
-            f"::error::Failed to create HITL issue: {result.stderr}",
+            f"::error::Failed to create HITL issue: {_redact_stderr(result.stderr)}",
             flush=True,
         )
         return False
@@ -151,7 +164,7 @@ def _close_issue(issue_num: int, run_id: str) -> bool:
     if comment_result.returncode != 0:
         print(
             f"::warning::Failed to comment on issue #{issue_num} before closing: "
-            f"{comment_result.stderr}",
+            f"{_redact_stderr(comment_result.stderr)}",
             flush=True,
         )
 
@@ -162,7 +175,7 @@ def _close_issue(issue_num: int, run_id: str) -> bool:
     )
     if close_result.returncode != 0:
         print(
-            f"::warning::Failed to close issue #{issue_num}: {close_result.stderr}",
+            f"::warning::Failed to close issue #{issue_num}: {_redact_stderr(close_result.stderr)}",
             flush=True,
         )
         return False
@@ -395,15 +408,27 @@ def _runner(**kwargs: Any) -> SurfaceResult:
         close_result = close_resolved_entries(
             drift_report_path=kwargs["drift_report_path"],
         )
-        if close_result.status == STATUS_FAIL:
-            return close_result
-        # Merge summaries
+        # Aggregate both results: use worst status so neither failure is lost.
+        combined_status = (
+            STATUS_FAIL
+            if result.status == STATUS_FAIL or close_result.status == STATUS_FAIL
+            else result.status
+        )
+        combined_reason = (
+            f"{result.reason_code}+{close_result.reason_code}"
+            if result.status == STATUS_FAIL and close_result.status == STATUS_FAIL
+            else (
+                result.reason_code
+                if result.status == STATUS_FAIL
+                else close_result.reason_code
+            )
+        )
         combined_summary = {**(result.summary or {}), "close_resolved": close_result.summary}
         result = SurfaceResult(
             surface=SURFACE,
             mode=MODE,
-            status=result.status,
-            reason_code=result.reason_code,
+            status=combined_status,
+            reason_code=combined_reason,
             message=f"{result.message}; {close_result.message}",
             path_rules=result.path_rules,
             summary=combined_summary,

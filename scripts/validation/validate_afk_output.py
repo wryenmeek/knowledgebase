@@ -43,7 +43,7 @@ _AFK_ALLOWED_FIELDS: frozenset[str] = frozenset({
     "quality_assessment",
 })
 
-_SOURCEREF_RE = re.compile(r"repo://[^\s\]]+")
+_SOURCEREF_RE = re.compile(r"repo://[^\s\])\.,]+")
 _WIKI_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+\.md(?:#[^)]*)?)\)")
 
 
@@ -215,9 +215,23 @@ def _build_parser() -> JsonArgumentParser:
 
 
 def _args_to_kwargs(args: Any) -> dict[str, Any]:
+    original_path = Path(args.original)
+    proposed_path = Path(args.proposed)
+    # Bounds-check --original against wiki/ per canonical path-safety pattern
+    # (docs/architecture.md §Write and safety controls).  --proposed is allowed
+    # outside wiki/ to support staged / temp file invocation.
+    wiki_root = (Path(".") / "wiki").resolve()
+    try:
+        resolved_original = original_path.resolve()
+        if not resolved_original.is_relative_to(wiki_root):
+            raise ValueError(
+                f"--original must be within wiki/: {original_path}"
+            )
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
     return {
-        "original_path": Path(args.original),
-        "proposed_path": Path(args.proposed),
+        "original_path": original_path,
+        "proposed_path": proposed_path,
     }
 
 

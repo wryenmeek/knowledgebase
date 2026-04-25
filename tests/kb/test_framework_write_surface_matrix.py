@@ -227,6 +227,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("schema/github-source-registry-contract.md", "schema/drift-report-contract.md", "ADR-012"),
         "Hard-fail behavior": ("invalid registry json", "api shape violation", "path traversal", "fail closed"),
     },
+    "scripts/github_monitor/classify_drift.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("schema/drift-report-contract.md", "ADR-014"),
+        "Hard-fail behavior": ("invalid drift report json", "governed-path write attempt", "fail closed"),
+    },
     "scripts/github_monitor/fetch_content.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/assets/", "raw/github-sources/", "last_fetched_"),

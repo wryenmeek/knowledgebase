@@ -134,11 +134,24 @@ def log_rejection(
     rejection_reason: str,
     rejection_category: str,
     reviewed_by: str,
+    approved: bool = False,
 ) -> SurfaceResult:
     """Write a rejection record to ``raw/rejected/``.
 
     Returns a ``SurfaceResult`` indicating success or failure.
+
+    ``approved=True`` is required — this enforces the governance gate
+    regardless of call path (CLI or direct Python import).
     """
+    if not approved:
+        return SurfaceResult(
+            surface=SURFACE,
+            mode=MODE,
+            status=STATUS_FAIL,
+            reason_code="approval_required",
+            message="approved=True is required; pass --approval approved via CLI",
+            path_rules=_path_rules(),
+        )
     # --- field validation ---------------------------------------------------
     all_errors: list[str] = []
     all_errors.extend(validate_slug(slug))
@@ -312,6 +325,7 @@ def _args_to_kwargs(args: Any) -> dict[str, Any]:
         "rejection_reason": args.rejection_reason,
         "rejection_category": args.rejection_category,
         "reviewed_by": args.reviewed_by,
+        "approved": True,
     }
 
 

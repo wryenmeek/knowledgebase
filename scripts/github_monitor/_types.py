@@ -68,7 +68,14 @@ class GitHubAPIRequestError(OSError):
 # ---------------------------------------------------------------------------
 
 
-class RegistryEntry(TypedDict, total=False):
+class _RegistryEntryRequired(TypedDict):
+    """Required fields — always present on every RegistryEntry."""
+
+    path: str
+    tracking_status: str
+
+
+class RegistryEntry(_RegistryEntryRequired, total=False):
     """One entry in a source registry file.
 
     Required keys: ``path``, ``tracking_status``.
@@ -76,8 +83,6 @@ class RegistryEntry(TypedDict, total=False):
     ``uninitialized`` state where no prior ingest has occurred.
     """
 
-    path: str
-    tracking_status: str
     last_applied_commit_sha: str | None
     last_applied_blob_sha: str | None
     last_applied_at: str | None
