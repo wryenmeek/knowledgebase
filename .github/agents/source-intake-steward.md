@@ -40,6 +40,7 @@ Own the trust boundary between `raw/inbox/` and the rest of the repository. This
 - `raw/processed/SPEC.md`
 - `docs/architecture.md`
 - `.github/skills/log-intake-rejection/SKILL.md`
+- `.github/skills/reconsider-rejected-source/SKILL.md`
 - `schema/rejection-registry-contract.md`
 
 ## Stop conditions / fail-closed behavior

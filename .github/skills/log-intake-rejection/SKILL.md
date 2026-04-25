@@ -48,7 +48,7 @@ The two locks are never held simultaneously (sequential acquisition).
 4. Write rejection record per `schema/rejection-registry-contract.md`.
 5. Release `raw/.rejection-registry.lock`.
 6. Acquire `wiki/.kb_write.lock` and append rejection event to `wiki/log.md`
-   (via `append-log-entry` or `log-ingest-event` skill). Release
+   (via `append-log-entry` skill). Release
    `wiki/.kb_write.lock`. If log append fails → fail closed (the rejection
    record is already written; log the failure for operator remediation).
 
@@ -58,7 +58,8 @@ The two locks are never held simultaneously (sequential acquisition).
 - Record already exists for this `sha256`.
 - Lock unavailable (`raw/.rejection-registry.lock` or `wiki/.kb_write.lock`).
 - Missing rejection metadata.
-- `wiki/log.md` append failure.
+- `wiki/log.md` append failure (rejection record is already persisted; fail-closed
+  means exit with error for operator remediation, not rollback).
 
 ## References
 

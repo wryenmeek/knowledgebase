@@ -56,6 +56,15 @@ Path rules for `wiki/reports/**`:
    overwritten.
 3. No topical wiki page may be placed under `wiki/reports/`.
 
+## Rejection registry artifacts
+
+`raw/rejected/` stores write-once rejection records governed by ADR-013. Unlike
+`wiki/` artifacts, these are metadata-only records keyed by sha256 identity.
+
+| Artifact ID | Path pattern | Schema owner | Purpose | Mutation semantics | Lock requirement | Atomic write expectation |
+|---|---|---|---|---|---|---|
+| `rejection-record` | `raw/rejected/*.rejection.md` | `schema/rejection-registry-contract.md` | Write-once metadata record for rejected intake sources. | Write-once (`exclusive_create_write_once`); immutable post-write except `reconsidered_date` (manual operator update under lock). | `raw/.rejection-registry.lock` (separate from `wiki/.kb_write.lock`; sequential acquisition, never held simultaneously). | `O_CREAT \| O_EXCL`; sha256 dedupe before write. |
+
 ## Path ownership rules
 
 1. Reserved governed artifacts live at fixed root-level `wiki/*.md` paths in MVP.

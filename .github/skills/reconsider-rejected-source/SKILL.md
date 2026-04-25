@@ -1,6 +1,6 @@
 ---
 name: reconsider-rejected-source
-description: "Reconsiders a previously rejected source by appending reconsidered_date and re-entering the intake pipeline. Use when an operator believes a prior rejection should be revisited because circumstances have changed."
+description: "Reconsiders a previously rejected source by setting reconsidered_date and re-entering the intake pipeline. Use when an operator believes a prior rejection should be revisited because circumstances have changed."
 ---
 
 # reconsider-rejected-source
@@ -8,7 +8,7 @@ description: "Reconsiders a previously rejected source by appending reconsidered
 ## Overview
 
 Operator-initiated workflow to reconsider a previously rejected source.
-The `reconsidered_date` field is appended to the existing record's frontmatter;
+The `reconsidered_date` field is set in the existing record's frontmatter;
 the original rejection record is never modified or deleted.
 
 ## Runtime mode
@@ -57,3 +57,16 @@ The original rejection record is NEVER deleted — this preserves the audit trai
 A reconsidered source that passes intake on the second attempt has both a
 rejection record (with `reconsidered_date` set) and a successful
 `raw/processed/` artifact.
+
+## Hard-fail conditions
+
+- Lock unavailable (`raw/.rejection-registry.lock` or `wiki/.kb_write.lock`).
+- Source unavailable and operator cannot re-submit.
+- `wiki/log.md` append failure (reconsidered_date update is already persisted;
+  exit with error for operator remediation, not rollback).
+
+## References
+
+- `docs/decisions/ADR-013-rejected-source-registry.md`
+- `schema/rejection-registry-contract.md`
+- `.github/skills/log-intake-rejection/SKILL.md`

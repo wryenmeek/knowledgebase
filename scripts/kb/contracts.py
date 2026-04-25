@@ -33,6 +33,8 @@ class TokenProfileId(StrEnum):
     GATEKEEPER = "tp-gatekeeper"
     ANALYST_READONLY = "tp-analyst-readonly"
     PR_PRODUCER = "tp-pr-producer"
+    GITHUB_MONITOR = "tp-github-monitor"
+    FRESHNESS_READONLY = "tp-freshness-readonly"
 
 
 TOKEN_PROFILE_IDS: tuple[str, ...] = tuple(profile.value for profile in TokenProfileId)
@@ -163,7 +165,7 @@ GOVERNED_ARTIFACT_CONTRACTS: tuple[GovernedArtifactContract, ...] = (
     # Rejected source registry (ADR-013).
     # Declared IMMUTABLE because records are write-once at creation time.
     # The reconsidered_date field is the sole exception: it may be updated
-    # once via the manual reconsider-rejected-source workflow (not a
+    # via the manual reconsider-rejected-source workflow (not a
     # programmatic mutation through this contract's write strategy).
     GovernedArtifactContract(
         artifact_id="rejection-record",

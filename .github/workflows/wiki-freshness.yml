@@ -16,6 +16,11 @@ on:
 permissions:
   contents: read
 
+# CI permission policy markers (machine-checked by test_ci_permission_asserts.py)
+env:
+  CI_ID: CI-freshness
+  TOKEN_PROFILE: tp-freshness-readonly
+
 concurrency:
   group: kb-freshness-${{ github.repository }}
   cancel-in-progress: true

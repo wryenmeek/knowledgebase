@@ -124,7 +124,7 @@ reconsidered_date: null
 | Property | Value |
 |---|---|
 | Mutability | Write-once; immutable after creation except for `reconsidered_date`. |
-| Write strategy | Exclusive create (fail if file already exists) for new records; atomic field update for `reconsidered_date`. |
+| Write strategy | Exclusive create (fail if file already exists) for new records; manual field update for `reconsidered_date` under lock. |
 | Authorized creator | `log-intake-rejection` skill surface only. |
 | Authorized updater | Operator following the `reconsider-rejected-source` doc-only workflow (manual frontmatter edit under `raw/.rejection-registry.lock`). |
 | Deletion | Not automated. Requires explicit Human Steward sign-off and a `wiki/log.md` audit entry. |

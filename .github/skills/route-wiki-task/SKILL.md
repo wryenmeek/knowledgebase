@@ -1,6 +1,6 @@
 ---
 name: route-wiki-task
-description: Selects the correct governed lane for a wiki work item and hands it off to the appropriate persona. Use when knowledgebase-orchestrator must classify incoming work and route it to the intake-safe gate, synthesis lane, maintenance arm, or quality lane.
+description: Selects the correct governed lane for a wiki work item and hands it off to the appropriate persona. Use when knowledgebase-orchestrator must classify incoming work and route it to the ingest lane, query lane, maintenance lane, or review lane.
 ---
 
 # Route Wiki Task
@@ -23,8 +23,8 @@ hands off to the correct first-contact persona. No work bypasses this step.
 ## When to Use
 
 - New work arrives (new source, query, maintenance request, or curation backlog item)
-- `knowledgebase-orchestrator` must select between the intake-safe gate, synthesis
-  lane, maintenance arm, or quality lane
+- `knowledgebase-orchestrator` must select between the ingest lane, query
+  lane, maintenance lane, or review lane
 - A prior step has escalated an item back to the orchestrator for re-routing
 - An operator needs to understand which lane a specific work type belongs in
 
@@ -44,7 +44,7 @@ hands off to the correct first-contact persona. No work bypasses this step.
 - Lane prerequisites must be confirmed before the handoff is issued
 - The orchestrator does not open a write path directly; writes happen only in
   declared downstream writer surfaces
-- A work item that cannot be classified as intake, synthesis, maintenance, or quality
+- A work item that cannot be classified as ingest, query, maintenance, or review
   routes to human steward review, not to an arbitrary lane
 - Tasks not on the ADR-014 AFK allowlist default to HITL and route through the full persona pipeline
 - Operator may override any classification to HITL but NEVER to AFK (deny-by-default)

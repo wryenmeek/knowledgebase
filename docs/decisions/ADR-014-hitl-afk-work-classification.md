@@ -150,7 +150,7 @@ decided_by: <patrol|maintenance-auditor|operator>
 
 `test_framework_agents.py` enforces the persona pipeline sequence.
 AFK-classified work is an explicit exception to this sequence, documented here.
-Test updates must account for the AFK lane exception without weakening the HITL
+Test updates must account for the AFK classification exception without weakening the HITL
 pipeline enforcement.
 
 ### 10. Advisory pre-classification (`afk-candidate`)

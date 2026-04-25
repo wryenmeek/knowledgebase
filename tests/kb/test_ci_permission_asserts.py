@@ -54,6 +54,24 @@ WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
         write_contract="allowlisted-write",
         requires_write_concurrency_guard=True,
     ),
+    WorkflowPolicyExpectation(
+        ci_id="CI-5",
+        workflow_path=Path(".github/workflows/ci-5-github-monitor.yml"),
+        token_profile=contracts.TokenProfileId.GITHUB_MONITOR.value,
+        permissions={
+            "contents": "read",
+        },
+        write_contract="job-scoped-write",
+    ),
+    WorkflowPolicyExpectation(
+        ci_id="CI-freshness",
+        workflow_path=Path(".github/workflows/wiki-freshness.yml"),
+        token_profile=contracts.TokenProfileId.FRESHNESS_READONLY.value,
+        permissions={
+            "contents": "read",
+        },
+        write_contract="read-only",
+    ),
 )
 
 WRITE_CONCURRENCY_GUARD = {
@@ -205,6 +223,8 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
             "CI-1": "no-write",
             "CI-2": "read-only",
             "CI-3": "allowlisted-write",
+            "CI-5": "job-scoped-write",
+            "CI-freshness": "read-only",
         }
 
         for policy in WORKFLOW_POLICY_MATRIX:
@@ -214,6 +234,15 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
                 if policy.write_contract in {"no-write", "read-only"}:
                     self.assertNotIn("contents: write", workflow_text)
                     self.assertNotIn("pull-requests: write", workflow_text)
+                elif policy.write_contract == "job-scoped-write":
+                    # Write permissions scoped to specific jobs, not workflow level
+                    actual_wf_perms = _parse_top_level_mapping_block(
+                        workflow_text, "permissions", policy.workflow_path,
+                    )
+                    self.assertNotEqual(
+                        actual_wf_perms.get("contents"), "write",
+                        f"{policy.workflow_path} must NOT have contents: write at workflow level",
+                    )
                 else:
                     self.assertIn("WRITE_ALLOWLIST:", workflow_text)
                     self.assertEqual(

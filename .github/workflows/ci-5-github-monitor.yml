@@ -21,6 +21,9 @@ permissions:
 
 env:
   PYTHONDONTWRITEBYTECODE: "1"
+  # CI permission policy markers (machine-checked by test_ci_permission_asserts.py)
+  CI_ID: CI-5
+  TOKEN_PROFILE: tp-github-monitor
 
 jobs:
   check-drift:
@@ -241,14 +244,21 @@ jobs:
               registry = f"{entry.get('owner', 'unknown')}/{entry.get('repo', 'unknown')}"
               source_key = entry.get("path", "unknown")
               dedupe_key = f"ci5-drift:{registry}:{source_key}"
-              # Sanitize for GitHub search query — strip characters that break search syntax
-              safe_dedupe_key = dedupe_key.replace('"', '')
-              # Strip markdown-significant characters from title to prevent injection
-              safe_key = source_key.replace('`', '').replace('[', '').replace(']', '')[:120]
-              # Sanitize values used in issue body markdown
-              safe_registry = registry.replace('`', '').replace('\n', ' ')[:200]
-              safe_body_source = source_key.replace('`', '').replace('\n', ' ')[:200]
-              safe_body_dedupe = dedupe_key.replace('`', '').replace('\n', ' ')
+              # Sanitize for GitHub markdown — strip characters that trigger side effects
+              import re
+              def _sanitize_gh_md(value: str, max_len: int = 200) -> str:
+                  s = value.replace('`', '').replace('\n', ' ').replace('\r', '')
+                  s = re.sub(r'[<>]', '', s)                # HTML tags
+                  s = re.sub(r'@[\w/-]+', '', s)             # @mention / @org/team
+                  s = re.sub(r'!\[', '[', s)                 # image embeds
+                  s = re.sub(r'\b(fix(es)?|close[sd]?|resolve[sd]?)\s+#\d+', '', s, flags=re.IGNORECASE)
+                  return s[:max_len].strip()
+
+              safe_dedupe_key = _sanitize_gh_md(dedupe_key.replace('"', ''))
+              safe_key = _sanitize_gh_md(source_key, max_len=120).replace('[', '').replace(']', '')
+              safe_registry = _sanitize_gh_md(registry)
+              safe_body_source = _sanitize_gh_md(source_key)
+              safe_body_dedupe = _sanitize_gh_md(dedupe_key)
               title = f"[CI-5 HITL] Drift detected: {safe_key}"
 
               result = subprocess.run(
@@ -332,10 +342,10 @@ jobs:
       - name: Install dependencies
         run: pip install -e . --quiet
 
-      - name: Download drift report
+      - name: Download AFK-classified entries
         uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.check-drift.outputs.artifact_name }}
+          name: drift-classification-${{ github.run_id }}
 
       - name: Download fetched assets and registry state
         uses: actions/download-artifact@v4
@@ -345,8 +355,10 @@ jobs:
       - name: Apply diff-aware wiki updates
         run: |
           set -euo pipefail
+          # IMPORTANT: Only process AFK-classified entries, not the full drift report.
+          # The full drift-report.json includes HITL entries that must NOT be auto-synthesized.
           python -m scripts.github_monitor.synthesize_diff \
-            --drift-report drift-report.json \
+            --drift-report afk-entries.json \
             --approval approved
 
       - name: Commit and open PR
