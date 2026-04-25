@@ -103,19 +103,9 @@ class RegistryFile(TypedDict):
 # ---------------------------------------------------------------------------
 
 
-class DriftedEntry(TypedDict, total=False):
-    """An entry where the current blob SHA differs from ``last_applied_blob_sha``.
+class _DriftedEntryRequired(TypedDict):
+    """Required fields — always present on every DriftedEntry."""
 
-    Required keys: ``owner``, ``repo``, ``path``, ``current_commit_sha``,
-    ``current_blob_sha``, ``last_applied_commit_sha``, ``last_applied_blob_sha``,
-    ``compare_url``.
-
-    Optional metric keys (Phase 2): ``lines_added``, ``lines_removed``,
-    ``is_binary``, ``file_size_bytes``.  These are ``None`` when the prior
-    asset is unavailable, the file is too large, or decoding fails.
-    """
-
-    # Required (always present)
     owner: str
     repo: str
     path: str
@@ -124,7 +114,20 @@ class DriftedEntry(TypedDict, total=False):
     last_applied_commit_sha: str | None
     last_applied_blob_sha: str | None
     compare_url: str | None
-    # Optional metrics (Phase 2)
+
+
+class DriftedEntry(_DriftedEntryRequired, total=False):
+    """An entry where the current blob SHA differs from ``last_applied_blob_sha``.
+
+    Required keys (enforced by ``_DriftedEntryRequired``): ``owner``, ``repo``,
+    ``path``, ``current_commit_sha``, ``current_blob_sha``,
+    ``last_applied_commit_sha``, ``last_applied_blob_sha``, ``compare_url``.
+
+    Optional metric keys (Phase 2): ``lines_added``, ``lines_removed``,
+    ``is_binary``, ``file_size_bytes``.  These are ``None`` when the prior
+    asset is unavailable, the file is too large, or decoding fails.
+    """
+
     lines_added: int | None
     lines_removed: int | None
     is_binary: bool | None

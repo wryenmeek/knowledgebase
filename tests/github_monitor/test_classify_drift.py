@@ -252,13 +252,14 @@ class TestCheckDriftMetrics:
     def test_compute_line_metrics_text_diff(self, tmp_path: Path) -> None:
         from scripts.github_monitor.check_drift import _compute_line_metrics
 
+        commit_sha = "a" * 40
         # Create prior asset
-        asset_dir = tmp_path / "raw" / "assets" / "org" / "repo" / "abc123" / "docs"
+        asset_dir = tmp_path / "raw" / "assets" / "org" / "repo" / commit_sha / "docs"
         asset_dir.mkdir(parents=True)
         (asset_dir / "file.md").write_text("line1\nline2\nline3\n")
 
         metrics = _compute_line_metrics(
-            tmp_path, "org", "repo", "docs/file.md", "abc123",
+            tmp_path, "org", "repo", "docs/file.md", commit_sha,
             b"line1\nline2\nline3\nline4\n",
         )
 
@@ -271,7 +272,7 @@ class TestCheckDriftMetrics:
         from scripts.github_monitor.check_drift import _compute_line_metrics
 
         metrics = _compute_line_metrics(
-            tmp_path, "org", "repo", "docs/file.md", "abc123",
+            tmp_path, "org", "repo", "docs/file.md", "b" * 40,
             b"hello\n",
         )
 

@@ -133,7 +133,7 @@ def classify_drift(
     hitl_path.write_text(json.dumps({"entries": hitl_entries}, indent=2), encoding="utf-8")
 
     message = f"Classification: {len(afk_entries)} AFK, {len(hitl_entries)} HITL"
-    print(message)
+    print(message, file=sys.stderr)
 
     return SurfaceResult(
         surface=SURFACE,

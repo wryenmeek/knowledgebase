@@ -1,13 +1,17 @@
-"""Unit tests for create_issues.py — sanitization logic only.
+"""Unit tests for create_issues.py.
 
-Subprocess-based ``gh`` CLI calls are integration-level and not tested here.
+Sanitization logic is tested directly. Subprocess-based ``gh`` CLI calls
+use monkeypatched helpers for close_resolved_entries tests.
 """
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
-from scripts.github_monitor.create_issues import _sanitize_gh_md
+from scripts.github_monitor.create_issues import _sanitize_gh_md, close_resolved_entries
 
 
 class TestSanitizeGhMd:
@@ -59,3 +63,92 @@ class TestSanitizeGhMd:
         assert "@evil" not in result
         assert "![" not in result
         assert "fixes #1" not in result.lower()
+
+
+class TestCloseResolvedEntries:
+    """Tests for close_resolved_entries using mocked subprocess calls."""
+
+    def test_no_up_to_date_entries(self, tmp_path: Path) -> None:
+        """Empty up_to_date list returns pass with no work done."""
+        report = tmp_path / "report.json"
+        report.write_text('{"drifted": [], "up_to_date": []}')
+        result = close_resolved_entries(drift_report_path=report)
+        assert result.status == "pass"
+        assert "No up-to-date" in result.message
+
+    def test_missing_report_file(self) -> None:
+        """Missing file returns fail."""
+        result = close_resolved_entries(drift_report_path=Path("/nonexistent.json"))
+        assert result.status == "fail"
+        assert result.reason_code == "invalid_input"
+
+    def test_malformed_json(self, tmp_path: Path) -> None:
+        """Malformed JSON returns fail."""
+        report = tmp_path / "report.json"
+        report.write_text("not json")
+        result = close_resolved_entries(drift_report_path=report)
+        assert result.status == "fail"
+        assert result.reason_code == "invalid_input"
+
+    def test_issue_found_and_closed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When an issue exists for a resolved entry, it gets closed."""
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps({
+            "drifted": [],
+            "up_to_date": [{"owner": "org", "repo": "repo", "path": "docs/guide.md"}],
+        }))
+        monkeypatch.setenv("GITHUB_RUN_ID", "42")
+
+        # Mock _search_existing_issue to return issue number
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._search_existing_issue",
+            lambda key: 99,
+        )
+        # Mock _close_issue to succeed
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._close_issue",
+            lambda num, run_id: True,
+        )
+
+        result = close_resolved_entries(drift_report_path=report)
+        assert result.status == "pass"
+        assert result.summary["closed"] == 1
+        assert result.summary["not_found"] == 0
+
+    def test_issue_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When no issue exists, counts as not_found (not a failure)."""
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps({
+            "drifted": [],
+            "up_to_date": [{"owner": "org", "repo": "repo", "path": "docs/guide.md"}],
+        }))
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._search_existing_issue",
+            lambda key: None,
+        )
+
+        result = close_resolved_entries(drift_report_path=report)
+        assert result.status == "pass"
+        assert result.summary["not_found"] == 1
+        assert result.summary["closed"] == 0
+
+    def test_close_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When _close_issue fails, counts as failed and status is fail."""
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps({
+            "drifted": [],
+            "up_to_date": [{"owner": "org", "repo": "repo", "path": "docs/guide.md"}],
+        }))
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._search_existing_issue",
+            lambda key: 99,
+        )
+        monkeypatch.setattr(
+            "scripts.github_monitor.create_issues._close_issue",
+            lambda num, run_id: False,
+        )
+
+        result = close_resolved_entries(drift_report_path=report)
+        assert result.status == "fail"
+        assert result.reason_code == "close_failed"
+        assert result.summary["failed"] == 1

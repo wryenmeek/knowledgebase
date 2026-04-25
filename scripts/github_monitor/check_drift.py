@@ -62,6 +62,7 @@ from scripts.github_monitor._http import (
     _get_github_token,
     _make_github_request,
 )
+from scripts.github_monitor import _validators
 from scripts.github_monitor._validators import validate_external_path
 
 SURFACE = "github_monitor.check_drift"
@@ -134,7 +135,17 @@ def _compute_line_metrics(
             "file_size_bytes": file_size,
         }
 
-    prior_path = repo_root / "raw" / "assets" / owner / repo / last_applied_commit_sha / path
+    try:
+        prior_path = _validators.build_asset_path(
+            repo_root, owner, repo, last_applied_commit_sha, path,
+        )
+    except ValueError:
+        return {
+            "lines_added": None,
+            "lines_removed": None,
+            "is_binary": False,
+            "file_size_bytes": file_size,
+        }
     if not prior_path.is_file():
         return {
             "lines_added": None,

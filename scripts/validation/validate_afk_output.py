@@ -51,13 +51,22 @@ def _path_rules() -> dict[str, Any]:
 
 
 def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
-    """Split YAML frontmatter from body.  Returns (fields, body)."""
+    """Split YAML frontmatter from body.  Returns (fields, body).
+
+    Note: This is a deliberately simple parser that handles single-line
+    ``key: value`` pairs.  Multi-line YAML values (block scalars, lists)
+    are not fully parsed — only the first line is captured.  This is
+    acceptable because the AFK allowlist checks only single-line fields
+    (``last_updated``, ``quality_assessment``).  The ``aliases`` identity
+    check compares raw frontmatter text blocks as a fallback.
+    """
     if not text.startswith("---"):
         return {}, text
     end = text.find("\n---", 3)
     if end == -1:
         return {}, text
-    fm_lines = text[4:end].strip().splitlines()
+    fm_block = text[4:end].strip()
+    fm_lines = fm_block.splitlines()
     fields: dict[str, str] = {}
     for line in fm_lines:
         if ":" in line:
@@ -95,6 +104,16 @@ def validate_afk_output(
 
     orig_fm, orig_body = _parse_frontmatter(original_text)
     prop_fm, prop_body = _parse_frontmatter(proposed_text)
+
+    # Extract raw frontmatter blocks for multi-line field comparison.
+    def _raw_fm_block(text: str) -> str:
+        if not text.startswith("---"):
+            return ""
+        end = text.find("\n---", 3)
+        return text[4:end].strip() if end != -1 else ""
+
+    orig_fm_raw = _raw_fm_block(original_text)
+    prop_fm_raw = _raw_fm_block(proposed_text)
 
     # Check 1: Only allowed frontmatter fields changed.
     changed_fields: list[str] = []
@@ -141,11 +160,21 @@ def validate_afk_output(
     })
 
     # Check 5: No entity/alias/title changes.
+    # For aliases (which may be multi-line YAML lists), compare raw
+    # frontmatter blocks after stripping allowed fields.
     title_unchanged = orig_fm.get("title") == prop_fm.get("title")
-    aliases_unchanged = orig_fm.get("aliases") == prop_fm.get("aliases")
+    # Strip allowed fields from raw blocks to detect identity changes
+    # in multi-line YAML values the simple parser can't fully capture.
+    def _strip_allowed(raw: str) -> str:
+        lines = raw.splitlines()
+        return "\n".join(
+            line for line in lines
+            if not any(line.lstrip().startswith(f"{f}:") for f in _AFK_ALLOWED_FIELDS)
+        )
+    identity_raw_unchanged = _strip_allowed(orig_fm_raw) == _strip_allowed(prop_fm_raw)
     checks.append({
         "check": "identity_unchanged",
-        "pass": title_unchanged and aliases_unchanged,
+        "pass": title_unchanged and identity_raw_unchanged,
     })
 
     all_passed = all(c["pass"] for c in checks)

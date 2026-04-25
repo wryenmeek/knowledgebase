@@ -154,15 +154,22 @@ def log_rejection(
         )
 
     # --- compose record -----------------------------------------------------
+    def _yaml_quote(val: str) -> str:
+        """Quote a YAML value if it contains special characters."""
+        if any(c in val for c in (":", "#", "\n", '"', "'", "{", "}", "[", "]")):
+            escaped = val.replace("\\", "\\\\").replace('"', '\\"')
+            return f'"{escaped}"'
+        return val
+
     record = (
         f"---\n"
         f"slug: {slug}\n"
         f"sha256: {sha256}\n"
         f"rejected_date: {rejected_date}\n"
-        f"source_path: {source_path}\n"
-        f"rejection_reason: {rejection_reason}\n"
+        f"source_path: {_yaml_quote(source_path)}\n"
+        f"rejection_reason: {_yaml_quote(rejection_reason)}\n"
         f"rejection_category: {rejection_category}\n"
-        f"reviewed_by: {reviewed_by}\n"
+        f"reviewed_by: {_yaml_quote(reviewed_by)}\n"
         f"reconsidered_date: null\n"
         f"---\n\n"
         f"# {slug}\n\n"
@@ -244,6 +251,8 @@ def _build_parser() -> JsonArgumentParser:
 
 
 def _args_to_kwargs(args: Any) -> dict[str, Any]:
+    if getattr(args, "approval", "none") != APPROVAL_APPROVED:
+        raise ValueError("--approval approved is required for write operations")
     return {
         "repo_root": Path(args.repo_root),
         "slug": args.slug,

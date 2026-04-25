@@ -377,6 +377,8 @@ def _build_parser() -> JsonArgumentParser:
 
 
 def _args_to_kwargs(args: Any) -> dict[str, Any]:
+    if args.close_resolved and not args.drift_report:
+        raise ValueError("--close-resolved requires --drift-report")
     return {
         "hitl_entries_path": Path(args.hitl_entries),
         "close_resolved": args.close_resolved,
