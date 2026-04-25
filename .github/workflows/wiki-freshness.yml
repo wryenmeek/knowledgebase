@@ -44,6 +44,7 @@ jobs:
           python-version: "3.12"
 
       - name: Run wiki freshness check
+        # Governed constants: freshness_stale_days=90, see docs/architecture.md
         id: freshness
         continue-on-error: true
         run: |
@@ -82,6 +83,7 @@ jobs:
           EOF
 
       - name: Classify stale pages for routing
+        # Governed constants: freshness_afk_threshold_days=180, see docs/architecture.md
         if: always()
         run: |
           set -euo pipefail
@@ -89,37 +91,10 @@ jobs:
             echo '{"stale_pages":[]}' > freshness-reports/freshness-routing.json
             exit 0
           fi
-          python3 - <<'CLASSIFY_EOF'
-          import json
-          with open("freshness-reports/wiki-freshness.json") as f:
-              report = json.load(f)
-          files = report.get("files", [])
-          classified = []
-          for entry in files:
-              path = entry.get("path", "")
-              days = entry.get("days_stale", 999)  # missing data → HITL (deny-by-default)
-              # Advisory classification only — this artifact has no downstream
-              # consumer yet and does not gate any write path.  The output is
-              # "afk-candidate" (not "afk") because age alone is insufficient
-              # to confirm AFK eligibility per ADR-014 §4; a downstream step
-              # must verify no open questions, patrol findings, or source
-              # staleness before the classification becomes operative.
-              classification = "afk-candidate" if days < 180 else "hitl"
-              action = ("verify AFK eligibility then update freshness_date metadata"
-                        if classification == "afk-candidate"
-                        else "review content for accuracy and re-source if needed")
-              classified.append({
-                  "path": path,
-                  "last_updated": entry.get("last_updated", ""),
-                  "days_stale": days,
-                  "classification": classification,
-                  "recommended_action": action,
-              })
-          afk_count = sum(1 for p in classified if p["classification"] == "afk-candidate")
-          with open("freshness-reports/freshness-routing.json", "w") as f:
-              json.dump({"stale_pages": classified}, f, indent=2)
-          print(f"Classified {len(classified)} stale pages: {afk_count} AFK-candidate, {len(classified) - afk_count} HITL")
-          CLASSIFY_EOF
+          python3 -m scripts.validation.classify_stale \
+            --freshness-report freshness-reports/wiki-freshness.json \
+            --output freshness-reports/freshness-routing.json \
+            --afk-threshold-days 180
 
       - name: Advisory governance signal sweep
         continue-on-error: true  # advisory; crashes must not fail the scheduled run

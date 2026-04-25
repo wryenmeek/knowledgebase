@@ -96,3 +96,18 @@ Path rules for `wiki/reports/**`:
   - and append vs atomic-replace expectation.
 - Until that declaration lands, future state-sync work may read candidate
   artifacts but must not write them.
+
+## Doc-only skills with write-adjacent effects
+
+Some skills define operator-mediated workflows that result in governed
+artifact mutation but have no runtime-executable logic (`logic/` directory).
+These skills are exempt from the AGENTS.md write-surface matrix because there
+is no surface to declare. Governance is enforced by the schema contract's
+"Authorized updater" column and by the operator following the skill's
+documented procedure under lock.
+
+Example: `reconsider-rejected-source` guides an operator through setting
+`reconsidered_date` in a rejection record's frontmatter. The mutation is
+governed by `schema/rejection-registry-contract.md` (authorized updater:
+"operator via reconsider-rejected-source, manual under lock"), not by a
+matrix row. See ADR-013 Consequences for rationale.

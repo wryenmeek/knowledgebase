@@ -182,7 +182,7 @@ Operators can validate the landed framework with these repo-local entrypoints:
 | Check | Command | Primary evidence |
 |---|---|---|
 | Fixed governance gate | `python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py` | Wrapper over `scripts/kb/qmd_preflight.py`, `scripts/kb/update_index.py`, and `scripts/kb/lint_wiki.py`; add `--validator freshness-threshold` to opt in to page-age checking (not run by default; requires `scripts/validation/check_doc_freshness.py`) |
-| Advisory freshness sweep | `.github/workflows/wiki-freshness.yml` (scheduled Monday 03:30 UTC; `workflow_dispatch` with `enforcement_mode` input) | Three-step: (1) `check_doc_freshness.py --scope wiki --max-age-days 90`; (2) classify stale pages as `afk-candidate` or `hitl` and write `freshness-routing.json` (advisory artifact with no downstream consumer yet — tracked for future AFK integration per ADR-014 §10); (3) `validate_wiki_governance.py --mode signal` with all 5 validators including `freshness-threshold`. Always advisory unless `blocking` mode is selected. |
+| Advisory freshness sweep | `.github/workflows/wiki-freshness.yml` (scheduled Monday 03:30 UTC; `workflow_dispatch` with `enforcement_mode` input) | Three-step: (1) `check_doc_freshness.py --scope wiki --max-age-days 90`; (2) `classify_stale.py` classifies stale pages as `afk-candidate` or `hitl` and writes `freshness-routing.json` (advisory artifact with no downstream consumer yet — tracked for future AFK integration per ADR-014 §10); (3) `validate_wiki_governance.py --mode signal` with all 5 validators including `freshness-threshold`. Always advisory unless `blocking` mode is selected. |
 | Backlink suggestions | `python3 .github/skills/suggest-backlinks/logic/suggest_backlinks.py <page> [--wiki-root wiki]` | Neighborhood-scoped (same namespace + linked pages); returns JSON `BacklinkProposal` list; read-only |
 | Read-only state-sync precheck | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only [--artifact wiki/index.md\|wiki/log.md\|wiki/open-questions.md\|wiki/backlog.md\|wiki/status.md]` | Confirms approved governed-artifact routing; index precheck still runs the allowlisted index/lint path |
 | Write-capable governed sync | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index` (or the typed log/open-questions/backlog/status sync flags) | Mutates only approved governed artifacts after mode-specific checks and ADR-005 locking succeed |
@@ -208,6 +208,17 @@ Operators can validate the landed framework with these repo-local entrypoints:
 - Paths outside the current MVP surfaces plus the approved post-MVP package
   surfaces remain deny-by-default for framework automation unless a narrower
   contract explicitly names them.
+
+## Governed constants
+
+Configuration values that affect governance decisions. Changes to these values
+require documented rationale.
+
+| Constant | Value | Used by | Rationale |
+|---|---|---|---|
+| `freshness_stale_days` | 90 | `check_doc_freshness.py --max-age-days`, `wiki-freshness.yml` | Pages not updated in 90+ days are flagged for review. Aligns with quarterly review cadence. |
+| `freshness_afk_threshold_days` | 180 | `classify_stale.py --afk-threshold-days`, `wiki-freshness.yml` | Pages stale 90–179 days likely need only metadata refresh (AFK-candidate). Pages ≥180 days may need content review and re-sourcing (HITL). The gap between 90 and 180 catches pages that are stale enough to notice but may still need editorial judgment. |
+| `missing_data_default_days` | 999 | `classify_stale.py` | Pages with missing `last_updated` frontmatter default to 999 days stale, classifying as HITL (deny-by-default). |
 
 ## Decision records
 

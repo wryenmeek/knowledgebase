@@ -96,6 +96,14 @@ class SharedContractsTests(unittest.TestCase):
             contracts.governed_artifact_contract_by_pattern("some/undeclared/path.txt")
         )
 
+    def test_governed_artifact_contract_by_pattern_rejects_traversal(self) -> None:
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("raw/github-sources/../../../etc/passwd")
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("../wiki/log.md")
+        )
+
     def test_governed_artifact_contract_details_are_explicit(self) -> None:
         log_contract = contracts.governed_artifact_contract("wiki/log.md")
         self.assertIsNotNone(log_contract)

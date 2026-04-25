@@ -205,6 +205,8 @@ def governed_artifact_contract_by_pattern(path: str) -> GovernedArtifactContract
     Use this for dynamic artifact paths (e.g., per-repo registry files, per-commit
     asset paths) where the exact path is not known at contract-declaration time.
     """
+    if ".." in path.split("/"):
+        return None  # Reject traversal paths
     exact = _GOVERNED_ARTIFACTS_BY_PATH.get(path)
     if exact is not None:
         return exact

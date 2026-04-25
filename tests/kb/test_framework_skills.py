@@ -95,6 +95,11 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     "quality-pass-chain": {"logic": False, "classification": "Doc-only workflow"},
     "log-intake-rejection": {"logic": True},
     "reconsider-rejected-source": {"logic": False, "classification": "Doc-only workflow"},
+    # Tier 4 meta/operational skills
+    "write-a-skill": {"logic": False, "classification": "Doc-only workflow"},
+    "request-refactor-plan": {"logic": False, "classification": "Doc-only workflow"},
+    "triage-issue": {"logic": False, "classification": "Doc-only workflow"},
+    "improve-codebase-architecture": {"logic": False, "classification": "Doc-only workflow"},
 }
 HELPER_OWNING_SKILLS: dict[str, tuple[str, ...]] = {
     "context-engineering": (

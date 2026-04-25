@@ -101,6 +101,11 @@ Each task follows this structure:
 - `tests/path/to/test.ts`
 
 **Estimated scope:** [Small: 1-2 files | Medium: 3-5 files | Large: 5+ files]
+
+**Classification:** [HITL | AFK | —]
+<!-- Optional. For wiki workflow tasks only. HITL = requires human review;
+     AFK = eligible for automated processing per ADR-014 allowlist.
+     Omit for dev workflow tasks. Default: HITL (deny-by-default). -->
 ```
 
 ### Step 5: Order and Checkpoint

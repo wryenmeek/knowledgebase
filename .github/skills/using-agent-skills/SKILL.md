@@ -160,6 +160,29 @@ For a complete feature, the typical skill sequence is:
 
 Not every task needs every skill. A bug fix might only need: `debugging-and-error-recovery` → `test-driven-development` → `code-review-and-quality`.
 
+## Skill Routing
+
+Skills fall into two routing categories:
+
+**Operator-direct skills** — invoked explicitly by the operator (human or CI).
+These drive a self-contained procedure and do not require persona mediation:
+`zoom-out`, `grill-me`, `edit-article`, `caveman`, `quality-pass-chain`,
+`write-a-skill`, `request-refactor-plan`, `triage-issue`,
+`improve-codebase-architecture`.
+
+**Persona-routed skills** — invoked by agent personas (e.g.,
+`knowledgebase-orchestrator`, `synthesis-curator`, `source-intake-steward`) as
+part of a governed pipeline. These skills are called during lane execution and
+generally should not be invoked directly:
+`log-intake-rejection`, `reconsider-rejected-source`, `route-wiki-task`,
+`plan-wiki-job`, `enforce-page-template`, `validate-inbox-source`,
+`enforce-repository-boundaries`, `run-deterministic-validators`,
+`validate-wiki-governance`.
+
+When in doubt, check the skill's "When to Use" section — operator-direct
+skills say "Use when you need…" while persona-routed skills say "Use when
+<persona> needs…".
+
 ## Quick Reference
 
 | Phase | Skill | One-Line Summary |
@@ -189,3 +212,7 @@ Not every task needs every skill. A bug fix might only need: `debugging-and-erro
 | Operate | caveman | Compress agent-to-agent handoffs for efficiency |
 | Operate | log-intake-rejection | Persist write-once rejection records to raw/rejected/ |
 | Operate | reconsider-rejected-source | Re-evaluate previously rejected sources |
+| Meta | write-a-skill | Create new skills with all required wiring steps |
+| Meta | request-refactor-plan | Structure refactoring proposals as GitHub Issues |
+| Meta | triage-issue | Classify and prioritize GitHub Issues |
+| Meta | improve-codebase-architecture | Identify and propose architecture improvements |

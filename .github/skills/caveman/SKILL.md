@@ -34,4 +34,11 @@ Doc-only workflow. Agent-to-agent communication ONLY — sub-agent prompts, rubb
 6. **Keep** all SourceRef citations verbatim.
 7. Preserve meaning exactly — compression must not alter semantics.
 
+## Verification
+
+Compare original output vs compressed output:
+1. Count tokens (approximate: split on whitespace). Target: compressed ≤ 25% of original token count.
+2. Verify all technical terms, proper nouns, paths, numbers, and SourceRef citations are present in the compressed output.
+3. If token reduction is < 50%, re-apply rules — the output likely retains too much filler.
+
 > Adapted from mattpocock/skills `caveman`. KB variant restricts to agent-to-agent per NPOV/AI-tells policy.

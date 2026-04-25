@@ -49,6 +49,15 @@ Do not run this skill until both prerequisites have passed.
 4. **No existing claims may be removed or weakened.**
 5. **Section headings may be reworded for clarity but not reordered.**
 
+## Verification
+
+After applying edits, verify:
+1. `git diff` shows zero changes to lines containing `repo://` (SourceRef preservation).
+2. `git diff` shows zero changes inside the YAML frontmatter block (frontmatter preservation).
+3. No new sentences introduce factual claims absent from the original (no new claims).
+4. No original sentences containing factual claims are deleted (no claim removal).
+5. Section heading order in the table of contents is unchanged (heading order preservation).
+
 ## Workflow position
 
 Run AFTER `detect-ai-tells` and `enforce-npov`. Typically the last prose pass before publication. If edits are substantial enough to re-trigger AI-tells concerns, re-run `detect-ai-tells` on the result.

@@ -82,6 +82,10 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - Source intake rejection → `log-intake-rejection`
 - Reconsidering prior rejection → `reconsider-rejected-source`
 - Agent-to-agent context compression → `caveman`
+- New skill creation → `write-a-skill`
+- Refactoring proposal / request → `request-refactor-plan`
+- Issue triage / classification → `triage-issue`
+- Architecture improvement → `improve-codebase-architecture`
 
 ## Quality and safety
 
