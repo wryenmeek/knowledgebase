@@ -59,6 +59,16 @@ WRITE_LOCK_PATH = "wiki/.kb_write.lock"
 GITHUB_SOURCES_LOCK_PATH = "raw/.github-sources.lock"
 REJECTION_REGISTRY_LOCK_PATH = "raw/.rejection-registry.lock"
 
+# Exact basenames of all governance lock files. Derived from the path constants
+# above so that this frozenset stays in sync automatically (ADR-011: single
+# source of truth — do NOT hardcode lock basenames independently).
+import os as _os
+GOVERNANCE_LOCK_FILES: frozenset[str] = frozenset({
+    _os.path.basename(WRITE_LOCK_PATH),
+    _os.path.basename(GITHUB_SOURCES_LOCK_PATH),
+    _os.path.basename(REJECTION_REGISTRY_LOCK_PATH),
+})
+
 class ArtifactMutability(StrEnum):
     """Allowed mutation modes for governed state artifacts."""
 
@@ -312,6 +322,7 @@ __all__ = [
     "WRITE_ALLOWLIST_PATHS",
     "GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS",
     "GITHUB_SOURCES_LOCK_PATH",
+    "GOVERNANCE_LOCK_FILES",
     "REJECTION_REGISTRY_LOCK_PATH",
     "WRITE_LOCK_PATH",
     "GOVERNED_ARTIFACT_CONTRACTS",
