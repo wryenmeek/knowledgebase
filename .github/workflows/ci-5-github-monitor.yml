@@ -148,6 +148,16 @@ jobs:
             --drift-report drift-report.json \
             --approval approved
 
+      - name: Upload fetched state for downstream jobs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fetched-state-${{ github.run_id }}
+          path: |
+            raw/assets/
+            raw/github-sources/
+          retention-days: 7
+
   classify-drift:
     name: CI-5 HITL/AFK classification
     needs: [check-drift, fetch-and-update]
@@ -182,7 +192,7 @@ jobs:
           with open("drift-report.json") as f:
               report = json.load(f)
 
-          drifted = [e for e in report.get("entries", []) if e.get("has_drift", False)]
+          drifted = report.get("drifted", [])
 
           # Deny-by-default (ADR-014): all drifted entries classify as HITL.
           # TODO: When check_drift.py adds line-level diff metrics
@@ -323,6 +333,11 @@ jobs:
         with:
           name: ${{ needs.check-drift.outputs.artifact_name }}
 
+      - name: Download fetched assets and registry state
+        uses: actions/download-artifact@v4
+        with:
+          name: fetched-state-${{ github.run_id }}
+
       - name: Apply diff-aware wiki updates
         run: |
           set -euo pipefail
@@ -331,7 +346,6 @@ jobs:
             --approval approved
 
       - name: Commit and open PR
-        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
