@@ -15,11 +15,6 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "source": ("## Summary", "## Evidence", "## Open Questions"),
     "analysis": ("## Summary", "## Evidence", "## Open Questions"),
 }
-# ⚡ Bolt: Pre-compiled regex with re.DOTALL for fast frontmatter extraction.
-# We use `[ \t]` instead of `\s` to avoid unintentionally consuming newlines.
-# We enforce that the closing '---' is preceded by a newline to match the original
-# string-split logic which split strictly on newlines.
-_FRONTMATTER_EXTRACT_RE = re.compile(r"^---[ \t]*(?:\n|$)(.*?)\n---[ \t]*(?:\n|$)(.*)", re.DOTALL)
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
@@ -104,24 +99,12 @@ def validate_page_template_path(
 
 
 def extract_frontmatter(text: str) -> tuple[str | None, str]:
-    # ⚡ Bolt: Fast-path string check avoids regex overhead for non-markdown/non-frontmatter files.
-    # We replaced `text.splitlines()` with this approach to eliminate an O(N) memory allocation
-    # that copied the entire file body.
-    if not text.startswith("---"):
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
         return None, text
-
-    match = _FRONTMATTER_EXTRACT_RE.match(text)
-    if match:
-        fm = match.group(1)
-        if fm.endswith("\n"):
-            fm = fm[:-1]
-        body = match.group(2)
-        # Original splitlines logic would reconstruct the body by joining with '\n',
-        # effectively stripping the final newline if the text ended with one.
-        if body and text.endswith("\n"):
-            body = body[:-1]
-        return fm, body
-
+    for index in range(1, len(lines)):
+        if lines[index].strip() == "---":
+            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
     return None, text
 
 
