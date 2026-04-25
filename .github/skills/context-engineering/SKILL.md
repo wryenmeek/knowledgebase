@@ -41,22 +41,55 @@ python3 .github/skills/context-engineering/logic/normalize_context_imports.py --
 Structure context from most persistent to most transient:
 
 ```
-┌─────────────────────────────────────┐
-│  1. Rules Files (CLAUDE.md, etc.)   │ ← Always loaded, project-wide
-├─────────────────────────────────────┤
-│  2. Spec / Architecture Docs        │ ← Loaded per feature/session
-├─────────────────────────────────────┤
-│  3. Relevant Source Files            │ ← Loaded per task
-├─────────────────────────────────────┤
-│  4. Error Output / Test Results      │ ← Loaded per iteration
-├─────────────────────────────────────┤
-│  5. Conversation History             │ ← Accumulates, compacts
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│  1. Rules Files (AGENTS.md, etc.)       │ ← Always loaded, project-wide
+├─────────────────────────────────────────┤
+│  1b. Vocabulary Files (CONTEXT.md)      │ ← Stable reference; AGENTS.md takes precedence
+├─────────────────────────────────────────┤
+│  2. Spec / Architecture Docs            │ ← Loaded per feature/session
+├─────────────────────────────────────────┤
+│  3. Relevant Source Files               │ ← Loaded per task
+├─────────────────────────────────────────┤
+│  4. Error Output / Test Results         │ ← Loaded per iteration
+├─────────────────────────────────────────┤
+│  5. Conversation History                │ ← Accumulates, compacts
+└─────────────────────────────────────────┘
 ```
 
 ### Level 1: Rules Files
 
 Create a rules file that persists across sessions. This is the highest-leverage context you can provide.
+
+### Level 1b: Vocabulary Files (CONTEXT.md)
+
+`CONTEXT.md` files provide a stable, human-readable vocabulary reference for each directory and module. They are **descriptive**, not normative — `AGENTS.md` takes precedence on any conflict.
+
+**CONTEXT.md files in this repository:**
+
+| File | What it answers |
+|------|----------------|
+| `CONTEXT.md` (repo root) | What do the core terms mean? What are the repo-wide invariants? |
+| `scripts/kb/CONTEXT.md` | What does each canonical module do? What are the ADR-011 rules? |
+| `scripts/github_monitor/CONTEXT.md` | What is a DriftedEntry? How does the three-script pipeline work? |
+| `.github/skills/CONTEXT.md` | What is the difference between a skill and an agent persona? |
+| `schema/CONTEXT.md` | What does each schema contract govern? |
+
+**Loading guidance:** When starting work in a directory, load the local `CONTEXT.md` alongside `AGENTS.md`. For cross-module work, load the root `CONTEXT.md` plus the module-specific file.
+
+```bash
+# KB utility work:
+cat CONTEXT.md scripts/kb/CONTEXT.md
+
+# GitHub monitor work:
+cat CONTEXT.md scripts/github_monitor/CONTEXT.md
+
+# Skill development:
+cat CONTEXT.md .github/skills/CONTEXT.md
+```
+
+**Write model:** `CONTEXT.md` files are human-only edits reviewed via normal PR. No automation write surface is declared for them. They are enforced structurally by the `check_context_md_format` pre-commit hook (≤200 lines, required sections).
+
+**Conflict resolution:** If a CONTEXT.md term definition conflicts with `AGENTS.md`, treat `AGENTS.md` as authoritative and file a PR to correct the CONTEXT.md.
 
 **CLAUDE.md** (for Claude Code):
 ```markdown
