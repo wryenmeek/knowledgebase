@@ -237,12 +237,13 @@ jobs:
                   ["gh", "issue", "list", "--search", f'"{dedupe_key}" in:body', "--json", "number", "--limit", "1"],
                   capture_output=True, text=True
               )
-              try:
-                  existing = json.loads(result.stdout) if result.returncode == 0 else []
-              except json.JSONDecodeError:
-                  existing = []
-                  print(f"::warning::Dedupe search returned unparseable JSON for {source_key}; creating issue anyway.", flush=True)
-              if result.returncode != 0:
+              existing = []
+              if result.returncode == 0:
+                  try:
+                      existing = json.loads(result.stdout)
+                  except json.JSONDecodeError:
+                      print(f"::warning::Dedupe search returned unparseable JSON for {source_key}; creating issue anyway.", flush=True)
+              else:
                   print(f"::warning::Dedupe search failed for {source_key}; creating issue anyway. stderr: {result.stderr}", flush=True)
 
               if existing:

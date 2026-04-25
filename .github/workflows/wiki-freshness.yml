@@ -100,16 +100,20 @@ jobs:
               # must verify no open questions, patrol findings, or source
               # staleness before the classification becomes operative.
               classification = "afk-candidate" if days < 180 else "hitl"
+              action = ("verify AFK eligibility then update freshness_date metadata"
+                        if classification == "afk-candidate"
+                        else "review content for accuracy and re-source if needed")
               classified.append({
                   "path": path,
                   "last_updated": entry.get("last_updated", ""),
                   "days_stale": days,
                   "classification": classification,
-                  "recommended_action": "verify AFK eligibility then update freshness_date metadata" if classification == "afk-candidate" else "review content for accuracy and re-source if needed",
+                  "recommended_action": action,
               })
+          afk_count = sum(1 for p in classified if p["classification"] == "afk-candidate")
           with open("freshness-reports/freshness-routing.json", "w") as f:
               json.dump({"stale_pages": classified}, f, indent=2)
-          print(f"Classified {len(classified)} stale pages: {sum(1 for p in classified if p['classification'] == 'afk-candidate')} AFK-candidate, {sum(1 for p in classified if p['classification'] == 'hitl')} HITL")
+          print(f"Classified {len(classified)} stale pages: {afk_count} AFK-candidate, {len(classified) - afk_count} HITL")
           CLASSIFY_EOF
 
       - name: Advisory governance signal sweep

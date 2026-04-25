@@ -138,11 +138,10 @@ class FrameworkSkillTests(unittest.TestCase):
             with self.subTest(skill=skill_name):
                 if expectations["logic"]:
                     self.assertTrue(logic_dir.is_dir())
-                    # Scaffolded logic dirs (e.g. .gitkeep only) are valid;
-                    # populated dirs must contain at least one .py file.
-                    has_gitkeep = (logic_dir / ".gitkeep").is_file()
-                    if not has_gitkeep:
-                        self.assertTrue(any(logic_dir.glob("*.py")))
+                    self.assertTrue(
+                        (logic_dir / ".gitkeep").is_file() or any(logic_dir.glob("*.py")),
+                        f"{skill_name}/logic/ must contain .gitkeep or *.py files",
+                    )
                 else:
                     self.assertFalse(logic_dir.exists())
 
