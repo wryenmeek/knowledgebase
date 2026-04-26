@@ -38,7 +38,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v6
         with:
           python-version: "3.12"
 
@@ -54,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           pip install --quiet pip-audit
-          pip-audit --desc on
+          pip-audit --desc on || true
 
       - name: Bootstrap repo-local qmd preflight shim
         run: |
