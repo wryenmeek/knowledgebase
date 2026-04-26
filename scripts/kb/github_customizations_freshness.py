@@ -39,6 +39,14 @@ HOOKS_JSON = REPO_ROOT / ".github" / "hooks" / "hooks.json"
 COPILOT_INSTRUCTIONS = REPO_ROOT / ".github" / "copilot-instructions.md"
 PROMPTS_DIR = REPO_ROOT / ".github" / "prompts"
 
+# Governed write roots: --output must not resolve inside any of these directories.
+# Writing here without the kb write lock would violate ADR-005.
+_GOVERNED_WRITE_ROOTS: tuple[Path, ...] = (
+    REPO_ROOT / "wiki",
+    REPO_ROOT / "raw" / "processed",
+    REPO_ROOT / "raw" / "rejected",
+)
+
 _FUZZY_CUTOFF = 0.7
 
 
@@ -176,6 +184,16 @@ def run(output_path: Path | None = None) -> int:
     serialized = json.dumps(report, indent=2)
 
     if output_path:
+        resolved = output_path.resolve()
+        for governed in _GOVERNED_WRITE_ROOTS:
+            if resolved.is_relative_to(governed.resolve()):
+                print(
+                    f"error: --output path {output_path} is inside a governed "
+                    f"directory ({governed.name}/); use a non-governed path "
+                    f"such as drift-report.json",
+                    file=sys.stderr,
+                )
+                return 2
         try:
             output_path.write_text(serialized, encoding="utf-8")
         except OSError as exc:

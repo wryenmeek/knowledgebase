@@ -83,6 +83,19 @@ class RunExitCodeTests(unittest.TestCase):
             code = run(output_path=bad_path)
         self.assertEqual(code, 2)
 
+    def test_governed_path_output_exits_2(self) -> None:
+        """--output inside wiki/ must be rejected without writing (Finding #24)."""
+        wiki_path = REPO_ROOT / "wiki" / "drift-report.json"
+        with (
+            patch("scripts.kb.github_customizations_freshness._collect_agent_drift", return_value=([], [])),
+            patch("scripts.kb.github_customizations_freshness._collect_copilot_drift", return_value=([], [])),
+            patch("scripts.kb.github_customizations_freshness._collect_hooks_drift", return_value=([], [])),
+            patch("scripts.kb.github_customizations_freshness._collect_prompt_drift", return_value=([], [])),
+        ):
+            code = run(output_path=wiki_path)
+        self.assertEqual(code, 2)
+        self.assertFalse(wiki_path.exists())
+
     def test_output_file_written(self) -> None:
         drift_entry = {"file": "f.md", "ref_broken": "old", "ref_suggested": "new"}
         with (
