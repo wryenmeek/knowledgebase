@@ -21,6 +21,14 @@ cd scripts/fleet && bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts
 
 When asked to **"create a plan"**, output the plan only and wait for explicit approval ("implement", "start", "go ahead") before making any changes. Do not combine plan creation and implementation in a single response.
 
+The following phrasings do **not** grant implementation authorization — produce the plan only:
+- "create a plan to implement X"
+- "create a plan to fix X"
+- "create a plan to address X"
+- "plan out how to implement X"
+
+Only begin implementing when the user sends a standalone approval message after seeing the plan.
+
 ## Research mode
 
 When a user message begins with `Researching:`, produce analysis and findings only. Do not create files, make commits, or open PRs during the research phase. The prefix is an explicit signal to stay read-only.
@@ -92,6 +100,27 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - Validate input at boundaries and avoid committing secrets (`security-and-hardening`).
 - Measure before tuning (`performance-optimization`).
 - Keep commits scoped and atomic (`git-workflow-and-versioning`).
+
+### Unpushed commits at task completion
+
+Before marking any task complete, run `git log origin/HEAD..HEAD --oneline`. If unpushed commits exist, either push them or call them out explicitly in the task summary. Never silently leave work unshipped.
+
+### SQL tracking table currency
+
+SQL tracking tables (`todos`, `review_findings`, etc.) must be updated in the **same step** as the code change that resolves them — not as a separate cleanup pass. A finding that is fixed in code but still shows `open` in SQL is stale and misleading. Update status atomically with the fix.
+
+### Mermaid diagram syntax (GitHub renderer)
+
+When writing Mermaid diagrams in markdown research reports or docs:
+- **Avoid** `{{...}}` — GitHub's renderer treats double-braces as template syntax and breaks the diagram
+- **Avoid** `**` glob patterns in node labels — interpreted as bold markdown
+- **Avoid** bare `%` in labels — treated as comment prefix
+- **Avoid** unquoted parentheses inside node text — use `["label (text)"]` quoting
+- After writing any Mermaid block, mentally parse each node label for these characters
+
+### Grill-me: verify codebase facts before proposing
+
+When the grill-me skill produces a proposed answer that is a **factual claim about the codebase** (e.g., "this constant probably doesn't exist", "this function signature is X"), verify with grep or view before proposing. Only use memory for design preferences and reasoning — not for claims about what code exists.
 
 ## Conventions
 
