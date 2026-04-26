@@ -17,6 +17,7 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 }
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
+_FRONTMATTER_BLOCK_RE = re.compile(r"^[ \t]*---[ \t]*\r?\n(.*?)(?:\r?\n)?---[ \t]*(?:\r?\n|$)", re.DOTALL)
 
 TOPICAL_NAMESPACES: frozenset[str] = frozenset({"sources", "entities", "concepts", "analyses"})
 
@@ -120,12 +121,18 @@ def validate_page_template_path(
 
 
 def extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    # Performance Optimization: Avoid string.splitlines() on large text files,
+    # which causes an O(N) memory allocation for the entire file body.
+    # Use a fast-path string check and regex with re.DOTALL to extract the block in near-constant time.
+    if not text.lstrip(" \t").startswith("---"):
         return None, text
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
+    match = _FRONTMATTER_BLOCK_RE.match(text)
+    if match:
+        # group 1 is the frontmatter content. If it ends with \r, strip it (caused by \r\n optional match)
+        content = match.group(1)
+        if content.endswith("\r"):
+            content = content[:-1]
+        return content, text[match.end():]
     return None, text
 
 

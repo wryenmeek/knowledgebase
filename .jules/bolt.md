@@ -32,3 +32,11 @@
 ## 2026-04-21 - [File chunk reading optimization]
 **Learning:** When reading files in chunks (e.g., for hashing), using `iter(lambda: handle.read(size), b"")` introduces significant lambda closure overhead, which hurts efficiency in hot loops.
 **Action:** Always prefer using a `while` loop with the walrus operator (`while chunk := handle.read(size):`) to eliminate lambda closure overhead and improve performance.
+
+## 2026-04-26 - [Avoid O(N) splitlines for frontmatter parsing]
+**Learning:** Using `string.splitlines()` to parse metadata/frontmatter at the beginning of large files causes an unnecessary O(N) memory allocation and processing time for the entire file body.
+**Action:** Use a fast-path string check (e.g., `text.startswith('---')`) followed by a pre-compiled regular expression with `re.DOTALL` to extract the top block in near-constant time.
+
+## 2026-04-26 - [Empty frontmatter matching with regex]
+**Learning:** When using `re.DOTALL` to extract markdown frontmatter, edge cases like empty frontmatter (`---\n---`) require careful regex construction. If the inner content is matched with `(.*?)` and surrounded by mandatory newlines, it will fail on empty blocks because there is only one newline between the markers.
+**Action:** Use an optional group or optional newline quantifier `(?:\r?\n)?` before the closing marker to ensure empty blocks are matched correctly while preserving content extraction.
