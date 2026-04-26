@@ -48,6 +48,14 @@ MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 BACKTICK_PATH_RE = re.compile(
     r"`((?:\.github|docs|schema|scripts|tests|wiki|raw)/[^`<>]*|AGENTS\.md|README\.md)`"
 )
+DEV_TOOL_PERSONAS: tuple[str, ...] = (
+    "code-reviewer",
+    "security-auditor",
+    "test-engineer",
+)
+DEV_TOOL_PERSONA_FILES: dict[str, Path] = {
+    persona: AGENTS_ROOT / f"{persona}.md" for persona in DEV_TOOL_PERSONAS
+}
 
 
 class FrameworkPersonaTests(unittest.TestCase):
@@ -340,13 +348,77 @@ class FrameworkPersonaTests(unittest.TestCase):
         return section_body(text, heading)
 
     def _resolve_doc_target(self, source_path: Path, target: str) -> Path:
-        if target.startswith("/"):
-            return Path(target)
-        if target in {"AGENTS.md", "README.md"} or target.startswith(
-            (".github/", "docs/", "schema/", "scripts/", "tests/", "wiki/", "raw/")
-        ):
-            return (REPO_ROOT / target).resolve()
-        return (source_path.parent / target).resolve()
+        return _resolve_doc_target(source_path, target)
+
+
+def _resolve_doc_target(source_path: Path, target: str) -> Path:
+    if target.startswith("/"):
+        return Path(target)
+    if target in {"AGENTS.md", "README.md"} or target.startswith(
+        (".github/", "docs/", "schema/", "scripts/", "tests/", "wiki/", "raw/")
+    ):
+        return (REPO_ROOT / target).resolve()
+    return (source_path.parent / target).resolve()
+
+
+class DevToolPersonaTests(unittest.TestCase):
+    """Contract checks for dev-tool personas (code-reviewer, security-auditor, test-engineer).
+
+    These personas have a different structure from knowledgebase-workflow personas:
+    they use ``## Related skill`` (not ``## Required skills / upstream references``)
+    and omit the full knowledgebase contract sections.
+    """
+
+    def test_dev_tool_persona_files_exist(self) -> None:
+        for persona, path in DEV_TOOL_PERSONA_FILES.items():
+            with self.subTest(persona=persona):
+                self.assertTrue(path.is_file(), f"Missing: {path}")
+
+    def test_dev_tool_persona_frontmatter(self) -> None:
+        for persona, path in DEV_TOOL_PERSONA_FILES.items():
+            text = path.read_text(encoding="utf-8")
+            frontmatter = parse_frontmatter_fields(text, subject="Dev-tool persona")
+            with self.subTest(persona=persona, field="name"):
+                self.assertEqual(frontmatter.get("name"), persona)
+            with self.subTest(persona=persona, field="description"):
+                description = frontmatter.get("description", "")
+                self.assertTrue(
+                    "Use when" in description or "Use for" in description,
+                    f"Description must contain 'Use when' or 'Use for': {description!r}",
+                )
+            with self.subTest(persona=persona, field="updated_at"):
+                self.assertIn(
+                    "updated_at",
+                    frontmatter,
+                    "Dev-tool persona frontmatter must include 'updated_at'",
+                )
+
+    def test_dev_tool_persona_related_skill_section_exists(self) -> None:
+        for persona, path in DEV_TOOL_PERSONA_FILES.items():
+            text = path.read_text(encoding="utf-8")
+            body = section_body(text, "## Related skill")
+            with self.subTest(persona=persona):
+                self.assertTrue(body.strip(), "## Related skill section must be non-empty")
+                self.assertRegex(body, r"SKILL\.md", "Section must reference a SKILL.md path")
+
+    def test_dev_tool_persona_skill_links_resolve(self) -> None:
+        for persona, path in DEV_TOOL_PERSONA_FILES.items():
+            text = path.read_text(encoding="utf-8")
+            body = section_body(text, "## Related skill")
+            targets = {
+                *BACKTICK_PATH_RE.findall(body),
+                *(
+                    t.split("#", 1)[0]
+                    for t in MARKDOWN_LINK_RE.findall(body)
+                    if t and "://" not in t
+                ),
+            }
+            for target in sorted(targets):
+                with self.subTest(persona=persona, target=target):
+                    self.assertTrue(
+                        _resolve_doc_target(path, target).exists(),
+                        f"Broken reference in ## Related skill: {target}",
+                    )
 
 
 if __name__ == "__main__":

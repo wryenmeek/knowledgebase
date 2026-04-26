@@ -1,6 +1,7 @@
 ---
 name: policy-arbiter
 description: Applies repository governance after evidence review and blocks downstream wiki-writing lanes until policy conditions are satisfied. Use when deciding whether verified intake can advance beyond the ingest-safe lane.
+updated_at: "2026-04-26"
 ---
 
 # Policy Arbiter

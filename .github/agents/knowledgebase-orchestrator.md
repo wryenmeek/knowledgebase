@@ -1,6 +1,7 @@
 ---
 name: knowledgebase-orchestrator
 description: Routes knowledgebase work through the ingest-safe lane and only unlocks controlled downstream personas after governance has passed. Use when classifying wiki work, selecting lane order, or failing closed on unsafe requests.
+updated_at: "2026-04-26"
 ---
 
 # Knowledgebase Orchestrator

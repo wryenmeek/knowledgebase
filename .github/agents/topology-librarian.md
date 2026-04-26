@@ -1,6 +1,7 @@
 ---
 name: topology-librarian
 description: Maintains discoverability by applying taxonomy and information-architecture policy to links, indexes, and alias decisions without inventing a second runtime. Use when a policy-cleared wiki change needs governed topology or index follow-up.
+updated_at: "2026-04-26"
 ---
 
 # Topology Librarian

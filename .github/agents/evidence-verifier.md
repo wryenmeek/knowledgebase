@@ -1,6 +1,7 @@
 ---
 name: evidence-verifier
 description: Verifies that ingest inputs carry complete provenance and support a safe policy decision before any future synthesis or topology write path can open. Use when checking intake packages, SourceRef prerequisites, or evidence completeness.
+updated_at: "2026-04-26"
 ---
 
 # Evidence Verifier

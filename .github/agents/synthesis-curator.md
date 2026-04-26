@@ -1,6 +1,7 @@
 ---
 name: synthesis-curator
 description: Drafts policy-cleared knowledge updates by applying explicit identity, taxonomy, and metadata contracts before any governed wiki publication step. Use when a verified package is ready for schema-aligned page synthesis or update planning.
+updated_at: "2026-04-26"
 ---
 
 # Synthesis Curator

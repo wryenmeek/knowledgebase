@@ -160,6 +160,7 @@ class SharedContractsTests(unittest.TestCase):
                 "tp-pr-producer",
                 "tp-github-monitor",
                 "tp-freshness-readonly",
+                "tp-customizations-readwrite",
             ),
         )
         self.assertEqual(

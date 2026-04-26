@@ -1,6 +1,7 @@
 ---
 name: change-patrol
 description: Patrols source and content changes that may require renewed governance review, then routes them through the correct existing lane without inventing broad repo surveillance. Use when assessing diffs, citation removals, or source/content changes that may need reassessment.
+updated_at: "2026-04-26"
 ---
 
 # Change Patrol

@@ -47,6 +47,11 @@ REQUIRED_SKILL_FIELDS: tuple[str, ...] = (
     "name",
     "description",
 )
+REQUIRED_PERSONA_FIELDS: tuple[str, ...] = (
+    "name",
+    "description",
+    "updated_at",
+)
 
 
 def is_nested_topical_page(path: Path, wiki_root: Path) -> bool:
@@ -216,6 +221,7 @@ def extract_headings(body: str) -> set[str]:
 
 __all__ = [
     "REQUIRED_FRONTMATTER_KEYS",
+    "REQUIRED_PERSONA_FIELDS",
     "REQUIRED_SKILL_FIELDS",
     "REQUIRED_WIKI_FIELDS",
     "TEMPLATE_SECTION_REQUIREMENTS",

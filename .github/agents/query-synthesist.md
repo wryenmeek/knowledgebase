@@ -1,6 +1,7 @@
 ---
 name: query-synthesist
 description: Answers questions from the curated wiki first, returns cited synthesis, and routes any durable query result back through governed persistence instead of writing directly. Use when responding to knowledgebase queries or assessing whether an answer merits durable follow-up.
+updated_at: "2026-04-26"
 ---
 
 # Query Synthesist

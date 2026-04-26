@@ -1,6 +1,7 @@
 ---
 name: source-intake-steward
 description: Guards the untrusted-source boundary, prepares immutable ingest evidence, and hands off only validated intake packages to evidence review. Use when processing material from raw/inbox or registering source provenance.
+updated_at: "2026-04-26"
 ---
 
 # Source Intake Steward

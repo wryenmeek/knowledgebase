@@ -15,10 +15,18 @@ repos:
         pass_filenames: true
 
       - id: frontmatter-validation
-        name: Wiki and skill frontmatter validation
+        name: Wiki, skill, and agent persona frontmatter validation
         language: python
         entry: python -m scripts.hooks.check_frontmatter
         types: [markdown]
+        pass_filenames: true
+
+      - id: hooks-json-validation
+        name: hooks.json structure validation
+        language: python
+        entry: python -m scripts.hooks.check_hooks_json
+        files: '\.github/hooks/hooks\.json$'
+        types_or: [json]
         pass_filenames: true
 
       - id: sourceref-format

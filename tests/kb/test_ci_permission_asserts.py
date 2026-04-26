@@ -72,6 +72,15 @@ WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
         },
         write_contract="read-only",
     ),
+    WorkflowPolicyExpectation(
+        ci_id="CI-customizations-freshness",
+        workflow_path=Path(".github/workflows/github-customizations-freshness.yml"),
+        token_profile=contracts.TokenProfileId.CUSTOMIZATIONS_READWRITE.value,
+        permissions={
+            "contents": "read",
+        },
+        write_contract="job-scoped-write",
+    ),
 )
 
 WRITE_CONCURRENCY_GUARD = {
@@ -225,6 +234,7 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
             "CI-3": "allowlisted-write",
             "CI-5": "job-scoped-write",
             "CI-freshness": "read-only",
+            "CI-customizations-freshness": "job-scoped-write",
         }
 
         for policy in WORKFLOW_POLICY_MATRIX:

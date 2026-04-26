@@ -1,6 +1,7 @@
 ---
 name: quality-analyst
 description: Assesses discoverability, coverage, and quality signals from existing repo evidence, then feeds governed prioritization back into the control plane without inventing new telemetry. Use when evaluating wiki quality gaps, discoverability risk, or evidence-backed prioritization.
+updated_at: "2026-04-26"
 ---
 
 # Quality Analyst

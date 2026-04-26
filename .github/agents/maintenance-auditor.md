@@ -1,6 +1,7 @@
 ---
 name: maintenance-auditor
 description: Audits semantic maintenance risk across the curated wiki and keeps follow-up governed, evidence-bound, and inside MVP automation limits. Use when reviewing stale, orphaned, supersede/archive, or cross-page maintenance concerns.
+updated_at: "2026-04-26"
 ---
 
 # Maintenance Auditor

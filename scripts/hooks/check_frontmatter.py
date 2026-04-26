@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from scripts.kb.page_template_utils import (
+    REQUIRED_PERSONA_FIELDS,
     REQUIRED_SKILL_FIELDS,
     REQUIRED_WIKI_FIELDS,
     parse_frontmatter,
@@ -30,13 +31,20 @@ def _check_file(path_str: str) -> list[str]:
 
     # SKILL.md takes precedence over wiki/**/*.md for dual-match files.
     is_skill = basename == "SKILL.md"
+    # Agent persona: any .md file under a .github/agents/ path component.
+    is_persona = not is_skill and ("/agents/" in norm or norm.startswith("agents/"))
     # Wiki page: any .md file that has "/wiki/" as a path component.
-    is_wiki = not is_skill and ("/wiki/" in norm or norm.startswith("wiki/"))
+    is_wiki = not is_skill and not is_persona and ("/wiki/" in norm or norm.startswith("wiki/"))
 
-    if not is_skill and not is_wiki:
+    if not is_skill and not is_persona and not is_wiki:
         return []
 
-    required_fields = REQUIRED_SKILL_FIELDS if is_skill else REQUIRED_WIKI_FIELDS
+    if is_persona:
+        required_fields = REQUIRED_PERSONA_FIELDS
+    elif is_skill:
+        required_fields = REQUIRED_SKILL_FIELDS
+    else:
+        required_fields = REQUIRED_WIKI_FIELDS
 
     try:
         text = Path(path_str).read_text(encoding="utf-8")

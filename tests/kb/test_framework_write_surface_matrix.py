@@ -252,8 +252,8 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None",),
         "Lock requirements": ("None", "forbidden"),
-        "Artifact / schema owners": ("scripts/kb/contracts.py", "scripts/kb/page_template_utils.py", "scripts/kb/agents_matrix_utils.py"),
-        "Hard-fail behavior": ("staged governance lock file", "missing required frontmatter field", "fail closed"),
+        "Artifact / schema owners": ("scripts/kb/contracts.py", "scripts/kb/page_template_utils.py", "scripts/kb/agents_matrix_utils.py", "scripts/kb/github_customizations_graph.py"),
+        "Hard-fail behavior": ("staged governance lock file", "missing required frontmatter field", "invalid hooks.json", "fail closed"),
     },
 }
 

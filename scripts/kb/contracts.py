@@ -35,6 +35,7 @@ class TokenProfileId(StrEnum):
     PR_PRODUCER = "tp-pr-producer"
     GITHUB_MONITOR = "tp-github-monitor"
     FRESHNESS_READONLY = "tp-freshness-readonly"
+    CUSTOMIZATIONS_READWRITE = "tp-customizations-readwrite"
 
 
 TOKEN_PROFILE_IDS: tuple[str, ...] = tuple(profile.value for profile in TokenProfileId)
