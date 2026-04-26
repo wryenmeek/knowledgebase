@@ -10,6 +10,7 @@ drift report split into two buckets:
 Exit codes:
     0 — no drift detected
     1 — drift detected (resolvable or ambiguous entries present)
+    2 — unexpected error (broken environment, I/O failure, import error)
 
 Usage::
 
@@ -59,6 +60,8 @@ def _suggest_replacement(broken: str, candidates: list[str]) -> str | None:
     Strategy 2: ``difflib.get_close_matches`` Levenshtein fallback — handles
     typos and minor spelling differences.
     """
+    if not broken:
+        return None
     for c in candidates:
         if broken in c or c in broken:
             return c
@@ -150,7 +153,10 @@ def _collect_prompt_drift() -> tuple[list[dict[str, str]], list[dict[str, str]]]
 def run(output_path: Path | None = None) -> int:
     """Run all drift checks and write/print the JSON report.
 
-    Returns 0 if the repo is clean, 1 if any drift was detected.
+    Returns:
+        0 — repo is clean (no drift)
+        1 — drift detected (resolvable or ambiguous entries present)
+        2 — unexpected error (I/O failure, broken environment)
     """
     skill_names = _all_skill_names()
     all_resolvable: list[dict[str, str]] = []
@@ -170,7 +176,11 @@ def run(output_path: Path | None = None) -> int:
     serialized = json.dumps(report, indent=2)
 
     if output_path:
-        output_path.write_text(serialized, encoding="utf-8")
+        try:
+            output_path.write_text(serialized, encoding="utf-8")
+        except OSError as exc:
+            print(f"error: cannot write report to {output_path}: {exc}", file=sys.stderr)
+            return 2
     else:
         sys.stdout.write(serialized + "\n")
 
@@ -187,7 +197,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Write JSON drift report to PATH (default: stdout)",
     )
     args = parser.parse_args(argv)
-    return run(Path(args.output) if args.output else None)
+    try:
+        return run(Path(args.output) if args.output else None)
+    except Exception as exc:
+        print(f"error: unexpected failure: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

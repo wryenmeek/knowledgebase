@@ -220,6 +220,9 @@ Required envelope keys:
 | `tp-gatekeeper` | CI-1 trigger → workflow handoff | `contents: read`, `actions: read` | `contents: write`, `pull-requests: write`, `issues: write`, `packages: write`, `id-token: write` |
 | `tp-analyst-readonly` | CI-2 workflow (read-only analyst) | `contents: read`, `actions: read`, `checks: read` | all repository-write scopes |
 | `tp-pr-producer` | CI-3 workflow (PR-producing) | `contents: write`, `pull-requests: write`, `actions: read`, `checks: read` | settings/admin/secrets scopes |
+| `tp-github-monitor` | CI-5 GitHub monitor workflow (fetch + synthesize) | `contents: write`, `pull-requests: write`, `issues: write` (job-scoped) | settings/admin/secrets scopes; `packages: write`; `id-token: write` |
+| `tp-freshness-readonly` | CI-freshness wiki freshness scan (read-only) | `contents: read` | all repository-write scopes |
+| `tp-customizations-readwrite` | CI-customizations-freshness `.github/` drift detection + repair PR + issue (job-scoped write) | workflow-level `contents: read`; `contents: write`, `pull-requests: write` (open-repair-pr job); `issues: write` (open-drift-issue job) | settings/admin/secrets scopes; `packages: write`; `id-token: write` |
 
 ### Concurrency controls (`workflow_concurrency_group_plus_local_file_lock`)
 

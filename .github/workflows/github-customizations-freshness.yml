@@ -18,7 +18,8 @@ env:
 
 concurrency:
   group: kb-customizations-freshness-${{ github.repository }}
-  cancel-in-progress: true
+  # Only cancel detect-drift; never cancel write jobs mid-flight (avoids orphaned branches).
+  cancel-in-progress: false
 
 jobs:
   detect-drift:
@@ -47,7 +48,13 @@ jobs:
         id: drift
         run: |
           set -euo pipefail
-          python3 -m scripts.kb.github_customizations_freshness --output drift-report.json || true
+          python3 -m scripts.kb.github_customizations_freshness --output drift-report.json
+          SCRIPT_EXIT=$?
+          # exit 1 = drift detected (expected); exit 2+ = script error (hard failure)
+          if [ "$SCRIPT_EXIT" -ge 2 ]; then
+            echo "::error::Freshness script failed with exit $SCRIPT_EXIT" >&2
+            exit 1
+          fi
           RESOLVABLE=$(python3 -c "import json; d=json.load(open('drift-report.json')); print(len(d['resolvable']))")
           AMBIGUOUS=$(python3 -c "import json; d=json.load(open('drift-report.json')); print(len(d['ambiguous']))")
           echo "resolvable_count=${RESOLVABLE}" >> "$GITHUB_OUTPUT"
@@ -78,6 +85,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -92,15 +101,27 @@ jobs:
         with:
           name: customizations-drift-report
 
+      - name: Assert required labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label list --json name --jq '.[].name' | grep -qx 'auto:framework-repair' \
+            || { echo "::error::Label 'auto:framework-repair' does not exist. Create it before enabling this workflow."; exit 1; }
+
       - name: Draft and open repair PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          BRANCH="auto/framework-repair-$(date -u +%Y%m%d-%H%M%S)"
+          # Deterministic branch name: force-push avoids stale branch accumulation.
+          BRANCH="auto/framework-repair-latest"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
+          # Configure credentials explicitly (persist-credentials: false above)
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
+          git reset --hard HEAD
 
           python3 - <<'PY'
           import json, pathlib, sys
@@ -126,15 +147,20 @@ jobs:
           fi
 
           git add drift-repair-summary.md
-          git commit -m "chore: framework drift repair proposal (auto)" || true
-          git push origin "$BRANCH"
+          # Only commit if there are staged changes (prevents phantom empty-diff PRs)
+          if git diff --staged --quiet; then
+            echo "No changes to commit — repair summary unchanged from prior run."
+            exit 0
+          fi
+          git commit -m "chore: framework drift repair proposal (auto)"
+          git push --force-with-lease origin "$BRANCH"
 
           gh pr create \
             --title "chore: auto framework repair — resolvable .github/ drift" \
-            --body "$(cat drift-repair-summary.md)" \
+            --body-file drift-repair-summary.md \
             --label "auto:framework-repair" \
             --head "$BRANCH" \
-            --base main || echo "PR creation skipped (branch may already have an open PR)"
+            --base main
 
   open-drift-issue:
     name: Open issue for ambiguous drift
@@ -154,6 +180,13 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: customizations-drift-report
+
+      - name: Assert required labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label list --json name --jq '.[].name' | grep -qx 'drift:needs-review' \
+            || { echo "::error::Label 'drift:needs-review' does not exist. Create it before enabling this workflow."; exit 1; }
 
       - name: Open needs-review issue
         env:
@@ -184,5 +217,5 @@ jobs:
 
           gh issue create \
             --title ".github/ customization drift: needs human review" \
-            --body "$(cat drift-issue-body.md)" \
-            --label "drift:needs-review" || echo "Issue creation skipped (label may not exist)"
+            --body-file drift-issue-body.md \
+            --label "drift:needs-review"

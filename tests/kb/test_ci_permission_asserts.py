@@ -355,5 +355,36 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
             )
 
 
+    def test_ci_customizations_freshness_job_permissions_are_explicit_and_minimal(self) -> None:
+        """Each write job must declare explicit, minimal permissions; workflow level must be read-only."""
+        policy = next(p for p in WORKFLOW_POLICY_MATRIX if p.ci_id == "CI-customizations-freshness")
+        workflow_text = policy.workflow_path.read_text(encoding="utf-8")
+
+        # Workflow-level permission must be read-only
+        top_perms = _parse_top_level_mapping_block(workflow_text, "permissions", policy.workflow_path)
+        self.assertEqual(
+            top_perms.get("contents"), "read",
+            "CI-customizations-freshness workflow-level 'contents' must be 'read'",
+        )
+        self.assertNotIn(
+            "write", top_perms.values(),
+            "CI-customizations-freshness workflow-level permissions must be read-only",
+        )
+
+        # open-repair-pr job must declare contents+pull-requests write
+        repair_perms = _parse_job_mapping_block(
+            workflow_text, "open-repair-pr", "permissions", policy.workflow_path,
+        )
+        self.assertEqual(repair_perms.get("contents"), "write")
+        self.assertEqual(repair_perms.get("pull-requests"), "write")
+
+        # open-drift-issue job must declare issues write only
+        issue_perms = _parse_job_mapping_block(
+            workflow_text, "open-drift-issue", "permissions", policy.workflow_path,
+        )
+        self.assertEqual(issue_perms.get("issues"), "write")
+        self.assertNotIn("contents", issue_perms, "open-drift-issue must not have contents permission")
+
+
 if __name__ == "__main__":
     unittest.main()

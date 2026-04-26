@@ -16,6 +16,7 @@ Keep wiki content deterministic, provenance-first, and policy-aligned with the c
 - `wiki/`: curated knowledge pages and audit artifacts.
 - `schema/`: page, taxonomy, ontology, metadata, and ingest contracts.
 - `scripts/kb/` and `tests/kb/`: implementation and verification surface for knowledgebase tooling.
+- `.github/`: agent personas, prompts, skills, hooks, and CI workflows. All customization files in this zone are monitored by `CI-customizations-freshness` and validated by pre-commit hooks (`check_hooks_json.py`, `check_frontmatter.py`).
 
 ## Guardrails
 

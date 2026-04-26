@@ -17,6 +17,7 @@ __all__ = [
     "extract_copilot_instruction_refs",
     "validate_hooks_json",
     "extract_prompt_links",
+    "REPO_ROOT_PREFIXES",
 ]
 
 # ── Patterns ──────────────────────────────────────────────────────────────────
@@ -28,12 +29,27 @@ _SKILL_PATH_RE = re.compile(r"\.github/skills/([^/\s`\)\"'<>]+)/SKILL\.md")
 # Markdown link targets: [text](target)
 _MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 
-# Shell script basename in a hooks.json command string (e.g. "bash .github/hooks/foo.sh")
-_SH_PATH_RE = re.compile(r"(\S+\.sh)\b")
+# Shell script path in a hooks.json command string (e.g. "bash .github/hooks/foo.sh").
+# Excludes leading quotes (prevents capturing `".github/hooks/foo.sh` when the path is
+# quoted in JSON) and requires whitespace, shell operator, or end-of-string after .sh
+# (prevents false positives on extensions like .sh.bak).
+_SH_PATH_RE = re.compile(r"""(?<!['\"])(\S+?\.sh)(?=\s|[\"';|&>]|$)""")
 
 # Required hook event names per hooks.json schema
 _REQUIRED_HOOK_EVENTS: frozenset[str] = frozenset(
     {"SessionStart", "PreToolUse", "PostToolUse", "Stop"}
+)
+
+# Top-level repo-root directory prefixes used for link resolution.
+# Exported so callers (e.g. test_framework_agents.py) can import rather than duplicate.
+REPO_ROOT_PREFIXES: tuple[str, ...] = (
+    ".github/",
+    "docs/",
+    "schema/",
+    "scripts/",
+    "tests/",
+    "wiki/",
+    "raw/",
 )
 
 
@@ -43,7 +59,8 @@ _REQUIRED_HOOK_EVENTS: frozenset[str] = frozenset(
 def extract_agent_skill_refs(agents_root: Path) -> dict[str, list[str]]:
     """Return mapping of persona stem → list of referenced skill directory names.
 
-    Multi-strategy extraction (applied in order, stops when refs found):
+    Multi-strategy extraction (all applicable sections are processed; refs are
+    deduplicated while preserving insertion order):
 
     1. **Primary** — lines under ``## Required skills / upstream references``
        containing ``.github/skills/<name>/SKILL.md`` path literals.
@@ -148,10 +165,22 @@ def validate_hooks_json(hooks_path: Path, repo_root: Path) -> list[str]:
                     f"{hooks_path}: event '{event}' entry[{i}] must be a dict"
                 )
                 continue
-            command = entry.get("command", "")
+            if "command" not in entry:
+                errors.append(
+                    f"{hooks_path}: event '{event}' entry[{i}]"
+                    f" missing required 'command' field"
+                )
+                continue
+            command = entry["command"]
             for sh_m in _SH_PATH_RE.finditer(command):
                 sh_path = sh_m.group(1)
-                if not (repo_root / sh_path).resolve().is_file():
+                resolved = (repo_root / sh_path).resolve()
+                if not resolved.is_relative_to(repo_root.resolve()):
+                    errors.append(
+                        f"{hooks_path}: event '{event}' entry[{i}]"
+                        f" script path escapes repo root: {sh_path}"
+                    )
+                elif not resolved.is_file():
                     errors.append(
                         f"{hooks_path}: event '{event}' entry[{i}]"
                         f" references missing script: {sh_path}"
@@ -204,19 +233,11 @@ def _section_body(text: str, heading: str) -> str:
 def _resolve_link(source: Path, target: str, repo_root: Path) -> Path:
     """Resolve a markdown link *target* to an absolute Path."""
     if target.startswith("/"):
-        return Path(target)
-    # Repo-root-relative paths (starts with known top-level dir or special files)
-    _REPO_ROOTS = (
-        ".github/",
-        "docs/",
-        "schema/",
-        "scripts/",
-        "tests/",
-        "wiki/",
-        "raw/",
-    )
+        # Absolute paths in .github/ prompt files don't make sense as cross-references.
+        # Clamp to repo root so /etc/passwd doesn't resolve as an external file.
+        return (repo_root / target.lstrip("/")).resolve()
     if target in {"AGENTS.md", "README.md"} or any(
-        target.startswith(r) for r in _REPO_ROOTS
+        target.startswith(r) for r in REPO_ROOT_PREFIXES
     ):
         return (repo_root / target).resolve()
     # Relative to source file directory

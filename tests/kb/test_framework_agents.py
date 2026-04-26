@@ -387,10 +387,12 @@ class DevToolPersonaTests(unittest.TestCase):
                     f"Description must contain 'Use when' or 'Use for': {description!r}",
                 )
             with self.subTest(persona=persona, field="updated_at"):
-                self.assertIn(
-                    "updated_at",
-                    frontmatter,
-                    "Dev-tool persona frontmatter must include 'updated_at'",
+                raw_value = str(frontmatter.get("updated_at", ""))
+                value = raw_value.strip('"').strip("'")
+                self.assertRegex(
+                    value,
+                    r"^\d{4}-\d{2}-\d{2}$",
+                    f"Dev-tool persona 'updated_at' must be ISO 8601 date (YYYY-MM-DD), got: {raw_value!r}",
                 )
 
     def test_dev_tool_persona_related_skill_section_exists(self) -> None:
