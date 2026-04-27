@@ -122,6 +122,16 @@ When writing Mermaid diagrams in markdown research reports or docs:
 
 When the grill-me skill produces a proposed answer that is a **factual claim about the codebase** (e.g., "this constant probably doesn't exist", "this function signature is X"), verify with grep or view before proposing. Only use memory for design preferences and reasoning — not for claims about what code exists.
 
+### FRAMEWORK_BOUNDARY_DOCS — test-monitored files with required literal strings
+
+These files are checked by `tests/kb/test_framework_contracts.py` (`test_boundary_docs_list_same_execution_surface`) using literal `assertIn` — **shorthand will break the test**:
+
+| File | Required literal strings (must all appear verbatim) |
+|---|---|
+| `docs/ideas/wiki-curation-agent-framework.md` | `scripts/kb/ingest.py`, `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, `scripts/kb/persist_query.py` |
+
+**Rule:** Never use `scripts/kb/**` shorthand when editing these files — always spell out every entrypoint name explicitly. When delegating edits to subagents, state the required literal strings in the prompt; subagents that rewrite tables with glob shorthand will silently drop them.
+
 ## Conventions
 
 - Every skill is in `.github/skills/<name>/SKILL.md`.
@@ -178,6 +188,8 @@ For non-trivial changes, run these skill passes in order — later passes often 
 
 When a review pass produces test gap findings, address them in the same fix commit — not as a follow-up. Test coverage gaps are first-class review findings, not optional housekeeping.
 
+**Hard rule:** Do not commit code or doc fixes while test gaps from the same review remain open. A review that surfaces both a code bug and a missing test must land both fixes in the same commit. Never commit the code fix first and defer the test fix — doing so requires an explicit user prompt to recover and has recurred across multiple sessions.
+
 ### Module boundaries within `scripts/` subpackages
 
 In any `scripts/<subpackage>/` directory, never import `_private_prefixed` symbols from a sibling module. If two modules in the same subpackage need to share logic, extract it to a dedicated common module (`_http.py`, `_common.py`, `_shared.py`, etc.) within that subpackage. Importing private internals from a sibling creates hidden coupling and makes the public surface unauditable.
@@ -200,7 +212,12 @@ Define every module-level constant once and import from the canonical location �
 ## Agent personas
 
 Use personas in `.github/agents` when useful:
-- `@code-reviewer`
-- `@test-engineer`
-- `@security-auditor`
+
+**Dev-support** (advisory; do not bypass wiki governance lane):
+- `@code-reviewer` — correctness, readability, architecture, security, performance
+- `@test-engineer` — test strategy, coverage gaps, edge cases
+- `@security-auditor` — vulnerability detection, threat modeling, hardening
+- `@documentation-engineer` — ADRs, SKILL.md, architecture docs, README, docstrings
+- `@solutions-architect` — structural improvement proposals, refactoring plans
+- `@framework-engineer` — new skill authoring, framework integrity, `.github/` surface
 
