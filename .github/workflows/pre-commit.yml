@@ -27,6 +27,7 @@ jobs:
 
       - name: Install package and pre-commit
         run: |
+          pip install --quiet setuptools wheel
           pip install --quiet ".[dev]" pre-commit
 
       - name: Run pre-commit on all files
