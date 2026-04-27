@@ -197,15 +197,14 @@ Skills fall into three routing categories based on **execution role**:
 `improve-codebase-architecture`, `reconsider-rejected-source`,
 `code-simplification`, `deprecation-and-migration`,
 `audit-knowledgebase-workspace`, `jules-session-triage`,
-`fill-context-pages`, `generate-maintenance-docs`,
 `information-architecture-and-taxonomy`, `knowledge-schema-and-metadata-governance`,
-`ontology-and-entity-modeling`, `refresh-context-pages`,
+`ontology-and-entity-modeling`,
 `report-content-quality`, `scan-content-freshness`,
 `search-and-discovery-optimization`, `snapshot-knowledgebase`,
 `prioritize-quality-follow-up`.
 
 **Persona-routed** (`Persona`) — intended as governed pipeline steps called by agent personas
-(e.g., `knowledgebase-orchestrator`, `synthesis-curator`, `source-intake-steward`,
+(e.g., `knowledgebase-orchestrator`, `synthesis-curator`, `query-synthesist`, `source-intake-steward`,
 `maintenance-auditor`, `quality-analyst`, `change-patrol`, `evidence-verifier`,
 `policy-arbiter`, `topology-librarian`). Generally should not be invoked directly:
 `log-intake-rejection`, `route-wiki-task`, `plan-wiki-job`,
@@ -231,7 +230,8 @@ Skills fall into three routing categories based on **execution role**:
 
 **Hybrid** (`Both`) — operator-safe but also used as governed pipeline steps. May be invoked
 either way:
-`convert-sources-to-md`, `sync-knowledgebase-state`, `review-wiki-plan`,
+`convert-sources-to-md`, `fill-context-pages`, `generate-maintenance-docs`,
+`refresh-context-pages`, `sync-knowledgebase-state`, `review-wiki-plan`,
 `manage-redirects-and-anchors`, `validate-taxonomy-placement`,
 `suggest-backlinks`, `prepare-high-value-synthesis-handoff`.
 
@@ -290,7 +290,6 @@ See the Route column in the Quick Reference table for a per-skill label.
 | KB / Ingest | write-sourceref-citations | Persona | Write canonical SourceRef provenance strings |
 | KB / Synthesis | extract-entities-and-claims | Persona | Extract entities, concepts, claims, and chronology from a cleared package |
 | KB / Synthesis | entity-resolution-and-canonicalization | Persona | Resolve duplicates, aliases, and canonical naming conflicts |
-| KB / Synthesis | entity-resolution-and-canonicalization | Persona | Determine canonical identity for disputed entities; produce merge, split, alias, or escalation decision |
 | KB / Synthesis | enforce-npov | Persona | Apply neutral-point-of-view policy to drafts and synthesis |
 | KB / Synthesis | detect-ai-tells | Persona | Flag hallucination markers and AI-generation artifacts |
 | KB / Synthesis | detect-original-research | Persona | Detect unsourced conclusions that exceed cited support |
@@ -339,9 +338,12 @@ See the Route column in the Quick Reference table for a per-skill label.
 | KB / Pipeline | run-deterministic-validators | Persona | Run allowlisted validators against schema, wiki, and raw evidence |
 | KB / Pipeline | validate-wiki-governance | Persona | Run full governance preflight before any wiki write |
 | KB / Pipeline | append-log-entry | Persona | Append a state-change entry to wiki/log.md |
-| KB / Context | fill-context-pages | Direct | Fill placeholder markers in .github/skills/** or docs/** files |
-| KB / Context | generate-maintenance-docs | Direct | Generate and apply docs/ content via a two-step governed workflow |
-| KB / Context | refresh-context-pages | Direct | Refresh context-page inventories and fill plans |
+| KB / Context | fill-context-pages | Both | Fill placeholder markers in .github/skills/** or docs/** files |
+| KB / Context | generate-maintenance-docs | Both | Generate and apply docs/ content via a two-step governed workflow |
+| KB / Context | refresh-context-pages | Both | Refresh context-page inventories and fill plans |
+| Dev / Specialist | code-reviewer | Direct | General review persona for correctness, readability, architecture, security, and performance |
+| Dev / Specialist | security-auditor | Direct | Security-focused review persona for hardening, threat analysis, and vulnerability detection |
+| Dev / Specialist | test-engineer | Direct | Test-strategy and coverage specialist for framework or tooling changes |
 | Dev / Docs | documentation-engineer | Direct | Author, audit, and maintain documentation and ADRs with engineering rigor |
 | Dev / Architecture | solutions-architect | Direct | Produce architecture proposals, refactoring plans, and migration decisions |
 | Dev / Meta | framework-engineer | Direct | Author new skills, audit framework integrity, maintain .github/ surface |

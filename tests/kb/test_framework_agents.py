@@ -76,6 +76,13 @@ class FrameworkPersonaTests(unittest.TestCase):
                 self.assertEqual(frontmatter.get("name"), persona)
                 self.assertIn("Use when", description)
                 self.assertGreater(len(description.strip()), len("Use when"))
+                raw_value = str(frontmatter.get("updated_at", ""))
+                value = raw_value.strip('"').strip("'")
+                self.assertRegex(
+                    value,
+                    r"^\d{4}-\d{2}-\d{2}$",
+                    f"KB persona '{persona}' updated_at must be ISO 8601 date (YYYY-MM-DD), got: {raw_value!r}",
+                )
 
     def test_persona_docs_cover_required_contract_sections(self) -> None:
         for persona, path in PERSONA_FILES.items():
@@ -345,6 +352,38 @@ class FrameworkPersonaTests(unittest.TestCase):
                 with self.subTest(persona=persona, target=target):
                     self.assertTrue(self._resolve_doc_target(path, target).exists())
 
+    def test_entity_resolution_persona_blocks_direct_writes(self) -> None:
+        """entity-resolution-and-canonicalization must carry the same no-write constraints
+        as the other CONTROLLED_POST_GOVERNANCE_PERSONAS."""
+        text = PERSONA_FILES["entity-resolution-and-canonicalization"].read_text(encoding="utf-8")
+        with self.subTest("no_direct_write_stop_condition"):
+            self.assertIn(
+                "No direct write, redirect creation, page rename, or out-of-band persistence is permitted from this persona",
+                text,
+            )
+        with self.subTest("must_return_through_control_plane"):
+            self.assertIn(
+                "must return through the governed control plane",
+                text,
+            )
+        with self.subTest("does_not_write_to_wiki_directly"):
+            self.assertIn(
+                "does not write to wiki directly",
+                text,
+            )
+
+    def test_kb_workflow_personas_have_correct_category(self) -> None:
+        """All KB workflow personas must declare category: kb-workflow in frontmatter."""
+        for persona, path in PERSONA_FILES.items():
+            with self.subTest(persona=persona):
+                text = path.read_text(encoding="utf-8")
+                frontmatter = self._parse_frontmatter(text)
+                self.assertEqual(
+                    frontmatter.get("category"),
+                    "kb-workflow",
+                    f"KB persona '{persona}' must declare category: kb-workflow in frontmatter",
+                )
+
     def _parse_frontmatter(self, text: str) -> dict[str, str]:
         return parse_frontmatter_fields(text, subject="Persona file")
 
@@ -366,7 +405,8 @@ def _resolve_doc_target(source_path: Path, target: str) -> Path:
 
 
 class DevToolPersonaTests(unittest.TestCase):
-    """Contract checks for dev-tool personas (code-reviewer, security-auditor, test-engineer).
+    """Contract checks for dev-tool personas (code-reviewer, security-auditor, test-engineer,
+    documentation-engineer, solutions-architect, framework-engineer).
 
     These personas have a different structure from knowledgebase-workflow personas:
     they use ``## Related skill`` (not ``## Required skills / upstream references``)
@@ -425,6 +465,70 @@ class DevToolPersonaTests(unittest.TestCase):
                         _resolve_doc_target(path, target).exists(),
                         f"Broken reference in ## Related skill: {target}",
                     )
+
+
+    def test_dev_tool_personas_have_correct_category(self) -> None:
+        """All dev-tool personas must declare category: dev-support in frontmatter."""
+        for persona, path in DEV_TOOL_PERSONA_FILES.items():
+            with self.subTest(persona=persona):
+                text = path.read_text(encoding="utf-8")
+                frontmatter = parse_frontmatter_fields(text, subject="Dev-tool persona")
+                self.assertEqual(
+                    frontmatter.get("category"),
+                    "dev-support",
+                    f"Dev-tool persona '{persona}' must declare category: dev-support in frontmatter",
+                )
+
+
+USING_AGENT_SKILLS_PATH = REPO_ROOT / ".github" / "skills" / "using-agent-skills" / "SKILL.md"
+
+
+class UsingAgentSkillsTests(unittest.TestCase):
+    """Contract checks for the using-agent-skills meta-skill routing table."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.skill_text = USING_AGENT_SKILLS_PATH.read_text(encoding="utf-8")
+
+    def test_using_agent_skills_file_exists(self) -> None:
+        self.assertTrue(USING_AGENT_SKILLS_PATH.is_file())
+
+    def test_all_personas_appear_in_routing_skill(self) -> None:
+        """All registered agent personas must appear in using-agent-skills/SKILL.md."""
+        all_personas = list(ALL_PERSONAS) + list(DEV_TOOL_PERSONAS)
+        for persona in all_personas:
+            with self.subTest(persona=persona):
+                self.assertIn(
+                    persona,
+                    self.skill_text,
+                    f"Persona '{persona}' is missing from using-agent-skills/SKILL.md",
+                )
+
+    def test_quick_reference_table_has_no_duplicate_skill_entries(self) -> None:
+        """Each skill or persona should appear at most once in the Quick Reference table.
+        Duplicate rows with different descriptions create ambiguous routing."""
+        rows = re.findall(r"^\| [^|]+ \| ([a-z][a-z0-9-]+) \|", self.skill_text, re.MULTILINE)
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        for skill in rows:
+            if skill in seen:
+                duplicates.append(skill)
+            seen.add(skill)
+        self.assertEqual(
+            duplicates,
+            [],
+            f"Quick Reference table contains duplicate skill/persona entries: {duplicates}",
+        )
+
+    def test_new_dev_agents_have_correct_route_in_quick_reference(self) -> None:
+        """The 3 new dev agents must be listed as Direct-route in the Quick Reference."""
+        for persona in ("documentation-engineer", "solutions-architect", "framework-engineer"):
+            with self.subTest(persona=persona):
+                self.assertRegex(
+                    self.skill_text,
+                    rf"\| [^|]+ \| {re.escape(persona)} \| Direct \|",
+                    f"'{persona}' must appear with route 'Direct' in Quick Reference table",
+                )
 
 
 if __name__ == "__main__":

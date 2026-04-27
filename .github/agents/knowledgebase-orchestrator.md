@@ -73,6 +73,7 @@ This persona is the entry gate. It does not bypass governance and does not autho
 
 - Downstream artifact: pass the routing brief, scope note, and named gate status with every transfer
 - Normal ingest-safe handoff: `source-intake-steward`
+- Identity conflicts flagged by `policy-arbiter`: route to `entity-resolution-and-canonicalization` for canonical identity resolution before synthesis.
 - Controlled post-governance handoff: `synthesis-curator`, `query-synthesist`, or `topology-librarian`, but only after `policy-arbiter` clearance exists for the request scope
 - AFK handoff: tasks matching the ADR-014 AFK allowlist route directly to the eligible skill, bypassing `evidence-verifier` → `policy-arbiter` → `synthesis-curator` (see ADR-014 §4 for allowlist criteria). Requires lock, log (with `classification: afk`), and post-publication `change-patrol` review.
 - After `query-synthesist` produces a durable result intended for wiki persistence, `topology-librarian` MUST be invoked to maintain discoverability

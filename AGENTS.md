@@ -16,7 +16,7 @@ Keep wiki content deterministic, provenance-first, and policy-aligned with the c
 - `wiki/`: curated knowledge pages and audit artifacts.
 - `schema/`: page, taxonomy, ontology, metadata, and ingest contracts.
 - `scripts/kb/` and `tests/kb/`: implementation and verification surface for knowledgebase tooling.
-- `.github/`: agent personas, prompts, skills, hooks, and CI workflows. All customization files in this zone are monitored by `CI-customizations-freshness` and validated by pre-commit hooks (`check_hooks_json.py`, `check_frontmatter.py`).
+- `.github/`: agent personas, prompts, skills, hooks, and CI workflows. All customization files in this zone are monitored by `CI-customizations-freshness` and validated by pre-commit hooks (`check_hooks_json.py`, `check_frontmatter.py`). Agent persona files optionally include a `category` frontmatter field; allowed values are `kb-workflow` (KB pipeline personas such as orchestrator, intake, policy, and synthesis agents) and `dev-support` (development tooling personas such as code reviewers, architects, and framework engineers). This field lets tooling distinguish pipeline governance agents from engineering support agents without hardcoded name lists.
 
 ## Guardrails
 

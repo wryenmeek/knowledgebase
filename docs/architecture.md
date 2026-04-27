@@ -136,21 +136,25 @@ prevents ADR-007 drift into a second runtime.
 
 ## Persona roster under `.github/agents/`
 
-| Group | Persona | Current role |
-|---|---|---|
-| Entry gate | `knowledgebase-orchestrator` | Classifies work, enforces boundary rules, and selects the safe lane. |
-| Ingest-safe gate | `source-intake-steward` | Guards `raw/inbox/**`, provenance, and immutable intake packaging. |
-| Ingest-safe gate | `evidence-verifier` | Requires deterministic provenance/evidence completeness before policy review. |
-| Ingest-safe gate | `policy-arbiter` | Applies repository governance and blocks downstream work until cleared. |
-| Downstream governed lane | `synthesis-curator` | Produces policy-cleared draft/update packages without direct publication. |
-| Downstream governed lane | `query-synthesist` | Answers from curated wiki first and routes durable results back through governed persistence. |
-| Downstream governed lane | `topology-librarian` | Applies taxonomy/index follow-up inside the cleared scope only. |
-| Review/maintenance lane | `maintenance-auditor` | Audits stale/orphaned/semantic maintenance risk without inventing new automation. |
-| Review/maintenance lane | `change-patrol` | Routes changed-source/content risk back through the correct existing lane. |
-| Review/maintenance lane | `quality-analyst` | Turns existing repo evidence into prioritized quality/discoverability follow-up. |
-| Review support | `code-reviewer` | General review persona for correctness/readability/architecture/security/performance checks. |
-| Review support | `test-engineer` | Test-strategy and coverage specialist for framework or tooling changes. |
-| Review support | `security-auditor` | Security-focused review persona for hardening and threat analysis. |
+| Group | Category | Persona | Current role |
+|---|---|---|---|
+| Entry gate | `kb-workflow` | `knowledgebase-orchestrator` | Classifies work, enforces boundary rules, and selects the safe lane. |
+| Ingest-safe gate | `kb-workflow` | `source-intake-steward` | Guards `raw/inbox/**`, provenance, and immutable intake packaging. |
+| Ingest-safe gate | `kb-workflow` | `evidence-verifier` | Requires deterministic provenance/evidence completeness before policy review. |
+| Ingest-safe gate | `kb-workflow` | `policy-arbiter` | Applies repository governance and blocks downstream work until cleared. |
+| Policy-cleared resolution | `kb-workflow` | `entity-resolution-and-canonicalization` | Resolves canonical identity conflicts flagged by `policy-arbiter` before synthesis can proceed. |
+| Downstream governed lane | `kb-workflow` | `synthesis-curator` | Produces policy-cleared draft/update packages without direct publication. |
+| Downstream governed lane | `kb-workflow` | `query-synthesist` | Answers from curated wiki first and routes durable results back through governed persistence. |
+| Downstream governed lane | `kb-workflow` | `topology-librarian` | Applies taxonomy/index follow-up inside the cleared scope only. |
+| Review/maintenance lane | `kb-workflow` | `maintenance-auditor` | Audits stale/orphaned/semantic maintenance risk without inventing new automation. |
+| Review/maintenance lane | `kb-workflow` | `change-patrol` | Routes changed-source/content risk back through the correct existing lane. |
+| Review/maintenance lane | `kb-workflow` | `quality-analyst` | Turns existing repo evidence into prioritized quality/discoverability follow-up. |
+| Review support | `dev-support` | `code-reviewer` | General review persona for correctness/readability/architecture/security/performance checks. |
+| Review support | `dev-support` | `test-engineer` | Test-strategy and coverage specialist for framework or tooling changes. |
+| Review support | `dev-support` | `security-auditor` | Security-focused review persona for hardening and threat analysis. |
+| Dev support | `dev-support` | `documentation-engineer` | Authors, audits, and maintains documentation artifacts (ADRs, SKILL.md, architecture docs, README, docstrings). |
+| Dev support | `dev-support` | `solutions-architect` | Identifies structural improvement opportunities and produces governed architecture proposals and refactoring plans. |
+| Dev support | `dev-support` | `framework-engineer` | Authors new skills, audits framework integrity, and maintains the `.github/` engineering surface. |
 
 ## Skill layer under `.github/skills/`
 
