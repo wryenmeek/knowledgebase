@@ -58,3 +58,14 @@ modules for existing functionality:
   module logic as a required fix, not an optional improvement.
 - The canonical modules grow over time as new shared helpers are consolidated into them.
   This is expected and preferred over scattered private implementations.
+
+## References
+
+- `scripts/kb/page_template_utils.py` — canonical frontmatter and namespace helpers
+- `scripts/kb/write_utils.py` — canonical write, lock, and path-safety helpers
+- `scripts/kb/contracts.py` — canonical status enums, reason codes, and result types
+- `scripts/_optional_surface_common.py` — canonical CLI surface framework
+- `.github/skills/code-review-and-quality/SKILL.md` — utility reuse check in review workflow
+- `.github/skills/incremental-implementation/SKILL.md` — Step 0 utility search phase
+- `.github/skills/code-simplification/SKILL.md` — duplicate-helper detection
+- `AGENTS.md` § Canonical utility modules — runtime enforcement of this policy

@@ -21,3 +21,6 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-012](ADR-012-github-source-monitoring.md) | GitHub source monitoring pipeline | Accepted |
 | [ADR-013](ADR-013-rejected-source-registry.md) | Rejected-source registry | Accepted |
 | [ADR-014](ADR-014-hitl-afk-work-classification.md) | HITL/AFK work classification for wiki curation | Accepted |
+| [ADR-015](ADR-015-extended-ci-trust-model.md) | Extend CI governance with framework-writer (CI-4) and GitHub-monitor (CI-5) | Accepted |
+| [ADR-016](ADR-016-pre-commit-hooks-governance.md) | Use raw git hooks (not the pre-commit framework) for local governance checks | Accepted |
+| [ADR-017](ADR-017-agent-persona-category-taxonomy.md) | Two-category agent persona taxonomy (kb-workflow / dev-support) | Accepted |

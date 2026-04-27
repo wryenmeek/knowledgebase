@@ -1,7 +1,7 @@
 # ADR-004: Split CI governance into gatekeeper, analyst, and PR-producing workflows
 
 ## Status
-Accepted
+Accepted — extended by ADR-015 (CI-4 and CI-5 added to trust model)
 
 ## Date
 2026-04-12
