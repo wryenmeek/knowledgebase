@@ -79,13 +79,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PLAN_SESSION_ID: ${{ steps.plan.outputs.plan_session_id }}
+          FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
         run: |
           set -euo pipefail
           if [ -z "$PLAN_SESSION_ID" ]; then
             echo "❌ PLAN_SESSION_ID is empty — fleet-plan.ts did not export a session ID." >&2
             exit 1
           fi
-          BASE="${{ inputs.base_branch || 'main' }}"
+          BASE="${FLEET_BASE_BRANCH}"
           echo "⏳ Waiting for Jules planning PR (session $PLAN_SESSION_ID)..."
 
           for i in $(seq 1 60); do
@@ -123,5 +124,5 @@ jobs:
           FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
         run: |
           set -euo pipefail
-          git pull --ff-only origin "${{ inputs.base_branch || 'main' }}"
+          git pull --ff-only origin "${FLEET_BASE_BRANCH}"
           bun fleet-dispatch.ts
