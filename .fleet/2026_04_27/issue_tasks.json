@@ -1,0 +1,346 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-04-27T08:33:13.351Z",
+  "root_causes": [
+    {
+      "id": "rc-optional-surface-drift",
+      "title": "Unstructured Optional Surface Utilities and Silent Drift",
+      "severity": "medium",
+      "issues": [
+        64,
+        65,
+        67
+      ],
+      "files": [
+        "scripts/_optional_surface_common.py",
+        "scripts/kb/qmd_preflight.py",
+        "scripts/reporting/content_quality_report.py",
+        "scripts/reporting/quality_runtime.py"
+      ],
+      "description": "scripts/_optional_surface_common.py has accreted reporting-domain logic and duplicated constants without guardrails.",
+      "solution_summary": "Extract reporting IO functions to scripts/reporting/_artifact.py, import WRITE_LOCK_PATH from contracts, and add keep-in-sync comments to qmd_preflight.py."
+    },
+    {
+      "id": "rc-docs-drift",
+      "title": "Documentation Drift: Missing Fleet and Invalid Entity Generation",
+      "severity": "high",
+      "issues": [
+        5,
+        66
+      ],
+      "files": [
+        "docs/architecture.md",
+        "raw/inbox/SPEC.md"
+      ],
+      "description": "The TypeScript fleet layer is undocumented, and SPEC/Architecture incorrectly claim entity/concept generation occurs.",
+      "solution_summary": "Add Fleet Orchestration section to docs/architecture.md, and remove entity/concept generation claims from both docs."
+    },
+    {
+      "id": "rc-gitignore-secrets",
+      "title": "Missing .gitignore Entries for Local Secrets",
+      "severity": "low",
+      "issues": [
+        12
+      ],
+      "files": [
+        ".gitignore"
+      ],
+      "description": "Repository .gitignore lacks exclusions for common local secret patterns like .env.local and .claude/ cache directories.",
+      "solution_summary": "Add .env.local, .env.*.local, and .claude/ to .gitignore."
+    },
+    {
+      "id": "rc-ingest-render-privacy-and-sha",
+      "title": "ADR-011 Violation and Synthetic SourceRef SHA in Ingest",
+      "severity": "high",
+      "issues": [
+        4,
+        63
+      ],
+      "files": [
+        "scripts/kb/ingest_render.py",
+        "scripts/kb/ingest.py"
+      ],
+      "description": "ingest.py imports underscore-prefixed symbols from ingest_render.py, and uses a synthetic all-zero SHA instead of real repository revision.",
+      "solution_summary": "Deprivatize cross-boundary symbols in ingest_render.py, and replace _PROVISIONAL_GIT_SHA with GITHUB_SHA or git-resolved HEAD."
+    },
+    {
+      "id": "rc-persist-query-inefficiency-and-flags",
+      "title": "Unnecessary Index Rebuilds and Misleading Flags in Persist Query",
+      "severity": "medium",
+      "issues": [
+        7,
+        8,
+        17
+      ],
+      "files": [
+        "scripts/kb/persist_query.py"
+      ],
+      "description": "persist_query.py forces index generation even when analysis is unchanged. It also contains no-op flags (--result-json) and non-configurable flags (--unresolved-contradiction).",
+      "solution_summary": "Gate index regeneration on analysis_changed, remove --result-json, and enforce policy on --unresolved-contradiction or make it fully boolean."
+    },
+    {
+      "id": "rc-update-index-lock-and-performance",
+      "title": "Update Index Performance and Missing Write Lock",
+      "severity": "high",
+      "issues": [
+        3,
+        18,
+        19
+      ],
+      "files": [
+        "scripts/kb/update_index.py",
+        "scripts/kb/lint_wiki.py"
+      ],
+      "description": "update_index.py lacks write locks, and both update_index/lint_wiki perform redundant filesystem stats.",
+      "solution_summary": "Wrap the file write operation in update_index.py with exclusive_write_lock, add timing telemetry, and cache path exist operations."
+    },
+    {
+      "id": "rc-verify-tests-coverage-and-yaml",
+      "title": "CI-2 Duplicate YAML and Missing Verification Matrix Coverage",
+      "severity": "high",
+      "issues": [
+        6,
+        16
+      ],
+      "files": [
+        ".github/workflows/ci-2-analyst-diagnostics.yml"
+      ],
+      "description": "Missing verification matrix coverage enforcement for scripts/kb and duplicated YAML parses.",
+      "solution_summary": "Enforce >=90% line coverage in CI, add test coverage for verification matrix items, and deduplicate YAML parsing."
+    },
+    {
+      "id": "rc-ci3-workflow-inefficiencies",
+      "title": "CI-3 Workflow Suboptimal Scaling and Security",
+      "severity": "high",
+      "issues": [
+        9,
+        11,
+        14,
+        15
+      ],
+      "files": [
+        ".github/workflows/ci-3-pr-producer.yml"
+      ],
+      "description": "CI-3 suffers from GITHUB_OUTPUT handoff limits, unbatched ingest, ad-hoc lock deletion, and weak dispatch authorization.",
+      "solution_summary": "Refactor CI-3 to use workspace files for handoff, batch ingest calls, enforce environment reviewers for workflow_dispatch, and remove rm -f lock steps."
+    },
+    {
+      "id": "rc-symlink-traversal",
+      "title": "Symlink Traversal Vulnerability in Write Paths",
+      "severity": "high",
+      "issues": [
+        2,
+        13
+      ],
+      "files": [
+        "scripts/kb/path_utils.py"
+      ],
+      "description": "Write paths can follow symlinks outside repository boundaries.",
+      "solution_summary": "Add safe-write guard in path_utils.py rejecting symlink traversal targets."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-gitignore-secrets",
+      "title": "Harden .gitignore for Local Secrets",
+      "root_cause": "rc-gitignore-secrets",
+      "issues": [
+        12
+      ],
+      "files": [
+        ".gitignore"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "TASK PROMPT:\n\n1. Exact files to modify and create: .gitignore\n2. Exact test files to modify: \n\n3. Root cause explanation and 4. Proposed implementation with 5. Diffs:\n### RC-1: Missing .gitignore Entries for Local Secrets\n\n**Related issues:** #12\n**Severity:** Low\n**Files involved:** `.gitignore`\n\n#### Diagnosis\n\nCommon local caches and secret files (`.env.local`, `.claude/`) are not in `.gitignore`.\n\n#### Proposed Solution\n\nAppend missing patterns to `.gitignore`.\n\n```diff\n# .gitignore\n+.env.local\n+.env.*.local\n+.claude/\n```\n\n**Integration points:**\nAppend to the end of the existing `.gitignore` file.\n\n**Edge cases and risks:**\nNone.\n\n#### Test Plan\n\n1. Verify `.env.local` is ignored by running `git check-ignore .env.local`.\n\n---\n\n6. Test scenarios: See Test Plan in the section above.\n7. Acceptance criteria: Code passes tests, resolves the root cause completely, and conforms to the proposed implementation.\n8. FILE BOUNDARY RULE: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-optional-surface-refactors",
+      "title": "Refactor Optional Surface Common Utilities",
+      "root_cause": "rc-optional-surface-drift",
+      "issues": [
+        64,
+        65,
+        67
+      ],
+      "files": [
+        "scripts/_optional_surface_common.py",
+        "scripts/kb/qmd_preflight.py",
+        "scripts/reporting/content_quality_report.py",
+        "scripts/reporting/quality_runtime.py"
+      ],
+      "new_files": [
+        "scripts/reporting/_artifact.py"
+      ],
+      "test_files": [
+        "tests/kb/test_optional_surface_scripts.py",
+        "tests/kb/test_qmd_preflight.py"
+      ],
+      "risk": "low",
+      "prompt": "TASK PROMPT:\n\n1. Exact files to modify and create: scripts/_optional_surface_common.py, scripts/kb/qmd_preflight.py, scripts/reporting/content_quality_report.py, scripts/reporting/quality_runtime.py, scripts/reporting/_artifact.py\n2. Exact test files to modify: tests/kb/test_optional_surface_scripts.py, tests/kb/test_qmd_preflight.py\n\n3. Root cause explanation and 4. Proposed implementation with 5. Diffs:\n### RC-2: Unstructured Optional Surface Utilities and Silent Drift\n\n**Related issues:** #64, #65, #67\n**Severity:** Medium\n**Files involved:** `scripts/_optional_surface_common.py`, `scripts/kb/qmd_preflight.py`, `scripts/reporting/content_quality_report.py`, `scripts/reporting/quality_runtime.py`\n\n#### Diagnosis\n\n`scripts/_optional_surface_common.py` has grown into a catch-all module (551 lines), accreting reporting domain logic (`validate_report_artifact`, `write_report_artifact`) only needed by `scripts/reporting/`. Furthermore, it silently duplicated `WRITE_LOCK_PATH` without importing it from `contracts.py`, violating ADR-011. Similarly, `qmd_preflight.py` duplicated constants without `# keep in sync` comments.\n\n```python\n# scripts/_optional_surface_common.py:33\nLOCK_PATH = \"wiki/.kb_write.lock\"\n\n# scripts/kb/qmd_preflight.py:18-22\nSTATUS_PASS = \"pass\"\nSTATUS_FAIL = \"fail\"\n\nREASON_CODE_OK = \"ok\"\nREASON_CODE_INVALID_INPUT = \"invalid_input\"\n```\n\n#### Proposed Solution\n\nExtract reporting symbols from `_optional_surface_common.py` into `scripts/reporting/_artifact.py`. Update callers. Replace hardcoded `LOCK_PATH` with a direct import. Add keep-in-sync comments in `qmd_preflight.py`.\n\n```diff\n# scripts/_optional_surface_common.py\n-LOCK_PATH = \"wiki/.kb_write.lock\"\n+from scripts.kb.contracts import WRITE_LOCK_PATH as LOCK_PATH\n\n# scripts/kb/qmd_preflight.py\n-STATUS_PASS = \"pass\"\n+STATUS_PASS = \"pass\"  # keep in sync with scripts/_optional_surface_common.STATUS_PASS\n```\n\n**Integration points:**\nUpdate imports in `content_quality_report.py` and `quality_runtime.py` to point to the new `_artifact.py` module.\n\n**Edge cases and risks:**\nImport cycles if `_artifact.py` requires items from `_optional_surface_common.py`. Mitigation: copy cleanly and ensure no circular deps.\n\n#### Test Plan\n\n1. Verify `pytest tests/` runs successfully without import errors.\n2. Ensure `scripts/reporting/_artifact.py` exposes correct symbols via `__all__`.\n3. Check `LOCK_PATH` substitution resolves correctly in existing calls.\n\n---\n\n6. Test scenarios: See Test Plan in the section above.\n7. Acceptance criteria: Code passes tests, resolves the root cause completely, and conforms to the proposed implementation.\n8. FILE BOUNDARY RULE: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-docs-drift",
+      "title": "Document Fleet Orchestration and Resolve Entity Generation Drift",
+      "root_cause": "rc-docs-drift",
+      "issues": [
+        5,
+        66
+      ],
+      "files": [
+        "docs/architecture.md",
+        "raw/inbox/SPEC.md"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "TASK PROMPT:\n\n1. Exact files to modify and create: docs/architecture.md, raw/inbox/SPEC.md\n2. Exact test files to modify: \n\n3. Root cause explanation and 4. Proposed implementation with 5. Diffs:\n### RC-3: Documentation Drift: Missing Fleet and Invalid Entity Generation\n\n**Related issues:** #5, #66\n**Severity:** High\n**Files involved:** `docs/architecture.md`, `raw/inbox/SPEC.md`\n\n#### Diagnosis\n\nThe TypeScript/Bun project in `scripts/fleet/` is omitted from `docs/architecture.md`. Further, SPEC.md incorrectly claims ingest updates entities.\n\n#### Proposed Solution\n\nAppend a \"Fleet orchestration\" section to architecture.md. Remove references to entity generation.\n\n**Integration points:**\nInsert immediately after the CI-1..CI-5 automation model table. Remove paragraphs in SPEC.md.\n\n**Edge cases and risks:**\nNone, purely documentation.\n\n#### Test Plan\n\n1. Verify document renders correctly and contains required keywords.\n2. Confirm section resides correctly after CI-1..CI-5 table.\n3. Validate \"entity\" references are stripped from SPEC.md.\n\n---\n\n6. Test scenarios: See Test Plan in the section above.\n7. Acceptance criteria: Code passes tests, resolves the root cause completely, and conforms to the proposed implementation.\n8. FILE BOUNDARY RULE: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-persist-query-fixes",
+      "title": "Fix Persist Query Index Rebuild and Flags",
+      "root_cause": "rc-persist-query-inefficiency-and-flags",
+      "issues": [
+        7,
+        8,
+        17
+      ],
+      "files": [
+        "scripts/kb/persist_query.py"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_persist_query.py"
+      ],
+      "risk": "medium",
+      "prompt": "TASK PROMPT:\n\n1. Exact files to modify and create: scripts/kb/persist_query.py\n2. Exact test files to modify: tests/kb/test_persist_query.py\n\n3. Root cause explanation and 4. Proposed implementation with 5. Diffs:\n### RC-4: Unnecessary Index Rebuilds and Misleading Flags in Persist Query\n\n**Related issues:** #7, #8, #17\n**Severity:** Medium\n**Files involved:** `scripts/kb/persist_query.py`\n\n#### Diagnosis\n\n`persist_query.py` executes index generation unconditionally even when analysis text hasn't changed. The CLI also defines a no-op flag `--result-json`.\n\n```python\n# scripts/kb/persist_query.py:350-353\nanalysis_changed = write_text_if_changed(analysis_absolute, analysis_markdown)\nindex_updated = _update_index_if_changed(request.wiki_root)\nstate_changed = analysis_changed or index_updated\n```\n\n#### Proposed Solution\n\nCondition index regeneration on `analysis_changed`. Remove `--result-json`. Make contradiction policy flags accurate.\n\n```diff\n# scripts/kb/persist_query.py\n-index_updated = _update_index_if_changed(request.wiki_root)\n+index_updated = _update_index_if_changed(request.wiki_root) if analysis_changed else False\n```\n\n**Integration points:**\nUpdate argument parsing logic to enforce contradiction logic directly.\n\n**Edge cases and risks:**\nRemoving the flag might break older invocation scripts relying on `--result-json`.\n\n#### Test Plan\n\n1. Run persist_query twice with identical inputs and verify second run exits early without rebuilding index.\n2. Pass `--result-json` to CLI and assert it throws `unrecognized arguments`.\n\n---\n\n6. Test scenarios: See Test Plan in the section above.\n7. Acceptance criteria: Code passes tests, resolves the root cause completely, and conforms to the proposed implementation.\n8. FILE BOUNDARY RULE: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-update-index-lock-and-performance",
+      "title": "Enforce Write Lock and Optimize update_index",
+      "root_cause": "rc-update-index-lock-and-performance",
+      "issues": [
+        3,
+        18,
+        19
+      ],
+      "files": [
+        "scripts/kb/update_index.py",
+        "scripts/kb/lint_wiki.py"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_update_index.py",
+        "tests/kb/test_lint_wiki.py"
+      ],
+      "risk": "medium",
+      "prompt": "TASK PROMPT:\n\n1. Exact files to modify and create: scripts/kb/update_index.py, scripts/kb/lint_wiki.py\n2. Exact test files to modify: tests/kb/test_update_index.py, tests/kb/test_lint_wiki.py\n\n3. Root cause explanation and 4. Proposed implementation with 5. Diffs:\n### RC-5: Update Index Performance and Missing Write Lock\n\n**Related issues:** #3, #18, #19\n**Severity:** High\n**Files involved:** `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`\n\n#### Diagnosis\n\n`update_index.py` with `--write` writes to `wiki/index.md` without securing `wiki/.kb_write.lock`, violating standard concurrency spec. The scripts also lack timing telemetry and perform redundant stat calls.\n\n```python\n# scripts/kb/update_index.py:311-329\ndef generate_and_write_index(wiki_root: Path) -> bool:\n    generated = generate_index_content(wiki_root)\n    # ... writes without lock\n    atomic_replace_governed_artifact(repo_root, \"wiki/index.md\", generated)\n```\n\n#### Proposed Solution\n\nWrap `generate_and_write_index` writes in `with exclusive_write_lock(wiki_root.parent):`. Implement stat caching and timing wrappers.\n\n```diff\n# scripts/kb/update_index.py\n+from scripts.kb.write_utils import exclusive_write_lock\n...\ndef generate_and_write_index(wiki_root: Path) -> bool:\n-    generated = generate_index_content(wiki_root)\n+    with exclusive_write_lock(wiki_root.parent):\n+        generated = generate_index_content(wiki_root)\n```\n\n**Integration points:**\nInside `generate_and_write_index` immediately prior to file writes. Add decorators for time output.\n\n**Edge cases and risks:**\nLock contention might cause unexpected hangs if `atomic_replace` is too slow.\n\n#### Test Plan\n\n1. Test lock acquisition and deterministic fail-closed behavior on lock contention.\n2. Confirm index generation path is guarded.\n\n---\n\n6. Test scenarios: See Test Plan in the section above.\n7. Acceptance criteria: Code passes tests, resolves the root cause completely, and conforms to the proposed implementation.\n8. FILE BOUNDARY RULE: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-ingest-render-privacy-and-sha",
+      "title": "Deprivatize ingest_render.py Symbols and Replace Synthetic SHA",
+      "root_cause": "rc-ingest-render-privacy-and-sha",
+      "issues": [
+        4,
+        63
+      ],
+      "files": [
+        "scripts/kb/ingest_render.py",
+        "scripts/kb/ingest.py"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_ingest.py",
+        "tests/kb/test_ingest_render.py"
+      ],
+      "risk": "high",
+      "prompt": "TASK PROMPT:\n\n1. Exact files to modify and create: scripts/kb/ingest_render.py, scripts/kb/ingest.py\n2. Exact test files to modify: tests/kb/test_ingest.py, tests/kb/test_ingest_render.py\n\n3. Root cause explanation and 4. Proposed implementation with 5. Diffs:\n### RC-6: ADR-011 Violation and Synthetic SourceRef SHA in Ingest\n\n**Related issues:** #4, #63\n**Severity:** High\n**Files involved:** `scripts/kb/ingest_render.py`, `scripts/kb/ingest.py`, `tests/kb/test_ingest.py`, `tests/kb/test_ingest_render.py`\n\n#### Diagnosis\n\n`ingest.py` violates module boundary rules by importing underscore-prefixed symbols (e.g. `_PROVISIONAL_GIT_SHA`) from its sibling `ingest_render.py`. Furthermore, `_PROVISIONAL_GIT_SHA` uses a synthetic all-zero SHA which violates the requirement for real provenance logic.\n\n```python\n# scripts/kb/ingest.py:14-16\nfrom scripts.kb.ingest_render import (\n    SourceProvenance,\n    _PROVISIONAL_GIT_SHA,\n```\n\n#### Proposed Solution\n\nRemove leading underscores for cross-boundary symbols in `ingest_render.py`, export via `__all__`, and update usages. In the same phase, replace `PROVISIONAL_GIT_SHA` usage with a `git rev-parse HEAD` or `GITHUB_SHA` resolution string.\n\n```python\n# scripts/kb/ingest_render.py\nimport os, subprocess\ndef get_git_sha():\n    return os.environ.get(\"GITHUB_SHA\") or subprocess.check_output([\"git\", \"rev-parse\", \"HEAD\"]).decode(\"utf-8\").strip()\n\n__all__ = [\"get_git_sha\", \"build_source_ref\", \"build_provisional_source_provenance\", \"render_source_page\", \"escape_quotes\", \"SourceProvenance\"]\n```\n\n**Integration points:**\nUpdate references across `ingest.py` and `test_ingest.py` to use the un-prefixed names and dynamic SHA functions.\n\n**Edge cases and risks:**\nRenaming functions could break tests referencing the private variables directly. Process subcalls may fail outside git repo contexts.\n\n#### Test Plan\n\n1. Grep for `_PROVISIONAL_GIT_SHA` in tests and confirm zero matches.\n2. Run `test_ingest.py` to ensure pipeline runs without `ImportError`.\n3. Mock `git rev-parse` and ensure fallback is handled.\n\n---\n\n6. Test scenarios: See Test Plan in the section above.\n7. Acceptance criteria: Code passes tests, resolves the root cause completely, and conforms to the proposed implementation.\n8. FILE BOUNDARY RULE: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-coverage-and-matrix-and-yaml",
+      "title": "Enforce Coverage Gate, Tests, and Fix YAML Dup",
+      "root_cause": "rc-verify-tests-coverage-and-yaml",
+      "issues": [
+        6,
+        16
+      ],
+      "files": [
+        ".github/workflows/ci-2-analyst-diagnostics.yml"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_matrix.py"
+      ],
+      "risk": "high",
+      "prompt": "TASK PROMPT:\n\n1. Exact files to modify and create: .github/workflows/ci-2-analyst-diagnostics.yml\n2. Exact test files to modify: tests/kb/test_matrix.py\n\n3. Root cause explanation and 4. Proposed implementation with 5. Diffs:\n### RC-7: CI-2 Duplicate YAML and Missing Verification Matrix Coverage\n\n**Related issues:** #6, #16\n**Severity:** High\n**Files involved:** `.github/workflows/ci-2-analyst-diagnostics.yml`, `tests/kb/test_matrix.py`\n\n#### Diagnosis\n\nVerification matrix items missing test coverage, and no enforcement of coverage threshold in CI. Additionally CI-2 wastes runtime duplicating yaml parse steps.\n\n#### Proposed Solution\n\nAdd coverage thresholds to the CI validation step and remove duplicate parse.\n\n```yaml\n# .github/workflows/ci-2-analyst-diagnostics.yml\n- run: python3 -m coverage report --fail-under=90\n```\n\n**Integration points:**\nAdd step after pytest execution in CI-2. Drop secondary parse path.\n\n**Edge cases and risks:**\nMight block PRs if coverage slips below 90%.\n\n#### Test Plan\n\n1. Run CI locally and assert coverage gate triggers failure if below threshold.\n\n---\n\n6. Test scenarios: See Test Plan in the section above.\n7. Acceptance criteria: Code passes tests, resolves the root cause completely, and conforms to the proposed implementation.\n8. FILE BOUNDARY RULE: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-symlink-traversal",
+      "title": "Harden Write Paths against Symlink Traversal",
+      "root_cause": "rc-symlink-traversal",
+      "issues": [
+        2,
+        13
+      ],
+      "files": [
+        "scripts/kb/path_utils.py"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_path_utils.py"
+      ],
+      "risk": "high",
+      "prompt": "TASK PROMPT:\n\n1. Exact files to modify and create: scripts/kb/path_utils.py\n2. Exact test files to modify: tests/kb/test_path_utils.py\n\n3. Root cause explanation and 4. Proposed implementation with 5. Diffs:\n### RC-8: Symlink Traversal Vulnerability in Write Paths\n\n**Related issues:** #2, #13\n**Severity:** High\n**Files involved:** `scripts/kb/path_utils.py`, `tests/kb/test_path_utils.py`\n\n#### Diagnosis\n\nSymlinks under allowlisted paths can be followed outside the repo bounds.\n\n```python\n# scripts/kb/path_utils.py:51-60\ndef resolve_within_repo(repo_root: Path, raw_path: str) -> Path:\n    # Does not check resolve bounds accurately.\n    pass\n```\n\n#### Proposed Solution\n\nAdd `safe_write_path` guard using `resolve().is_relative_to()`.\n\n```python\ndef safe_write_path(repo_root: Path, target: Path) -> Path:\n    resolved = target.resolve()\n    if not resolved.is_relative_to(repo_root):\n        raise ValueError(\"Symlink traversal outside repo root\")\n    return resolved\n```\n\n**Integration points:**\nCall inside path resolution utilities before write operations.\n\n**Edge cases and risks:**\n`resolve()` forces filesystem stats, which can slow down batched writes.\n\n#### Test Plan\n\n1. Create malicious symlink and verify write fails cleanly.\n\n---\n\n6. Test scenarios: See Test Plan in the section above.\n7. Acceptance criteria: Code passes tests, resolves the root cause completely, and conforms to the proposed implementation.\n8. FILE BOUNDARY RULE: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-ci3-refactor",
+      "title": "Refactor CI-3 Workflow",
+      "root_cause": "rc-ci3-workflow-inefficiencies",
+      "issues": [
+        9,
+        11,
+        14,
+        15
+      ],
+      "files": [
+        ".github/workflows/ci-3-pr-producer.yml"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_ci3_contracts.py"
+      ],
+      "risk": "high",
+      "prompt": "TASK PROMPT:\n\n1. Exact files to modify and create: .github/workflows/ci-3-pr-producer.yml\n2. Exact test files to modify: tests/kb/test_ci3_contracts.py\n\n3. Root cause explanation and 4. Proposed implementation with 5. Diffs:\n### RC-9: CI-3 Workflow Suboptimal Scaling and Security\n\n**Related issues:** #9, #11, #14, #15\n**Severity:** High\n**Files involved:** `.github/workflows/ci-3-pr-producer.yml`, `tests/kb/test_ci3_contracts.py`\n\n#### Diagnosis\n\nCI-3 lacks authoritative dispatch approval, relies on an ad-hoc `rm -f` for locks, and suffers from inefficient GITHUB_OUTPUT handoffs and unbatched loops for ingest.\n\n```yaml\n# .github/workflows/ci-3-pr-producer.yml:515\n- run: rm -f wiki/.kb_write.lock\n```\n\n#### Proposed Solution\n\nEnforce GitHub environment protections, remove `rm -f`, and replace output strings with workspace JSON files for batched steps. Add contract tests for verification.\n\n```diff\n# .github/workflows/ci-3-pr-producer.yml\n- - run: rm -f wiki/.kb_write.lock\n```\n\n**Integration points:**\nUpdate workflow YAML blocks for CI-3 manual dispatch to require \"environment: production\".\n\n**Edge cases and risks:**\nChanging outputs to workspace files requires steps down the line to parse JSON correctly.\n\n#### Test Plan\n\n1. Verify workflow YAML passes `actionlint`.\n2. Confirm the removed locking step doesn't cause pipeline failures.\n\n6. Test scenarios: See Test Plan in the section above.\n7. Acceptance criteria: Code passes tests, resolves the root cause completely, and conforms to the proposed implementation.\n8. FILE BOUNDARY RULE: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    ".gitignore": "task-gitignore-secrets",
+    "scripts/_optional_surface_common.py": "task-optional-surface-refactors",
+    "scripts/kb/qmd_preflight.py": "task-optional-surface-refactors",
+    "scripts/reporting/content_quality_report.py": "task-optional-surface-refactors",
+    "scripts/reporting/quality_runtime.py": "task-optional-surface-refactors",
+    "scripts/reporting/_artifact.py": "task-optional-surface-refactors",
+    "tests/kb/test_optional_surface_scripts.py": "task-optional-surface-refactors",
+    "tests/kb/test_qmd_preflight.py": "task-optional-surface-refactors",
+    "docs/architecture.md": "task-docs-drift",
+    "raw/inbox/SPEC.md": "task-docs-drift",
+    "scripts/kb/persist_query.py": "task-persist-query-fixes",
+    "tests/kb/test_persist_query.py": "task-persist-query-fixes",
+    "scripts/kb/update_index.py": "task-update-index-lock-and-performance",
+    "scripts/kb/lint_wiki.py": "task-update-index-lock-and-performance",
+    "tests/kb/test_update_index.py": "task-update-index-lock-and-performance",
+    "tests/kb/test_lint_wiki.py": "task-update-index-lock-and-performance",
+    "scripts/kb/ingest_render.py": "task-ingest-render-privacy-and-sha",
+    "scripts/kb/ingest.py": "task-ingest-render-privacy-and-sha",
+    "tests/kb/test_ingest.py": "task-ingest-render-privacy-and-sha",
+    "tests/kb/test_ingest_render.py": "task-ingest-render-privacy-and-sha",
+    ".github/workflows/ci-2-analyst-diagnostics.yml": "task-coverage-and-matrix-and-yaml",
+    "tests/kb/test_matrix.py": "task-coverage-and-matrix-and-yaml",
+    "scripts/kb/path_utils.py": "task-symlink-traversal",
+    "tests/kb/test_path_utils.py": "task-symlink-traversal",
+    ".github/workflows/ci-3-pr-producer.yml": "task-ci3-refactor",
+    "tests/kb/test_ci3_contracts.py": "task-ci3-refactor"
+  }
+}
