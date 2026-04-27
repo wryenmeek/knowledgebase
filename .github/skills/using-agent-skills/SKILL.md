@@ -39,8 +39,27 @@ Task arrives
     │   └── Restructuring prose? ─────→ edit-article
     ├── Deploying/launching? ─────────→ shipping-and-launch
     ├── Agent-to-agent handoff? ──────→ caveman
-    └── Wiki intake rejected? ────────→ log-intake-rejection
-        └── Reconsidering rejection? ─→ reconsider-rejected-source
+    ├── Wiki intake rejected? ────────→ log-intake-rejection
+    │   └── Reconsidering rejection? ─→ reconsider-rejected-source
+    ├── Simplifying existing code? ───→ code-simplification
+    ├── Removing/migrating systems? ──→ deprecation-and-migration
+    ├── Auditing framework workspace? → audit-knowledgebase-workspace
+    ├── Jules session stalled/review? → jules-session-triage
+    └── Knowledgebase / wiki work?
+        ├── Taxonomy/namespace? ──────────→ information-architecture-and-taxonomy
+        ├── Schema/metadata governance? ──→ knowledge-schema-and-metadata-governance
+        ├── Entity/ontology modeling? ────→ ontology-and-entity-modeling
+        ├── Discoverability review? ───────→ search-and-discovery-optimization
+        ├── Content freshness scan? ───────→ scan-content-freshness
+        ├── Content quality report? ───────→ report-content-quality
+        ├── Quality follow-up priority? ───→ prioritize-quality-follow-up
+        ├── Context page fill/refresh? ────→ fill-context-pages / refresh-context-pages
+        ├── Generate docs/ content? ───────→ generate-maintenance-docs
+        ├── Knowledgebase snapshot? ───────→ snapshot-knowledgebase
+        ├── Source conversion preview? ────→ convert-sources-to-md
+        ├── Index sync/check? ─────────────→ sync-knowledgebase-state
+        ├── Review a wiki plan? ───────────→ review-wiki-plan
+        └── Route query for durable follow-up? → prepare-high-value-synthesis-handoff
 ```
 
 ## Core Operating Behaviors
@@ -162,57 +181,156 @@ Not every task needs every skill. A bug fix might only need: `debugging-and-erro
 
 ## Skill Routing
 
-Skills fall into two routing categories:
+Skills fall into three routing categories based on **execution role**:
 
-**Operator-direct skills** — invoked explicitly by the operator (human or CI).
-These drive a self-contained procedure and do not require persona mediation:
+**Operator-direct** (`Direct`) — self-contained procedures safe to invoke explicitly by the operator
+(human or CI). Do not require persona mediation:
 `zoom-out`, `grill-me`, `edit-article`, `caveman`, `quality-pass-chain`,
 `write-a-skill`, `request-refactor-plan`, `triage-issue`,
-`improve-codebase-architecture`, `reconsider-rejected-source`.
+`improve-codebase-architecture`, `reconsider-rejected-source`,
+`code-simplification`, `deprecation-and-migration`,
+`audit-knowledgebase-workspace`, `jules-session-triage`,
+`fill-context-pages`, `generate-maintenance-docs`,
+`information-architecture-and-taxonomy`, `knowledge-schema-and-metadata-governance`,
+`ontology-and-entity-modeling`, `refresh-context-pages`,
+`report-content-quality`, `scan-content-freshness`,
+`search-and-discovery-optimization`, `snapshot-knowledgebase`,
+`prioritize-quality-follow-up`.
 
-**Persona-routed skills** — invoked by agent personas (e.g.,
-`knowledgebase-orchestrator`, `synthesis-curator`, `source-intake-steward`) as
-part of a governed pipeline. These skills are called during lane execution and
-generally should not be invoked directly:
-`log-intake-rejection`, `route-wiki-task`,
-`plan-wiki-job`, `enforce-page-template`, `validate-inbox-source`,
+**Persona-routed** (`Persona`) — intended as governed pipeline steps called by agent personas
+(e.g., `knowledgebase-orchestrator`, `synthesis-curator`, `source-intake-steward`,
+`maintenance-auditor`, `quality-analyst`, `change-patrol`, `evidence-verifier`,
+`policy-arbiter`, `topology-librarian`). Generally should not be invoked directly:
+`log-intake-rejection`, `route-wiki-task`, `plan-wiki-job`,
+`enforce-page-template`, `validate-inbox-source`,
 `enforce-repository-boundaries`, `run-deterministic-validators`,
-`validate-wiki-governance`.
+`validate-wiki-governance`,
+`analyze-missed-queries`, `append-log-entry`, `append-maintenance-log`,
+`check-link-topology`, `checksum-asset`, `claim-inventory`,
+`compare-against-existing-pages`, `compute-kpis`,
+`create-intake-manifest`, `cross-reference-symmetry-check`,
+`detect-ai-tells`, `detect-original-research`, `enforce-npov`,
+`entity-resolution-and-canonicalization`, `escalate-contradictions`,
+`extract-entities-and-claims`, `fail-closed-on-errors`, `freshness-audit`,
+`handoff-query-derived-page`, `log-ingest-event`, `log-patrol-incident`,
+`log-policy-conflict`, `patrol-human-edits`, `persist-query-result`,
+`policy-diff-review`, `prioritize-curation-backlog`,
+`propose-supersede-or-archive`, `recommend-maintenance-follow-up`,
+`record-open-questions`, `register-source-provenance`, `retrieve-from-index`,
+`route-noncompliant-edit-for-review`, `run-ingest`, `score-page-quality`,
+`semantic-wiki-lint`, `semi-formal-reasoning`,
+`synthesize-cited-answer`, `synthesize-concept-page`, `synthesize-entity-page`,
+`update-index`, `verify-citations`, `write-sourceref-citations`.
 
-When in doubt, check the skill's "When to Use" section — operator-direct
-skills say "Use when you need…" while persona-routed skills say "Use when
-<persona> needs…".
+**Hybrid** (`Both`) — operator-safe but also used as governed pipeline steps. May be invoked
+either way:
+`convert-sources-to-md`, `sync-knowledgebase-state`, `review-wiki-plan`,
+`manage-redirects-and-anchors`, `validate-taxonomy-placement`,
+`suggest-backlinks`, `prepare-high-value-synthesis-handoff`.
+
+See the Route column in the Quick Reference table for a per-skill label.
 
 ## Quick Reference
 
-| Phase | Skill | One-Line Summary |
-|-------|-------|-----------------|
-| Orient | zoom-out | Map modules, callers, and abstractions before diving in |
-| Define | idea-refine | Refine ideas through structured divergent and convergent thinking |
-| Define | grill-me | Stress-test plans through adversarial questioning |
-| Define | spec-driven-development | Requirements and acceptance criteria before code |
-| Plan | planning-and-task-breakdown | Decompose into small, verifiable tasks |
-| Build | incremental-implementation | Thin vertical slices, test each before expanding |
-| Build | source-driven-development | Verify against official docs before implementing |
-| Build | context-engineering | Right context at the right time |
-| Build | frontend-ui-engineering | Production-quality UI with accessibility |
-| Build | api-and-interface-design | Stable interfaces with clear contracts |
-| Verify | test-driven-development | Failing test first, then make it pass |
-| Verify | browser-testing-with-devtools | Chrome DevTools MCP for runtime verification |
-| Verify | debugging-and-error-recovery | Reproduce → localize → fix → guard |
-| Review | code-review-and-quality | Five-axis review with quality gates |
-| Review | quality-pass-chain | Orchestrate 4-step quality gate sequence |
-| Review | security-and-hardening | OWASP prevention, input validation, least privilege |
-| Review | performance-optimization | Measure first, optimize only what matters |
-| Ship | git-workflow-and-versioning | Atomic commits, clean history |
-| Ship | ci-cd-and-automation | Automated quality gates on every change |
-| Ship | documentation-and-adrs | Document the why, not just the what |
-| Ship | edit-article | Restructure prose for clarity without changing facts |
-| Ship | shipping-and-launch | Pre-launch checklist, monitoring, rollback plan |
-| Operate | caveman | Compress agent-to-agent handoffs for efficiency |
-| Operate | log-intake-rejection | Persist write-once rejection records to raw/rejected/ |
-| Operate | reconsider-rejected-source | Re-evaluate previously rejected sources |
-| Meta | write-a-skill | Create new skills with all required wiring steps |
-| Meta | request-refactor-plan | Structure refactoring proposals as GitHub Issues |
-| Meta | triage-issue | Classify and prioritize GitHub Issues |
-| Meta | improve-codebase-architecture | Identify and propose architecture improvements |
+| Phase | Skill | Route | One-Line Summary |
+|-------|-------|-------|-----------------|
+| Orient | zoom-out | Direct | Map modules, callers, and abstractions before diving in |
+| Define | idea-refine | Direct | Refine ideas through structured divergent and convergent thinking |
+| Define | grill-me | Direct | Stress-test plans through adversarial questioning |
+| Define | spec-driven-development | Direct | Requirements and acceptance criteria before code |
+| Plan | planning-and-task-breakdown | Direct | Decompose into small, verifiable tasks |
+| Build | incremental-implementation | Direct | Thin vertical slices, test each before expanding |
+| Build | source-driven-development | Direct | Verify against official docs before implementing |
+| Build | context-engineering | Direct | Right context at the right time |
+| Build | frontend-ui-engineering | Direct | Production-quality UI with accessibility |
+| Build | api-and-interface-design | Direct | Stable interfaces with clear contracts |
+| Verify | test-driven-development | Direct | Failing test first, then make it pass |
+| Verify | browser-testing-with-devtools | Direct | Chrome DevTools MCP for runtime verification |
+| Verify | debugging-and-error-recovery | Direct | Reproduce → localize → fix → guard |
+| Review | code-review-and-quality | Direct | Five-axis review with quality gates |
+| Review | code-simplification | Direct | Simplify code for clarity without changing behavior |
+| Review | quality-pass-chain | Direct | Orchestrate 4-step quality gate sequence |
+| Review | security-and-hardening | Direct | OWASP prevention, input validation, least privilege |
+| Review | performance-optimization | Direct | Measure first, optimize only what matters |
+| Ship | git-workflow-and-versioning | Direct | Atomic commits, clean history |
+| Ship | ci-cd-and-automation | Direct | Automated quality gates on every change |
+| Ship | documentation-and-adrs | Direct | Document the why, not just the what |
+| Ship | deprecation-and-migration | Direct | Manage removal and migration of old systems or APIs |
+| Ship | edit-article | Direct | Restructure prose for clarity without changing facts |
+| Ship | shipping-and-launch | Direct | Pre-launch checklist, monitoring, rollback plan |
+| Operate | caveman | Direct | Compress agent-to-agent handoffs for efficiency |
+| Operate | log-intake-rejection | Persona | Persist write-once rejection records to raw/rejected/ |
+| Operate | reconsider-rejected-source | Direct | Re-evaluate previously rejected sources |
+| Meta | write-a-skill | Direct | Create new skills with all required wiring steps |
+| Meta | request-refactor-plan | Direct | Structure refactoring proposals as GitHub Issues |
+| Meta | triage-issue | Direct | Classify and prioritize GitHub Issues |
+| Meta | improve-codebase-architecture | Direct | Identify and propose architecture improvements |
+| Meta | audit-knowledgebase-workspace | Direct | Verify skills, agents, tests, and wrappers point at real surfaces |
+| Meta | jules-session-triage | Direct | Triage Jules sessions and route review feedback to stuck sessions |
+| KB / Governance | information-architecture-and-taxonomy | Direct | Govern wiki namespace placement, browse paths, and tags |
+| KB / Governance | knowledge-schema-and-metadata-governance | Direct | Validate frontmatter, propose fields, assess schema-change policy |
+| KB / Governance | ontology-and-entity-modeling | Direct | Model canonical subjects, aliases, and relationship vocabulary |
+| KB / Governance | search-and-discovery-optimization | Direct | Review page titles, tags, and index placement for retrieval effectiveness |
+| KB / Governance | review-wiki-plan | Both | Review wiki plans against MVP governance before approval |
+| KB / Ingest | validate-inbox-source | Persona | Validate source provenance and format before ingest |
+| KB / Ingest | checksum-asset | Persona | Compute and record SHA-256 checksum for a raw asset |
+| KB / Ingest | register-source-provenance | Persona | Record canonical provenance metadata for intake sources |
+| KB / Ingest | claim-inventory | Persona | Enumerate and attribute factual claims from an intake package |
+| KB / Ingest | create-intake-manifest | Persona | Assemble sealed intake manifest for evidence and policy review |
+| KB / Ingest | convert-sources-to-md | Both | Preview or apply inbox source conversion to Markdown |
+| KB / Ingest | run-ingest | Persona | Run the deterministic source ingest pipeline |
+| KB / Ingest | log-ingest-event | Persona | Record a state-change entry in wiki/log.md after ingest |
+| KB / Ingest | write-sourceref-citations | Persona | Write canonical SourceRef provenance strings |
+| KB / Synthesis | extract-entities-and-claims | Persona | Extract entities, concepts, claims, and chronology from a cleared package |
+| KB / Synthesis | entity-resolution-and-canonicalization | Persona | Resolve duplicates, aliases, and canonical naming conflicts |
+| KB / Synthesis | enforce-npov | Persona | Apply neutral-point-of-view policy to drafts and synthesis |
+| KB / Synthesis | detect-ai-tells | Persona | Flag hallucination markers and AI-generation artifacts |
+| KB / Synthesis | detect-original-research | Persona | Detect unsourced conclusions that exceed cited support |
+| KB / Synthesis | semi-formal-reasoning | Persona | Assess whether stated conclusions follow from cited premises |
+| KB / Synthesis | compare-against-existing-pages | Persona | Detect duplicates and conflicts before new-page publication |
+| KB / Synthesis | synthesize-entity-page | Persona | Draft a policy-cleared entity wiki page from a verified package |
+| KB / Synthesis | synthesize-concept-page | Persona | Draft a policy-cleared concept wiki page from a verified package |
+| KB / Synthesis | verify-citations | Persona | Verify SourceRef citation readiness and provenance completeness |
+| KB / Synthesis | escalate-contradictions | Persona | Produce a governed escalation record for unresolvable conflicts |
+| KB / Synthesis | record-open-questions | Persona | Capture unresolved evidence or policy gaps for later follow-up |
+| KB / Query | retrieve-from-index | Persona | Retrieve relevant wiki pages and index entries before synthesis |
+| KB / Query | synthesize-cited-answer | Persona | Produce a cited answer from curated retrieval results |
+| KB / Query | handoff-query-derived-page | Persona | Convert a query result into a governed editorial handoff |
+| KB / Query | prepare-high-value-synthesis-handoff | Both | Package a cited insight for governed durable follow-up |
+| KB / Query | persist-query-result | Persona | Persist a cleared query result via the governed script surface |
+| KB / Maintenance | semantic-wiki-lint | Persona | Audit wiki pages for stale summaries, orphaned evidence, broken relationships |
+| KB / Maintenance | freshness-audit | Persona | Produce a read-only freshness assessment of wiki or docs content |
+| KB / Maintenance | scan-content-freshness | Direct | Run deterministic freshness age checks over wiki or docs |
+| KB / Maintenance | cross-reference-symmetry-check | Persona | Audit wiki cross-references for symmetry and dangling links |
+| KB / Maintenance | check-link-topology | Persona | Review link topology impacts of cleared editorial changes |
+| KB / Maintenance | propose-supersede-or-archive | Persona | Recommend retiring, replacing, or marking pages as historical |
+| KB / Maintenance | recommend-maintenance-follow-up | Persona | Package maintenance findings into a recommendation-first handoff |
+| KB / Maintenance | append-maintenance-log | Persona | Record a maintenance-event entry in wiki/log.md |
+| KB / Quality | score-page-quality | Persona | Produce a read-only quality score for a wiki page |
+| KB / Quality | analyze-missed-queries | Persona | Scan wiki for coverage gaps, missing citations, and placeholders |
+| KB / Quality | compute-kpis | Persona | Aggregate repo-level quality KPIs from quality-scores artifacts |
+| KB / Quality | report-content-quality | Direct | Summarize content quality signals without persisting undeclared artifacts |
+| KB / Quality | prioritize-curation-backlog | Persona | Rank open curation work items by quality signals and evidence |
+| KB / Quality | prioritize-quality-follow-up | Direct | Rank quality follow-up work from existing evidence (recommend-only) |
+| KB / Topology | manage-redirects-and-anchors | Both | Record redirect entries when pages are renamed, merged, or superseded |
+| KB / Topology | suggest-backlinks | Both | Recommend governed backlink opportunities between cleared pages |
+| KB / Topology | validate-taxonomy-placement | Both | Validate page placement against taxonomy and identity contracts |
+| KB / Topology | update-index | Persona | Prepare governed wiki/index.md follow-up after structural changes |
+| KB / Topology | sync-knowledgebase-state | Both | Check or refresh wiki/index.md through allowlisted wrappers |
+| KB / Topology | snapshot-knowledgebase | Direct | Capture a read-only baseline over wiki, schema, and raw artifacts |
+| KB / Change patrol | patrol-human-edits | Persona | Diff-based risk classification for changed wiki content |
+| KB / Change patrol | policy-diff-review | Persona | Risk-classify wiki/source edits for governance follow-up |
+| KB / Change patrol | log-patrol-incident | Persona | Package change-patrol incidents into append-only escalation records |
+| KB / Change patrol | log-policy-conflict | Persona | Record contradiction or policy-conflict outcomes in append-only form |
+| KB / Change patrol | route-noncompliant-edit-for-review | Persona | Route high-risk change-patrol findings to the governed review lane |
+| KB / Pipeline | route-wiki-task | Persona | Route wiki tasks through the ingest-safe governance lane |
+| KB / Pipeline | plan-wiki-job | Persona | Plan and scope a governed wiki job before execution |
+| KB / Pipeline | fail-closed-on-errors | Persona | Enforce fail-closed behavior when a governed step errors or is incomplete |
+| KB / Pipeline | enforce-page-template | Persona | Validate wiki page frontmatter and heading structure |
+| KB / Pipeline | enforce-repository-boundaries | Persona | Enforce repository path allowlist for governed writes |
+| KB / Pipeline | run-deterministic-validators | Persona | Run allowlisted validators against schema, wiki, and raw evidence |
+| KB / Pipeline | validate-wiki-governance | Persona | Run full governance preflight before any wiki write |
+| KB / Pipeline | append-log-entry | Persona | Append a state-change entry to wiki/log.md |
+| KB / Context | fill-context-pages | Direct | Fill placeholder markers in .github/skills/** or docs/** files |
+| KB / Context | generate-maintenance-docs | Direct | Generate and apply docs/ content via a two-step governed workflow |
+| KB / Context | refresh-context-pages | Direct | Refresh context-page inventories and fill plans |
