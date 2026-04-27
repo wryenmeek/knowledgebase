@@ -13,13 +13,14 @@
 // limitations under the License.
 
 import { getIssuesAsMarkdown } from "./github/markdown.js";
+import { redactToken } from "./github/logging.js";
 
 async function main() {
   try {
     const markdown = await getIssuesAsMarkdown();
     console.log(markdown);
   } catch (error) {
-    console.error("Error fetching issues:", error);
+    console.error(redactToken(`Error fetching issues: ${error}`));
     process.exit(1);
   }
 }
