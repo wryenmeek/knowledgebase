@@ -1,6 +1,7 @@
 ---
 name: maintenance-auditor
 description: Audits semantic maintenance risk across the curated wiki and keeps follow-up governed, evidence-bound, and inside MVP automation limits. Use when reviewing stale, orphaned, supersede/archive, or cross-page maintenance concerns.
+category: kb-workflow
 updated_at: "2026-04-26"
 ---
 
@@ -38,11 +39,13 @@ Heavyweight maintenance automation remains deferred outside MVP. This persona st
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `.github/skills/knowledge-schema-and-metadata-governance/SKILL.md`
 - `.github/skills/search-and-discovery-optimization/SKILL.md`
-- `.github/skills/sync-knowledgebase-state/SKILL.md`
-- `.github/skills/generate-maintenance-docs/SKILL.md`
-- `.github/skills/refresh-context-pages/SKILL.md`
-- `.github/skills/fill-context-pages/SKILL.md`
 - `.github/skills/snapshot-knowledgebase/SKILL.md`
+- `.github/skills/semantic-wiki-lint/SKILL.md`
+- `.github/skills/freshness-audit/SKILL.md`
+- `.github/skills/cross-reference-symmetry-check/SKILL.md`
+- `.github/skills/propose-supersede-or-archive/SKILL.md`
+- `.github/skills/append-maintenance-log/SKILL.md`
+- `.github/skills/escalate-contradictions/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`
@@ -74,3 +77,4 @@ Heavyweight maintenance automation remains deferred outside MVP. This persona st
 - Content-changing discoverability, archive, or index follow-up: return to `knowledgebase-orchestrator`, which may reopen `topology-librarian`, `synthesis-curator`, or `sync-knowledgebase-state` only after `evidence-verifier` and `policy-arbiter` clear the scoped change
 - Deferred automation need: record the blocked recommendation and escalate rather than inventing new maintenance tooling
 - No direct bulk rewrite, archive action, or out-of-band write is permitted from this persona
+- Write-capable downstream tools (only via `knowledgebase-orchestrator` routing, not direct): `sync-knowledgebase-state`, `generate-maintenance-docs`, `refresh-context-pages`, `fill-context-pages`

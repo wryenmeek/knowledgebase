@@ -1,6 +1,7 @@
 ---
 name: topology-librarian
 description: Maintains discoverability by applying taxonomy and information-architecture policy to links, indexes, and alias decisions without inventing a second runtime. Use when a policy-cleared wiki change needs governed topology or index follow-up.
+category: kb-workflow
 updated_at: "2026-04-26"
 ---
 
@@ -39,6 +40,7 @@ Maintain link structure, index quality, and discoverability for policy-cleared k
 - `.github/skills/update-index/SKILL.md`
 - `.github/skills/suggest-backlinks/SKILL.md`
 - `.github/skills/validate-taxonomy-placement/SKILL.md`
+- `.github/skills/manage-redirects-and-anchors/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`

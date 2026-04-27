@@ -1,6 +1,7 @@
 ---
 name: policy-arbiter
 description: Applies repository governance after evidence review and blocks downstream wiki-writing lanes until policy conditions are satisfied. Use when deciding whether verified intake can advance beyond the ingest-safe lane.
+category: kb-workflow
 updated_at: "2026-04-26"
 ---
 
@@ -33,6 +34,11 @@ Apply the repository's editorial and operational constitution after evidence rev
 - `.github/skills/security-and-hardening/SKILL.md`
 - `.github/skills/log-policy-conflict/SKILL.md`
 - `.github/skills/run-deterministic-validators/SKILL.md`
+- `.github/skills/compare-against-existing-pages/SKILL.md`
+- `.github/skills/detect-original-research/SKILL.md`
+- `.github/skills/escalate-contradictions/SKILL.md`
+- `.github/skills/verify-citations/SKILL.md`
+- `.github/skills/enforce-npov/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`

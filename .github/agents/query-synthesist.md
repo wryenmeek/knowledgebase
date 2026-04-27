@@ -1,6 +1,7 @@
 ---
 name: query-synthesist
 description: Answers questions from the curated wiki first, returns cited synthesis, and routes any durable query result back through governed persistence instead of writing directly. Use when responding to knowledgebase queries or assessing whether an answer merits durable follow-up.
+category: kb-workflow
 updated_at: "2026-04-26"
 ---
 
@@ -32,6 +33,7 @@ Answer questions from the curated knowledgebase without bypassing evidence or pe
 - `.github/skills/synthesize-cited-answer/SKILL.md`
 - `.github/skills/prepare-high-value-synthesis-handoff/SKILL.md`
 - `.github/skills/handoff-query-derived-page/SKILL.md`
+- `.github/skills/persist-query-result/SKILL.md`
 - `.github/skills/source-driven-development/SKILL.md`
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `.github/skills/review-wiki-plan/SKILL.md`

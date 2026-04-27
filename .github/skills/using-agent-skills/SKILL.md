@@ -41,6 +41,13 @@ Task arrives
     ├── Agent-to-agent handoff? ──────→ caveman
     ├── Wiki intake rejected? ────────→ log-intake-rejection
     │   └── Reconsidering rejection? ─→ reconsider-rejected-source
+    ├── Invoking a specialist agent?
+    │   ├── Code review? ────────────→ @code-reviewer
+    │   ├── Security review? ────────→ @security-auditor
+    │   ├── Test strategy/coverage? ─→ @test-engineer
+    │   ├── Documentation / ADRs? ───→ @documentation-engineer
+    │   ├── Architecture proposals? ─→ @solutions-architect
+    │   └── Framework authoring? ────→ @framework-engineer
     ├── Simplifying existing code? ───→ code-simplification
     ├── Removing/migrating systems? ──→ deprecation-and-migration
     ├── Auditing framework workspace? → audit-knowledgebase-workspace
@@ -283,6 +290,7 @@ See the Route column in the Quick Reference table for a per-skill label.
 | KB / Ingest | write-sourceref-citations | Persona | Write canonical SourceRef provenance strings |
 | KB / Synthesis | extract-entities-and-claims | Persona | Extract entities, concepts, claims, and chronology from a cleared package |
 | KB / Synthesis | entity-resolution-and-canonicalization | Persona | Resolve duplicates, aliases, and canonical naming conflicts |
+| KB / Synthesis | entity-resolution-and-canonicalization | Persona | Determine canonical identity for disputed entities; produce merge, split, alias, or escalation decision |
 | KB / Synthesis | enforce-npov | Persona | Apply neutral-point-of-view policy to drafts and synthesis |
 | KB / Synthesis | detect-ai-tells | Persona | Flag hallucination markers and AI-generation artifacts |
 | KB / Synthesis | detect-original-research | Persona | Detect unsourced conclusions that exceed cited support |
@@ -334,3 +342,6 @@ See the Route column in the Quick Reference table for a per-skill label.
 | KB / Context | fill-context-pages | Direct | Fill placeholder markers in .github/skills/** or docs/** files |
 | KB / Context | generate-maintenance-docs | Direct | Generate and apply docs/ content via a two-step governed workflow |
 | KB / Context | refresh-context-pages | Direct | Refresh context-page inventories and fill plans |
+| Dev / Docs | documentation-engineer | Direct | Author, audit, and maintain documentation and ADRs with engineering rigor |
+| Dev / Architecture | solutions-architect | Direct | Produce architecture proposals, refactoring plans, and migration decisions |
+| Dev / Meta | framework-engineer | Direct | Author new skills, audit framework integrity, maintain .github/ surface |

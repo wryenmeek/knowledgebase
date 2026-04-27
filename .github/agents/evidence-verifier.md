@@ -1,6 +1,7 @@
 ---
 name: evidence-verifier
 description: Verifies that ingest inputs carry complete provenance and support a safe policy decision before any future synthesis or topology write path can open. Use when checking intake packages, SourceRef prerequisites, or evidence completeness.
+category: kb-workflow
 updated_at: "2026-04-26"
 ---
 
@@ -38,6 +39,10 @@ Act as the hard evidence gate for the ingest-safe lane. In this slice, the verif
 - `.github/skills/claim-inventory/SKILL.md`
 - `.github/skills/semi-formal-reasoning/SKILL.md`
 - `.github/skills/detect-ai-tells/SKILL.md`
+- `.github/skills/escalate-contradictions/SKILL.md`
+- `.github/skills/create-intake-manifest/SKILL.md`
+- `.github/skills/log-intake-rejection/SKILL.md`
+- `.github/skills/run-ingest/SKILL.md`
 - `AGENTS.md`
 - `schema/ingest-checklist.md`
 - `schema/metadata-schema-contract.md`

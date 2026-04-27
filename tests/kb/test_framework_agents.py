@@ -21,6 +21,7 @@ CONTROLLED_POST_GOVERNANCE_PERSONAS: tuple[str, ...] = (
     "synthesis-curator",
     "query-synthesist",
     "topology-librarian",
+    "entity-resolution-and-canonicalization",
 )
 OPERATIONS_PERSONAS: tuple[str, ...] = (
     "maintenance-auditor",
@@ -52,6 +53,9 @@ DEV_TOOL_PERSONAS: tuple[str, ...] = (
     "code-reviewer",
     "security-auditor",
     "test-engineer",
+    "documentation-engineer",
+    "solutions-architect",
+    "framework-engineer",
 )
 DEV_TOOL_PERSONA_FILES: dict[str, Path] = {
     persona: AGENTS_ROOT / f"{persona}.md" for persona in DEV_TOOL_PERSONAS

@@ -1,6 +1,7 @@
 ---
 name: change-patrol
 description: Patrols source and content changes that may require renewed governance review, then routes them through the correct existing lane without inventing broad repo surveillance. Use when assessing diffs, citation removals, or source/content changes that may need reassessment.
+category: kb-workflow
 updated_at: "2026-04-26"
 ---
 
@@ -34,6 +35,9 @@ This role does not invent a broad repo crawler, daemon, webhook mesh, or other s
 
 - `.github/skills/policy-diff-review/SKILL.md`
 - `.github/skills/log-patrol-incident/SKILL.md`
+- `.github/skills/patrol-human-edits/SKILL.md`
+- `.github/skills/route-noncompliant-edit-for-review/SKILL.md`
+- `.github/skills/append-maintenance-log/SKILL.md`
 - `.github/skills/review-wiki-plan/SKILL.md`
 - `.github/skills/validate-wiki-governance/SKILL.md`
 - `.github/skills/source-driven-development/SKILL.md`

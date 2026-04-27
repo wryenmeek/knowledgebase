@@ -1,6 +1,7 @@
 ---
 name: knowledgebase-orchestrator
 description: Routes knowledgebase work through the ingest-safe lane and only unlocks controlled downstream personas after governance has passed. Use when classifying wiki work, selecting lane order, or failing closed on unsafe requests.
+category: kb-workflow
 updated_at: "2026-04-26"
 ---
 
@@ -42,6 +43,10 @@ This persona is the entry gate. It does not bypass governance and does not autho
 - `.github/skills/source-driven-development/SKILL.md`
 - `.github/skills/enforce-repository-boundaries/SKILL.md`
 - `.github/skills/run-deterministic-validators/SKILL.md`
+- `.github/skills/fail-closed-on-errors/SKILL.md`
+- `.github/skills/plan-wiki-job/SKILL.md`
+- `.github/skills/log-ingest-event/SKILL.md`
+- `.github/skills/audit-knowledgebase-workspace/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`

@@ -1,6 +1,7 @@
 ---
 name: source-intake-steward
 description: Guards the untrusted-source boundary, prepares immutable ingest evidence, and hands off only validated intake packages to evidence review. Use when processing material from raw/inbox or registering source provenance.
+category: kb-workflow
 updated_at: "2026-04-26"
 ---
 
@@ -42,6 +43,10 @@ Own the trust boundary between `raw/inbox/` and the rest of the repository. This
 - `docs/architecture.md`
 - `.github/skills/log-intake-rejection/SKILL.md`
 - `.github/skills/reconsider-rejected-source/SKILL.md`
+- `.github/skills/register-source-provenance/SKILL.md`
+- `.github/skills/checksum-asset/SKILL.md`
+- `.github/skills/create-intake-manifest/SKILL.md`
+- `.github/skills/run-ingest/SKILL.md`
 - `schema/rejection-registry-contract.md`
 
 ## Stop conditions / fail-closed behavior

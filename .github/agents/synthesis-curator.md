@@ -1,6 +1,7 @@
 ---
 name: synthesis-curator
 description: Drafts policy-cleared knowledge updates by applying explicit identity, taxonomy, and metadata contracts before any governed wiki publication step. Use when a verified package is ready for schema-aligned page synthesis or update planning.
+category: kb-workflow
 updated_at: "2026-04-26"
 ---
 
@@ -41,6 +42,10 @@ Turn a policy-cleared, evidence-backed package into a proposed wiki create/updat
 - `.github/skills/append-log-entry/SKILL.md`
 - `.github/skills/edit-article/SKILL.md`
 - `.github/skills/detect-ai-tells/SKILL.md`
+- `.github/skills/synthesize-concept-page/SKILL.md`
+- `.github/skills/synthesize-entity-page/SKILL.md`
+- `.github/skills/compare-against-existing-pages/SKILL.md`
+- `.github/skills/verify-citations/SKILL.md`
 - `AGENTS.md`
 - `docs/architecture.md`
 - `docs/decisions/ADR-007-control-plane-layering-and-packaging.md`
