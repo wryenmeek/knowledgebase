@@ -19,3 +19,5 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-010](ADR-010-convert-sources-adr006-compliance-review.md) | ADR-006 compliance review for `convert_sources_to_md.py` | Accepted |
 | [ADR-011](ADR-011-canonical-utility-reuse.md) | Canonical utility modules and single-definition rule for shared helpers | Accepted |
 | [ADR-012](ADR-012-github-source-monitoring.md) | GitHub source monitoring pipeline | Accepted |
+| [ADR-013](ADR-013-rejected-source-registry.md) | Rejected-source registry | Accepted |
+| [ADR-014](ADR-014-hitl-afk-work-classification.md) | HITL/AFK work classification for wiki curation | Accepted |

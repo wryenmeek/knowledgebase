@@ -63,7 +63,7 @@ Grant the following narrower write authorizations under the deny-by-default poli
 ### CI placement
 
 Both apply modes belong in a new `ci-4-framework-writer.yml` workflow. CI-3
-(`ci-3-wiki-pipeline.yml`) remains scoped to `wiki/**` and `raw/processed/**`
+(`ci-3-pr-producer.yml`) remains scoped to `wiki/**` and `raw/processed/**`
 only and must not invoke these scripts.
 
 ## Alternatives considered
