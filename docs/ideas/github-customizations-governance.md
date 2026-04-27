@@ -1,8 +1,23 @@
 # `.github/` Customization Governance Parity
 
-**Status:** Idea — ready for planning  
+**Status:** Implemented — all 3 deliverables complete (2026-04-27)
 **Origin:** idea-refine session, 2026-04-25  
 **Research basis:** [`session-state/research/how-are-our-github-customization-files-monitored-m.md`](../../.copilot/session-state/0c7cee66-37cd-4dfb-bbfc-d9639001dc7c/research/how-are-our-github-customization-files-monitored-m.md)
+
+> **Implementation note (2026-04-27):**
+> - **Deliverable 1** (`tests/kb/test_github_customizations.py`) — landed and
+>   running in CI-2. Validates agent→skill references, copilot-instructions
+>   commands, hooks.json structure, and prompt link resolution.
+> - **Deliverable 2** (pre-commit guards) — `check_frontmatter.py` extended to
+>   cover agent persona frontmatter; `check_hooks_json.py` validates JSON syntax,
+>   required structure, and shell script paths. Both in `scripts/hooks/`.
+> - **Deliverable 3** (`github-customizations-freshness.yml`) — landed as a push
+>   + weekly-scheduled workflow. Detects drift, opens PRs for resolvable cases,
+>   opens labeled issues for ambiguous drift. Never auto-commits to main.
+> - **Open questions resolved:** Dev agent personas (code-reviewer, security-auditor,
+>   test-engineer, + 3 new) are all in `test_framework_agents.py::DEV_TOOL_PERSONAS`.
+>   `test_github_customizations.py` stands alone (not merged into test_framework_skills).
+>   Push-triggered (not weekly-only) to catch drift fast.
 
 ---
 

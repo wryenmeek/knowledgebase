@@ -1,8 +1,18 @@
 # Inventory: Skill Size Refactoring
 
-**Status:** Draft inventory — no implementation
+**Status:** In progress — `references/` directories created for 7 skills; SKILL.md content not yet extracted (2026-04-27)
 **Date:** 2025-07-18
 **Author:** Design research (Phase 7-C)
+
+> **Implementation note (2026-04-27):** `references/` directories were created for
+> 7 skills (test-driven-development, ci-cd-and-automation, frontend-ui-engineering,
+> shipping-and-launch, code-review-and-quality, security-and-hardening,
+> performance-optimization) plus a global `.github/skills/references/` shared
+> directory. However, no SKILL.md content has been extracted yet — line counts
+> are unchanged from the inventory below. **Exception:** `using-agent-skills`
+> grew from 191 → 349 lines (all 97 skills catalogued with Route column). The
+> line counts in §2 remain accurate for all other skills. Decision from §7 has
+> not been made; implementation is paused at the `references/` scaffolding stage.
 
 ---
 
@@ -41,7 +51,7 @@ All SKILL.md files exceeding 150 lines, verified via `wc -l`:
 | 17 | deprecation-and-migration | 206 | +106 |
 | 18 | spec-driven-development | 200 | +100 |
 | 19 | source-driven-development | 194 | +94 |
-| 20 | using-agent-skills | 191 | +91 |
+| 20 | using-agent-skills | 349 | +249 | *(grew: now covers all 97 skills)* |
 | 21 | performance-optimization | 183 | +83 |
 | 22 | idea-refine | 178 | +78 |
 

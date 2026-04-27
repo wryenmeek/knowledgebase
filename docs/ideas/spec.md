@@ -1,5 +1,15 @@
 # Spec: Post-MVP Rollout and Packaging
 
+> **Phase status (2026-04-27):**
+> - **Phase 0** ✅ Complete — this spec published; runbook aligned.
+> - **Phase 1** ✅ Complete — boundary docs, contract tests, and package-placement rules landed.
+> - **Phase 2** ✅ Complete — all script families promoted: `scripts/validation/**`,
+>   `scripts/reporting/**`, `scripts/context/**`, `scripts/maintenance/**`,
+>   `scripts/ingest/**`, and `scripts/github_monitor/**`.
+> - **Phase 3** 🔲 Not started — downstream write-capable workflow slices; requires
+>   explicit maintainer approval per §High-risk phase-transition gates.
+> - **Phase 4** 🔲 Not started — optional analytics and discovery follow-ons.
+
 ## Authority and objective
 
 This document is the **authoritative post-MVP rollout planning spec** for the

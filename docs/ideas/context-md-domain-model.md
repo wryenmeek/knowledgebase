@@ -1,8 +1,16 @@
 # Design Proposal: CONTEXT.md Domain Model Pattern
 
-**Status:** Draft proposal — no implementation
+**Status:** Implemented — 2026-04-27
 **Date:** 2025-07-18
 **Author:** Design research (Phase 7-A)
+
+> **Implementation note (2026-04-27):** All CONTEXT.md files described in §4 have
+> landed: `./CONTEXT.md` (repo-root), `schema/CONTEXT.md`, `scripts/kb/CONTEXT.md`,
+> `scripts/github_monitor/CONTEXT.md`, and `.github/skills/CONTEXT.md`. The
+> `context-engineering` skill loads them. Open questions from §7 were resolved:
+> markdown tables (not pure YAML) won; human+agent hybrid ownership with PR review;
+> line-count cap enforced informally; no conflict with `copilot-instructions.md`
+> (files complement, not replace, each other).
 
 ---
 

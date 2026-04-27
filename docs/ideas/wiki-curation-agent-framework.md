@@ -29,16 +29,21 @@ repository's existing deterministic Python execution surface.
 
 ### Current implementation status snapshot
 
+<!-- snapshot updated 2026-04-27 -->
+
 The current repo state is:
 
 | Layer | Current status |
 |---|---|
-| Personas | Landed as `.github/agents/**` contracts with mission, handoff, and fail-closed sections. |
-| Framework wrappers | Landed only for `validate-wiki-governance` and `sync-knowledgebase-state`. |
-| Knowledge-structure skills | Landed as active **doc-only** contract skills: `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, `knowledge-schema-and-metadata-governance`, `entity-resolution-and-canonicalization`, and `search-and-discovery-optimization`. |
-| Policy/evidence/self-audit skills | Landed as active **doc-only** workflow skills: `validate-inbox-source`, `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, and `audit-knowledgebase-workspace`. |
-| Deterministic execution | Still centered on `scripts/kb/ingest.py`, `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, and `scripts/kb/persist_query.py`. |
-| Verification | Enforced through `tests/kb/**`, especially the focused framework suites and wrapper runtime checks. |
+| Personas | 17 agents in `.github/agents/`: 11 `kb-workflow` category (knowledgebase-orchestrator, source-intake-steward, evidence-verifier, policy-arbiter, synthesis-curator, query-synthesist, topology-librarian, entity-resolution-and-canonicalization, maintenance-auditor, change-patrol, quality-analyst) and 6 `dev-support` category (code-reviewer, security-auditor, test-engineer, documentation-engineer, solutions-architect, framework-engineer). All have `category` frontmatter field. |
+| Skills | 97 skills in `.github/skills/`, all catalogued in `using-agent-skills/SKILL.md`. |
+| Framework wrappers (skill logic) | Skill-local logic wrappers landed for: `append-log-entry`, `check-link-topology`, `compute-kpis`, `analyze-missed-queries`, `context-engineering`, `documentation-and-adrs`, `enforce-page-template`, `enforce-repository-boundaries`, `run-deterministic-validators`, `sync-knowledgebase-state`, `validate-inbox-source`, `validate-wiki-governance`, `write-sourceref-citations`, `suggest-backlinks`, `log-intake-rejection`, `manage-redirects-and-anchors`, `fill-context-pages`, `generate-maintenance-docs`. |
+| Knowledge-structure skills | All 5 original skills landed; `entity-resolution-and-canonicalization` now also has a full agent persona. |
+| Deterministic execution | Core entrypoints (`scripts/kb/ingest.py`, `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, `scripts/kb/persist_query.py`) remain authoritative. All post-MVP package families also landed: `scripts/validation/**`, `scripts/reporting/**` (`content_quality_report.py`, `quality_runtime.py`), `scripts/context/**` (`fill_context_pages.py`, `manage_context_pages.py`), `scripts/maintenance/**` (`generate_docs.py`), `scripts/ingest/**` (`convert_sources_to_md.py`). |
+| Pre-commit hooks | All hooks landed in `scripts/hooks/`: `check_frontmatter.py`, `check_hooks_json.py`, `check_no_staged_locks.py`, `check_sourceref_format.py`, `check_context_md_format.py`, `check_matrix_coverage.py`. |
+| CONTEXT.md files | 5 CONTEXT.md files landed: repo root, `schema/`, `scripts/kb/`, `scripts/github_monitor/`, `.github/skills/`. |
+| GitHub monitor | `scripts/github_monitor/**` landed (`check_drift.py`, `classify_drift.py`, `fetch_content.py`, `synthesize_diff.py`) with CI-5 workflow. |
+| Verification | 788 tests, 1728 subtests green. Includes `tests/kb/test_github_customizations.py`, `test_framework_agents.py` (22 tests), and `UsingAgentSkillsTests` class. |
 
 ### In scope now
 
@@ -51,12 +56,20 @@ The current repo state is:
 
 ### Deferred follow-on work
 
-- Porting the broader script-adaptation backlog into new `scripts/validation/`,
-  `scripts/reporting/`, `scripts/context/`, `scripts/maintenance/`, or
-  `scripts/ingest/` trees.
+The post-MVP script package families (`scripts/validation/**`, `scripts/reporting/**`,
+`scripts/context/**`, `scripts/maintenance/**`, `scripts/ingest/**`, and
+`scripts/github_monitor/**`) are **all now landed** and are no longer deferred.
+
+Remaining deferred work:
+
+- **Phase 3 — downstream write expansion**: broadening autonomous write paths
+  beyond the current narrow, lock-gated surfaces (e.g., multi-page synthesis
+  runs, bulk topology mutations, automated redirect management at scale).
+- **Phase 4 — analytics and discovery**: baseline snapshot workflows, coverage
+  dashboards, query-miss detection pipelines, and external-service integrations
+  (search indexes, embeddings, cross-repo monitoring beyond the current
+  GitHub monitor scope).
 - Replacing or bypassing `scripts/kb/**` with agent-local implementations.
-- Mixing heavy repository crawlers, batch reporting, baseline snapshots, or
-  external-service integrations into the initial scaffolding milestone.
 
 ### Approved post-MVP package surfaces
 
