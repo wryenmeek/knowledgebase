@@ -53,7 +53,7 @@ jobs:
       - name: Dependency vulnerability audit (pip-audit)
         run: |
           set -euo pipefail
-          pip install --quiet pip-audit
+          pip install --upgrade pip && pip install --quiet pip-audit
           pip-audit --desc on
 
       - name: Bootstrap repo-local qmd preflight shim
