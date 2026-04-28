@@ -122,9 +122,6 @@ def validate_page_template_path(
 # Bolt Performance Optimization:
 # Pre-compile the regex to extract frontmatter in constant time, replacing
 # splitlines() which incurs O(N) memory allocation to parse the entire file.
-# Bolt Performance Optimization:
-# Pre-compile the regex to extract frontmatter in constant time, replacing
-# splitlines() which incurs O(N) memory allocation to parse the entire file.
 _FRONTMATTER_BLOCK_RE = re.compile(
     r"^[ \t]*---[ \t]*\r?\n(.*?)(?:\r?\n|(?<=\n))^[ \t]*---[ \t]*(?:\r?\n|$)",
     re.DOTALL | re.MULTILINE
@@ -135,6 +132,7 @@ def extract_frontmatter(text: str) -> tuple[str | None, str]:
     if match:
         return match.group(1), text[match.end():]
     return None, text
+
 
 
 
