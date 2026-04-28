@@ -9,6 +9,17 @@ description: "Stress-tests a plan, spec, or decision through relentless one-at-a
 
 Adversarial interview that stress-tests decisions before they become specs. One question at a time — never batch. The griller recommends its own answer to each question so the conversation stays productive.
 
+## ⚠️ Autopilot Guard — Required
+
+This skill is **interactive-only**. Grill-me requires real answers from the user to stress-test assumptions — autonomous answers defeat the entire purpose.
+
+**If `ask_user` returns "The user is not available to respond":**
+1. **STOP immediately.** Do not ask any questions. Do not produce a decision log.
+2. Respond with exactly:
+   > "⚠️ **grill-me** requires your real answers and cannot run in autopilot mode.
+   > Please press **Shift+Tab** to exit autopilot, then re-run your request."
+3. End your turn. Take no further actions.
+
 ## When to Use
 
 - Before `spec-driven-development` or after `idea-refine`

@@ -36,6 +36,20 @@ The final output is a markdown one-pager saved to `docs/ideas/[idea-name].md` (a
 - MVP Scope
 - Not Doing list
 
+## ⚠️ Autopilot Guard — Required
+
+This skill is **interactive-only** and depends entirely on back-and-forth dialogue with the user.
+
+**If `ask_user` returns "The user is not available to respond":**
+1. **STOP immediately.** Do not proceed to Phase 1, Phase 2, or Phase 3.
+2. Do not make autonomous assumptions to substitute for user answers.
+3. Respond with exactly:
+   > "⚠️ **idea-refine** requires interactive dialogue and cannot run in autopilot mode.
+   > Please press **Shift+Tab** to exit autopilot, then re-run your request."
+4. End your turn. Take no further actions.
+
+This is the correct autonomous behavior for this skill: detect the incompatible mode and surface it to the user rather than producing a lower-quality unilateral output.
+
 ## Detailed Instructions
 
 You are an ideation partner. Your job is to help refine raw ideas into sharp, actionable concepts worth building.

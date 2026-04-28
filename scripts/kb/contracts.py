@@ -56,9 +56,18 @@ GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS: tuple[str, ...] = (
     "raw/github-sources/**",
     "wiki/**",
 )
+
+# Write allowlist for the CI-6 Google Drive source monitor workflow (ADR-021).
+# CI-6 writes to raw/assets/gdrive/, raw/drive-sources/, and wiki/.
+DRIVE_MONITOR_WRITE_ALLOWLIST_PATHS: tuple[str, ...] = (
+    "raw/assets/gdrive/**",
+    "raw/drive-sources/**",
+    "wiki/**",
+)
 WRITE_LOCK_PATH = "wiki/.kb_write.lock"
 GITHUB_SOURCES_LOCK_PATH = "raw/.github-sources.lock"
 REJECTION_REGISTRY_LOCK_PATH = "raw/.rejection-registry.lock"
+DRIVE_SOURCES_LOCK_PATH = "raw/.drive-sources.lock"
 
 # Exact basenames of all governance lock files. Derived from the path constants
 # above so that this frozenset stays in sync automatically (ADR-011: single
@@ -68,6 +77,7 @@ GOVERNANCE_LOCK_FILES: frozenset[str] = frozenset({
     _os.path.basename(WRITE_LOCK_PATH),
     _os.path.basename(GITHUB_SOURCES_LOCK_PATH),
     _os.path.basename(REJECTION_REGISTRY_LOCK_PATH),
+    _os.path.basename(DRIVE_SOURCES_LOCK_PATH),
 })
 
 class ArtifactMutability(StrEnum):
@@ -279,6 +289,27 @@ class GitHubMonitorReasonCode(StrEnum):
     OVERSIZE_FILE = "oversize_file"
 
 
+class DriveMonitorReasonCode(StrEnum):
+    """Stable reason codes for the drive_monitor script family (ADR-021)."""
+
+    NO_DRIFT = "no_drift"
+    DRIFT_DETECTED = "drift_detected"
+    FETCH_FAILED = "fetch_failed"
+    EXPORT_FAILED = "export_failed"
+    SHA256_MISMATCH = "sha256_mismatch"
+    REGISTRY_LOCKED = "registry_locked"
+    TRACKING_STATUS_ARCHIVED = "tracking_status_archived"
+    UNINITIALIZED_SOURCE = "uninitialized_source"
+    NON_TEXT_CHANGE = "non_text_change"
+    OVERSIZE_FILE = "oversize_file"
+    MIME_NOT_ALLOWED = "mime_not_allowed"
+    FILE_TRASHED = "file_trashed"
+    FILE_DELETED = "file_deleted"
+    FILE_OUT_OF_SCOPE = "file_out_of_scope"
+    PARENT_RESOLUTION_FAILED = "parent_resolution_failed"
+    AUTH_FAILED = "auth_failed"
+
+
 @dataclass(frozen=True, slots=True)
 class ResultEnvelope:
     """Centralized machine-readable result envelope."""
@@ -323,6 +354,8 @@ __all__ = [
     "WRITE_ALLOWLIST_PATHS",
     "GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS",
     "GITHUB_SOURCES_LOCK_PATH",
+    "DRIVE_SOURCES_LOCK_PATH",
+    "DRIVE_MONITOR_WRITE_ALLOWLIST_PATHS",
     "GOVERNANCE_LOCK_FILES",
     "REJECTION_REGISTRY_LOCK_PATH",
     "WRITE_LOCK_PATH",
@@ -339,6 +372,7 @@ __all__ = [
     "ResultStatus",
     "ReasonCode",
     "GitHubMonitorReasonCode",
+    "DriveMonitorReasonCode",
     "ResultEnvelope",
     "governed_artifact_contract",
     "governed_artifact_contract_by_pattern",

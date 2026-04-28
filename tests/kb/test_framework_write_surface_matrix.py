@@ -255,6 +255,41 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/kb/contracts.py", "scripts/kb/page_template_utils.py", "scripts/kb/agents_matrix_utils.py", "scripts/kb/github_customizations_graph.py"),
         "Hard-fail behavior": ("staged governance lock file", "missing required frontmatter field", "invalid hooks.json", "fail closed"),
     },
+    "scripts/drive_monitor/**": {
+        "Runtime mode": ("read-only only", "blocking-only"),
+        "Writable paths": ("raw/assets/gdrive/**", "raw/drive-sources/**", "wiki/**"),
+        "Lock requirements": ("raw/.drive-sources.lock", "wiki/.kb_write.lock", "ADR-021"),
+        "Artifact / schema owners": ("scripts/kb/contracts.py", "schema/drive-source-registry-contract.md", "ADR-021"),
+        "Hard-fail behavior": ("missing provenance", "partial validator result", "fail closed"),
+    },
+    "scripts/drive_monitor/check_drift.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("schema/drive-source-registry-contract.md", "schema/drift-report-contract.md", "ADR-021"),
+        "Hard-fail behavior": ("invalid registry json", "Drive API error", "path traversal", "fail closed"),
+    },
+    "scripts/drive_monitor/classify_drift.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("schema/drive-source-registry-contract.md", "ADR-014"),
+        "Hard-fail behavior": ("invalid drift report json", "governed-path write attempt", "fail closed"),
+    },
+    "scripts/drive_monitor/fetch_content.py` — write mode only": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("raw/assets/gdrive/", "raw/drive-sources/", "last_fetched_"),
+        "Lock requirements": ("raw/.drive-sources.lock", "--approval approved"),
+        "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
+        "Hard-fail behavior": ("sha-256 mismatch", "path traversal", "lock unavailable", "last_applied_", "fail closed"),
+    },
+    "scripts/drive_monitor/synthesize_diff.py` — write mode only": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("wiki/**", "raw/drive-sources/", "last_applied_"),
+        "Lock requirements": ("wiki/.kb_write.lock", "raw/.drive-sources.lock", "--approval approved"),
+        "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
+        "Hard-fail behavior": ("lock unavailable", "path traversal", "last_applied_", "fail closed"),
+    },
 }
 
 

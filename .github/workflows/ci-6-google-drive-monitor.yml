@@ -1,0 +1,269 @@
+name: CI-6 Google Drive Source Monitor
+
+on:
+  schedule:
+    # Run daily at 08:00 UTC (2h offset from CI-5 at 06:00 to avoid lock contention).
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      registry_path:
+        description: |
+          Optional: path to a single registry file
+          (e.g. raw/drive-sources/my-docs.source-registry.json).
+          Omit to check all registries.
+        required: false
+        type: string
+
+# Workflow-level permissions are read-only.
+# The write-capable jobs override at job level.
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  # CI permission policy markers (machine-checked by test_ci_permission_asserts.py)
+  CI_ID: CI-6
+  TOKEN_PROFILE: tp-drive-monitor
+
+jobs:
+  check-drift:
+    name: CI-6 drift detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      drift_detected: ${{ steps.detect.outputs.drift_detected }}
+      artifact_name: ${{ steps.detect.outputs.artifact_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[drive-monitor]" --quiet
+
+      - name: Check drift across all registries
+        id: detect
+        env:
+          GDRIVE_SA_KEY: ${{ secrets.GDRIVE_SA_KEY }}
+          # SECURITY: pass workflow_dispatch input as env var, never interpolate
+          # ${{ inputs.* }} directly into a run: shell block (shell injection risk).
+          REGISTRY_PATH: ${{ inputs.registry_path }}
+        run: |
+          set -euo pipefail
+
+          REGISTRY_ARGS=()
+          if [ -n "${REGISTRY_PATH}" ]; then
+            REGISTRY_ARGS=(--registry "${REGISTRY_PATH}")
+          fi
+
+          # Run drift detection; exits 0 on success (even when drift is found),
+          # exits 1 on API errors or configuration errors.
+          python -m scripts.drive_monitor.check_drift \
+            "${REGISTRY_ARGS[@]}" \
+            --output drift-report.json
+
+          # Parse has_drift from the report to set the job output.
+          HAS_DRIFT=$(python -c "
+          import json, sys
+          with open('drift-report.json') as f:
+              d = json.load(f)
+          print('true' if d.get('has_drift') else 'false')
+          ")
+          ARTIFACT_NAME="drive-drift-report-${{ github.run_id }}"
+
+          echo "drift_detected=${HAS_DRIFT}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Drift detected: ${HAS_DRIFT}"
+
+      - name: Upload drift report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.detect.outputs.artifact_name || format('drive-drift-report-{0}', github.run_id) }}
+          path: drift-report.json
+          retention-days: 7
+
+  fetch-and-update:
+    name: CI-6 fetch + registry update
+    needs: check-drift
+    if: needs.check-drift.outputs.drift_detected == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Protected environment gate — requires the same approval as CI-3.
+    environment: protected-pr-write
+    concurrency:
+      group: kb-write-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      WRITE_ALLOWLIST: raw/assets/**,raw/drive-sources/**
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e ".[drive-monitor]" --quiet
+
+      - name: Download drift report
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.check-drift.outputs.artifact_name }}
+
+      - name: Fetch assets and update registry
+        env:
+          GDRIVE_SA_KEY: ${{ secrets.GDRIVE_SA_KEY }}
+        run: |
+          set -euo pipefail
+          python -m scripts.drive_monitor.fetch_content \
+            --drift-report drift-report.json \
+            --approval approved
+
+      - name: Upload fetched state for downstream jobs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drive-fetched-state-${{ github.run_id }}
+          path: |
+            raw/assets/gdrive/
+            raw/drive-sources/
+          retention-days: 7
+
+  classify-drift:
+    name: CI-6 HITL/AFK classification
+    needs: [check-drift, fetch-and-update]
+    if: needs.fetch-and-update.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      has_afk: ${{ steps.classify.outputs.has_afk }}
+      has_hitl: ${{ steps.classify.outputs.has_hitl }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e ".[drive-monitor]" --quiet
+
+      - name: Download drift report
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.check-drift.outputs.artifact_name }}
+
+      - name: Classify drift entries as HITL or AFK
+        id: classify
+        run: |
+          python3 -m scripts.drive_monitor.classify_drift \
+            --drift-report drift-report.json \
+            --output-dir .
+
+      - name: Upload classification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drive-drift-classification-${{ github.run_id }}
+          path: |
+            afk-entries.json
+            hitl-entries.json
+          retention-days: 7
+
+      - name: Create GitHub Issues for HITL entries
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -m scripts.drive_monitor.create_issues \
+            --hitl-entries hitl-entries.json
+
+  synthesize:
+    name: CI-6 synthesize + open PR
+    needs: [check-drift, fetch-and-update, classify-drift]
+    # Only run AFK-classified drifts automatically; HITL drifts create Issues instead.
+    if: needs.classify-drift.outputs.has_afk == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: protected-pr-write
+    concurrency:
+      group: kb-write-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      WRITE_ALLOWLIST: raw/assets/**,raw/drive-sources/**,wiki/**
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e ".[drive-monitor]" --quiet
+
+      - name: Download AFK-classified entries
+        uses: actions/download-artifact@v4
+        with:
+          name: drive-drift-classification-${{ github.run_id }}
+
+      - name: Download fetched assets and registry state
+        uses: actions/download-artifact@v4
+        with:
+          name: drive-fetched-state-${{ github.run_id }}
+
+      - name: Apply diff-aware wiki updates
+        run: |
+          set -euo pipefail
+          # IMPORTANT: Only process AFK-classified entries, not the full drift report.
+          # The full drift-report.json includes HITL entries that must NOT be auto-synthesized.
+          python -m scripts.drive_monitor.synthesize_diff \
+            --afk-entries afk-entries.json \
+            --approval approved
+
+      - name: Commit and open PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="drive-monitor/sync-${{ github.run_id }}"
+          git checkout -b "${BRANCH}"
+
+          # Stage only the allowlisted paths.
+          git add raw/assets/gdrive/ raw/drive-sources/ wiki/
+          git diff --cached --quiet && echo "Nothing to commit" && exit 0
+
+          git commit -m "chore(drive-monitor): sync monitored Drive source(s) [run ${{ github.run_id }}]"
+
+          git push origin "HEAD:${BRANCH}"
+
+          gh pr create \
+            --title "chore(drive-monitor): sync monitored Drive source(s)" \
+            --body "Automated diff-aware sync by CI-6 Google Drive source monitor (run ${{ github.run_id }})." \
+            --base main \
+            --head "${BRANCH}"

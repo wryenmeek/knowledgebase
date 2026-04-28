@@ -202,6 +202,19 @@ Define every module-level constant once and import from the canonical location �
 
 `run_surface_cli`-backed scripts exit `1` on partial success (some entries succeeded, some failed). Any downstream CI step — commit, PR creation, artifact upload — that should run regardless of partial failure **must** have `if: always()`. Without it, successful writes are silently discarded whenever any entry fails.
 
+## Interactive-only skills (autopilot guard)
+
+The following skills require real-time interactive dialogue with the user. They **must not** run autonomously in autopilot mode:
+
+- `idea-refine`
+- `grill-me`
+
+**Rule:** When either skill is invoked and `ask_user` returns "The user is not available to respond," immediately halt all skill processing. Do not produce variations, evaluations, decision logs, or output artifacts. Respond:
+
+> "⚠️ **[skill-name]** is interactive-only and cannot run in autopilot mode. Press **Shift+Tab** to exit autopilot and re-run your request."
+
+This rule takes precedence over any "work autonomously" instruction from the autopilot system.
+
 ## Boundaries
 
 - **Always:** follow skill workflow requirements when applicable.
