@@ -139,6 +139,10 @@ These files are checked by `tests/kb/test_framework_contracts.py` (`test_boundar
 - Skill descriptions should clearly state what the skill does and “Use when...” triggers.
 - Prefer referencing shared docs over duplicating long guidance.
 
+### `docs/ideas/` status lifecycle
+
+When implementing a feature described in a `docs/ideas/` document, update that document's status field in the same PR. Status values: `Proposed` → `In Progress` → `Implemented` → `Superseded`. A fully implemented feature with a "Draft" or "Proposed" status is misleading and causes repeated manual audit work.
+
 ### Jules SDK
 
 `@google/jules-sdk` exports a pre-built singleton — never use a constructor:
@@ -207,6 +211,9 @@ Adding to certain enums or dicts triggers test failures in contract-alignment te
 | `TokenProfileId` in `scripts/kb/contracts.py` | Expected tuple in `tests/kb/test_contracts.py::test_spec_aligned_token_profiles_and_paths` |
 | `WORKFLOW_POLICY_MATRIX` in `tests/kb/test_ci_permission_asserts.py` | `expected_contracts` dict in the same file |
 | `GovernedArtifactContract` entries in `contracts.py` | `test_governed_artifact_contracts_cover_declared_state_targets` expected set |
+| Files in a CONTEXT.md domain directory | Bump `last_updated` in the domain's CONTEXT.md |
+
+**CONTEXT.md domain mapping:** `scripts/kb/` → `scripts/kb/CONTEXT.md`, `schema/` → `schema/CONTEXT.md`, `scripts/github_monitor/` → `scripts/github_monitor/CONTEXT.md`, `scripts/drive_monitor/` → `scripts/drive_monitor/CONTEXT.md`, `.github/skills/` or `.github/agents/` or `.github/hooks/` → `.github/skills/CONTEXT.md`. Enforced by `tests/kb/test_context_md_freshness.py` — fails when ≥10 domain commits land after the `last_updated` date.
 
 ### Parallel fleet agent file ownership
 
@@ -215,6 +222,10 @@ When dispatching parallel sub-agents (via `task` tool), explicitly partition fil
 ### Sub-agent SQL limitations
 
 Sub-agents launched via the `task` tool do not share the parent session's SQL database. The parent agent must update SQL tracking tables (e.g., `UPDATE todos SET status = 'done'`) itself after reading each sub-agent's result. Never rely on sub-agents to update SQL status.
+
+### Review sub-agent scope boundary
+
+When dispatching review sub-agents (code-reviewer, security-auditor, test-engineer, etc.), explicitly constrain them to the current repository root in the prompt. Sub-agents must not read or review files from parent or sibling directories, even if referenced in documentation. This prevents confusion when multiple repos share a common parent directory.
 
 ### CI: `if: always()` on steps downstream of surface scripts
 
