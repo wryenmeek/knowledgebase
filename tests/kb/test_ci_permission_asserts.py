@@ -81,6 +81,15 @@ WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
         },
         write_contract="job-scoped-write",
     ),
+    WorkflowPolicyExpectation(
+        ci_id="CI-6",
+        workflow_path=Path(".github/workflows/ci-6-google-drive-monitor.yml"),
+        token_profile=contracts.TokenProfileId.DRIVE_MONITOR.value,
+        permissions={
+            "contents": "read",
+        },
+        write_contract="job-scoped-write",
+    ),
 )
 
 WRITE_CONCURRENCY_GUARD = {
@@ -235,6 +244,7 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
             "CI-5": "job-scoped-write",
             "CI-freshness": "read-only",
             "CI-customizations-freshness": "job-scoped-write",
+            "CI-6": "job-scoped-write",
         }
 
         for policy in WORKFLOW_POLICY_MATRIX:

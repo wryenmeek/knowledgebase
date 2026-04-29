@@ -239,7 +239,7 @@ jobs:
           # IMPORTANT: Only process AFK-classified entries, not the full drift report.
           # The full drift-report.json includes HITL entries that must NOT be auto-synthesized.
           python -m scripts.drive_monitor.synthesize_diff \
-            --afk-entries afk-entries.json \
+            --drift-report afk-entries.json \
             --approval approved
 
       - name: Commit and open PR

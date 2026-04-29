@@ -75,9 +75,17 @@ def _load_credentials(credential_secret_name: str = "GDRIVE_SA_KEY") -> Any:
             detail=f"Failed to parse service account JSON from {credential_secret_name!r}: {exc}"
         ) from exc
 
-    creds = service_account.Credentials.from_service_account_info(
-        key_data, scopes=_DRIVE_SCOPES
-    )
+    try:
+        creds = service_account.Credentials.from_service_account_info(
+            key_data, scopes=_DRIVE_SCOPES
+        )
+    except (ValueError, KeyError):
+        raise DriveAPIRequestError(
+            detail=(
+                "Failed to load service account credentials — "
+                "check GOOGLE_DRIVE_SA_KEY format"
+            )
+        ) from None
     return creds
 
 
@@ -104,8 +112,22 @@ def build_drive_client(credential_secret_name: str = "GDRIVE_SA_KEY") -> Any:
             )
         ) from exc
 
+    try:
+        import httplib2  # type: ignore[import]
+        import google_auth_httplib2  # type: ignore[import]
+    except ImportError as exc:
+        raise DriveAPIRequestError(
+            detail=(
+                "httplib2 / google-auth-httplib2 is not installed. "
+                "Run: pip install -e \".[drive-monitor]\""
+            )
+        ) from exc
+
     creds = _load_credentials(credential_secret_name)
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
+    http = google_auth_httplib2.AuthorizedHttp(
+        creds, http=httplib2.Http(timeout=30)
+    )
+    return build("drive", "v3", http=http, cache_discovery=False)
 
 
 def _with_retry(fn: Any, *args: Any, **kwargs: Any) -> Any:
