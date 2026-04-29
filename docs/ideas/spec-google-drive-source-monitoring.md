@@ -5,6 +5,22 @@
 > **One-pager:** `docs/ideas/google-drive-source-monitoring.md`
 > **Governing ADR:** `docs/decisions/ADR-021-google-drive-source-monitoring.md`
 
+## Remaining Remediation Items
+
+> Items found during 2026-04-29 verification review.
+
+1. **`advance_cursor.py` not wired into CI-6 workflow** — The cursor
+   advancement script exists at `scripts/drive_monitor/advance_cursor.py` and
+   has test coverage (`tests/drive_monitor/test_advance_cursor.py`), but no
+   CI-6 job invokes it. After a successful `synthesize` run, `changes_page_token`
+   is not advanced, causing the next CI-6 run to re-process previously handled
+   changes. Either add an `advance-cursor` job to CI-6 or document this as a
+   known limitation with manual-advancement instructions.
+
+2. ~~**CI-6 missing from `docs/architecture.md`**~~ — Fixed 2026-04-29.
+   Architecture.md now includes CI-6 row, `raw/drive-sources/**` zone,
+   `scripts/drive_monitor/**` package surface, and ADR-021 reference.
+
 ---
 
 ## Assumptions (surface before implementation)

@@ -16,6 +16,29 @@
 > line-count cap enforced informally; no conflict with `copilot-instructions.md`
 > (files complement, not replace, each other).
 
+## Remaining Remediation Items
+
+> Items found during 2026-04-29 verification review.
+
+1. **context-engineering auto-loading claim overstated** — The implementation
+   note says "The `context-engineering` skill loads the existing files" but the
+   skill's SKILL.md only provides manual loading guidance in its context
+   hierarchy (Level 1b). No logic file in the skill automatically discovers or
+   loads CONTEXT.md files. **Action:** Either update the implementation note to
+   say "provides manual loading guidance" or implement actual auto-loading logic
+   in the context-engineering skill.
+
+2. **`wiki/CONTEXT.md` not created** — §4 placement rules list
+   `wiki/CONTEXT.md` for wiki content domain vocabulary. The implementation note
+   acknowledges this gap. Low priority — the pattern is established in 6 other
+   locations; wiki content domain vocabulary has not been captured yet.
+
+3. **`fill-context-pages` integration not implemented** — §6 proposed that the
+   `fill-context-pages` skill "could scan CONTEXT.md for `[context-needed]`
+   markers." This integration does not exist; the skill currently scans only
+   `.github/skills/**`, `docs/**`, and `schema/**`. Low priority — the proposal
+   used conditional "could" language.
+
 ---
 
 ## 1. Problem

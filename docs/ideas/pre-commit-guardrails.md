@@ -16,6 +16,28 @@
 > runners don't install hooks but run equivalent checks; agent cloud commits
 > bypass local hooks by design.
 
+## Remaining Remediation Items
+
+> Items found during 2026-04-29 verification review.
+
+1. **ADR-016 vs implementation conflict** — ADR-016 title and decision text say
+   "Use raw git hooks (not the pre-commit framework)." The actual implementation
+   uses the `pre-commit` Python framework (`.pre-commit-config.yaml` +
+   `pip install pre-commit`). The implementation note acknowledges "Contrary to
+   §5's recommendation, the `pre-commit` Python framework was adopted" but
+   ADR-016 was never amended. **Action:** Either amend ADR-016 to reflect the
+   actual decision (supersede with "Use `pre-commit` framework") or migrate the
+   hooks to raw git hooks as originally decided.
+
+2. **No setup automation script** — §5 proposed `make install-hooks` or
+   `scripts/setup-hooks.sh`. Neither exists. README documents manual
+   `pip install pre-commit && pre-commit install` instead. This is adequate
+   but diverges from the proposal.
+
+3. **Windows compatibility unaddressed** — §8.4 raised Windows support as an
+   open question. No testing or documentation exists for Windows. Low priority
+   if the project is Unix-only, but the question should be explicitly closed.
+
 ---
 
 ## 1. Problem
