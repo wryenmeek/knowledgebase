@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import "./env.js";
 import path from "node:path";
 import { findUpSync } from "find-up";
 import type { IssueAnalysis, Task } from "./types.js";
@@ -23,22 +24,11 @@ const OWNER = repoInfo.owner;
 const REPO = repoInfo.repo;
 const BASE_BRANCH = process.env.FLEET_BASE_BRANCH ?? "main";
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const JULES_API_KEY = process.env.JULES_API_KEY;
 
 // Re-dispatch configuration
 const MAX_RETRIES = Number(process.env.FLEET_MAX_RETRIES ?? 2);
 const PR_POLL_INTERVAL_MS = 30_000;
 const PR_POLL_TIMEOUT_MS = 15 * 60 * 1000;
-
-if (!GITHUB_TOKEN) {
-  console.error("❌ GITHUB_TOKEN environment variable is required.");
-  process.exit(1);
-}
-
-if (!JULES_API_KEY) {
-  console.error("❌ JULES_API_KEY environment variable is required.");
-  process.exit(1);
-}
 
 const headers = {
   Authorization: `Bearer ${GITHUB_TOKEN}`,
