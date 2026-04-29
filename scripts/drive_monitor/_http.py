@@ -150,7 +150,7 @@ def _with_retry(fn: Any, *args: Any, **kwargs: Any) -> Any:
             status = exc.resp.status if exc.resp else 0
             if (status >= 500 or status == 429) and attempt < _MAX_RETRIES - 1:
                 last_exc = exc
-                delay = _RETRY_DELAYS[attempt]
+                delay = _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
                 retry_after = exc.resp.get("retry-after") if exc.resp else None
                 if retry_after:
                     try:

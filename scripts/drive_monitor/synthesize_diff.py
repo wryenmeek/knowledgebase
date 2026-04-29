@@ -21,11 +21,10 @@ Requires ``--approval approved`` for any write operation.
 
 from __future__ import annotations
 
-import contextlib
 import difflib
+import hashlib
 import json
 import sys
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -44,7 +43,7 @@ from scripts._optional_surface_common import (
     repo_root_failure,
     run_surface_cli,
 )
-from scripts.kb.contracts import DriveMonitorReasonCode, DRIVE_SOURCES_LOCK_PATH
+from scripts.kb.contracts import DriveMonitorReasonCode
 from scripts.kb import write_utils
 from scripts.drive_monitor._types import (
     MIME_EXTENSION_MAP,
@@ -394,7 +393,6 @@ def synthesize_diff(
                 # Wiki write confirmed — now advance last_applied_*
                 current_version = entry.get("current_drive_version")
                 current_md5 = entry.get("current_md5_checksum")
-                import hashlib
                 sha256_hex = hashlib.sha256(new_bytes).hexdigest()
 
                 try:

@@ -315,7 +315,17 @@ def _build_issue_for_entry(
 def create_issues(
     hitl_entries_path: Path,
 ) -> SurfaceResult:
-    """Create GitHub Issues for HITL-classified Drive drift entries."""
+    """Create GitHub Issues for HITL-classified Drive drift entries.
+
+    Parameters
+    ----------
+    hitl_entries_path:
+        Path to ``hitl-entries.json`` produced by ``classify_drift.py``.
+
+    Returns
+    -------
+    SurfaceResult
+    """
     try:
         raw = hitl_entries_path.read_text(encoding="utf-8")
     except OSError as exc:

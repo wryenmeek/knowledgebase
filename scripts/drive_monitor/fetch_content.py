@@ -134,9 +134,6 @@ def _fetch_and_store_asset(
             asset_bytes = download_file(drive, file_id)
             md5_checksum = entry.get("current_md5_checksum")
             if not md5_checksum:
-                import hashlib as _hl
-                import binascii as _bi
-                import struct as _st
                 # Compute MD5 from downloaded bytes as fallback
                 md5_checksum = hashlib.md5(asset_bytes).hexdigest()
             version_segment = md5_checksum

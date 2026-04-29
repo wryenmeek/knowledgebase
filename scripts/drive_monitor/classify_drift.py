@@ -36,7 +36,6 @@ from scripts._optional_surface_common import (
     base_path_rules,
     run_surface_cli,
 )
-from scripts.drive_monitor._types import MIME_EXPORT_MAP
 
 SURFACE = "drive_monitor.classify_drift"
 MODE = "classify"
@@ -157,7 +156,21 @@ def classify_drift(
 ) -> SurfaceResult:
     """Classify drifted Drive entries from a drift report as HITL or AFK.
 
-    Returns a ``SurfaceResult`` with the classification summary.
+    Parameters
+    ----------
+    drift_report_path:
+        Path to the drift report JSON produced by ``check_drift.py``.
+    output_dir:
+        Directory to write ``afk-entries.json`` and ``hitl-entries.json``.
+    afk_max_lines:
+        Max total changed lines for AFK eligibility (0 = deny-by-default).
+    bulk_hitl_threshold:
+        Aggregate >= N deletion/scope-loss events in the same parent folder
+        into a single HITL Issue.
+
+    Returns
+    -------
+    SurfaceResult
     """
     try:
         raw = drift_report_path.read_text(encoding="utf-8")
