@@ -319,3 +319,147 @@ class TestSynthesizeDiffIdempotency:
 
         # Should be skipped — no write
         assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# Atomic rollback on registry failure (CR-2)
+# ---------------------------------------------------------------------------
+
+class TestSynthesizeDiffRollback:
+    def test_update_last_applied_failure_triggers_rollback(self, tmp_path):
+        """If update_last_applied raises OSError, wiki page is restored."""
+        entry = _make_afk_entry()
+        afk_path = _write_afk_entries(tmp_path, [entry])
+        _write_registry(tmp_path)
+        original = "# Old Content\n\nOriginal paragraph.\n"
+        _setup_wiki(tmp_path, content=original)
+        _setup_asset(tmp_path, entry["asset_path"])
+
+        with (
+            patch(
+                "scripts.drive_monitor.synthesize_diff.update_last_applied",
+                side_effect=OSError("registry disk full"),
+            ),
+        ):
+            result = synthesize_diff(
+                repo_root=tmp_path,
+                drift_report_path=afk_path,
+                approval="approved",
+            )
+
+        # Wiki page must be restored to its original content
+        wiki_path = tmp_path / entry["wiki_page"]
+        assert wiki_path.read_text(encoding="utf-8") == original
+
+        # The error must be surfaced in the result
+        assert result.status == "fail"
+        assert result.summary.get("error_count", 0) > 0
+
+    def test_rollback_failure_reported_in_errors(self, tmp_path, capsys):
+        """If both registry update AND rollback fail, both errors are surfaced."""
+        entry = _make_afk_entry()
+        afk_path = _write_afk_entries(tmp_path, [entry])
+        _write_registry(tmp_path)
+        _setup_wiki(tmp_path, content="# Old Content\n")
+        _setup_asset(tmp_path, entry["asset_path"])
+
+        def fail_registry(*args, **kwargs):
+            raise OSError("registry update failed")
+
+        call_count = {"n": 0}
+
+        def fail_rollback_write(path, content, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                # First call: normal wiki write succeeds
+                path.write_text(content, encoding="utf-8")
+            else:
+                # Second call: rollback write fails
+                raise OSError("disk full on rollback")
+
+        with (
+            patch(
+                "scripts.drive_monitor.synthesize_diff.update_last_applied",
+                side_effect=fail_registry,
+            ),
+            patch(
+                "scripts.drive_monitor.synthesize_diff._write_wiki_page",
+                side_effect=fail_rollback_write,
+            ),
+        ):
+            result = synthesize_diff(
+                repo_root=tmp_path,
+                drift_report_path=afk_path,
+                approval="approved",
+            )
+
+        assert result.status == "fail"
+        # Both the original error and the rollback failure must appear in stderr
+        captured = capsys.readouterr()
+        assert "registry update failed" in captured.err.lower()
+        assert "rollback" in captured.err.lower()
+
+
+# ---------------------------------------------------------------------------
+# YAML frontmatter safety (HI-3)
+# ---------------------------------------------------------------------------
+
+class TestSynthesizeDiffYamlQuoting:
+    def test_display_name_yaml_quoting(self, tmp_path):
+        """display_name with YAML-special chars must be safely quoted via json.dumps."""
+        import re as _re
+        import json as _json
+
+        dangerous_name = 'doc: "tricky\\value"'
+
+        # Compute safe filename the same way _find_new_asset does
+        from scripts.drive_monitor._types import MIME_EXTENSION_MAP
+        mime = "application/vnd.google-apps.document"
+        safe_base = _re.sub(r"[^\w\-. ]+", "_", dangerous_name).strip().rstrip(".")[:200]
+        ext = MIME_EXTENSION_MAP.get(mime, "")
+        safe_name = safe_base + ext if ext and not safe_base.lower().endswith(ext) else safe_base
+        correct_asset = f"raw/assets/gdrive/my-docs/file1/10/{safe_name}"
+
+        entry = _make_afk_entry(display_name=dangerous_name, asset_path=correct_asset)
+        afk_path = _write_afk_entries(tmp_path, [entry])
+        _write_registry(tmp_path, file_entries=[{
+            "file_id": "file1",
+            "tracking_status": "active",
+            "display_name": dangerous_name,
+            "mime_type": mime,
+            "last_applied_drive_version": 5,
+            "sha256_at_last_applied": "a" * 64,
+            "wiki_page": "wiki/cms/my-doc.md",
+        }])
+
+        # No existing wiki page — force new page creation (frontmatter path)
+        wiki_path = tmp_path / "wiki" / "cms" / "my-doc.md"
+        if wiki_path.exists():
+            wiki_path.unlink()
+        (tmp_path / "wiki" / "cms").mkdir(parents=True, exist_ok=True)
+
+        _setup_asset(tmp_path, correct_asset)
+
+        written_content: dict = {}
+
+        def capture_write(path, content, **kwargs):
+            written_content["content"] = content
+
+        with (
+            patch(
+                "scripts.drive_monitor.synthesize_diff._write_wiki_page",
+                side_effect=capture_write,
+            ),
+            patch("scripts.drive_monitor.synthesize_diff.update_last_applied"),
+        ):
+            synthesize_diff(
+                repo_root=tmp_path,
+                drift_report_path=afk_path,
+                approval="approved",
+            )
+
+        content = written_content.get("content", "")
+        assert content, "No wiki content was written — asset lookup likely failed"
+        # The title field must use json.dumps quoting
+        expected_quoted = _json.dumps(dangerous_name)
+        assert f"title: {expected_quoted}" in content

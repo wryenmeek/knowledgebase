@@ -367,15 +367,23 @@ def synthesize_diff(
         # Acquire wiki lock FIRST, then drive-sources lock inside
         try:
             with write_utils.exclusive_write_lock(repo_root):
-                # Append change note to wiki page
+                # Capture original content for compensating rollback
                 wiki_path.parent.mkdir(parents=True, exist_ok=True)
-                if wiki_path.exists():
-                    existing = wiki_path.read_text(encoding="utf-8")
-                    new_content = existing.rstrip() + "\n" + change_note
+                original_existed = wiki_path.exists()
+                original_content = (
+                    wiki_path.read_text(encoding="utf-8")
+                    if original_existed
+                    else None
+                )
+
+                # Append change note to wiki page
+                if original_content is not None:
+                    new_content = original_content.rstrip() + "\n" + change_note
                 else:
                     # New wiki page — create a minimal page
+                    safe_title = json.dumps(display_name)
                     new_content = (
-                        f"---\ntitle: {display_name}\nsource_type: google_drive\n"
+                        f"---\ntitle: {safe_title}\nsource_type: google_drive\n"
                         f"alias: {alias}\nfile_id: {file_id}\n---\n"
                         f"# {display_name}\n\n"
                         f"*Auto-created by CI-6 Drive monitor.*\n"
@@ -389,14 +397,41 @@ def synthesize_diff(
                 import hashlib
                 sha256_hex = hashlib.sha256(new_bytes).hexdigest()
 
-                update_last_applied(
-                    repo_root,
-                    registry_path,
-                    file_id,
-                    drive_version=int(current_version) if current_version is not None else None,
-                    md5_checksum=current_md5,
-                    sha256=sha256_hex,
-                )
+                try:
+                    update_last_applied(
+                        repo_root,
+                        registry_path,
+                        file_id,
+                        drive_version=int(current_version) if current_version is not None else None,
+                        md5_checksum=current_md5,
+                        sha256=sha256_hex,
+                    )
+                except OSError as reg_exc:
+                    # Registry update failed — compensating rollback
+                    try:
+                        if original_content is not None:
+                            _write_wiki_page(wiki_path, original_content)
+                        elif wiki_path.exists():
+                            wiki_path.unlink()
+                    except OSError as rollback_exc:
+                        errors.append({
+                            "file_id": file_id,
+                            "reason": (
+                                f"Registry update failed: {reg_exc}; "
+                                f"rollback also failed: {rollback_exc}"
+                            ),
+                        })
+                        error_count += 1
+                        continue
+                    errors.append({
+                        "file_id": file_id,
+                        "reason": (
+                            f"Registry update failed (wiki rolled back): {reg_exc}"
+                        ),
+                    })
+                    error_count += 1
+                    continue
+
                 success_count += 1
 
         except OSError as exc:
