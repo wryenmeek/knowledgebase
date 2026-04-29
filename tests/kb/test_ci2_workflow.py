@@ -69,7 +69,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
         self.assertIn("python3 -m pytest tests/ -q", self.workflow_text)
         self.assertIn(
-            "uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+            "uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1",
             self.workflow_text,
         )
         self.assertIn("if: always()", self.workflow_text)
