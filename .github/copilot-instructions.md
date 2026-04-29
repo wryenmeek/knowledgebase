@@ -143,6 +143,28 @@ These files are checked by `tests/kb/test_framework_contracts.py` (`test_boundar
 
 When implementing a feature described in a `docs/ideas/` document, update that document's status field in the same PR. Status values: `Proposed` → `In Progress` → `Implemented` → `Superseded`. A fully implemented feature with a "Draft" or "Proposed" status is misleading and causes repeated manual audit work.
 
+### `docs/ideas/` archival to intake
+
+Fully implemented and verified `docs/ideas/` documents may be archived to `raw/inbox/` for wiki source intake. This makes the design proposal citable as wiki source evidence through the normal intake pipeline.
+
+**Eligibility:** Only documents with `status: Implemented` and zero outstanding remediation items. Paired documents (e.g., a one-pager and its companion spec) must be archived together.
+
+**Procedure:**
+1. Move the document as-is to `raw/inbox/<filename>.md` — no content transformation.
+2. Leave a minimal stub at the original `docs/ideas/` path containing: title, status line, and a one-line pointer to the archived location.
+3. `Implemented` remains the terminal status — no new status value is needed.
+4. Do not create companion `.meta.json` files in `raw/inbox/` — inbox selectors do not currently filter them and they would be ingested as sources. The intake steward classifies the source type during normal intake.
+
+**Stub template:**
+```markdown
+# <Original Title>
+
+**Status:** Implemented — <summary> (<date>)
+
+> Archived to `raw/inbox/<filename>.md` for wiki source intake.
+> Full design proposal and implementation notes are in the archived copy.
+```
+
 ### Jules SDK
 
 `@google/jules-sdk` exports a pre-built singleton — never use a constructor:
