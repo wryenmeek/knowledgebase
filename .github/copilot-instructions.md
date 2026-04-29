@@ -198,6 +198,24 @@ In any `scripts/<subpackage>/` directory, never import `_private_prefixed` symbo
 
 Define every module-level constant once and import from the canonical location — even within the same subpackage. Never copy a constant to a sibling file, even with a `# keep in sync with <module>.<CONSTANT>` comment. "Keep in sync" comments are only acceptable when an import would create a genuine circular dependency; in that case, extract to a `_constants.py` module and resolve the cycle.
 
+### Contract test cascades
+
+Adding to certain enums or dicts triggers test failures in contract-alignment tests that assert exhaustive expected tuples. Always update the downstream test when extending these:
+
+| When you add to… | Also update… |
+|---|---|
+| `TokenProfileId` in `scripts/kb/contracts.py` | Expected tuple in `tests/kb/test_contracts.py::test_spec_aligned_token_profiles_and_paths` |
+| `WORKFLOW_POLICY_MATRIX` in `tests/kb/test_ci_permission_asserts.py` | `expected_contracts` dict in the same file |
+| `GovernedArtifactContract` entries in `contracts.py` | `test_governed_artifact_contracts_cover_declared_state_targets` expected set |
+
+### Parallel fleet agent file ownership
+
+When dispatching parallel sub-agents (via `task` tool), explicitly partition file ownership so no two agents commit to the same file. Cross-agent regressions are invisible — each agent sees a peer's breakage as "pre-existing." If two tasks must touch the same file, serialize them or assign one agent as the sole owner of that file.
+
+### Sub-agent SQL limitations
+
+Sub-agents launched via the `task` tool do not share the parent session's SQL database. The parent agent must update SQL tracking tables (e.g., `UPDATE todos SET status = 'done'`) itself after reading each sub-agent's result. Never rely on sub-agents to update SQL status.
+
 ### CI: `if: always()` on steps downstream of surface scripts
 
 `run_surface_cli`-backed scripts exit `1` on partial success (some entries succeeded, some failed). Any downstream CI step — commit, PR creation, artifact upload — that should run regardless of partial failure **must** have `if: always()`. Without it, successful writes are silently discarded whenever any entry fails.
@@ -233,4 +251,22 @@ Use personas in `.github/agents` when useful:
 - `@documentation-engineer` — ADRs, SKILL.md, architecture docs, README, docstrings
 - `@solutions-architect` — structural improvement proposals, refactoring plans
 - `@framework-engineer` — new skill authoring, framework integrity, `.github/` surface
+
+## Drive monitor test patterns
+
+`scripts/drive_monitor/` depends on Google API libraries (`google-auth`, `googleapiclient`, `httplib2`) that may not be installed in all environments. Tests use `sys.modules` stub injection instead of real imports:
+
+```python
+# Stub Google API deps before importing the module under test
+sys.modules.setdefault("googleapiclient", types.ModuleType("googleapiclient"))
+sys.modules.setdefault("googleapiclient.discovery", types.ModuleType("googleapiclient.discovery"))
+# ... then import the module
+from scripts.drive_monitor import _http
+```
+
+Other patterns:
+- Pipeline functions return `SurfaceResult` — assert on `.ok`, `.errors`, `.warnings` fields
+- Registry tests use real JSON files in `tmp_path`, not mocks
+- Lock mocks must target the actual import path (e.g., `scripts.drive_monitor._registry.write_utils.exclusive_write_lock`)
+- `subprocess.run` is mocked for `gh` CLI calls in `create_issues.py` tests
 
