@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2025-07-10
+last_updated: 2026-04-29
 ---
 
 # CONTEXT — .github/skills/
@@ -38,4 +38,5 @@ Vocabulary for the skill and agent persona layer. `AGENTS.md` takes precedence o
 | `.github/skills/<name>/logic/` | Optional executable logic implementing the skill contract. All logic files are read-only-only unless they declare a narrower write-surface row in AGENTS.md. |
 | `.github/agents/` | Persona definitions for custom agents used in the skill framework (e.g., `knowledgebase-orchestrator.md`, `source-intake-steward.md`). |
 | `.github/hooks/` | Agent lifecycle hooks for VS Code/Copilot integration. |
+| `scripts/hooks/` | Pre-commit hook scripts: `check_frontmatter.py`, `check_hooks_json.py`, `check_no_staged_locks.py`, `check_sourceref_format.py`, `check_context_md_format.py`, `check_matrix_coverage.py`. |
 | `.github/skills/references/` | Canonical shared checklists and reference docs used across multiple skills. |

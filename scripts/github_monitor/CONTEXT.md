@@ -1,6 +1,6 @@
 ---
 scope: module
-last_updated: 2025-07-10
+last_updated: 2026-04-29
 ---
 
 # CONTEXT — scripts/github_monitor/
@@ -44,3 +44,5 @@ Vocabulary for the GitHub source-monitoring pipeline. `AGENTS.md` takes preceden
 | `create_issues.py` | Creates or updates GitHub Issues for HITL-classified entries. |
 | `_types.py` | Typed dicts for registry entries, drift report structure, and API response shapes. |
 | `_validators.py` | Path traversal and registry structure validators. |
+| `_http.py` | GitHub API client helpers: authenticated requests, retry logic, contents and commits endpoints. |
+| `_registry.py` | Registry read/update helpers: load, validate, update `last_fetched_*` and `last_applied_*` fields under lock. |

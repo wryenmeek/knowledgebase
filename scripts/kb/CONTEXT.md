@@ -1,6 +1,6 @@
 ---
 scope: module
-last_updated: 2025-07-10
+last_updated: 2026-04-29
 ---
 
 # CONTEXT — scripts/kb/
@@ -25,6 +25,10 @@ Vocabulary for the canonical utility module layer. All agent context for work in
 | GOVERNANCE_LOCK_FILES | Frozenset in `contracts.py` containing the basenames of all governance lock files, derived from the lock path constants. Never hardcode lock basenames elsewhere. |
 | REQUIRED_WIKI_FIELDS | Pre-commit fast-path subset of `REQUIRED_FRONTMATTER_KEYS` declared in `page_template_utils.py`. Used by `check_frontmatter` hook. Keep in sync via drift-guard comment. |
 | REQUIRED_SKILL_FIELDS | Pre-commit fast-path subset for SKILL.md frontmatter, declared in `page_template_utils.py`. |
+| github_customizations_graph | Module for building a cross-reference graph of agent persona → skill → script → copilot-instructions relationships. Used by `test_github_customizations.py`, `check_hooks_json.py`, and the `github-customizations-freshness` CI workflow. |
+| github_customizations_freshness | Module for detecting drift in `.github/` customization files and producing structured drift reports. Used by the `github-customizations-freshness.yml` workflow. |
+| ingest_render | Module for rendering ingest artifacts (processed markdown and metadata). Used by `ingest.py`. |
+| rejection_validators | Module for validating rejection registry records. Used by the `log-intake-rejection` skill and `raw/rejected/` writes (ADR-013). |
 
 ## Invariants
 
@@ -49,3 +53,7 @@ Vocabulary for the canonical utility module layer. All agent context for work in
 | `qmd_preflight.py` | `.qmd/index` prerequisite check for index operations. |
 | `lint_wiki.py` | Wiki structure linter against page-template contract. |
 | `update_index.py` | Index regeneration (requires `qmd_preflight` check first). |
+| `github_customizations_graph.py` | Cross-reference graph: agents → skills → scripts → copilot-instructions. Shared by tests, hooks, and CI. |
+| `github_customizations_freshness.py` | Drift detection for `.github/` customization files. Powers the freshness CI workflow. |
+| `ingest_render.py` | Ingest artifact rendering: processed markdown and companion `.meta.json` output. |
+| `rejection_validators.py` | Rejection registry record validation for `raw/rejected/` writes. |

@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2025-07-10
+last_updated: 2026-04-29
 ---
 
 # CONTEXT — schema/
@@ -21,6 +21,8 @@ Vocabulary for the schema and contract layer. `AGENTS.md` takes precedence on an
 | SourceRef | Canonical citation format used throughout schema documentation: `repo://<owner>/<repo>/<path>@<git_sha>#<anchor>?sha256=<64-hex>`. |
 | report-artifact-contract | `schema/report-artifact-contract.md` — defines the JSON schema for wiki report artifacts (quality scores, content quality reports). |
 | github-source-registry-contract | `schema/github-source-registry-contract.md` — defines the JSON schema for `*.source-registry.json` files in `raw/github-sources/`. |
+| drive-source-registry-contract | `schema/drive-source-registry-contract.md` — defines the JSON schema for `*.source-registry.json` files in `raw/drive-sources/`. |
+| rejection-registry-contract | `schema/rejection-registry-contract.md` — defines the contract for write-once rejection records in `raw/rejected/`. Governs `log-intake-rejection` skill. |
 
 ## Invariants
 
@@ -43,3 +45,5 @@ Vocabulary for the schema and contract layer. `AGENTS.md` takes precedence on an
 | `drift-report-contract.md` | JSON schema for drift reports. |
 | `report-artifact-contract.md` | JSON schema for quality report artifacts. |
 | `github-source-registry-contract.md` | JSON schema for GitHub source registry files. |
+| `drive-source-registry-contract.md` | JSON schema for Drive source registry files. |
+| `rejection-registry-contract.md` | Contract for write-once rejection records (ADR-013). |
