@@ -20,6 +20,7 @@ The system is designed to keep knowledge:
 | `raw/processed/**` | Post-ingest source artifacts | Immutable source-of-truth |
 | `raw/assets/**` | Vendored external assets | Authoritative only when checksummed |
 | `raw/github-sources/**` | GitHub source monitor registries and pending-ingest handoffs | Mutable; governed by `schema/github-source-registry-contract.md` |
+| `raw/drive-sources/**` | Google Drive source monitor registries | Mutable; governed by `schema/drive-source-registry-contract.md` |
 | `raw/rejected/` | Write-once rejection records for sources that failed intake (ADR-013) | Immutable post-write |
 | `wiki/**` | Synthesized knowledge artifacts | Controlled write surface |
 | `schema/**` | Page/ingest contracts | Controlled write surface |
@@ -47,7 +48,7 @@ Before implementing any new helper, check these four canonical modules. See ADR-
 5. Move successfully ingested inputs to `raw/processed/**`.
 6. Enforce strict lint and test gates before write-capable automation proceeds.
 
-## Automation model (CI-1..CI-5)
+## Automation model (CI-1..CI-6)
 
 | CI | Responsibility | Write capability |
 |---|---|---|
@@ -56,6 +57,7 @@ Before implementing any new helper, check these four canonical modules. See ADR-
 | **CI-3** | PR-producing write path with allowlists and preflight | Yes (allowlisted paths only) |
 | **CI-4** | Framework writer: staged agent-generated content for `docs/**` and `.github/skills/**` | Yes (`docs/**`, `.github/skills/**`; workflow_dispatch only; approval-gated) |
 | **CI-5** | GitHub source monitor: scheduled drift detection (read-only) + PR-producing fetch/synthesize path | Drift job: No. Write jobs: Yes (`raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**`) |
+| **CI-6** | Google Drive source monitor: scheduled drift detection (read-only) + approval-gated fetch/synthesize path | Drift job: No. Write jobs: Yes (`raw/assets/gdrive/**`, `raw/drive-sources/**`, bounded `wiki/**`) |
 
 This split is intentional: it isolates trust checks, diagnostics, and write operations
 so permission scope can stay minimal for each path.
@@ -111,6 +113,7 @@ though they are not all landed today:
 | `scripts/fleet/**` | TypeScript/Bun fleet orchestration for parallel Jules-based issue-to-PR dispatch | Fleet scripts are a TypeScript/Bun project orthogonal to the Python write-surface matrix. Fleet-produced PRs enter normal CI review (CI-1..CI-3). Fleet does not bypass write allowlists or the `wiki/.kb_write.lock` concurrency model. |
 | `scripts/ingest/**` | Heavyweight ingest/conversion helpers | ADR-006 still limits authoritative ingest inputs to `raw/inbox/**` plus checksummed `raw/assets/**`. |
 | `scripts/github_monitor/**` | GitHub source monitoring: drift detection, asset fetching, diff-aware wiki synthesis | ADR-012 governs the fetch-and-vendor cycle; `raw/assets/{owner}/{repo}/{sha}/**` assets are authoritative only when checksummed per ADR-006; write-capable surfaces must be declared in `AGENTS.md` before writing. |
+| `scripts/drive_monitor/**` | Google Drive source monitoring: drift detection, asset fetching, diff-aware wiki synthesis | ADR-021 governs the fetch-and-vendor cycle; `raw/assets/gdrive/{alias}/{file_id}/{version}/**` assets are authoritative only when checksummed; write-capable surfaces must be declared in `AGENTS.md` before writing. |
 
 Any future post-MVP writer that touches shared wiki artifacts must keep the
 ADR-005 workflow-concurrency plus `wiki/.kb_write.lock` model, and any
@@ -243,9 +246,10 @@ Key architecture decisions are captured in ADRs:
 - [`ADR-012`](decisions/ADR-012-github-source-monitoring.md): GitHub source monitoring pipeline
 - [`ADR-013`](decisions/ADR-013-rejected-source-registry.md): write-once intake rejection records
 - [`ADR-014`](decisions/ADR-014-hitl-afk-work-classification.md): HITL/AFK work classification and deny-by-default routing
-- [`ADR-015`](decisions/ADR-015-extended-ci-trust-model.md): extended CI trust model — CI-4 framework-writer and CI-5 GitHub monitor
+- [`ADR-015`](decisions/ADR-015-extended-ci-trust-model.md): extended CI trust model — CI-4 framework-writer, CI-5 GitHub monitor, and CI-6 Google Drive monitor
 - [`ADR-016`](decisions/ADR-016-pre-commit-hooks-governance.md): raw git hooks over pre-commit framework for local governance checks
 - [`ADR-017`](decisions/ADR-017-agent-persona-category-taxonomy.md): two-category agent persona taxonomy (kb-workflow / dev-support)
 - [`ADR-018`](decisions/ADR-018-context-md-vocabulary-pattern.md): CONTEXT.md files as structured agent-vocabulary artifacts
 - [`ADR-019`](decisions/ADR-019-fleet-jules-orchestration.md): Jules-based fleet orchestration for parallel issue-to-PR dispatch
 - [`ADR-020`](decisions/ADR-020-post-mvp-package-family-criteria.md): criteria for approving post-MVP script package families
+- [`ADR-021`](decisions/ADR-021-google-drive-source-monitoring.md): Google Drive source monitoring pipeline
