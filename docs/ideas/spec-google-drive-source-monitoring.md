@@ -16,7 +16,7 @@
 5. `create_issues.py` for HITL Issues reuses `scripts/github_monitor/create_issues.py` GitHub API patterns (same `GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY` secrets).
 6. Registry alias slug convention: lowercase, alphanumeric, hyphens only (matches `raw/github-sources/` naming).
 7. `drive_version` maps directly to the Drive API `files` resource `version` integer field.
-8. CI-6 workflow mirrors CI-5's 3-job structure with the addition of `GDRIVE_SA_KEY` secret.
+8. CI-6 workflow uses a 4-job structure (check-drift, fetch-and-update, classify-drift, synthesize) with the addition of `GDRIVE_SA_KEY` secret.
 
 ---
 
@@ -78,7 +78,11 @@ python -m scripts.drive_monitor.synthesize_diff \
     --approval approved
 
 python -m scripts.drive_monitor.create_issues \
-    --drift-report /tmp/drift-report.json \
+    --hitl-entries hitl-entries.json
+
+# Cursor advancement (terminal pipeline ACK — write-capable)
+python -m scripts.drive_monitor.advance_cursor \
+    --drift-report drift-report.json \
     --approval approved
 ```
 
@@ -107,8 +111,10 @@ scripts/drive_monitor/
 │                            #   Requires --approval approved.
 ├── synthesize_diff.py       # WRITE. Applies diff-aware wiki page update. Advances last_applied_*.
 │                            #   Only after confirmed wiki write. Requires --approval approved.
-└── create_issues.py         # WRITE (GitHub API). Creates HITL Issues for deletions/scope-loss/
-                             #   binary. Aggregates bulk events above configurable threshold.
+├── create_issues.py         # WRITE (GitHub API). Creates HITL Issues for deletions/scope-loss/
+│                            #   binary. Aggregates bulk events above configurable threshold.
+└── advance_cursor.py        # WRITE. Terminal pipeline ACK: advances changes_page_token in
+                             #   the registry after all entries for an alias are durably handled.
                              #   Requires --approval approved.
 
 raw/drive-sources/           # New mutable zone (parallel to raw/github-sources/)
@@ -133,7 +139,7 @@ tests/drive_monitor/
 └── test_synthesize_diff.py  # Diff synthesis + last_applied_* advancement gate
 
 .github/workflows/
-└── CI-6-google-drive-monitor.yml   # Scheduled daily, 3-job structure mirrors CI-5
+└── CI-6-google-drive-monitor.yml   # Scheduled daily, 4-job structure (check-drift → fetch-and-update → classify-drift → synthesize)
 ```
 
 ---
@@ -295,7 +301,10 @@ fetch_content.py        → raw/assets/gdrive/        (write: --approval approve
                           updates last_fetched_*
 synthesize_diff.py      → wiki/{namespace}/{page}   (write: --approval approved)
                           advances last_applied_* only on confirmed wiki write
-create_issues.py        → GitHub Issues              (write: --approval approved)
+create_issues.py        → GitHub Issues              (write: GitHub API)
+advance_cursor.py       → registry cursor update     (write: --approval approved)
+                          terminal ACK — advances changes_page_token only after
+                          all entries for an alias are durably handled
 ```
 
 **Lock ordering** (consistent with ADR-012):
@@ -417,7 +426,7 @@ The feature is **done** when all of the following are true:
 8. **`ADR-021`** is written and reflects all design decisions from the one-pager + grill-me session.
 9. **`AGENTS.md`** write-surface matrix has rows for all 5 `scripts/drive_monitor/` executable scripts.
 10. **`DriveMonitorReasonCode`** is added to `scripts/kb/contracts.py` and exported via `__all__`.
-11. **CI-6 workflow** YAML is written and mirrors CI-5's 3-job structure.
+11. **CI-6 workflow** YAML is written with a 4-job structure (check-drift, fetch-and-update, classify-drift, synthesize).
 
 ---
 

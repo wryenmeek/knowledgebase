@@ -36,7 +36,7 @@ Vocabulary for the Google Drive source-monitoring pipeline. `AGENTS.md` takes pr
 | `last_applied_*` only advances after confirmed wiki write | `synthesize_diff.py` must not update `last_applied_*` in the registry unless the wiki page write has been confirmed. If the wiki write fails, the registry update must be rolled back or skipped. |
 | AFK deny-by-default | `classify_drift.py` defaults `--afk-max-lines 0`, routing all entries to HITL. AFK routing is only enabled when the operator explicitly passes a positive threshold. |
 | Export normalization is mandatory | Always call `normalize_markdown_export()` before computing SHA-256 for any native Google Doc export. Raw export bytes are NOT stored — only normalized bytes are vendored. |
-| Changes API cursor must be saved | After each successful `check_drift.py` run, the `newStartPageToken` from the final changes page must be written back to `changes_page_token` in the registry. Without this, the next run re-processes all changes since the last saved cursor. |
+| Changes API cursor must be saved | After all entries for an alias are durably handled, `advance_cursor.py` advances `changes_page_token` to `newStartPageToken` from the drift report. This is a terminal pipeline-level ACK — it must only advance after the entire alias is processed. Without this, the next run re-processes all changes since the last saved cursor. |
 
 ## File Roles
 
@@ -47,8 +47,9 @@ Vocabulary for the Google Drive source-monitoring pipeline. `AGENTS.md` takes pr
 | `fetch_content.py` | Exports/downloads drifted content to `raw/assets/gdrive/`, normalizes, computes SHA-256, updates `last_fetched_*` in registry under `raw/.drive-sources.lock`. |
 | `synthesize_diff.py` | Diffs old and new assets, updates wiki page, advances `last_applied_*` under both locks (wiki first, then drive). |
 | `create_issues.py` | Creates GitHub Issues for HITL-classified entries: deletions, scope-loss, binary/oversize. |
+| `advance_cursor.py` | Terminal pipeline ACK: advances `changes_page_token` in registry after all entries for an alias are durably handled. |
 | `_types.py` | TypedDicts for registry entries, drift report structure, MIME constants, and API response validators. |
 | `_validators.py` | Alias slug validation, path traversal guards, bounds checks for asset paths and wiki paths. |
-| `_http.py` | Drive API v3 client factory: service account auth, retry wrapper, `files.list`, `files.get`, `files.export`, `changes.list`, `changes.getStartPageToken`. |
+| `_http.py` | Drive API v3 client factory: service account auth, retry wrapper, `files.get`, `files.export`, `changes.list`, `changes.getStartPageToken`. |
 | `_normalize.py` | `normalize_markdown_export(raw_bytes) → bytes` — canonical normalization for SHA-256. |
-| `_registry.py` | Registry read/update helpers: `find_registry_files()`, `update_last_fetched()`, `update_last_applied()`, `update_changes_cursor()`. |
+| `_registry.py` | Registry read/update helpers: `find_registry_files()`, `update_last_fetched()`, `update_last_applied()`, `update_changes_cursor()`, `add_file_entry()`. |

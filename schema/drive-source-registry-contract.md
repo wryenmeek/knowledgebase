@@ -49,16 +49,17 @@ or dots other than the `.source-registry.json` suffix. No leading or trailing hy
     {
       "file_id": "1A2B3...",
       "display_name": "coverage-guidance-2025.md",
+      "display_path": "CMS Policy Documents/coverage-guidance-2025.md",
       "mime_type": "application/vnd.google-apps.document",
       "tracking_status": "active",
-      "parent_folder_id": "1BxiM...",
       "wiki_page": "wiki/pages/topical/cms/coverage-guidance-2025.md",
       "drive_version": 42,
       "md5_checksum_at_last_applied": null,
       "sha256_at_last_applied": "64hexchars...",
       "sha256_at_last_fetched": null,
-      "drive_version_at_last_applied": 42,
-      "drive_version_at_last_fetched": null,
+      "last_applied_drive_version": 42,
+      "last_fetched_drive_version": null,
+      "md5_checksum_at_last_fetched": null,
       "last_applied_at": "2026-01-01T00:00:00Z",
       "last_fetched_at": null,
       "notes": ""
@@ -96,16 +97,16 @@ or dots other than the `.source-registry.json` suffix. No leading or trailing hy
 |---|---|---|---|
 | `file_id` | string | Yes | Google Drive file ID. Alphanumeric, underscores, and hyphens only. No slashes or traversal. |
 | `display_name` | string | Yes | Human-readable filename as returned by the Drive API. Used for asset path construction. Must not contain path separators or null bytes. |
+| `display_path` | string | No | Folder-relative path (informational, may be stale after Drive renames/moves). |
 | `mime_type` | string | Yes | MIME type as reported by Drive API. Must be in the MIME allowlist (see below). |
 | `tracking_status` | string enum | Yes | Monitoring state; see below. |
-| `parent_folder_id` | string\|null | Yes | Drive folder ID of the immediate registered ancestor. `null` for uninitialized entries. Used for bulk-aggregation grouping. |
 | `wiki_page` | string\|null | Yes | Repo-relative path to the wiki page this entry maps to. `null` for `uninitialized` entries. Must resolve inside `wiki/` (bounds-checked). |
 | `drive_version` | integer\|null | Yes | Latest known Drive `version` field for native Google files (Docs, Slides). `null` for non-native files and uninitialized entries. |
 | `md5_checksum_at_last_applied` | 32-hex string\|null | Yes | MD5 checksum reported by Drive API for non-native files at last apply. `null` for native files and uninitialized entries. |
 | `sha256_at_last_applied` | 64-hex string\|null | Yes | SHA-256 of the normalized/raw bytes that were applied to the wiki page. `null` if never applied. |
 | `sha256_at_last_fetched` | 64-hex string\|null | Yes | SHA-256 of the bytes from the most recent successful fetch. `null` if no fetch since last apply. |
-| `drive_version_at_last_applied` | integer\|null | Yes | Drive `version` at the time of last apply. `null` if never applied or if non-native file. |
-| `drive_version_at_last_fetched` | integer\|null | Yes | Drive `version` from the most recent successful fetch. `null` if no fetch since last apply. |
+| `last_applied_drive_version` | integer\|null | Yes | Drive `version` at the time of last apply. `null` if never applied or if non-native file. |
+| `last_fetched_drive_version` | integer\|null | Yes | Drive `version` from the most recent successful fetch. `null` if no fetch since last apply. |
 | `md5_checksum_at_last_fetched` | 32-hex string\|null | Yes | MD5 checksum from the most recent fetch. `null` for native files and if no fetch since last apply. |
 | `last_applied_at` | ISO 8601 string\|null | Yes | Timestamp when the last successful wiki-page update was written. `null` if never applied. |
 | `last_fetched_at` | ISO 8601 string\|null | Yes | Timestamp of the most recent successful fetch. `null` if no fetch since last apply. |
@@ -119,6 +120,7 @@ or dots other than the `.source-registry.json` suffix. No leading or trailing hy
 | `paused` | Entry is temporarily skipped during drift checks. State fields preserved. |
 | `archived` | Entry will no longer be monitored. Treated as permanently inactive. |
 | `unreachable` | The last drift check could not reach the file (Drive API error after retries). Operator must investigate; entry is skipped until reset to `active`. |
+| `pending_review` | Entry requires human review before the next pipeline run will process it (e.g. after a HITL-classified change). Operator must investigate and set to `active` or `archived`. |
 | `uninitialized` | Entry has been discovered but no wiki page exists yet. `check_drift.py` emits `UNINITIALIZED_SOURCE`. Operator must run the ingest pipeline to create the initial wiki page, then set `wiki_page` and advance status to `active`. |
 
 ## MIME allowlist
@@ -160,11 +162,10 @@ fetching succeeds but wiki synthesis fails:
 │    raw/assets/gdrive/{alias}/{file_id}/{version_or_md5}/    │
 │  Normalizes native Docs exports before writing.             │
 │  Advances: sha256_at_last_fetched                           │
-│            drive_version_at_last_fetched (native only)      │
+│            last_fetched_drive_version (native only)          │
 │            md5_checksum_at_last_fetched (non-native only)   │
 │            last_fetched_at                                  │
-│            changes_page_token (cursor advance)              │
-│  Does NOT touch: last_applied_* fields                      │
+│  Does NOT touch: last_applied_* fields or cursor            │
 └─────────────────────────────────────────────────────────────┘
             ↓ fetch succeeded
 ┌─────────────────────────────────────────────────────────────┐
@@ -173,9 +174,17 @@ fetching succeeds but wiki synthesis fails:
 │  Only on confirmed wiki write:                              │
 │    advances last_applied_at                                 │
 │              sha256_at_last_applied                         │
-│              drive_version_at_last_applied (native)         │
+│              last_applied_drive_version (native)            │
 │              md5_checksum_at_last_applied (non-native)      │
 │    resets last_fetched_* to null                            │
+└─────────────────────────────────────────────────────────────┘
+            ↓ all entries for alias durably handled
+┌─────────────────────────────────────────────────────────────┐
+│  Stage 4: advance_cursor.py                                 │
+│  Terminal pipeline-level ACK. Advances changes_page_token   │
+│  to newStartPageToken from the drift report.                │
+│  Only runs after ALL entries for the alias have been        │
+│  processed (synthesized, issued, or skipped).               │
 └─────────────────────────────────────────────────────────────┘
 ```
 

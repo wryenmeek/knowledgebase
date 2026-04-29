@@ -92,10 +92,12 @@ unauthorized.
 
 - `changes_page_token: null` in a registry → call `getStartPageToken()` on first run;
   all file_entries for that registry are treated as `UNINITIALIZED_SOURCE`.
-- After successful asset fetch: `fetch_content.py` advances `changes_page_token` to the
-  `newStartPageToken` from the drift report. The cursor is advanced only after content is
-  safely vendored to ensure no change is silently lost.
+- After all entries for an alias are durably handled (synthesized, issued, or skipped):
+  `advance_cursor.py` advances `changes_page_token` to the `newStartPageToken` from the
+  drift report. The cursor is a terminal pipeline-level ACK — it advances only after the
+  entire alias is processed, not as an intermediate step.
 - `check_drift.py` is read-only: it reads the cursor but does NOT write it back.
+- `fetch_content.py` advances `last_fetched_*` fields but does NOT advance the cursor.
 
 ### MIME allowlist and export strategy
 
