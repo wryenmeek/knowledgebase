@@ -429,4 +429,260 @@ The feature is **done** when all of the following are true:
 
 ---
 
-*Spec status: draft. Awaiting human review and approval before Phase 2 (Plan).*
+*Spec status: implemented — pending remediation of cross-functional review findings below.*
+
+---
+
+## Cross-Functional Review Findings (Remediation Required)
+
+> **Review date:** 2025-07-15
+> **Reviewers:** code-reviewer, security-auditor, test-engineer, solutions-architect, documentation-engineer, framework-engineer
+> **Scope:** All `scripts/drive_monitor/` code, tests, governance artifacts, and documentation against this spec.
+
+### Status Key
+
+| Status | Meaning |
+|--------|---------|
+| 🔴 NOT IMPLEMENTED | Spec-required feature is missing from the codebase |
+| 🟡 PARTIALLY IMPLEMENTED | Feature exists but has gaps or deviations from spec |
+| 🟠 MISALIGNED | Implementation contradicts spec, ADR, or governance docs |
+| ⚪ HOUSEKEEPING | Dead code, style, or documentation-only fix |
+
+---
+
+### Critical Findings
+
+#### CR-1: Changes API cursor is never advanced 🔴
+
+**Affected files:** `check_drift.py:218`, `fetch_content.py` (entire), `_registry.py:188-210`
+**Detected by:** code-reviewer, solutions-architect, documentation-engineer
+
+`check_drift.py` discards `_new_token` from `list_changes()`. `update_changes_cursor()` exists in `_registry.py` but has zero callers. Every CI-6 run re-processes all changes since the last manually-saved cursor, causing unbounded API growth and eventual quota exhaustion.
+
+Additionally, on first run (uninitialized cursor), `get_changes_start_page_token()` result is also discarded — the cursor can never bootstrap.
+
+**Remediation:**
+1. Add `new_page_token` per-alias to the drift report JSON output from `check_drift.py`
+2. `fetch_content.py` calls `update_changes_cursor(repo_root, registry_path, new_page_token)` after all entries for an alias are successfully fetched
+3. First-run path in `check_drift.py` must include the start page token in the report
+
+#### CR-2: Non-atomic wiki + registry write in `synthesize_diff.py` 🟡
+
+**Affected files:** `synthesize_diff.py:369-402`
+**Detected by:** code-reviewer, security-auditor
+
+Wiki page is written (line 384) before `update_last_applied()` (line 392). If registry update fails, the wiki page is already mutated but `last_applied_*` never advances — next run re-appends the identical change note (non-idempotent).
+
+**Remediation:** Either (a) write wiki page to temp file first, commit only after registry update succeeds, or (b) capture original wiki content before modification and restore on registry failure.
+
+#### CR-3: Missing `test_create_issues.py` 🔴
+
+**Affected files:** `tests/drive_monitor/` (missing file)
+**Detected by:** test-engineer
+
+Spec success criterion #5 requires tests for deletion, out-of-scope, and bulk aggregation Issues. No test file exists. This is the single largest test coverage gap.
+
+**Remediation:** Create `tests/drive_monitor/test_create_issues.py` with ≥10 tests covering: 3 spec scenarios, dedup via `_search_existing_issue()`, `gh` CLI failure, `_sanitize_gh_md()` injection prevention, `_redact_stderr()`, empty input, malformed JSON.
+
+---
+
+### High Findings
+
+#### HI-1: Credential fragment leakage via `ValueError` traceback 🟡
+
+**Affected files:** `_http.py:78-80`
+**Detected by:** security-auditor
+
+`service_account.Credentials.from_service_account_info()` can raise `ValueError` with key fragments in the message. This `ValueError` is not caught — only `ImportError` and `json.JSONDecodeError` are handled.
+
+**Remediation:** Wrap `from_service_account_info()` in `try/except (ValueError, KeyError)` and re-raise as `DriveAPIRequestError` with `from None` to suppress `__cause__`.
+
+#### HI-2: Filename construction diverges between `fetch_content.py` and `synthesize_diff.py` 🟡
+
+**Affected files:** `fetch_content.py:88-102`, `synthesize_diff.py:128-170`
+**Detected by:** code-reviewer, solutions-architect
+
+`synthesize_diff.py` inlines equivalent filename logic but omits the `"untitled"` fallback. If a display name sanitizes to empty, `fetch_content` writes to `untitled.md` but `synthesize_diff` looks for `.md` — silent lookup failure.
+
+**Remediation:** Extract `safe_filename(display_name, mime_type) → str` into `_validators.py`. Import from both modules.
+
+#### HI-3: YAML frontmatter injection via unsanitized `display_name` 🟡
+
+**Affected files:** `synthesize_diff.py:377-380`
+**Detected by:** security-auditor
+
+`display_name` from Drive file metadata is interpolated directly into YAML frontmatter without validation. A file named `test\ntags: [malicious]` could inject arbitrary YAML fields.
+
+**Remediation:** Call `validate_display_name()` before wiki write, or use `json.dumps()` for YAML-safe quoting of the title field.
+
+#### HI-4: No HTTP transport timeout on Drive API client 🟡
+
+**Affected files:** `_http.py:108`
+**Detected by:** security-auditor
+
+`build("drive", "v3", ...)` creates an HTTP client with no socket-level timeout. A stuck connection hangs CI until the job-level timeout (6 hours).
+
+**Remediation:** Add `httplib2.Http(timeout=30)` and pass via `google_auth_httplib2.AuthorizedHttp`.
+
+#### HI-5: No dedicated tests for `_http.py` retry logic 🔴
+
+**Affected files:** `tests/drive_monitor/` (no `test_http.py`)
+**Detected by:** test-engineer
+
+`_with_retry()` is security-and-reliability-critical. No test validates 429 backoff, 500 retry-then-fail, permanent 403 no-retry, or `retry-after` header handling.
+
+**Remediation:** Create targeted tests for `_with_retry()` covering all retry/no-retry paths.
+
+#### HI-6: No dedicated tests for `_registry.py` 🔴
+
+**Affected files:** `tests/drive_monitor/` (no `test_registry.py`)
+**Detected by:** test-engineer
+
+`_atomic_replace_registry()` failure path, `update_last_applied()` resetting `last_fetched_*`, `add_file_entry()` deduplication, and `update_changes_cursor()` are untested.
+
+**Remediation:** Create `tests/drive_monitor/test_registry.py` covering atomic replace failure, state machine transitions, dedup, and cursor persistence.
+
+#### HI-7: Dead imports in `fetch_content.py` 🟡
+
+**Affected files:** `fetch_content.py:155-157`
+**Detected by:** code-reviewer
+
+`import binascii as _bi` and `import struct as _st` are imported but never used. Only `hashlib.md5()` is called.
+
+**Remediation:** Delete lines 155-157.
+
+---
+
+### Medium Findings
+
+#### ME-1: CI-6 YAML passes non-existent `--afk-entries` flag 🟠
+
+**Affected files:** `.github/workflows/ci-6-google-drive-monitor.yml:241`
+**Detected by:** documentation-engineer
+
+`synthesize_diff.py` parser accepts `--drift-report`, not `--afk-entries`. This would cause a **runtime failure in CI**.
+
+**Remediation:** Change YAML to `--drift-report afk-entries.json`.
+
+#### ME-2: Missing `TokenProfileId.DRIVE_MONITOR` enum member 🔴
+
+**Affected files:** `scripts/kb/contracts.py`
+**Detected by:** framework-engineer
+
+CI-6 declares `TOKEN_PROFILE: tp-drive-monitor` but this profile is not registered in the `TokenProfileId` enum.
+
+**Remediation:** Add `DRIVE_MONITOR = "tp-drive-monitor"` to `TokenProfileId`.
+
+#### ME-3: Missing CI-6 entry in `test_ci_permission_asserts.py` 🔴
+
+**Affected files:** `tests/kb/test_ci_permission_asserts.py`
+**Detected by:** framework-engineer
+
+CI-6 workflow comment says it's machine-checked by this test — that promise is unfulfilled. Depends on ME-2.
+
+**Remediation:** Add `WorkflowPolicyExpectation` entry for CI-6 to `WORKFLOW_POLICY_MATRIX`.
+
+#### ME-4: Schema contract `tracking_status` enum mismatches code 🟠
+
+**Affected files:** `schema/drive-source-registry-contract.md`
+**Detected by:** documentation-engineer
+
+Contract lists `unreachable` (not in code), omits `pending_review` (is in code). Field names use `drive_version_at_last_applied` vs code's `last_applied_drive_version`. `parent_folder_id` listed as file_entry field but absent from TypedDict. `display_path` present in code but absent from contract.
+
+**Remediation:** Align contract field names, enum values, and field lists with `_types.py` TypedDicts.
+
+#### ME-5: Spec and ADR say "3-job CI structure" — implementation has 4 jobs 🟠
+
+**Affected files:** Spec L19 (assumption #8), L420 (criterion #11), ADR-021
+**Detected by:** documentation-engineer, solutions-architect
+
+The 4-job design (splitting `classify-drift` from `synthesize`) is correct but undocumented.
+
+**Remediation:** Update spec assumption #8, success criterion #11, and ADR-021 to reflect 4-job structure with rationale.
+
+#### ME-6: Spec shows wrong CLI flags for `create_issues.py` 🟠
+
+**Affected files:** Spec L80-82
+**Detected by:** documentation-engineer
+
+Spec shows `--drift-report` flag and `--approval approved`. Actual CLI uses `--hitl-entries` and has no approval gate.
+
+**Remediation:** Update spec command examples.
+
+#### ME-7: `_redact_stderr()` misses modern token formats 🟡
+
+**Affected files:** `create_issues.py:56-60`
+**Detected by:** security-auditor
+
+Regex only catches hex strings. Misses `ghp_*`, `github_pat_*`, base64 blobs, and `Authorization` header values.
+
+**Remediation:** Expand regex to cover fine-grained tokens, bearer headers, and base64 blobs.
+
+#### ME-8: CONTEXT.md and ADR-021 disagree on cursor ownership 🟠
+
+**Affected files:** `scripts/drive_monitor/CONTEXT.md:39`, ADR-021
+**Detected by:** documentation-engineer
+
+CONTEXT.md says `check_drift.py` saves cursor. ADR-021 says `fetch_content.py` advances it. Neither does.
+
+**Remediation:** After CR-1 fix, update both documents to reflect the actual cursor ownership.
+
+#### ME-9: `__init__.py` declares `--approval` for `create_issues.py` — no gate exists 🟠
+
+**Affected files:** `scripts/drive_monitor/__init__.py:12`, `create_issues.py`
+**Detected by:** solutions-architect
+
+Consistent with `github_monitor` pattern (which also lacks an approval gate on `create_issues.py`), but the docstring is aspirational.
+
+**Remediation:** Correct `__init__.py` docstring to remove `--approval` from the `create_issues.py` line.
+
+#### ME-10: `_sanitize_gh_md()` doesn't strip `${{}}` expressions 🟡
+
+**Affected files:** `create_issues.py:63-74`
+**Detected by:** code-reviewer
+
+If Issue body is consumed in a workflow `run:` block via `${{ github.event.issue.body }}`, template expressions could trigger Actions expression injection.
+
+**Remediation:** Add `s = s.replace("${{", "").replace("}}", "")`.
+
+---
+
+### Housekeeping Findings
+
+| ID | Finding | Files | Detected by |
+|----|---------|-------|-------------|
+| HK-1 | `_is_binary()` duplicated; dead in `check_drift.py` | `check_drift.py:77`, `synthesize_diff.py:84` | code-reviewer, architect |
+| HK-2 | Unused imports: `tempfile`, `contextlib`, `DRIVE_SOURCES_LOCK_PATH` in `synthesize_diff.py` | `synthesize_diff.py:25,28,47` | code-reviewer |
+| HK-3 | Unused imports/constants in `_validators.py`: `urllib.parse`, `PurePosixPath`, `_FORBIDDEN_COMPONENTS`, `_MAX_PATH_DEPTH` | `_validators.py:11-17` | code-reviewer |
+| HK-4 | Unused import `MIME_EXPORT_MAP` in `classify_drift.py` | `classify_drift.py:39` | code-reviewer |
+| HK-5 | `update_last_applied()` docstring contradicts behavior | `_registry.py:146-148` | code-reviewer, architect |
+| HK-6 | Inline `import re` and `import hashlib` in function bodies | `_registry.py:229`, `synthesize_diff.py:128,164,389` | code-reviewer |
+| HK-7 | `_validators.py` imports `_`-prefixed private symbols from `_types.py` | `_validators.py:14` | architect |
+| HK-8 | `_RETRY_DELAYS` index can `IndexError` if `_MAX_RETRIES` changes independently | `_http.py:29-30,131` | code-reviewer |
+| HK-9 | `_resolve_parent_folder` follows last parent not first (missing `break`) | `check_drift.py:101` | code-reviewer |
+| HK-10 | `_safe_filename()` can produce leading-dot hidden files | `fetch_content.py:88-102` | security-auditor |
+| HK-11 | CONTEXT.md `_http.py` role lists non-existent `files.list` | `CONTEXT.md` | documentation-engineer |
+| HK-12 | CONTEXT.md missing `add_file_entry()` in `_registry.py` role | `CONTEXT.md` | documentation-engineer |
+| HK-13 | Multiple functions missing numpydoc Parameters/Returns sections | Various | documentation-engineer |
+| HK-14 | Undocumented dual-input contract (`entries` vs `drifted`) in `synthesize_diff.py` | `synthesize_diff.py:285-290` | architect |
+| HK-15 | Floor-only dependency pins — no upper bounds or lock file | `pyproject.toml:15-18` | security-auditor |
+
+---
+
+### Spec Corrections Required
+
+| Location | Current text | Correction |
+|----------|-------------|------------|
+| L19 (assumption #8) | "CI-6 workflow mirrors CI-5's 3-job structure" | Change to "4-job structure" |
+| L80-82 | `create_issues.py --drift-report ... --approval approved` | Change to `--hitl-entries ...` and remove `--approval` |
+| L420 (criterion #11) | "mirrors CI-5's 3-job structure" | Change to "4-job structure with rationale in ADR-021" |
+
+---
+
+### Remediation Priority Order
+
+1. **P0 — Blocking:** CR-1 (cursor never advanced), ME-1 (CI YAML runtime failure), ME-2 + ME-3 (missing contract enum + test)
+2. **P1 — Security:** CR-2 (non-atomic write), HI-1 (credential leakage), HI-3 (YAML injection), ME-7 (redaction gaps), ME-10 (`${{}}` injection)
+3. **P2 — Test gaps:** CR-3 (`test_create_issues.py`), HI-5 (`test_http.py`), HI-6 (`test_registry.py`)
+4. **P3 — Alignment:** HI-2 (filename divergence), ME-4–ME-9 (doc/spec/contract alignment)
+5. **P4 — Housekeeping:** HI-7, HK-1 through HK-15
