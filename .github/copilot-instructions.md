@@ -281,3 +281,26 @@ Other patterns:
 - Lock mocks must target the actual import path (e.g., `scripts.drive_monitor._registry.write_utils.exclusive_write_lock`)
 - `subprocess.run` is mocked for `gh` CLI calls in `create_issues.py` tests
 
+### Jules SDK and session management
+
+**`.env` loading:** `bun` does not auto-load `.env` files. When running Jules SDK scripts, export the key first:
+
+```bash
+export $(grep JULES_API_KEY .env | xargs) && bun run script.ts
+```
+
+Before asking the user for `JULES_API_KEY`, check whether `.env` exists at the repo root and contains the key.
+
+**SDK over REST for mutations:** The Jules REST API (`jules.googleapis.com`) works for read-only session listing, but mutation endpoints (`sendMessage`, `approvePlan`, `archive`) have undocumented request schemas that vary across API versions. Always use the `@google/jules-sdk` singleton (`jules.session(ID).send()`, `.approve()`, `.archive()`) for any session mutation.
+
+**Scope operations to the target repo:** `jules.sessions()` returns sessions across ALL repositories (can be 1,000+). Always filter by `sourceContext.source` before operating:
+
+```typescript
+for await (const s of jules.sessions()) {
+  if (s.sourceContext?.source !== 'sources/github/wryenmeek/knowledgebase') continue;
+  // ... process
+}
+```
+
+**Session deduplication:** Jules frequently re-dispatches the same task, producing duplicate PRs (observed: 10 PRs for frontmatter optimization, 8 for command injection — 30 PRs total, 1 merged). Before dispatching a new Jules task, check for existing open PRs addressing the same issue. When reviewing Jules PRs, always verify the diff matches the title/description claims — hallucinated fixes have been observed (PR title says "fix X" but diff changes unrelated files).
+
