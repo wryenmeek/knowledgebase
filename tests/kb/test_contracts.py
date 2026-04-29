@@ -161,6 +161,7 @@ class SharedContractsTests(unittest.TestCase):
                 "tp-github-monitor",
                 "tp-freshness-readonly",
                 "tp-customizations-readwrite",
+                "tp-drive-monitor",
             ),
         )
         self.assertEqual(
