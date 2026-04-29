@@ -74,10 +74,6 @@ def _path_rules() -> dict[str, Any]:
     )
 
 
-def _is_binary(data: bytes) -> bool:
-    return b"\x00" in data
-
-
 def _resolve_parent_folder(
     drive: Any,
     file_id: str,
@@ -98,7 +94,8 @@ def _resolve_parent_folder(
         for parent_id in parents:
             if parent_id in registered_folder_ids:
                 return parent_id
-            current_id = parent_id
+        # No direct match; follow the first parent upward
+        current_id = parents[0]
     return None
 
 

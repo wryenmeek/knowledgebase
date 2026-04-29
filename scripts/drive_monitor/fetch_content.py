@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -51,7 +50,6 @@ from scripts.kb.contracts import DriveMonitorReasonCode
 from scripts.kb.write_utils import exclusive_create_write_once
 from scripts.drive_monitor._types import (
     MIME_EXPORT_MAP,
-    MIME_EXTENSION_MAP,
     OVERSIZE_LIMIT_BYTES,
     validate_drive_drift_report,
 )
@@ -66,6 +64,7 @@ from scripts.drive_monitor._http import (
 from scripts.drive_monitor._normalize import normalize_markdown_export
 from scripts.drive_monitor._validators import (
     build_drive_asset_path,
+    safe_filename,
     validate_file_id,
     validate_display_name,
 )
@@ -83,23 +82,6 @@ def _path_rules() -> dict[str, Any]:
         allowed_roots=["raw/assets/gdrive", "raw/drive-sources"],
         allowed_suffixes=None,
     )
-
-
-def _safe_filename(display_name: str, mime_type: str) -> str:
-    """Build a safe filename for the asset from the display name and MIME type.
-
-    Replaces unsafe characters with underscores, limits length to 200 chars,
-    and appends the canonical extension for the MIME type.
-    """
-    # Strip the file extension from the display name if it already has one
-    base = re.sub(r"[^\w\-. ]+", "_", display_name).strip().rstrip(".")
-    if not base:
-        base = "untitled"
-    base = base[:200]
-    ext = MIME_EXTENSION_MAP.get(mime_type, "")
-    if ext and not base.lower().endswith(ext):
-        return base + ext
-    return base
 
 
 def _fetch_and_store_asset(
@@ -175,7 +157,7 @@ def _fetch_and_store_asset(
     sha256_hex = hashlib.sha256(asset_bytes).hexdigest()
 
     try:
-        safe_name = _safe_filename(display_name, mime_type)
+        safe_name = safe_filename(display_name, mime_type)
         asset_path = build_drive_asset_path(
             repo_root, alias, file_id, version_segment, safe_name
         )

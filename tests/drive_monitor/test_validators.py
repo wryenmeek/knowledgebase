@@ -11,6 +11,7 @@ from scripts.drive_monitor._validators import (
     validate_display_name,
     build_drive_asset_path,
     build_wiki_page_path,
+    safe_filename,
 )
 
 
@@ -144,3 +145,53 @@ class TestBuildWikiPagePath:
     def test_traversal_rejected(self, tmp_path):
         with pytest.raises(ValueError, match="wiki"):
             build_wiki_page_path(tmp_path, "wiki/../../etc/passwd")
+
+
+class TestSafeFilename:
+    """Tests for safe_filename() (HI-2 / HK-10)."""
+
+    def test_normal_filename_passes(self):
+        result = safe_filename("My Document", "application/vnd.google-apps.document")
+        assert result == "My Document.md"
+
+    def test_preserves_existing_extension(self):
+        result = safe_filename("report.md", "application/vnd.google-apps.document")
+        assert result == "report.md"
+
+    def test_special_characters_replaced(self):
+        result = safe_filename("file@#$%name!", "text/plain")
+        assert result == "file_name_.txt"
+
+    def test_leading_dots_stripped(self):
+        result = safe_filename(".secretfile", "text/plain")
+        assert result == "secretfile.txt"
+
+    def test_multiple_leading_dots_stripped(self):
+        result = safe_filename("...hidden", "text/plain")
+        assert result == "hidden.txt"
+
+    def test_all_dots_filename_fallback(self):
+        result = safe_filename("...", "text/plain")
+        assert result == "untitled.txt"
+
+    def test_path_separators_replaced(self):
+        result = safe_filename("folder/sub\\file", "text/plain")
+        assert result == "folder_sub_file.txt"
+
+    def test_empty_string_fallback(self):
+        result = safe_filename("", "text/plain")
+        assert result == "untitled.txt"
+
+    def test_whitespace_only_fallback(self):
+        result = safe_filename("   ", "text/plain")
+        assert result == "untitled.txt"
+
+    def test_length_truncation(self):
+        long_name = "a" * 300
+        result = safe_filename(long_name, "text/plain")
+        # 200-char base + ".txt" extension
+        assert result == "a" * 200 + ".txt"
+
+    def test_no_extension_for_unknown_mime(self):
+        result = safe_filename("somefile", "application/octet-stream")
+        assert result == "somefile"

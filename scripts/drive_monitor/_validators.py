@@ -11,7 +11,15 @@ import re
 import urllib.parse
 from pathlib import Path, PurePosixPath
 
-from scripts.drive_monitor._types import _DRIVE_FILE_ID_RE, _ALIAS_RE
+from scripts.drive_monitor._types import (
+    _DRIVE_FILE_ID_RE,
+    _ALIAS_RE,
+    MIME_EXTENSION_MAP,
+)
+
+_LEADING_DOTS_RE: re.Pattern[str] = re.compile(r"^\.+")
+_UNSAFE_CHARS_RE: re.Pattern[str] = re.compile(r"[^\w\-. ]+")
+_MAX_BASENAME_LEN: int = 200
 
 _FORBIDDEN_COMPONENTS: frozenset[str] = frozenset({".."})
 _MAX_PATH_DEPTH: int = 20
@@ -130,6 +138,25 @@ def build_drive_asset_path(
         )
 
     return target
+
+
+def safe_filename(display_name: str, mime_type: str) -> str:
+    """Build a safe filename for an asset from the display name and MIME type.
+
+    Replaces unsafe characters with underscores, strips leading dots (to
+    prevent hidden files), limits length to 200 chars, and appends the
+    canonical extension for the MIME type.  Returns ``"untitled"`` (plus
+    extension) when the sanitised base is empty.
+    """
+    base = _UNSAFE_CHARS_RE.sub("_", display_name).strip().rstrip(".")
+    base = _LEADING_DOTS_RE.sub("", base)
+    if not base:
+        base = "untitled"
+    base = base[:_MAX_BASENAME_LEN]
+    ext = MIME_EXTENSION_MAP.get(mime_type, "")
+    if ext and not base.lower().endswith(ext):
+        return base + ext
+    return base
 
 
 def build_wiki_page_path(repo_root: Path, wiki_page: str) -> Path:
