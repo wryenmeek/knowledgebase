@@ -15,6 +15,7 @@
 import { Octokit } from "octokit";
 import { cachePlugin } from "./cache-plugin.js";
 import { getGitRepoInfo } from "./git.js";
+import { GITHUB_TOKEN } from "../env.js";
 
 /** Octokit with built-in ETag caching */
 export const CachedOctokit = Octokit.plugin(cachePlugin) as typeof Octokit;
@@ -25,7 +26,7 @@ export async function getIssues(
 ) {
   const repoInfo = await getGitRepoInfo();
   const octokit = new CachedOctokit({
-    auth: process.env.GITHUB_TOKEN,
+    auth: GITHUB_TOKEN,
   });
   const { data } = await octokit.rest.issues.listForRepo({
     owner: repoInfo.owner,

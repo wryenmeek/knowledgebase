@@ -14,24 +14,20 @@
 
 import * as util from "util";
 
-export const JULES_API_KEY = process.env.JULES_API_KEY;
-export const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-
-if (!JULES_API_KEY) {
-  console.error("❌ JULES_API_KEY environment variable is required.");
-  process.exit(1);
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`❌ ${name} environment variable is required.`);
+    process.exit(1);
+  }
+  return value;
 }
 
-if (!GITHUB_TOKEN) {
-  console.error("❌ GITHUB_TOKEN environment variable is required.");
-  process.exit(1);
-}
+export const JULES_API_KEY = requireEnv("JULES_API_KEY");
+export const GITHUB_TOKEN = requireEnv("GITHUB_TOKEN");
 
 // Redact sensitive tokens from console outputs to prevent accidental exposure
-const originalLog = console.log;
-const originalError = console.error;
-
-function redact(text: string): string {
+export function redact(text: string): string {
   let redacted = text;
   if (JULES_API_KEY) redacted = redacted.replaceAll(JULES_API_KEY, "***REDACTED_JULES_API_KEY***");
   if (GITHUB_TOKEN) redacted = redacted.replaceAll(GITHUB_TOKEN, "***REDACTED_GITHUB_TOKEN***");
@@ -45,6 +41,40 @@ console.log = (...args: any[]) => {
 };
 
 console.error = (...args: any[]) => {
+  const formatted = util.format(...args);
+  const redacted = redact(formatted);
+  process.stderr.write(redacted + '\n');
+};
+
+process.on('uncaughtException', (err) => {
+  console.error("Uncaught Exception:", err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  process.exit(1);
+});
+
+console.warn = (...args: any[]) => {
+  const formatted = util.format(...args);
+  const redacted = redact(formatted);
+  process.stderr.write(redacted + '\n');
+};
+
+console.info = (...args: any[]) => {
+  const formatted = util.format(...args);
+  const redacted = redact(formatted);
+  process.stdout.write(redacted + '\n');
+};
+
+console.debug = (...args: any[]) => {
+  const formatted = util.format(...args);
+  const redacted = redact(formatted);
+  process.stdout.write(redacted + '\n');
+};
+
+console.trace = (...args: any[]) => {
   const formatted = util.format(...args);
   const redacted = redact(formatted);
   process.stderr.write(redacted + '\n');

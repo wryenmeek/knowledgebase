@@ -54,6 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           pip install --quiet pip-audit
+          # Ignore CVE-2026-3219 on the base pip package as updating it inside the actions/setup-python runner environment is unreliable.
           pip-audit --desc on --ignore-vuln CVE-2026-3219
 
       - name: Bootstrap repo-local qmd preflight shim
