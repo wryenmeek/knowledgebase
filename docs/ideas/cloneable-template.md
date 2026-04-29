@@ -1,5 +1,7 @@
 # Cloneable Knowledgebase Template
 
+**Status:** Proposed — no implementation started
+
 ## Problem Statement
 
 How might we make the knowledgebase framework instantly forkable as a clean slate, with zero

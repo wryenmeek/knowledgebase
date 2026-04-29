@@ -29,21 +29,21 @@ repository's existing deterministic Python execution surface.
 
 ### Current implementation status snapshot
 
-<!-- snapshot updated 2026-04-27 -->
+<!-- snapshot updated 2026-04-29 -->
 
 The current repo state is:
 
 | Layer | Current status |
 |---|---|
 | Personas | 17 agents in `.github/agents/`: 11 `kb-workflow` category (knowledgebase-orchestrator, source-intake-steward, evidence-verifier, policy-arbiter, synthesis-curator, query-synthesist, topology-librarian, entity-resolution-and-canonicalization, maintenance-auditor, change-patrol, quality-analyst) and 6 `dev-support` category (code-reviewer, security-auditor, test-engineer, documentation-engineer, solutions-architect, framework-engineer). All have `category` frontmatter field. |
-| Skills | 97 skills in `.github/skills/`, all catalogued in `using-agent-skills/SKILL.md`. |
-| Framework wrappers (skill logic) | Skill-local logic wrappers landed for: `append-log-entry`, `check-link-topology`, `compute-kpis`, `analyze-missed-queries`, `context-engineering`, `documentation-and-adrs`, `enforce-page-template`, `enforce-repository-boundaries`, `run-deterministic-validators`, `sync-knowledgebase-state`, `validate-inbox-source`, `validate-wiki-governance`, `write-sourceref-citations`, `suggest-backlinks`, `log-intake-rejection`, `manage-redirects-and-anchors`, `fill-context-pages`, `generate-maintenance-docs`. |
+| Skills | 101 skills in `.github/skills/`, all catalogued in `using-agent-skills/SKILL.md`. |
+| Framework wrappers (skill logic) | Skill-local logic wrappers landed for: `append-log-entry`, `check-link-topology`, `compute-kpis`, `analyze-missed-queries`, `context-engineering`, `documentation-and-adrs`, `enforce-page-template`, `enforce-repository-boundaries`, `run-deterministic-validators`, `sync-knowledgebase-state`, `validate-inbox-source`, `validate-wiki-governance`, `write-sourceref-citations`, `suggest-backlinks`, `log-intake-rejection`, `manage-redirects-and-anchors`. Two additional skills (`fill-context-pages`, `generate-maintenance-docs`) delegate to repo-level scripts (`scripts/context/fill_context_pages.py`, `scripts/maintenance/generate_docs.py`) rather than skill-local `logic/` directories. |
 | Knowledge-structure skills | All 5 original skills landed; `entity-resolution-and-canonicalization` now also has a full agent persona. |
 | Deterministic execution | Core entrypoints (`scripts/kb/ingest.py`, `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, `scripts/kb/persist_query.py`) remain authoritative. All post-MVP package families also landed: `scripts/validation/**`, `scripts/reporting/**` (`content_quality_report.py`, `quality_runtime.py`), `scripts/context/**` (`fill_context_pages.py`, `manage_context_pages.py`), `scripts/maintenance/**` (`generate_docs.py`), `scripts/ingest/**` (`convert_sources_to_md.py`). |
 | Pre-commit hooks | All hooks landed in `scripts/hooks/`: `check_frontmatter.py`, `check_hooks_json.py`, `check_no_staged_locks.py`, `check_sourceref_format.py`, `check_context_md_format.py`, `check_matrix_coverage.py`. |
-| CONTEXT.md files | 5 CONTEXT.md files landed: repo root, `schema/`, `scripts/kb/`, `scripts/github_monitor/`, `.github/skills/`. |
-| GitHub monitor | `scripts/github_monitor/**` landed (`check_drift.py`, `classify_drift.py`, `fetch_content.py`, `synthesize_diff.py`) with CI-5 workflow. |
-| Verification | 788 tests, 1728 subtests green. Includes `tests/kb/test_github_customizations.py`, `test_framework_agents.py` (22 tests), and `UsingAgentSkillsTests` class. |
+| CONTEXT.md files | 6 CONTEXT.md files landed: repo root, `schema/`, `scripts/kb/`, `scripts/github_monitor/`, `scripts/drive_monitor/`, `.github/skills/`. |
+| GitHub monitor | `scripts/github_monitor/**` landed (`check_drift.py`, `classify_drift.py`, `fetch_content.py`, `synthesize_diff.py`) with CI-5 workflow. `scripts/drive_monitor/**` also landed (`check_drift.py`, `classify_drift.py`, `fetch_content.py`, `synthesize_diff.py`, `create_issues.py`, `advance_cursor.py`) with CI-6 workflow. |
+| Verification | 982 tests green. Includes `tests/kb/test_github_customizations.py`, `test_framework_agents.py` (22 tests), `UsingAgentSkillsTests` class, and `tests/drive_monitor/` (11 test files). |
 
 ### In scope now
 

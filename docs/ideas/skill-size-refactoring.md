@@ -1,18 +1,25 @@
 # Inventory: Skill Size Refactoring
 
-**Status:** In progress — `references/` directories created for 7 skills; SKILL.md content not yet extracted (2026-04-27)
+**Status:** In progress — `references/` directories created for 7 skills; reference content extracted for 4 skills but SKILL.md files not yet trimmed (2026-04-29)
 **Date:** 2025-07-18
 **Author:** Design research (Phase 7-C)
 
-> **Implementation note (2026-04-27):** `references/` directories were created for
-> 7 skills (test-driven-development, ci-cd-and-automation, frontend-ui-engineering,
-> shipping-and-launch, code-review-and-quality, security-and-hardening,
-> performance-optimization) plus a global `.github/skills/references/` shared
-> directory. However, no SKILL.md content has been extracted yet — line counts
-> are unchanged from the inventory below. **Exception:** `using-agent-skills`
-> grew from 191 → 349 lines (all 97 skills catalogued with Route column). The
-> line counts in §2 remain accurate for all other skills. Decision from §7 has
-> not been made; implementation is paused at the `references/` scaffolding stage.
+> **Implementation note (2026-04-27, updated 2026-04-29):** `references/`
+> directories were created for 7 skills (test-driven-development,
+> ci-cd-and-automation, frontend-ui-engineering, shipping-and-launch,
+> code-review-and-quality, security-and-hardening, performance-optimization)
+> plus a global `.github/skills/references/` shared directory. Reference
+> content has been extracted for 4 skills: `ci-cd-and-automation` (GitHub
+> Actions examples), `code-review-and-quality` (review checklist template),
+> `security-and-hardening` (OWASP prevention examples), and
+> `performance-optimization` (anti-pattern examples). The remaining 3 skills
+> have only scaffolding (symlinks to global references). However, SKILL.md
+> line counts remain unchanged — the extracted content has not yet been
+> removed from the SKILL.md files. **Exception:** `using-agent-skills` grew
+> from 191 → 349 lines (all skills catalogued with Route column). The line
+> counts in §2 remain accurate for all other skills. Decision from §7 has
+> not been made; implementation is paused at the extraction-without-trimming
+> stage.
 
 ---
 

@@ -1,5 +1,7 @@
 # Google Drive Source Monitoring
 
+**Status:** Implemented — `scripts/drive_monitor/` landed, ADR-021 accepted, CI-6 workflow running (2026-04-29)
+
 ## Problem Statement
 How might we monitor registered Google Drive root folders recursively for file changes, and automatically route those changes through the wiki's provenance-safe ingest pipeline — with the same governance guarantees as the existing GitHub source monitoring pipeline (`scripts/github_monitor/`)?
 

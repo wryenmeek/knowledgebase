@@ -1,9 +1,9 @@
 # Spec: Google Drive Source Monitoring Pipeline
 
 > **Phase:** Spec-Driven Development — Phase 1 (Specify)
-> **Status:** Draft — awaiting human review
+> **Status:** Implemented — ADR-021 accepted, `scripts/drive_monitor/` landed with CI-6 workflow (2026-04-29)
 > **One-pager:** `docs/ideas/google-drive-source-monitoring.md`
-> **Governing ADR to produce:** `docs/decisions/ADR-021-google-drive-source-monitoring.md`
+> **Governing ADR:** `docs/decisions/ADR-021-google-drive-source-monitoring.md`
 
 ---
 

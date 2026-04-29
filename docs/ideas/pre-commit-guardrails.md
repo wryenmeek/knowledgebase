@@ -4,15 +4,17 @@
 **Date:** 2025-07-18
 **Author:** Design research (Phase 7-B)
 
-> **Implementation note (2026-04-27):** All hook types described in §2 have
-> landed in `scripts/hooks/`: `check_no_staged_locks.py` (§2.4),
-> `check_frontmatter.py` (§2.1), `check_sourceref_format.py` (§2.3),
-> `check_hooks_json.py` (§2.2 extended), `check_context_md_format.py`,
-> and `check_matrix_coverage.py` (§2.2 write-surface lint). Raw git hooks
-> approach (§5) was adopted. CI runs the same checks (§6). Pre-commit hook
-> invokes all scripts in < 3s budget. Open questions from §8: hooks are
-> opt-in locally, documented in README; CI runners don't install hooks but
-> run equivalent checks; agent cloud commits bypass local hooks by design.
+> **Implementation note (2026-04-27, updated 2026-04-29):** All hook types
+> described in §2 have landed in `scripts/hooks/`: `check_no_staged_locks.py`
+> (§2.4), `check_frontmatter.py` (§2.1), `check_sourceref_format.py` (§2.3),
+> `check_hooks_json.py` (§2.2 extended), `check_context_md_format.py`, and
+> `check_matrix_coverage.py` (§2.2 write-surface lint). Contrary to §5's
+> recommendation, the `pre-commit` Python framework was adopted (with
+> `.pre-commit-config.yaml`); secrets detection (§2.5) uses the external
+> `detect-secrets` package (Yelp). CI runs the same checks (§6). Open
+> questions from §8: hooks are opt-in locally, documented in README; CI
+> runners don't install hooks but run equivalent checks; agent cloud commits
+> bypass local hooks by design.
 
 ---
 

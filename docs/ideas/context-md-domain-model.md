@@ -4,11 +4,15 @@
 **Date:** 2025-07-18
 **Author:** Design research (Phase 7-A)
 
-> **Implementation note (2026-04-27):** All CONTEXT.md files described in §4 have
-> landed: `./CONTEXT.md` (repo-root), `schema/CONTEXT.md`, `scripts/kb/CONTEXT.md`,
-> `scripts/github_monitor/CONTEXT.md`, and `.github/skills/CONTEXT.md`. The
-> `context-engineering` skill loads them. Open questions from §7 were resolved:
-> markdown tables (not pure YAML) won; human+agent hybrid ownership with PR review;
+> **Implementation note (2026-04-27, updated 2026-04-29):** Five CONTEXT.md files
+> have landed: `./CONTEXT.md` (repo-root), `schema/CONTEXT.md`,
+> `scripts/kb/CONTEXT.md`, `scripts/github_monitor/CONTEXT.md`, and
+> `.github/skills/CONTEXT.md`. A sixth, `scripts/drive_monitor/CONTEXT.md`, was
+> added with the Drive monitor pipeline. Note: `wiki/CONTEXT.md` listed in §4's
+> placement rules was **not** created — wiki content domain vocabulary has not
+> been captured in a dedicated CONTEXT.md file yet. The `context-engineering`
+> skill loads the existing files. Open questions from §7 were resolved: markdown
+> tables (not pure YAML) won; human+agent hybrid ownership with PR review;
 > line-count cap enforced informally; no conflict with `copilot-instructions.md`
 > (files complement, not replace, each other).
 
