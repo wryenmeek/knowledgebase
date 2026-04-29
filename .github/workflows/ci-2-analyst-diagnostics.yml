@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
 
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@b9dc1e7af1e0b57e7d174620f4f9f6b9bcbf90c7 # v2
+        uses: gitleaks/gitleaks-action@v2 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -43,7 +43,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip dependencies
-        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4
+        uses: actions/cache@v4 # v4
         with:
           path: ~/.cache/pip
           key: pip-${{ runner.os }}-py3.12-${{ hashFiles('**/pyproject.toml') }}
@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload diagnostics artifacts
         if: always()
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4
+        uses: actions/upload-artifact@v4 # v4
         with:
           name: ci2-analyst-diagnostics-${{ github.run_id }}
           path: diagnostics/
