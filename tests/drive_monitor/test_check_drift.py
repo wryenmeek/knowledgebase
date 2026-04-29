@@ -69,6 +69,7 @@ class TestCheckDriftNoRegistries:
         data = json.loads(output.read_text())
         assert data["has_drift"] is False
         assert data["drifted"] == []
+        assert data["cursors"] == {}
 
 
 class TestCheckDriftUninitializedCursor:
@@ -97,6 +98,8 @@ class TestCheckDriftUninitializedCursor:
         assert data["has_drift"] is False
         assert len(data["uninitialized"]) == 1
         assert data["uninitialized"][0]["file_id"] == "file1"
+        # First-run bootstrap token must be captured in cursors
+        assert data["cursors"] == {"my-docs": "new_token_123"}
 
 
 class TestCheckDriftContentChanged:
@@ -152,6 +155,8 @@ class TestCheckDriftContentChanged:
         assert drifted["event_type"] == "content_changed"
         assert drifted["current_drive_version"] == 15
         assert drifted["last_applied_drive_version"] == 10
+        # Cursor from list_changes must be present
+        assert data["cursors"] == {"my-docs": "token_xyz"}
 
     def test_native_doc_same_version_not_drifted(self, tmp_path):
         registry = _make_registry(
@@ -409,3 +414,138 @@ class TestResolveParentFolder:
         ):
             result = _resolve_parent_folder(mock_drive, "file1", {"FOLDER1"})
         assert result == "FOLDER1"
+
+
+class TestCheckDriftCursors:
+    """Verify the cursors dict in the drift report."""
+
+    def test_cursor_present_in_normal_drift_report(self, tmp_path):
+        """Normal run: cursor from list_changes propagates to report."""
+        registry = _make_registry(
+            changes_page_token="token_abc",
+            file_entries=[{
+                "file_id": "file1",
+                "tracking_status": "active",
+                "display_name": "My Doc",
+                "mime_type": "application/vnd.google-apps.document",
+                "last_applied_drive_version": 10,
+                "wiki_page": "wiki/cms/my-doc.md",
+            }],
+        )
+        reg_path = _write_registry(tmp_path, registry)
+        output = tmp_path / "drift-report.json"
+
+        mock_changes = [
+            {
+                "fileId": "file1",
+                "removed": False,
+                "file": {
+                    "id": "file1",
+                    "name": "My Doc",
+                    "mimeType": "application/vnd.google-apps.document",
+                    "version": 10,
+                    "trashed": False,
+                },
+            }
+        ]
+
+        with (
+            patch("scripts.drive_monitor.check_drift.build_drive_client"),
+            patch(
+                "scripts.drive_monitor.check_drift.list_changes",
+                return_value=(mock_changes, "cursor_after_check"),
+            ),
+        ):
+            check_drift(
+                repo_root=tmp_path,
+                registry_paths=[reg_path],
+                output_path=output,
+            )
+
+        data = json.loads(output.read_text())
+        assert "cursors" in data
+        assert data["cursors"] == {"my-docs": "cursor_after_check"}
+
+    def test_no_drift_alias_still_has_cursor(self, tmp_path):
+        """Even when drifted=[], the alias cursor must appear."""
+        registry = _make_registry(
+            changes_page_token="token_abc",
+            file_entries=[{
+                "file_id": "file1",
+                "tracking_status": "active",
+                "display_name": "My Doc",
+                "mime_type": "application/vnd.google-apps.document",
+                "last_applied_drive_version": 10,
+                "wiki_page": "wiki/cms/my-doc.md",
+            }],
+        )
+        reg_path = _write_registry(tmp_path, registry)
+        output = tmp_path / "drift-report.json"
+
+        # No changes returned from API
+        with (
+            patch("scripts.drive_monitor.check_drift.build_drive_client"),
+            patch(
+                "scripts.drive_monitor.check_drift.list_changes",
+                return_value=([], "new_cursor_no_drift"),
+            ),
+        ):
+            check_drift(
+                repo_root=tmp_path,
+                registry_paths=[reg_path],
+                output_path=output,
+            )
+
+        data = json.loads(output.read_text())
+        assert data["has_drift"] is False
+        assert data["cursors"] == {"my-docs": "new_cursor_no_drift"}
+
+    def test_first_run_bootstrap_token_in_cursors(self, tmp_path):
+        """First run (no existing cursor) must capture start token."""
+        registry = _make_registry(
+            changes_page_token=None,
+            file_entries=[],
+        )
+        reg_path = _write_registry(tmp_path, registry)
+        output = tmp_path / "drift-report.json"
+
+        with (
+            patch("scripts.drive_monitor.check_drift.build_drive_client"),
+            patch(
+                "scripts.drive_monitor.check_drift.get_changes_start_page_token",
+                return_value="bootstrap_token_999",
+            ),
+        ):
+            check_drift(
+                repo_root=tmp_path,
+                registry_paths=[reg_path],
+                output_path=output,
+            )
+
+        data = json.loads(output.read_text())
+        assert data["cursors"] == {"my-docs": "bootstrap_token_999"}
+
+    def test_api_error_omits_cursor(self, tmp_path):
+        """If list_changes fails, no cursor should appear for that alias."""
+        registry = _make_registry(changes_page_token="token_abc")
+        reg_path = _write_registry(tmp_path, registry)
+        output = tmp_path / "drift-report.json"
+
+        from scripts.drive_monitor._http import DriveAPIRequestError
+
+        with (
+            patch("scripts.drive_monitor.check_drift.build_drive_client"),
+            patch(
+                "scripts.drive_monitor.check_drift.list_changes",
+                side_effect=DriveAPIRequestError(detail="timeout", status_code=504),
+            ),
+        ):
+            check_drift(
+                repo_root=tmp_path,
+                registry_paths=[reg_path],
+                output_path=output,
+            )
+
+        data = json.loads(output.read_text())
+        assert data["cursors"] == {}
+        assert len(data["errors"]) > 0

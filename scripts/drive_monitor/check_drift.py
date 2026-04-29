@@ -128,6 +128,8 @@ def _check_single_registry(
         })
         return {
             "registry": str(registry_path.relative_to(repo_root)),
+            "alias": str(registry_path.stem),
+            "new_page_token": None,
             "drifted": drifted,
             "up_to_date": up_to_date,
             "uninitialized": uninitialized,
@@ -150,6 +152,8 @@ def _check_single_registry(
         })
         return {
             "registry": str(registry_path.relative_to(repo_root)),
+            "alias": alias,
+            "new_page_token": None,
             "drifted": drifted,
             "up_to_date": up_to_date,
             "uninitialized": uninitialized,
@@ -180,7 +184,7 @@ def _check_single_registry(
     page_token = registry.get("changes_page_token")
     if not page_token:
         try:
-            _ = get_changes_start_page_token(drive)
+            start_token = get_changes_start_page_token(drive)
         except (DriveAPIRequestError, DriveAPIResponseError) as exc:
             errors.append({
                 "alias": alias,
@@ -190,6 +194,8 @@ def _check_single_registry(
             })
             return {
                 "registry": str(registry_path.relative_to(repo_root)),
+                "alias": alias,
+                "new_page_token": None,
                 "drifted": drifted,
                 "up_to_date": up_to_date,
                 "uninitialized": uninitialized,
@@ -206,6 +212,8 @@ def _check_single_registry(
             })
         return {
             "registry": str(registry_path.relative_to(repo_root)),
+            "alias": alias,
+            "new_page_token": start_token,
             "drifted": drifted,
             "up_to_date": up_to_date,
             "uninitialized": uninitialized,
@@ -215,7 +223,7 @@ def _check_single_registry(
 
     # Fetch changes since last cursor
     try:
-        changes, _new_token = list_changes(drive, page_token)
+        changes, new_page_token = list_changes(drive, page_token)
     except (DriveAPIRequestError, DriveAPIResponseError) as exc:
         errors.append({
             "alias": alias,
@@ -225,6 +233,8 @@ def _check_single_registry(
         })
         return {
             "registry": str(registry_path.relative_to(repo_root)),
+            "alias": alias,
+            "new_page_token": None,
             "drifted": drifted,
             "up_to_date": up_to_date,
             "uninitialized": uninitialized,
@@ -460,6 +470,8 @@ def _check_single_registry(
 
     return {
         "registry": str(registry_path.relative_to(repo_root)),
+        "alias": alias,
+        "new_page_token": new_page_token,
         "drifted": drifted,
         "up_to_date": up_to_date,
         "uninitialized": uninitialized,
@@ -510,6 +522,7 @@ def check_drift(
             "up_to_date": [],
             "uninitialized": [],
             "errors": [],
+            "cursors": {},
         }
         output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         return SurfaceResult(
@@ -525,6 +538,7 @@ def check_drift(
     all_up_to_date: list[dict[str, Any]] = []
     all_uninitialized: list[dict[str, Any]] = []
     all_errors: list[dict[str, Any]] = []
+    cursors: dict[str, str] = {}
 
     for reg_path in registry_paths:
         result = _check_single_registry(reg_path, repo_root)
@@ -532,6 +546,10 @@ def check_drift(
         all_up_to_date.extend(result["up_to_date"])
         all_uninitialized.extend(result["uninitialized"])
         all_errors.extend(result["errors"])
+        token = result.get("new_page_token")
+        alias = result.get("alias")
+        if alias and token:
+            cursors[alias] = token
 
     has_drift = bool(all_drifted)
     report = {
@@ -545,6 +563,7 @@ def check_drift(
         "up_to_date": all_up_to_date,
         "uninitialized": all_uninitialized,
         "errors": all_errors,
+        "cursors": cursors,
     }
 
     try:

@@ -221,8 +221,13 @@ class DriveErrorEntry(TypedDict):
     message: str
 
 
-class DriveDriftReport(TypedDict):
-    """Top-level drift report produced by ``check_drift.py``."""
+class DriveDriftReport(TypedDict, total=False):
+    """Top-level drift report produced by ``check_drift.py``.
+
+    Required fields: ``version``, ``generated_at``, ``registry``,
+    ``has_drift``, ``drifted``, ``up_to_date``, ``uninitialized``,
+    ``errors``, ``cursors``.
+    """
 
     version: str
     generated_at: str
@@ -232,6 +237,7 @@ class DriveDriftReport(TypedDict):
     up_to_date: list[DriveUpToDateEntry]
     uninitialized: list[DriveUninitializedEntry]
     errors: list[DriveErrorEntry]
+    cursors: dict[str, str]  # alias → new_page_token for Changes API cursor advancement
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +402,21 @@ def validate_drive_drift_report(data: Any) -> DriveDriftReport:
                 f"Drive drift report {list_key!r} must be a list, "
                 f"got {type(data[list_key]).__name__!r}"
             )
+
+    # Validate cursors if present (maps alias → new_page_token)
+    cursors = data.get("cursors")
+    if cursors is not None:
+        if not isinstance(cursors, dict):
+            raise ValueError(
+                f"Drive drift report 'cursors' must be a dict, "
+                f"got {type(cursors).__name__!r}"
+            )
+        for alias, token in cursors.items():
+            if not isinstance(alias, str) or not isinstance(token, str):
+                raise ValueError(
+                    f"Drive drift report 'cursors' entries must be "
+                    f"str→str mappings, got {alias!r}→{token!r}"
+                )
 
     if not isinstance(data["has_drift"], bool):
         raise ValueError(
