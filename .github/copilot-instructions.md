@@ -266,6 +266,38 @@ The following skills require real-time interactive dialogue with the user. They 
 
 This rule takes precedence over any "work autonomously" instruction from the autopilot system.
 
+## Operational patterns
+
+### Verify status claims before acting
+
+When a `docs/ideas/` document, plan, or feature claims a terminal status (`Implemented`, `Done`), verify its key claims against the actual codebase before taking any action that depends on that status (archiving, closing, reporting completion). Documents frequently claim completion while gaps remain — three of five "Implemented" docs in the April 2026 review had unresolved issues. Treat status fields as assertions to be checked, not facts to be trusted.
+
+### Default to parallel subagent dispatch
+
+When asked to review, audit, or investigate broad areas of the codebase, default to dispatching parallel subagents without waiting for the user to say "use subagents." This applies to:
+- Multi-file code review and simplification passes
+- Documentation accuracy audits
+- Cross-functional best-practices validation
+- Broad codebase research (e.g., "what's incomplete?")
+
+### Investigate root causes proactively
+
+When reporting on CI/automation health, investigate failure root causes — don't just count failures or report surface-level stats. If a workflow has 19 consecutive failures, read the logs and diagnose the error before reporting. When Jules PRs aren't being created, check the dispatch pipeline, not just the PR list.
+
+### "Fleet deployed" continuation signal
+
+When the user sends "Fleet deployed" (or similar), it means they have pushed commits and are ready for the next planned phase to proceed. Treat it as a continuation signal: check the current plan state, identify the next pending task, and execute it.
+
+### Cross-functional review as default post-implementation step
+
+After non-trivial implementation work, proactively suggest a cross-functional review using parallel custom agent dispatch. The standard pattern:
+1. Dispatch `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` in parallel
+2. Each agent reviews the recent commits against best practices, ADRs, and repo documentation
+3. Consolidate findings and present as a unified report
+4. Address findings before considering the work complete
+
+This parallels the quality-pass-chain skill but uses custom agents for richer, domain-specific review.
+
 ## Boundaries
 
 - **Always:** follow skill workflow requirements when applicable.
