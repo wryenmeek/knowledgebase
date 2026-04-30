@@ -1,0 +1,205 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-04-30T01:11:30.227277+00:00",
+  "root_causes": [
+    {
+      "id": "rc-fleet-shell-injection",
+      "title": "Shell injection via ${{ inputs.* }} in run blocks",
+      "severity": "critical",
+      "issues": [
+        72
+      ],
+      "files": [
+        ".github/workflows/fleet-dispatch.yml",
+        ".github/workflows/fleet-merge.yml"
+      ],
+      "description": "Direct interpolation of GitHub Actions inputs in bash scripts creates shell injection vulnerabilities.",
+      "solution_summary": "Move inputs to the env context and reference them as environment variables."
+    },
+    {
+      "id": "rc-optional-surface-refactor",
+      "title": "Duplicated constants and domain-leakage in _optional_surface_common",
+      "severity": "medium",
+      "issues": [
+        64,
+        65,
+        67
+      ],
+      "files": [
+        "scripts/_optional_surface_common.py",
+        "scripts/kb/qmd_preflight.py",
+        "scripts/reporting/content_quality_report.py",
+        "scripts/reporting/quality_runtime.py"
+      ],
+      "description": "Constants drift and reporting logic leaked into common surface plumbing.",
+      "solution_summary": "Extract reporting IO, import LOCK_PATH from contracts, add keep-in-sync guards."
+    },
+    {
+      "id": "rc-kb-write-perf-ci-docs",
+      "title": "KB scripting read/write bugs, perf, CI workflows, and documentation",
+      "severity": "high",
+      "issues": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        63,
+        66
+      ],
+      "files": [
+        "scripts/kb/ingest_render.py",
+        "scripts/kb/ingest.py",
+        "scripts/kb/update_index.py",
+        "scripts/kb/lint_wiki.py",
+        "scripts/kb/write_utils.py",
+        "scripts/kb/persist_query.py",
+        "raw/inbox/SPEC.md",
+        "docs/architecture.md",
+        ".github/workflows/ci-2-analyst-diagnostics.yml",
+        ".github/workflows/ci-3-pr-producer.yml",
+        ".gitignore"
+      ],
+      "description": "A group of write, performance, CI issues, and docs drift. Grouped because their test files heavily overlap and they share core dependencies. Includes ADR-011 violations, synthetic SHAs, missing update locks, missing symlink checks, no-op flags, batch mode support, test coverage, and docs drift.",
+      "solution_summary": "Fix all scripting issues, harden symlinks, add lock, fix perf, fix workflows, and update docs."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-fix-shell-injection",
+      "title": "Fix shell injection in fleet workflows",
+      "root_cause": "rc-fleet-shell-injection",
+      "issues": [
+        72
+      ],
+      "files": [
+        ".github/workflows/fleet-dispatch.yml",
+        ".github/workflows/fleet-merge.yml"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "medium",
+      "prompt": "Fix shell injection via `${{ inputs.base_branch }}` in fleet workflows.\n\nFiles to modify:\n- `.github/workflows/fleet-dispatch.yml`\n- `.github/workflows/fleet-merge.yml`\n\nRoot Cause Explanation:\nDirect interpolation of `${{ inputs.base_branch }}` in `run:` blocks allows shell injection.\nFor example, in `.github/workflows/fleet-dispatch.yml`:\n```yaml\n          BASE=\"${{ inputs.base_branch || 'main' }}\"\n```\nIf an attacker passes a branch name like `main\"; echo \"hacked`, the shell executes the injected command.\n\nImplementation & Integration:\nIn `fleet-dispatch.yml`, map inputs in the `env` context and replace usages:\n```diff\n       - name: Dispatch task sessions\n         working-directory: scripts/fleet\n         env:\n           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}\n           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n-          FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}\n+          FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}\n+          INPUT_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}\n         run: |\n           set -euo pipefail\n-          git pull --ff-only origin \"${{ inputs.base_branch || 'main' }}\"\n+          git pull --ff-only origin \"${INPUT_BASE_BRANCH}\"\n           bun fleet-dispatch.ts\n```\n\nIn `fleet-merge.yml`:\n```diff\n       - name: Find and merge fleet PRs sequentially\n+        env:\n+          INPUT_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}\n         run: |\n           set -euo pipefail\n \n-          BASE_BRANCH=\"${{ inputs.base_branch || 'main' }}\"\n+          BASE_BRANCH=\"${INPUT_BASE_BRANCH}\"\n```\nMake sure to do this for all instances. Also use `$PR_NUMBER` instead of `${{ steps.wait_pr.outputs.pr_number }}`.\n\nTest scenarios:\n- Normal branch name `main` works.\n- Branch name with shell characters does not execute code.\n\nAcceptance criteria:\n- No `${{ inputs.* }}` inside `run:` blocks in modified files.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-refactor-optional-surface",
+      "title": "Refactor optional surface common and reporting",
+      "root_cause": "rc-optional-surface-refactor",
+      "issues": [
+        64,
+        65,
+        67
+      ],
+      "files": [
+        "scripts/_optional_surface_common.py",
+        "scripts/kb/qmd_preflight.py",
+        "scripts/reporting/content_quality_report.py",
+        "scripts/reporting/quality_runtime.py"
+      ],
+      "new_files": [
+        "scripts/reporting/_artifact.py"
+      ],
+      "test_files": [
+        "tests/kb/test_optional_surface_scripts.py",
+        "tests/kb/test_qmd_preflight.py"
+      ],
+      "risk": "medium",
+      "prompt": "Refactor `_optional_surface_common.py` to fix duplication and extract reporting IO.\n\nRoot Cause Explanation:\n`_optional_surface_common.py` has accumulated reporting logic and duplicated constants.\n```python\n# scripts/_optional_surface_common.py:440\ndef validate_report_artifact(artifact: dict, report_type: str) -> None:\n```\nIt should import it from contracts. And qmd_preflight duplicates STATUS_PASS.\n\nImplementation & Integration:\n1. Move `validate_report_artifact`, `write_report_artifact`, `REPORT_ARTIFACT_WRITE_ROOT`, `_REPORT_TYPE_FINDINGS_KEYS`, `_REPORT_TYPE_SUMMARY_KEYS`, and `_REPORT_ENVELOPE_REQUIRED` to `scripts/reporting/_artifact.py`. Add `__all__` listing the 3 public names.\n```python\n# scripts/reporting/_artifact.py\n__all__ = [\"validate_report_artifact\", \"write_report_artifact\", \"REPORT_ARTIFACT_WRITE_ROOT\"]\n```\n2. In `scripts/reporting/content_quality_report.py` and `scripts/reporting/quality_runtime.py`, import `write_report_artifact` from `scripts.reporting._artifact`.\n```diff\n-from scripts._optional_surface_common import write_report_artifact\n+from scripts.reporting._artifact import write_report_artifact\n```\n3. In `scripts/kb/qmd_preflight.py`, add keep-in-sync guards:\n```diff\n-STATUS_PASS = \"pass\"\n+STATUS_PASS = \"pass\"  # keep in sync with scripts/_optional_surface_common.STATUS_PASS\n```\n4. In `scripts/_optional_surface_common.py`, replace `LOCK_PATH = \"wiki/.kb_write.lock\"` with `from scripts.kb.contracts import WRITE_LOCK_PATH as LOCK_PATH`. Update comments.\n\nTest scenarios:\n- Report generation creates correct JSON structure and file path\n- Tests continue to pass\n\nAcceptance criteria:\n- All usages of moved symbols still resolve.\n- Tests pass.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-kb-write-perf-ci-docs",
+      "title": "Fix KB write, indexing, persist, perf, CI, and doc issues",
+      "root_cause": "rc-kb-write-perf-ci-docs",
+      "issues": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        63,
+        66
+      ],
+      "files": [
+        "scripts/kb/ingest_render.py",
+        "scripts/kb/ingest.py",
+        "scripts/kb/update_index.py",
+        "scripts/kb/lint_wiki.py",
+        "scripts/kb/write_utils.py",
+        "scripts/kb/persist_query.py",
+        "raw/inbox/SPEC.md",
+        "docs/architecture.md",
+        ".github/workflows/ci-2-analyst-diagnostics.yml",
+        ".github/workflows/ci-3-pr-producer.yml",
+        ".gitignore"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_ingest.py",
+        "tests/kb/test_update_index.py",
+        "tests/kb/test_lint_wiki.py",
+        "tests/kb/test_write_utils.py",
+        "tests/kb/test_persist_query.py",
+        "tests/validation/test_workflow_actions.py"
+      ],
+      "risk": "high",
+      "prompt": "Fix a cluster of highly-coupled KB script, documentation, and CI issues including locking, symlink guards, performance, cross boundary imports, and workflow configs.\n\nRoot Cause Explanation:\n- `ingest.py` imports private symbols from its sibling `ingest_render.py` violating ADR-011.\n- `ingest.py` uses a synthetic SHA `00000...` and processes one by one via CLI loop.\n- `update_index.py` --write mode writes to the index without a lock.\n- `lint_wiki.py` has duplicate filesystem parses `list(wiki_root.rglob(\"*.md\"))` and redundant stat ops.\n- `write_utils.py` lacks symlink bounds checks when writing files.\n- `persist_query.py` unconditionally rebuilds index and has unused flags.\n- `raw/inbox/SPEC.md` says ingest generates entities.\n- `docs/architecture.md` spec says ingest generated entities and lacks Fleet section.\n- Missing test coverage gate, lock-file deletion bypassing governance, missing authoritative approval, duplicate parsing, inefficient source list handoff. Missing test coverage for workflow SHA pinning. Missing gitignore patterns.\n\nImplementation & Integration:\n1. In `scripts/kb/ingest_render.py`, rename `_PROVISIONAL_GIT_SHA`, `_build_source_ref`, `_build_provisional_source_provenance`, `_render_source_page`, and `_escape_quotes` to remove the leading underscore. Add an `__all__` list. Update callers in `ingest.py`.\n2. In `scripts/kb/ingest.py`, read GITHUB_SHA from env or fallback to subprocess `git rev-parse HEAD` for `PROVISIONAL_GIT_SHA`. Modify the CLI to accept a manifest file for batching multiple files. Loop over the files before calling `_write_index_if_changed`.\n3. In `scripts/kb/update_index.py`, import `write_utils` and use `with write_utils.exclusive_write_lock(wiki_root.parent):` around index write.\n4. In `scripts/kb/lint_wiki.py` and `scripts/kb/update_index.py`, reduce repeated path existence/stat operations. Cache the `path.exists()` calls for links.\n5. In `scripts/kb/write_utils.py`, add logic to ensure resolved paths are inside repo boundaries using `Path.resolve()` and `Path.is_relative_to()`. Raise `OSError` if outside. Use this in `write_text_capturing_previous_safe`.\n```python\nresolved = path.resolve()\nif not resolved.is_relative_to(repo_root):\n    raise OSError(\"Escape attempted\")\n```\n6. In `scripts/kb/persist_query.py`, remove `--result-json` and contradiction gate CLI arguments. Add logic to gate index regeneration on `analysis_changed` state.\n7. Update `raw/inbox/SPEC.md` and `docs/architecture.md` removing entity generation claims. Add 'Fleet orchestration' section to `docs/architecture.md`.\n8. Update corresponding tests in the `test_files` boundary to cover batching, real SHAs, write bounds against `/etc/passwd` via symlink, and persist_query flag removals.\n9. In `ci-2-analyst-diagnostics.yml`, enforce coverage gate using pytest-cov `--cov=scripts/kb --cov-fail-under=90` and remove duplicate workflow YAML parsing step (Ruby script).\n10. In `ci-3-pr-producer.yml`, enforce authoritative approval for manual dispatch (`environment: protected-pr-write`). Remove the `rm -f wiki/.kb_write.lock` step. Write source list to a file `ingest_manifest.txt` instead of using `GITHUB_OUTPUT` multiline string. Support the batch mode argument in `ingest.py` call.\n11. Add `.env.local`, `.env.*.local`, `.claude/` to `.gitignore`.\n12. Add tests in `tests/validation/test_workflow_actions.py` asserting workflow YAML uses SHA pins for actions `uses: actions/checkout@[a-f0-9]{40}`. Also add coverage tests for verification matrix gaps.\n\nTest scenarios:\n- Validate that the new SHA is a valid 40 char string\n- Pass multiple files in a manifest and ensure only 1 index rebuild occurs.\n- Run concurrent index updates to verify locking prevents corruption\n- A write attempt to `../../outside_repo.txt` via symlink raises OSError.\n- Persist query skips index rebuild if output matches state.\n\nAcceptance criteria:\n- No symlink escapes are possible.\n- Real SHA is used.\n- Batching works.\n- Locks are enforced.\n- Tests pass.\n- Workflows are properly formatted and tested.\n- Docs updated.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [
+    {
+      "issue": 19,
+      "reason": "Requires explicit baseline metrics discussion and CI capacity planning.",
+      "suggested_owner": "Platform Team"
+    }
+  ],
+  "file_ownership": {
+    ".github/workflows/fleet-dispatch.yml": "task-fix-shell-injection",
+    ".github/workflows/fleet-merge.yml": "task-fix-shell-injection",
+    "scripts/_optional_surface_common.py": "task-refactor-optional-surface",
+    "scripts/kb/qmd_preflight.py": "task-refactor-optional-surface",
+    "scripts/reporting/content_quality_report.py": "task-refactor-optional-surface",
+    "scripts/reporting/quality_runtime.py": "task-refactor-optional-surface",
+    "scripts/reporting/_artifact.py": "task-refactor-optional-surface",
+    "tests/kb/test_optional_surface_scripts.py": "task-refactor-optional-surface",
+    "tests/kb/test_qmd_preflight.py": "task-refactor-optional-surface",
+    "scripts/kb/ingest_render.py": "task-kb-write-perf-ci-docs",
+    "scripts/kb/ingest.py": "task-kb-write-perf-ci-docs",
+    "scripts/kb/update_index.py": "task-kb-write-perf-ci-docs",
+    "scripts/kb/lint_wiki.py": "task-kb-write-perf-ci-docs",
+    "scripts/kb/write_utils.py": "task-kb-write-perf-ci-docs",
+    "scripts/kb/persist_query.py": "task-kb-write-perf-ci-docs",
+    "raw/inbox/SPEC.md": "task-kb-write-perf-ci-docs",
+    "docs/architecture.md": "task-kb-write-perf-ci-docs",
+    ".github/workflows/ci-2-analyst-diagnostics.yml": "task-kb-write-perf-ci-docs",
+    ".github/workflows/ci-3-pr-producer.yml": "task-kb-write-perf-ci-docs",
+    ".gitignore": "task-kb-write-perf-ci-docs",
+    "tests/kb/test_ingest.py": "task-kb-write-perf-ci-docs",
+    "tests/kb/test_update_index.py": "task-kb-write-perf-ci-docs",
+    "tests/kb/test_lint_wiki.py": "task-kb-write-perf-ci-docs",
+    "tests/kb/test_write_utils.py": "task-kb-write-perf-ci-docs",
+    "tests/kb/test_persist_query.py": "task-kb-write-perf-ci-docs",
+    "tests/validation/test_workflow_actions.py": "task-kb-write-perf-ci-docs"
+  }
+}
