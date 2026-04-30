@@ -141,7 +141,9 @@ These files are checked by `tests/kb/test_framework_contracts.py` (`test_boundar
 
 ### `docs/ideas/` status lifecycle
 
-When implementing a feature described in a `docs/ideas/` document, update that document's status field in the same PR. Status values: `Proposed` → `In Progress` → `Implemented` → `Superseded`. A fully implemented feature with a "Draft" or "Proposed" status is misleading and causes repeated manual audit work.
+When implementing a feature described in a `docs/ideas/` document, update that document's status field in the same PR. A fully implemented feature with a "Draft" or "Proposed" status is misleading and causes repeated manual audit work.
+
+Status values: `Proposed` → `In Progress` → `Implemented`. For partial completion use `Implemented (Phase N)` (e.g., `Implemented (Phase 1)` when 4 of 22 skills are addressed). `Implemented` is terminal. This repo does not use `Superseded` for ideas documents — see the ADR evolution pattern below for how ADRs evolve.
 
 ### `docs/ideas/` archival to intake
 
@@ -164,6 +166,14 @@ Fully implemented and verified `docs/ideas/` documents may be archived to `raw/i
 > Archived to `raw/inbox/<filename>.md` for wiki source intake.
 > Full design proposal and implementation notes are in the archived copy.
 ```
+
+### ADR evolution pattern
+
+This repo does not use "Superseded" status for ADRs. When an ADR needs updating:
+- **Minor correction / implementation diverged:** Change status to `Accepted — amended in-place: <description> (see § Amendment)`. Add an `## Amendment` section before References documenting: date, what changed, why, and what didn't change.
+- **Extended by a new ADR:** Change status to `Accepted — extended by ADR-xxx`. The original ADR remains in place; the new ADR documents the extension.
+
+Follow the precedent set by ADR-004 and ADR-015. Never mark an ADR as "Superseded" — there is zero repo precedent for that status.
 
 ### Jules SDK
 
@@ -235,7 +245,11 @@ Adding to certain enums or dicts triggers test failures in contract-alignment te
 | `GovernedArtifactContract` entries in `contracts.py` | `test_governed_artifact_contracts_cover_declared_state_targets` expected set |
 | Files in a CONTEXT.md domain directory | Bump `last_updated` in the domain's CONTEXT.md |
 
-**CONTEXT.md domain mapping:** `scripts/kb/` → `scripts/kb/CONTEXT.md`, `schema/` → `schema/CONTEXT.md`, `scripts/github_monitor/` → `scripts/github_monitor/CONTEXT.md`, `scripts/drive_monitor/` → `scripts/drive_monitor/CONTEXT.md`, `.github/skills/` or `.github/agents/` or `.github/hooks/` → `.github/skills/CONTEXT.md`. Enforced by `tests/kb/test_context_md_freshness.py` — fails when ≥10 domain commits land after the `last_updated` date.
+**CONTEXT.md domain mapping:** `scripts/kb/` → `scripts/kb/CONTEXT.md`, `schema/` → `schema/CONTEXT.md`, `scripts/github_monitor/` → `scripts/github_monitor/CONTEXT.md`, `scripts/drive_monitor/` → `scripts/drive_monitor/CONTEXT.md`, `.github/skills/` or `.github/agents/` or `.github/hooks/` → `.github/skills/CONTEXT.md`, `wiki/` → `wiki/CONTEXT.md`. Enforced by `tests/kb/test_context_md_freshness.py` — fails when ≥10 domain commits land after the `last_updated` date.
+
+### CONTEXT.md required sections
+
+The pre-commit hook (`check_context_md_format.py`) validates these exact section headings: `## Terms`, `## Invariants`, `## File Roles`. These differ from what ADR-018 describes (`## Entities`, `## Patterns`) — **the hook is authoritative**. Max 200 lines. Frontmatter requires `scope` and `last_updated` fields.
 
 ### Parallel fleet agent file ownership
 
