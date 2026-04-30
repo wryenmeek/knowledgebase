@@ -54,7 +54,10 @@ jobs:
         run: |
           set -euo pipefail
           pip install --quiet pip-audit
-          pip-audit --desc on
+          # CVE-2026-3219 affects pip 26.0.1 on ubuntu-latest; no fix version
+          # available yet — ignore until upstream releases a patched pip.
+          # TODO(2026-09): re-evaluate once pip > 26.0.1 ships on ubuntu-latest.
+          pip-audit --desc on --ignore-vuln CVE-2026-3219
 
       - name: Bootstrap repo-local qmd preflight shim
         run: |
@@ -97,6 +100,9 @@ jobs:
             echo "event=${GITHUB_EVENT_NAME}"
             echo "sha=${GITHUB_SHA}"
           } | tee diagnostics/context.log
+
+      - name: Install test dependencies
+        run: pip install --quiet pytest
 
       - name: Run analyst diagnostics (lint + unit tests)
         id: diagnostics

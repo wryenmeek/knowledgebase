@@ -2,6 +2,7 @@ name: CI-1 Gatekeeper Trusted Handoff
 
 on:
   push:
+    branches: [main]
     paths:
       - raw/inbox/**
 

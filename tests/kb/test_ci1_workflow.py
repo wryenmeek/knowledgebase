@@ -182,7 +182,7 @@ class Ci1WorkflowContractTests(unittest.TestCase):
         self.assertIn("REQUIRED_PATH_PREFIX: raw/inbox/", self.workflow_text)
         self.assertRegex(
             self.workflow_text,
-            r"(?ms)^on:\n\s+push:\n\s+paths:\n\s+-\s+raw/inbox/\*\*\s*$",
+            r"(?ms)^on:\n\s+push:\n\s+branches:\s*\[main\]\n\s+paths:\n\s+-\s+raw/inbox/\*\*\s*$",
         )
         self.assertNotIn("pull_request:", self.workflow_text)
         self.assertNotIn("workflow_dispatch:", self.workflow_text)
