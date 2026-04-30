@@ -54,10 +54,12 @@ jobs:
         run: cd scripts/fleet && bun install
 
       - name: Find and merge fleet PRs sequentially
+        env:
+          FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
         run: |
           set -euo pipefail
 
-          BASE_BRANCH="${{ inputs.base_branch || 'main' }}"
+          BASE_BRANCH="${FLEET_BASE_BRANCH}"
           MAX_CI_WAIT=600           # 10 minutes per PR
           MAX_RETRIES=2             # max re-dispatch attempts per PR
           PR_POLL_TIMEOUT=900       # 15 minutes to wait for re-dispatched PR
