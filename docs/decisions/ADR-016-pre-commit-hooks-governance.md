@@ -1,7 +1,7 @@
 # ADR-016: Use raw git hooks (not the pre-commit framework) for local governance checks
 
 ## Status
-Accepted
+Accepted — amended in-place: implementation uses `pre-commit` framework (see § Amendment)
 
 ## Date
 2026-04-27
@@ -92,6 +92,30 @@ security boundary.
   as `read-only only` — hooks may never write to the repository.
 - `git commit --no-verify` bypasses all hooks; this is documented as
   emergency-only, not routine use.
+
+## Amendment
+
+**Date:** 2026-04-29
+
+**What changed:** The implementation adopted the `pre-commit` Python framework
+(`.pre-commit-config.yaml`) instead of raw git hooks as originally decided.
+
+**Why:** Two practical factors favoured the framework over raw hooks:
+1. The `detect-secrets` hook (Yelp) required integration with the `pre-commit`
+   framework — reimplementing it as a raw hook would have duplicated the
+   upstream tool's virtual environment and update mechanism.
+2. `.pre-commit-config.yaml` provides a standardized, declarative manifest for
+   all hook IDs, file filters, and entry points — simpler to maintain than a
+   shell script dispatcher.
+
+**What didn't change:** Every consequence in § Consequences above still holds.
+The hook scripts remain in `scripts/hooks/`, CI-2 is still the authoritative
+gate, cloud agents still bypass local hooks, and `--no-verify` is still
+emergency-only. The decision to run governance checks locally before push is
+unchanged; only the dispatch mechanism changed.
+
+**Setup:** `scripts/hooks/setup-hooks.sh` automates installation:
+`pip install pre-commit && pre-commit install`.
 
 ## References
 
