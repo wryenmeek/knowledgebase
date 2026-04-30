@@ -63,7 +63,9 @@ The frontmatter `scope` field and table section headers are validated by
 | `schema/CONTEXT.md` | Module | Schema file naming conventions and contract types |
 | `scripts/kb/CONTEXT.md` | Module | KB tooling terms (lock semantics, result codes, surface contracts) |
 | `scripts/github_monitor/CONTEXT.md` | Module | GitHub monitoring terms (drift report, registry entry, fetch/synthesize) |
+| `scripts/drive_monitor/CONTEXT.md` | Module | Drive monitoring terms (alias registry, folder entries, export normalization) |
 | `.github/skills/CONTEXT.md` | Module | Skill-layer vocabulary (phase gates, routing, artifact types) |
+| `wiki/CONTEXT.md` | Directory | Wiki content domain vocabulary (page statuses, governed artifacts, namespaces) |
 
 More specific scopes override less specific scopes on term conflicts.
 
@@ -133,7 +135,7 @@ semantics:
 ## References
 
 - `CONTEXT.md` — repo-root vocabulary file
-- `schema/CONTEXT.md`, `scripts/kb/CONTEXT.md`, `scripts/github_monitor/CONTEXT.md`, `.github/skills/CONTEXT.md`
+- `schema/CONTEXT.md`, `scripts/kb/CONTEXT.md`, `scripts/github_monitor/CONTEXT.md`, `scripts/drive_monitor/CONTEXT.md`, `.github/skills/CONTEXT.md`, `wiki/CONTEXT.md`
 - `scripts/hooks/check_context_md_format.py` — format validator
 - `.github/skills/context-engineering/SKILL.md` — context loading hierarchy
 - `docs/ideas/context-md-domain-model.md` — original design proposal

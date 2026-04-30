@@ -4,40 +4,32 @@
 **Date:** 2025-07-18
 **Author:** Design research (Phase 7-A)
 
-> **Implementation note (2026-04-27, updated 2026-04-29):** Five CONTEXT.md files
+> **Implementation note (2026-04-27, updated 2026-04-29):** Seven CONTEXT.md files
 > have landed: `./CONTEXT.md` (repo-root), `schema/CONTEXT.md`,
-> `scripts/kb/CONTEXT.md`, `scripts/github_monitor/CONTEXT.md`, and
-> `.github/skills/CONTEXT.md`. A sixth, `scripts/drive_monitor/CONTEXT.md`, was
-> added with the Drive monitor pipeline. Note: `wiki/CONTEXT.md` listed in §4's
-> placement rules was **not** created — wiki content domain vocabulary has not
-> been captured in a dedicated CONTEXT.md file yet. The `context-engineering`
-> skill loads the existing files. Open questions from §7 were resolved: markdown
-> tables (not pure YAML) won; human+agent hybrid ownership with PR review;
-> line-count cap enforced informally; no conflict with `copilot-instructions.md`
-> (files complement, not replace, each other).
+> `scripts/kb/CONTEXT.md`, `scripts/github_monitor/CONTEXT.md`,
+> `.github/skills/CONTEXT.md`, `scripts/drive_monitor/CONTEXT.md`, and
+> `wiki/CONTEXT.md`. The `context-engineering` skill provides manual loading
+> guidance for the existing files in its context hierarchy (Level 1b). Open
+> questions from §7 were resolved: markdown tables (not pure YAML) won;
+> human+agent hybrid ownership with PR review; line-count cap enforced
+> informally; no conflict with `copilot-instructions.md` (files complement,
+> not replace, each other).
 
 ## Remaining Remediation Items
 
-> Items found during 2026-04-29 verification review.
+> Items found during 2026-04-29 verification review. All resolved 2026-04-29.
 
-1. **context-engineering auto-loading claim overstated** — The implementation
-   note says "The `context-engineering` skill loads the existing files" but the
-   skill's SKILL.md only provides manual loading guidance in its context
-   hierarchy (Level 1b). No logic file in the skill automatically discovers or
-   loads CONTEXT.md files. **Action:** Either update the implementation note to
-   say "provides manual loading guidance" or implement actual auto-loading logic
-   in the context-engineering skill.
+1. ~~**context-engineering auto-loading claim overstated**~~ — Fixed 2026-04-29.
+   Implementation note updated to say "provides manual loading guidance for."
 
-2. **`wiki/CONTEXT.md` not created** — §4 placement rules list
-   `wiki/CONTEXT.md` for wiki content domain vocabulary. The implementation note
-   acknowledges this gap. Low priority — the pattern is established in 6 other
-   locations; wiki content domain vocabulary has not been captured yet.
+2. ~~**`wiki/CONTEXT.md` not created**~~ — Fixed 2026-04-29. `wiki/CONTEXT.md`
+   created with wiki-operational domain vocabulary. ADR-018 placement hierarchy
+   updated to include `wiki/CONTEXT.md` and `scripts/drive_monitor/CONTEXT.md`.
 
-3. **`fill-context-pages` integration not implemented** — §6 proposed that the
-   `fill-context-pages` skill "could scan CONTEXT.md for `[context-needed]`
-   markers." This integration does not exist; the skill currently scans only
-   `.github/skills/**`, `docs/**`, and `schema/**`. Low priority — the proposal
-   used conditional "could" language.
+3. ~~**`fill-context-pages` integration not implemented**~~ — Closed 2026-04-29.
+   The proposal used conditional "could" language. The `fill-context-pages`
+   skill's current scope (`.github/skills/**`, `docs/**`, `schema/**`) is
+   sufficient. Deferred as not-doing.
 
 ---
 

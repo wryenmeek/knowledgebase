@@ -64,6 +64,11 @@ CONTEXT_DOMAINS: list[_DomainSpec] = [
         tracked_dirs=[".github/skills/", ".github/agents/", ".github/hooks/"],
         exclude_patterns=[".github/skills/references/"],
     ),
+    _DomainSpec(
+        "wiki/CONTEXT.md",
+        tracked_dirs=["wiki/"],
+        exclude_patterns=["wiki/log.md"],
+    ),
 ]
 
 
