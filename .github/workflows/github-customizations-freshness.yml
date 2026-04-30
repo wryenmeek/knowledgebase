@@ -42,7 +42,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt --quiet
+        run: pip install -e . --quiet
 
       - name: Run drift detection
         id: drift
@@ -94,7 +94,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt --quiet
+        run: pip install -e . --quiet
 
       - name: Download drift report
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
