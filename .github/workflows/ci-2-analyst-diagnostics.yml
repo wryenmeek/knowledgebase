@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
 
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        uses: gitleaks/gitleaks-action@v2 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -43,7 +43,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@v4 # v4
         with:
           path: ~/.cache/pip
           key: pip-${{ runner.os }}-py3.12-${{ hashFiles('**/pyproject.toml') }}
@@ -53,7 +53,7 @@ jobs:
       - name: Dependency vulnerability audit (pip-audit)
         run: |
           set -euo pipefail
-          pip install --quiet pip-audit
+          pip install --upgrade pip && pip install --quiet pip-audit
           pip-audit --desc on
 
       - name: Bootstrap repo-local qmd preflight shim
@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload diagnostics artifacts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v4 # v4
         with:
           name: ci2-analyst-diagnostics-${{ github.run_id }}
           path: diagnostics/

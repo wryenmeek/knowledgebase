@@ -119,14 +119,23 @@ def validate_page_template_path(
     return normalized_page, tuple(violations)
 
 
+# Bolt Performance Optimization:
+# Pre-compile the regex to extract frontmatter in constant time, replacing
+# splitlines() which incurs O(N) memory allocation to parse the entire file.
+_FRONTMATTER_BLOCK_RE = re.compile(
+    r"^[ \t]*---[ \t]*\r?\n(.*?)(?:\r?\n|(?<=\n))^[ \t]*---[ \t]*(?:\r?\n|$)",
+    re.DOTALL | re.MULTILINE
+)
+
 def extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return None, text
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
+    match = _FRONTMATTER_BLOCK_RE.match(text)
+    if match:
+        return match.group(1), text[match.end():]
     return None, text
+
+
+
+
 
 
 def parse_frontmatter(frontmatter: str) -> dict[str, str]:
