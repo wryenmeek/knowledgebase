@@ -100,5 +100,5 @@ python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_sk
 - [`docs/architecture.md`](../../../docs/architecture.md)
 - [`docs/decisions/ADR-007-control-plane-layering-and-packaging.md`](../../../docs/decisions/ADR-007-control-plane-layering-and-packaging.md)
 - [`docs/ideas/wiki-curation-agent-framework.md`](../../../docs/ideas/wiki-curation-agent-framework.md)
-- [`tests/kb/test_framework_references.py`](../../../tests/kb/test_framework_references.py)
-- [`tests/kb/test_skill_wrappers.py`](../../../tests/kb/test_skill_wrappers.py)
+- [`tests/kb/test_framework_references.py`](../../../docs/ideas/tests/kb/test_framework_references.py)
+- [`tests/kb/test_skill_wrappers.py`](../../../docs/ideas/tests/kb/test_skill_wrappers.py)
