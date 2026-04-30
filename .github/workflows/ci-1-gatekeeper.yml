@@ -213,5 +213,5 @@ jobs:
         with:
           name: ci1-gatekeeper-preflight-${{ github.run_id }}
           path: preflight/
-          if-no-files-found: warn
+          if-no-files-found: ignore
           retention-days: 7

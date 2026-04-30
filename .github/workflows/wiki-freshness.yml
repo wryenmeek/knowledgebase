@@ -129,7 +129,7 @@ jobs:
         with:
           name: wiki-freshness-${{ github.run_id }}
           path: freshness-reports/
-          if-no-files-found: warn
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: Fail on stale wiki pages (blocking mode only)

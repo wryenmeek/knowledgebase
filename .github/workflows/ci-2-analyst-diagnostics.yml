@@ -148,7 +148,7 @@ jobs:
         with:
           name: ci2-analyst-diagnostics-${{ github.run_id }}
           path: diagnostics/
-          if-no-files-found: warn
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Fail explicitly when diagnostics fail
