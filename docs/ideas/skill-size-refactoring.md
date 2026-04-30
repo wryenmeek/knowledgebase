@@ -1,10 +1,10 @@
 # Inventory: Skill Size Refactoring
 
-**Status:** In progress — `references/` directories created for 7 skills; reference content extracted for 4 skills but SKILL.md files not yet trimmed (2026-04-29)
+**Status:** Implemented (Phase 1) — 4 skills trimmed via Option B (2026-05-04); remaining 18 skills deferred
 **Date:** 2025-07-18
 **Author:** Design research (Phase 7-C)
 
-> **Implementation note (2026-04-27, updated 2026-04-29):** `references/`
+> **Implementation note (2026-04-27, updated 2026-05-04):** `references/`
 > directories were created for 7 skills (test-driven-development,
 > ci-cd-and-automation, frontend-ui-engineering, shipping-and-launch,
 > code-review-and-quality, security-and-hardening, performance-optimization)
@@ -13,13 +13,24 @@
 > Actions examples), `code-review-and-quality` (review checklist template),
 > `security-and-hardening` (OWASP prevention examples), and
 > `performance-optimization` (anti-pattern examples). The remaining 3 skills
-> have only scaffolding (symlinks to global references). However, SKILL.md
-> line counts remain unchanged — the extracted content has not yet been
-> removed from the SKILL.md files. **Exception:** `using-agent-skills` grew
-> from 191 → 349 lines (all skills catalogued with Route column). The line
-> counts in §2 remain accurate for all other skills. Decision from §7 has
-> not been made; implementation is paused at the extraction-without-trimming
-> stage.
+> have only scaffolding (symlinks to global references). **Exception:**
+> `using-agent-skills` grew from 191 → 349 lines (all skills catalogued with
+> Route column). The line counts in §2 remain accurate for all other skills.
+>
+> **Decision (2026-05-04):** Option B selected — target maximum feasible
+> reduction per skill through deduplication, prose tightening, and reference
+> linking. The 150-line hard cap is aspirational; actual reductions depend on
+> how much content is original vs duplicated. Phase 1 trimmed the 4 skills
+> that already had reference files:
+>
+> | Skill | Before | After | Reduction |
+> |-------|--------|-------|-----------|
+> | performance-optimization | 183 | 125 | 32% |
+> | security-and-hardening | 241 | 188 | 22% |
+> | ci-cd-and-automation | 286 | 188 | 34% |
+> | code-review-and-quality | 307 | 224 | 27% |
+>
+> Remaining 18 skills deferred to future phases.
 
 ---
 

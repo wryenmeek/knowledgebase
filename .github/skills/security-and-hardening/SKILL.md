@@ -107,49 +107,24 @@ function validateUpload(file: UploadedFile) {
 
 ## Triaging npm audit Results
 
-Not all audit findings require immediate action. Use this decision tree:
+Not all audit findings require immediate action:
 
-```
-npm audit reports a vulnerability
-├── Severity: critical or high
-│   ├── Is the vulnerable code reachable in your app?
-│   │   ├── YES --> Fix immediately (update, patch, or replace the dependency)
-│   │   └── NO (dev-only dep, unused code path) --> Fix soon, but not a blocker
-│   └── Is a fix available?
-│       ├── YES --> Update to the patched version
-│       └── NO --> Check for workarounds, consider replacing the dependency, or add to allowlist with a review date
-├── Severity: moderate
-│   ├── Reachable in production? --> Fix in the next release cycle
-│   └── Dev-only? --> Fix when convenient, track in backlog
-└── Severity: low
-    └── Track and fix during regular dependency updates
-```
+- **Critical/high + reachable in production:** Fix immediately (update, patch, or replace)
+- **Critical/high + dev-only or unreachable:** Fix soon, not a blocker
+- **Moderate:** Fix in the next release cycle
+- **Low:** Track and fix during regular dependency updates
 
-**Key questions:**
-- Is the vulnerable function actually called in your code path?
-- Is the dependency a runtime dependency or dev-only?
-- Is the vulnerability exploitable given your deployment context (e.g., a server-side vulnerability in a client-only app)?
-
-When you defer a fix, document the reason and set a review date.
+Key questions: Is the vulnerable function called in your code path? Is it a runtime or dev-only dependency? Is it exploitable in your deployment context? When deferring, document the reason and set a review date.
 
 ## Rate Limiting
+
+Apply rate limiting to all public endpoints, with stricter limits on auth:
 
 ```typescript
 import rateLimit from 'express-rate-limit';
 
-// General API rate limit
-app.use('/api/', rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,                   // 100 requests per window
-  standardHeaders: true,
-  legacyHeaders: false,
-}));
-
-// Stricter limit for auth endpoints
-app.use('/api/auth/', rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,  // 10 attempts per 15 minutes
-}));
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
+app.use('/api/auth/', rateLimit({ windowMs: 15 * 60 * 1000, max: 10 }));
 ```
 
 ## Secrets Management
@@ -176,34 +151,8 @@ git diff --cached | grep -i "password\|secret\|api_key\|token"
 
 ## Security Review Checklist
 
-```markdown
-### Authentication
-- [ ] Passwords hashed with bcrypt/scrypt/argon2 (salt rounds ≥ 12)
-- [ ] Session tokens are httpOnly, secure, sameSite
-- [ ] Login has rate limiting
-- [ ] Password reset tokens expire
+See [`references/security-checklist.md`](references/security-checklist.md) for the complete security review checklist (authentication, authorization, input, data, infrastructure).
 
-### Authorization
-- [ ] Every endpoint checks user permissions
-- [ ] Users can only access their own resources
-- [ ] Admin actions require admin role verification
-
-### Input
-- [ ] All user input validated at the boundary
-- [ ] SQL queries are parameterized
-- [ ] HTML output is encoded/escaped
-
-### Data
-- [ ] No secrets in code or version control
-- [ ] Sensitive fields excluded from API responses
-- [ ] PII encrypted at rest (if applicable)
-
-### Infrastructure
-- [ ] Security headers configured (CSP, HSTS, etc.)
-- [ ] CORS restricted to known origins
-- [ ] Dependencies audited for vulnerabilities
-- [ ] Error messages don't expose internals
-```
 ## See Also
 
 For detailed security checklists and pre-commit verification steps, see `references/security-checklist.md`.
@@ -212,11 +161,9 @@ For detailed security checklists and pre-commit verification steps, see `referen
 
 | Rationalization | Reality |
 |---|---|
-| "This is an internal tool, security doesn't matter" | Internal tools get compromised. Attackers target the weakest link. |
-| "We'll add security later" | Security retrofitting is 10x harder than building it in. Add it now. |
-| "No one would try to exploit this" | Automated scanners will find it. Security by obscurity is not security. |
-| "The framework handles security" | Frameworks provide tools, not guarantees. You still need to use them correctly. |
-| "It's just a prototype" | Prototypes become production. Security habits from day one. |
+| "This is an internal tool" | Internal tools get compromised. Attackers target the weakest link. |
+| "We'll add security later" | Retrofitting is 10x harder than building it in. Add it now. |
+| "No one would try to exploit this" | Automated scanners will find it. Obscurity ≠ security. |
 
 ## Red Flags
 

@@ -39,62 +39,21 @@ Measure before optimizing. Performance work without measurement is guessing — 
 
 ### Step 1: Measure
 
-Two complementary approaches — use both:
+Use both synthetic and real-user measurement:
 
-- **Synthetic (Lighthouse, DevTools Performance tab):** Controlled conditions, reproducible. Best for CI regression detection and isolating specific issues.
-- **RUM (web-vitals library, CrUX):** Real user data in real conditions. Required to validate that a fix actually improved user experience.
+- **Synthetic (Lighthouse, DevTools Performance tab):** Controlled, reproducible. Best for CI regression detection.
+- **RUM (web-vitals library, CrUX):** Real user data. Required to validate fixes actually improved experience.
 
-**Frontend:**
-```bash
-# Synthetic: Lighthouse in Chrome DevTools (or CI)
-# Chrome DevTools → Performance tab → Record
-# Chrome DevTools MCP → Performance trace
-
-# RUM: Web Vitals library in code
-import { onLCP, onINP, onCLS } from 'web-vitals';
-
-onLCP(console.log);
-onINP(console.log);
-onCLS(console.log);
-```
-
-**Backend:**
-```bash
-# Response time logging
-# Application Performance Monitoring (APM)
-# Database query logging with timing
-
-# Simple timing
-console.time('db-query');
-const result = await db.query(...);
-console.timeEnd('db-query');
-```
+See [`references/anti-pattern-examples.md`](references/anti-pattern-examples.md) for measurement setup code (web-vitals, console.time, APM).
 
 ### Where to Start Measuring
 
-Use the symptom to decide what to measure first:
+Match the symptom to the investigation:
 
-```
-What is slow?
-├── First page load
-│   ├── Large bundle? --> Measure bundle size, check code splitting
-│   ├── Slow server response? --> Measure TTFB in DevTools Network waterfall
-│   │   ├── DNS long? --> Add dns-prefetch / preconnect for known origins
-│   │   ├── TCP/TLS long? --> Enable HTTP/2, check edge deployment, keep-alive
-│   │   └── Waiting (server) long? --> Profile backend, check queries and caching
-│   └── Render-blocking resources? --> Check network waterfall for CSS/JS blocking
-├── Interaction feels sluggish
-│   ├── UI freezes on click? --> Profile main thread, look for long tasks (>50ms)
-│   ├── Form input lag? --> Check re-renders, controlled component overhead
-│   └── Animation jank? --> Check layout thrashing, forced reflows
-├── Page after navigation
-│   ├── Data loading? --> Measure API response times, check for waterfalls
-│   └── Client rendering? --> Profile component render time, check for N+1 fetches
-└── Backend / API
-    ├── Single endpoint slow? --> Profile database queries, check indexes
-    ├── All endpoints slow? --> Check connection pool, memory, CPU
-    └── Intermittent slowness? --> Check for lock contention, GC pauses, external deps
-```
+- **Slow first load:** Check bundle size (code splitting?), TTFB (server/DNS/TLS?), render-blocking resources
+- **Sluggish interactions:** Profile main thread for long tasks (>50ms), check re-renders, layout thrashing
+- **Slow page navigation:** Measure API response times, check for fetch waterfalls, profile component renders
+- **Backend/API slow:** Profile database queries and indexes (single endpoint) or connection pool/memory/CPU (all endpoints)
 
 ### Step 2: Identify the Bottleneck
 
@@ -124,26 +83,11 @@ Concrete examples and fixes for N+1 queries, unbounded fetching, image optimizat
 
 ## Performance Budget
 
-Set budgets and enforce them:
+Set budgets and enforce in CI (`npx bundlesize`, `npx lhci autorun`):
 
-```
-JavaScript bundle: < 200KB gzipped (initial load)
-CSS: < 50KB gzipped
-Images: < 200KB per image (above the fold)
-Fonts: < 100KB total
-API response time: < 200ms (p95)
-Time to Interactive: < 3.5s on 4G
-Lighthouse Performance score: ≥ 90
-```
-
-**Enforce in CI:**
-```bash
-# Bundle size check
-npx bundlesize --config bundlesize.config.json
-
-# Lighthouse CI
-npx lhci autorun
-```
+- JavaScript bundle: < 200KB gzipped (initial load)
+- CSS: < 50KB gzipped | Images: < 200KB per image (above fold)
+- API response: < 200ms (p95) | TTI: < 3.5s on 4G | Lighthouse: ≥ 90
 
 ## See Also
 
@@ -154,11 +98,9 @@ For detailed performance checklists, optimization commands, and anti-pattern ref
 
 | Rationalization | Reality |
 |---|---|
-| "We'll optimize later" | Performance debt compounds. Fix obvious anti-patterns now, defer micro-optimizations. |
-| "It's fast on my machine" | Your machine isn't the user's. Profile on representative hardware and networks. |
-| "This optimization is obvious" | If you didn't measure, you don't know. Profile first. |
-| "Users won't notice 100ms" | Research shows 100ms delays impact conversion rates. Users notice more than you think. |
-| "The framework handles performance" | Frameworks prevent some issues but can't fix N+1 queries or oversized bundles. |
+| "We'll optimize later" | Performance debt compounds. Fix anti-patterns now, defer micro-optimizations. |
+| "It's fast on my machine" | Profile on representative hardware and networks. |
+| "This optimization is obvious" | If you didn't measure, you don't know. |
 
 ## Red Flags
 
