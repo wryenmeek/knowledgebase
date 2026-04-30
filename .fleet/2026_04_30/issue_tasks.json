@@ -1,0 +1,243 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-04-30T00:39:39.402Z",
+  "root_causes": [
+    {
+      "id": "rc-shell-injection",
+      "title": "Shell injection via inputs in workflow run blocks",
+      "severity": "critical",
+      "issues": [
+        72
+      ],
+      "files": [
+        ".github/workflows/fleet-dispatch.yml",
+        ".github/workflows/fleet-merge.yml"
+      ],
+      "description": "Direct interpolation of ${{ inputs.* }} in run: blocks allows arbitrary command execution.",
+      "solution_summary": "Move inputs to env context and reference them as environment variables."
+    },
+    {
+      "id": "rc-optional-surface-common-bloat",
+      "title": "Bloated common utility with missing sync guards and duplication",
+      "severity": "medium",
+      "issues": [
+        64,
+        65,
+        67
+      ],
+      "files": [
+        "scripts/_optional_surface_common.py",
+        "scripts/kb/qmd_preflight.py",
+        "scripts/reporting/content_quality_report.py",
+        "scripts/reporting/quality_runtime.py"
+      ],
+      "description": "_optional_surface_common.py has acquired domain-specific reporting logic, duplicates constants without tracking dependencies, and lacks ADR-011 sync guards.",
+      "solution_summary": "Extract reporting artifacts to a domain-specific module, replace hardcoded locks with imports, and add keep-in-sync guards."
+    },
+    {
+      "id": "rc-missing-fleet-docs",
+      "title": "Undocumented Fleet orchestration layer",
+      "severity": "low",
+      "issues": [
+        66
+      ],
+      "files": [
+        "docs/architecture.md"
+      ],
+      "description": "The TypeScript fleet orchestration logic is absent from architecture documentation.",
+      "solution_summary": "Add a dedicated section detailing the execution environment and workflows."
+    },
+    {
+      "id": "rc-adr-011-violation",
+      "title": "Cross-boundary private imports violate ADR-011",
+      "severity": "low",
+      "issues": [
+        63
+      ],
+      "files": [
+        "scripts/kb/ingest_render.py",
+        "scripts/kb/ingest.py"
+      ],
+      "description": "ingest.py imports underscore-prefixed symbols from sibling module ingest_render.py.",
+      "solution_summary": "Remove underscores from cross-boundary symbols and declare __all__."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "fix-shell-injection-fleet-workflows",
+      "title": "Fix Shell injection via inputs.base_branch in fleet workflows",
+      "root_cause": "rc-shell-injection",
+      "issues": [
+        72
+      ],
+      "files": [
+        ".github/workflows/fleet-dispatch.yml",
+        ".github/workflows/fleet-merge.yml"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "Fix shell injection vulnerabilities in fleet workflows.\n\nFiles to modify:\n- `.github/workflows/fleet-dispatch.yml`\n- `.github/workflows/fleet-merge.yml`\n\nRoot cause: Direct interpolation of `${{ inputs.base_branch }}` in `run:` blocks allows shell injection.\n\nProposed implementation:\nMove `${{ inputs.base_branch }}` references in `run:` blocks to the `env:` context and reference them as environment variables (e.g., `\"$BASE_BRANCH\"` instead of `\"${{ inputs.base_branch || 'main' }}\"`). Note: `ref:` inputs inside `uses:` or `with:` contexts are safe from shell injection and can remain unchanged.\n\nIn `.github/workflows/fleet-dispatch.yml`, lines 88 and 126:\nModify `wait_pr` step:\n```yaml\n      - name: Wait for Jules planning PR\n        id: wait_pr\n        env:\n          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          PLAN_SESSION_ID: ${{ steps.plan.outputs.plan_session_id }}\n          FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}\n        run: |\n          # ...\n          BASE=\"$FLEET_BASE_BRANCH\"\n```\nModify `Dispatch task sessions` step:\n```yaml\n        run: |\n          set -euo pipefail\n          git pull --ff-only origin \"$FLEET_BASE_BRANCH\"\n```\nUpdate `Merge planning PR` step to also avoid `${{ steps.wait_pr.outputs.pr_number }}`:\n```yaml\n      - name: Merge planning PR\n        env:\n          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          PR_NUMBER: ${{ steps.wait_pr.outputs.pr_number }}\n        run: |\n          set -euo pipefail\n          gh pr merge \"$PR_NUMBER\" --squash --delete-branch\n```\n\nIn `.github/workflows/fleet-merge.yml`, line 60:\n```yaml\n      - name: Find and merge fleet PRs sequentially\n        env:\n          FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}\n        run: |\n          set -euo pipefail\n\n          BASE_BRANCH=\"$FLEET_BASE_BRANCH\"\n```\n\nAcceptance criteria:\n- All shell injections via `${{ ... }}` inside `run:` are removed in `fleet-dispatch.yml` and `fleet-merge.yml`.\n- Valid syntax.\n\nFILE BOUNDARY: You may ONLY modify the files listed above. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "refactor-optional-surface-common-and-extract-artifact-io",
+      "title": "Refactor _optional_surface_common and extract report artifact IO",
+      "root_cause": "rc-optional-surface-common-bloat",
+      "issues": [
+        64,
+        65,
+        67
+      ],
+      "files": [
+        "scripts/_optional_surface_common.py",
+        "scripts/kb/qmd_preflight.py",
+        "scripts/reporting/content_quality_report.py",
+        "scripts/reporting/quality_runtime.py"
+      ],
+      "new_files": [
+        "scripts/reporting/_artifact.py"
+      ],
+      "test_files": [
+        "tests/kb/test_optional_surface_scripts.py",
+        "tests/kb/test_qmd_preflight.py"
+      ],
+      "risk": "low",
+      "prompt": "Address issues 64, 65, and 67 by refactoring `scripts/_optional_surface_common.py` and creating `scripts/reporting/_artifact.py`.\n\nFiles to modify:\n- `scripts/_optional_surface_common.py`\n- `scripts/kb/qmd_preflight.py`\n- `scripts/reporting/content_quality_report.py`\n- `scripts/reporting/quality_runtime.py`\nFiles to create:\n- `scripts/reporting/_artifact.py`\nTest files to potentially modify (if they import the moved/changed elements):\n- `tests/kb/test_optional_surface_scripts.py`\n- `tests/kb/test_qmd_preflight.py`\n\nRoot cause:\n- #64: `LOCK_PATH = \"wiki/.kb_write.lock\"` is duplicated in `_optional_surface_common.py`. Should import `WRITE_LOCK_PATH` from `scripts.kb.contracts`.\n- #65: Missing `# keep in sync` comments for duplicated constants in `qmd_preflight.py` and `_optional_surface_common.py`.\n- #67: `_optional_surface_common.py` contains reporting-specific logic (`validate_report_artifact`, `write_report_artifact`, etc.) that should be extracted.\n\nProposed implementation:\n1. In `scripts/kb/qmd_preflight.py`, add keep in sync comments to constants:\n```python\nSTATUS_PASS = \"pass\"   # keep in sync with scripts/_optional_surface_common.STATUS_PASS\nSTATUS_FAIL = \"fail\"   # keep in sync with scripts/_optional_surface_common.STATUS_FAIL\n\nREASON_CODE_OK = \"ok\"  # keep in sync with scripts/_optional_surface_common.REASON_CODE_OK\nREASON_CODE_INVALID_INPUT = \"invalid_input\"  # keep in sync with scripts/_optional_surface_common.REASON_CODE_INVALID_INPUT\n```\n2. In `scripts/_optional_surface_common.py`, update the comment block before `REASON_CODE_PREREQ_MISSING_REPO_ROOT` to reference \"ADR-011 \u00a7keep-in-sync pattern explicitly\". Also replace `LOCK_PATH = \"wiki/.kb_write.lock\"` with `from scripts.kb.contracts import WRITE_LOCK_PATH as LOCK_PATH`.\n3. Extract `REPORT_ARTIFACT_WRITE_ROOT`, `_REPORT_TYPE_FINDINGS_KEYS`, `_REPORT_TYPE_SUMMARY_KEYS`, `_REPORT_ENVELOPE_REQUIRED`, `validate_report_artifact`, and `write_report_artifact` from `scripts/_optional_surface_common.py` into a new file `scripts/reporting/_artifact.py`.\n   - Ensure `scripts/reporting/_artifact.py` has the necessary imports (e.g., `import json`, `from datetime import datetime, timezone`, `from pathlib import Path`, `from scripts.kb import write_utils`).\n   - Add `__all__ = [\"validate_report_artifact\", \"write_report_artifact\", \"REPORT_ARTIFACT_WRITE_ROOT\"]` to `_artifact.py`.\n4. Update `scripts/reporting/content_quality_report.py` to remove the extracted symbols from its import of `scripts._optional_surface_common` and instead import `write_report_artifact` from `scripts.reporting._artifact`.\n5. Update `scripts/reporting/quality_runtime.py` to remove the extracted symbols from its import of `scripts._optional_surface_common` and instead import `write_report_artifact` from `scripts.reporting._artifact`.\n6. Fix any tests if needed.\n\nAcceptance criteria:\n- Extracted symbols are no longer in `_optional_surface_common.py`.\n- `LOCK_PATH` is imported correctly.\n- Keep-in-sync comments are added to `qmd_preflight.py` and `_optional_surface_common.py`.\n- `pytest` passes.\n\nFILE BOUNDARY: You may ONLY modify the files listed above. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "document-fleet-orchestration-layer",
+      "title": "Document fleet orchestration layer in architecture.md",
+      "root_cause": "rc-missing-fleet-docs",
+      "issues": [
+        66
+      ],
+      "files": [
+        "docs/architecture.md"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "Document fleet orchestration layer in architecture.md.\n\nFiles to modify:\n- `docs/architecture.md`\n\nRoot cause: The typescript fleet orchestration layer is undocumented in the main architecture documentation.\n\nProposed implementation:\nAdd a \"Fleet orchestration\" section immediately after the `CI-1..CI-5` automation model table in `docs/architecture.md`.\n\nThe section should cover:\n1. What fleet scripts do (Jules SDK integration, PR-producing dispatch/merge/analyze)\n2. That it is a **separate TypeScript/Bun runtime** \u2014 not covered by `pytest`\n3. Build verification command: `cd scripts/fleet && bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts fleet-analyze.ts`\n4. Which CI workflows invoke fleet (`fleet-dispatch.yml`, `fleet-merge.yml`)\n5. That `bun build` must pass after any edit to `scripts/fleet/` \u2014 pytest passing does **not** imply TypeScript is clean\n\nAcceptance criteria:\n- New section added.\n\nFILE BOUNDARY: You may ONLY modify the files listed above. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "deprivatize-cross-boundary-symbols-ingest-render",
+      "title": "Deprivatize cross-boundary symbols in ingest_render",
+      "root_cause": "rc-adr-011-violation",
+      "issues": [
+        63
+      ],
+      "files": [
+        "scripts/kb/ingest_render.py",
+        "scripts/kb/ingest.py"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_ingest.py"
+      ],
+      "risk": "low",
+      "prompt": "Deprivatize cross-boundary symbols to resolve ADR-011 violation in ingest_render.py.\n\nFiles to modify:\n- `scripts/kb/ingest_render.py`\n- `scripts/kb/ingest.py`\n- `tests/kb/test_ingest.py`\n\nRoot cause: `ingest.py` imports underscore-prefixed symbols from `ingest_render.py`, violating ADR-011.\n\nProposed implementation:\n1. In `scripts/kb/ingest_render.py`, rename the following symbols (remove the leading underscore):\n   - `_PROVISIONAL_GIT_SHA` -> `PROVISIONAL_GIT_SHA`\n   - `_build_source_ref` -> `build_source_ref`\n   - `_build_provisional_source_provenance` -> `build_provisional_source_provenance`\n   - `_render_source_page` -> `render_source_page`\n   - `_escape_quotes` -> `escape_quotes`\n2. Add `__all__ = [\"PROVISIONAL_GIT_SHA\", \"SourceProvenance\", \"build_source_ref\", \"build_provisional_source_provenance\", \"render_source_page\", \"escape_quotes\"]` to `scripts/kb/ingest_render.py`.\n3. Update imports and usages in `scripts/kb/ingest.py`.\n4. Update references in `tests/kb/test_ingest.py` to use the non-underscored names.\n\nAcceptance criteria:\n- ADR-011 is resolved by using public names.\n- `pytest tests/kb/test_ingest.py` passes.\n\nFILE BOUNDARY: You may ONLY modify the files listed above. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [
+    {
+      "issue": 19,
+      "reason": "Large scope beyond simple issue tasks, requires telemetry integration",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 18,
+      "reason": "Complex performance optimization requiring detailed metric profiles",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 17,
+      "reason": "Complex performance optimization requiring detailed metric profiles",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 16,
+      "reason": "Complex performance optimization requiring detailed metric profiles",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 15,
+      "reason": "Complex performance optimization requiring detailed metric profiles",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 14,
+      "reason": "Complex performance optimization requiring detailed metric profiles",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 13,
+      "reason": "Requires extensive new security tests across multiple files",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 12,
+      "reason": "gitignore change, low risk but better handled separately",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 11,
+      "reason": "Requires GitHub settings/environment changes not just code",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 9,
+      "reason": "Optional step, requires changes to github actions workflow",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 8,
+      "reason": "Optional CLI flag change requiring deprecation process",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 7,
+      "reason": "Optional CLI flag change",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 6,
+      "reason": "Requires extensive new tests to increase coverage",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 5,
+      "reason": "Requires significant logic change or spec change",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 4,
+      "reason": "Requires significant changes to ingest logic",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 3,
+      "reason": "Requires locking mechanism integration in update_index",
+      "suggested_owner": "Maintainers"
+    },
+    {
+      "issue": 2,
+      "reason": "Requires new shared safe-write guard implementation",
+      "suggested_owner": "Maintainers"
+    }
+  ],
+  "file_ownership": {
+    ".github/workflows/fleet-dispatch.yml": "fix-shell-injection-fleet-workflows",
+    ".github/workflows/fleet-merge.yml": "fix-shell-injection-fleet-workflows",
+    "scripts/_optional_surface_common.py": "refactor-optional-surface-common-and-extract-artifact-io",
+    "scripts/kb/qmd_preflight.py": "refactor-optional-surface-common-and-extract-artifact-io",
+    "scripts/reporting/content_quality_report.py": "refactor-optional-surface-common-and-extract-artifact-io",
+    "scripts/reporting/quality_runtime.py": "refactor-optional-surface-common-and-extract-artifact-io",
+    "scripts/reporting/_artifact.py": "refactor-optional-surface-common-and-extract-artifact-io",
+    "tests/kb/test_optional_surface_scripts.py": "refactor-optional-surface-common-and-extract-artifact-io",
+    "tests/kb/test_qmd_preflight.py": "refactor-optional-surface-common-and-extract-artifact-io",
+    "docs/architecture.md": "document-fleet-orchestration-layer",
+    "scripts/kb/ingest_render.py": "deprivatize-cross-boundary-symbols-ingest-render",
+    "scripts/kb/ingest.py": "deprivatize-cross-boundary-symbols-ingest-render",
+    "tests/kb/test_ingest.py": "deprivatize-cross-boundary-symbols-ingest-render"
+  }
+}
