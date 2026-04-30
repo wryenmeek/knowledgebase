@@ -8,35 +8,30 @@
 > described in §2 have landed in `scripts/hooks/`: `check_no_staged_locks.py`
 > (§2.4), `check_frontmatter.py` (§2.1), `check_sourceref_format.py` (§2.3),
 > `check_hooks_json.py` (§2.2 extended), `check_context_md_format.py`, and
-> `check_matrix_coverage.py` (§2.2 write-surface lint). Contrary to §5's
-> recommendation, the `pre-commit` Python framework was adopted (with
-> `.pre-commit-config.yaml`); secrets detection (§2.5) uses the external
-> `detect-secrets` package (Yelp). CI runs the same checks (§6). Open
-> questions from §8: hooks are opt-in locally, documented in README; CI
-> runners don't install hooks but run equivalent checks; agent cloud commits
-> bypass local hooks by design.
+> `check_matrix_coverage.py` (§2.2 write-surface lint). The `pre-commit` Python
+> framework was adopted (`.pre-commit-config.yaml`) — ADR-016 amended in-place
+> to document the framework choice and rationale. Secrets detection (§2.5)
+> uses the external `detect-secrets` package (Yelp). Setup script at
+> `scripts/hooks/setup-hooks.sh`. CI runs the same checks (§6). Open questions
+> from §8: hooks are opt-in locally, documented in README; CI runners don't
+> install hooks but run equivalent checks; agent cloud commits bypass local
+> hooks by design; Windows is not a target environment (Unix-only project).
 
 ## Remaining Remediation Items
 
-> Items found during 2026-04-29 verification review.
+> Items found during 2026-04-29 verification review. All resolved 2026-04-29.
 
-1. **ADR-016 vs implementation conflict** — ADR-016 title and decision text say
-   "Use raw git hooks (not the pre-commit framework)." The actual implementation
-   uses the `pre-commit` Python framework (`.pre-commit-config.yaml` +
-   `pip install pre-commit`). The implementation note acknowledges "Contrary to
-   §5's recommendation, the `pre-commit` Python framework was adopted" but
-   ADR-016 was never amended. **Action:** Either amend ADR-016 to reflect the
-   actual decision (supersede with "Use `pre-commit` framework") or migrate the
-   hooks to raw git hooks as originally decided.
+1. ~~**ADR-016 vs implementation conflict**~~ — Fixed 2026-04-29. ADR-016
+   amended in-place with an `## Amendment` section documenting the framework
+   choice. Status changed to `Accepted — amended in-place`.
 
-2. **No setup automation script** — §5 proposed `make install-hooks` or
-   `scripts/setup-hooks.sh`. Neither exists. README documents manual
-   `pip install pre-commit && pre-commit install` instead. This is adequate
-   but diverges from the proposal.
+2. ~~**No setup automation script**~~ — Fixed 2026-04-29. Created
+   `scripts/hooks/setup-hooks.sh` (`pip install pre-commit && pre-commit install`).
 
-3. **Windows compatibility unaddressed** — §8.4 raised Windows support as an
-   open question. No testing or documentation exists for Windows. Low priority
-   if the project is Unix-only, but the question should be explicitly closed.
+3. ~~**Windows compatibility unaddressed**~~ — Closed 2026-04-29. Explicitly
+   closed as Unix-only project. All CI runs on Linux, development is on macOS.
+   Hook scripts use Python stdlib which is cross-platform, but Windows is not a
+   target environment.
 
 ---
 
