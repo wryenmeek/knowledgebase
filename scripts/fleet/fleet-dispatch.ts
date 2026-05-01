@@ -18,19 +18,9 @@ import { Octokit } from "octokit";
 import type { IssueAnalysis } from "./types.js";
 import { jules } from "@google/jules-sdk";
 import { getGitRepoInfo, getCurrentBranch } from "./github/git.js";
+import { GITHUB_TOKEN, setupRedactedLogging } from "./env.js";
 
-const JULES_API_KEY = process.env.JULES_API_KEY;
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-
-if (!JULES_API_KEY) {
-  console.error("❌ JULES_API_KEY environment variable is required.");
-  process.exit(1);
-}
-
-if (!GITHUB_TOKEN) {
-  console.error("❌ GITHUB_TOKEN environment variable is required.");
-  process.exit(1);
-}
+setupRedactedLogging();
 
 const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
