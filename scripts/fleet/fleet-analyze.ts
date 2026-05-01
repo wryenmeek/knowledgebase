@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { setupRedactedLogging } from "./env.js";
 import { getIssuesAsMarkdown } from "./github/markdown.js";
+
+setupRedactedLogging();
 
 async function main() {
   try {
