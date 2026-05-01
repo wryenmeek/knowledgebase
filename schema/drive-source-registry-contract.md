@@ -34,7 +34,7 @@ or dots other than the `.source-registry.json` suffix. No leading or trailing hy
 {
   "version": "1",
   "alias": "cms-policies",
-  "credential_secret_name": "GDRIVE_SA_KEY",
+  "credential_secret_name": "GDRIVE_SA_KEY",  # pragma: allowlist secret
   "changes_page_token": "AJE...",
   "last_full_scan_at": null,
   "folder_entries": [

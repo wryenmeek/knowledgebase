@@ -1,6 +1,10 @@
 ---
 scope: directory
 last_updated: 2026-04-29
+type: schema
+title: "Wiki Context"
+status: active
+updated_at: "2026-04-29T00:00:00Z"
 ---
 
 # CONTEXT — wiki/
