@@ -7,3 +7,18 @@
 **Vulnerability:** Shell command injection and option injection via user-controllable input (e.g. `remoteName`) in git commands due to the use of `child_process.exec` allowing shell interpolation.
 **Learning:** Never use `child_process.exec` for shell commands that interpolate external or variable inputs. Even if the variable seems benign, it can contain malicious payload (e.g., `; echo pwned`) or options (`--help`). Wrapping the implementation in an exported object `gitCommands` was required to test this securely while also supporting mockability in Bun test environments.
 **Prevention:** Use `child_process.execFile` (or its promisified version) and separate arguments into an array. Always include the `--` separator before positional variable arguments to prevent them from being parsed as CLI flags.
+
+## 2026-05-02 - [Unvalidated Secret Exposure via Console Logs]
+**Vulnerability:** A missing centralized validation mechanism allowed scripts (like `fleet-dispatch`, `fleet-merge`, and `fleet-plan`) to execute without fully checking required environment variables (`GITHUB_TOKEN` and `JULES_API_KEY`). Furthermore, ad-hoc string replacement across the scripts left potential holes for logging to print sensitive tokens.
+**Learning:** Overriding global logging functions (`console.log`, `console.error`, `console.warn`) using native formatters (like Node's `util.format`) and writing directly to output streams (`process.stdout.write`) provides a robust catch-all mechanism to redact keys globally without mutating actual objects or dropping log structure.
+**Prevention:** Always maintain a centralized environment configuration file (like `env.ts`) that asserts the existence of required keys on startup and installs a global interceptor to scrub sensitive environment variables from standard streams before they write to disk or CI logs.
+
+## 2026-05-02 - [Build Failure from Legacy Setuptools]
+**Vulnerability:** The `pyproject.toml` file specified `build-backend = "setuptools.backends.legacy:build"`, which is deprecated and caused installation failures in CI workflows using newer `pip` and `setuptools` versions.
+**Learning:** Always use `build-backend = "setuptools.build_meta"` to ensure compatibility and secure, modern dependency resolution across automated build chains.
+**Prevention:** Update package templates to rely on standard `build_meta` instead of legacy backends.
+
+## 2026-05-02 - [Gitleaks False Positives on Build Artifacts]
+**Vulnerability:** Gitleaks failed the CI due to matching string literals containing `REDACTED` within transpiled JS build artifacts (`scripts/fleet/out/*.js`).
+**Learning:** Compiled/bundled JS files (especially ones deliberately containing redaction logic) often trigger false positive secret detections in generic scanners like gitleaks or Yelp detect-secrets because they inline strings from dependencies.
+**Prevention:** Build output directories (e.g. `scripts/fleet/out/`) should either not be committed to version control, or explicitly ignored in security scanners (via `.gitleaks.toml`, `.gitignore`, or `.secrets.baseline`).
