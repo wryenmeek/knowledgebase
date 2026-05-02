@@ -16,21 +16,9 @@ import path from "node:path";
 import { findUpSync } from "find-up";
 import { Octokit } from "octokit";
 import type { IssueAnalysis } from "./types.js";
+import { JULES_API_KEY, GITHUB_TOKEN } from "./env.js";
 import { jules } from "@google/jules-sdk";
 import { getGitRepoInfo, getCurrentBranch } from "./github/git.js";
-
-const JULES_API_KEY = process.env.JULES_API_KEY;
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-
-if (!JULES_API_KEY) {
-  console.error("❌ JULES_API_KEY environment variable is required.");
-  process.exit(1);
-}
-
-if (!GITHUB_TOKEN) {
-  console.error("❌ GITHUB_TOKEN environment variable is required.");
-  process.exit(1);
-}
 
 const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
