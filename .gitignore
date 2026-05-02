@@ -219,3 +219,4 @@ tests/kb/.runtime_skill_wrappers/
 .kb_write.lock
 .github-sources.lock
 .rejection-registry.lock
+.gitleaks.toml

@@ -17,3 +17,8 @@
 **Vulnerability:** The `pyproject.toml` file specified `build-backend = "setuptools.backends.legacy:build"`, which is deprecated and caused installation failures in CI workflows using newer `pip` and `setuptools` versions.
 **Learning:** Always use `build-backend = "setuptools.build_meta"` to ensure compatibility and secure, modern dependency resolution across automated build chains.
 **Prevention:** Update package templates to rely on standard `build_meta` instead of legacy backends.
+
+## 2026-05-02 - [Gitleaks False Positives on Build Artifacts]
+**Vulnerability:** Gitleaks failed the CI due to matching string literals containing `REDACTED` within transpiled JS build artifacts (`scripts/fleet/out/*.js`).
+**Learning:** Compiled/bundled JS files (especially ones deliberately containing redaction logic) often trigger false positive secret detections in generic scanners like gitleaks or Yelp detect-secrets because they inline strings from dependencies.
+**Prevention:** Build output directories (e.g. `scripts/fleet/out/`) should either not be committed to version control, or explicitly ignored in security scanners (via `.gitleaks.toml`, `.gitignore`, or `.secrets.baseline`).

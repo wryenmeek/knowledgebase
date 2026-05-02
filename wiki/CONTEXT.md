@@ -1,6 +1,10 @@
 ---
 scope: directory
 last_updated: 2026-04-29
+type: context
+title: Wiki CONTEXT
+status: active
+updated_at: 2026-04-29
 ---
 
 # CONTEXT — wiki/
