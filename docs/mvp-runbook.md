@@ -230,7 +230,7 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 - **Operational guidance:** keep CI-1-triggering commits scoped to `raw/inbox/**`; apply broader repository changes in separate commits/PRs.
 - **If branch protection is not yet available:** use the documented fallback/manual path until branch protection is configured.
 
-## CI fallback/manual path summary (CI-1..CI-5)
+## CI fallback/manual path summary (CI-1..CI-6)
 
 | CI | Normal role | If automation is unavailable/fails |
 |---|---|---|
@@ -239,6 +239,7 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 | **CI-3** (`.github/workflows/ci-3-pr-producer.yml`) | write-capable PR producer after trusted handoff/manual approval | execute the local sequence in this runbook, commit only allowlisted paths (`wiki/**`, `raw/processed/**`), and open/update PR manually through normal approvals/checks. Manual dispatch runs additionally require protected-environment reviewer approval (`ci3-manual-approval`). |
 | **CI-4** (`.github/workflows/ci-4-framework-writer.yml`) | framework-writer: staged agent-generated content for `docs/**` and `.github/skills/**`; `workflow_dispatch` only; approval-gated | trigger `workflow_dispatch` manually after generating staged content; requires `ci4-framework-approval` environment gating; only allowlisted paths (`docs/**`, `.github/skills/**`) may be written. |
 | **CI-5** (`.github/workflows/ci-5-github-monitor.yml`) | GitHub source monitor: scheduled drift detection (read-only) + PR-producing fetch/synthesize path; writes `raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**` | run `scripts/github_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; open PR for any changes. See ADR-015 and ADR-012 for governance rules. |
+| **CI-6** (`.github/workflows/ci-6-google-drive-monitor.yml`) | Google Drive source monitor: scheduled drift detection (read-only) + approval-gated fetch/synthesize path; writes `raw/assets/gdrive/**`, `raw/drive-sources/**`, bounded `wiki/**` | run `scripts/drive_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; advance cursor with `advance_cursor.py --approval approved`. See ADR-021 for governance rules. |
 
 - **CI-3 manual dispatch note:** `maintainer_approved` remains a required attestation input for `workflow_dispatch`, and manual runs are gated by protected-environment reviewer approval (`ci3-manual-approval`) for authoritative control.
 

@@ -5,7 +5,7 @@
 > - **Phase 1** ✅ Complete — boundary docs, contract tests, and package-placement rules landed.
 > - **Phase 2** ✅ Complete — all script families promoted: `scripts/validation/**`,
 >   `scripts/reporting/**`, `scripts/context/**`, `scripts/maintenance/**`,
->   `scripts/ingest/**`, and `scripts/github_monitor/**`.
+>   `scripts/ingest/**`, `scripts/github_monitor/**`, and `scripts/drive_monitor/**`.
 > - **Phase 3** 🔲 Not started — downstream write-capable workflow slices; requires
 >   explicit maintainer approval per §High-risk phase-transition gates.
 > - **Phase 4** 🔲 Not started — optional analytics and discovery follow-ons.

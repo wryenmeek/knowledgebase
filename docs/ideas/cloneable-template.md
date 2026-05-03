@@ -110,7 +110,8 @@ address (`kb-drive-monitor@<project>.iam.gserviceaccount.com`) as a Viewer.
 ### GitHub App for Source Monitoring (CI-5)
 
 CI-5 monitors external GitHub repositories for drift. It needs a GitHub App installed on the
-repo, stored as `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` secrets.
+repo, stored as `GH_APP_ID` and `GH_APP_PRIVATE_KEY` secrets (GitHub bans the
+`GITHUB_` prefix for repository secrets — HTTP 422).
 
 GitHub App creation requires one browser step; the rest is CLI.
 
@@ -149,10 +150,10 @@ On the app's settings page (`https://github.com/settings/apps/<app-slug>`), scro
 
 ```bash
 # Set the App ID
-echo "YOUR_APP_ID" | gh secret set GITHUB_APP_ID
+echo "YOUR_APP_ID" | gh secret set GH_APP_ID
 
 # Set the private key (pipe the PEM file)
-gh secret set GITHUB_APP_PRIVATE_KEY < ~/Downloads/your-app-name.*.private-key.pem
+gh secret set GH_APP_PRIVATE_KEY < ~/Downloads/your-app-name.*.private-key.pem
 
 # Install the app on your repo (browser — one click)
 open "https://github.com/settings/apps/<app-slug>/installations"

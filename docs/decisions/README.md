@@ -27,3 +27,4 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-018](ADR-018-context-md-vocabulary-pattern.md) | CONTEXT.md files as structured agent-vocabulary artifacts | Accepted |
 | [ADR-019](ADR-019-fleet-jules-orchestration.md) | Jules-based fleet orchestration for parallel issue-to-PR dispatch | Accepted |
 | [ADR-020](ADR-020-post-mvp-package-family-criteria.md) | Criteria for approving post-MVP script package families | Accepted |
+| [ADR-021](ADR-021-google-drive-source-monitoring.md) | Google Drive source monitoring pipeline | Accepted |
