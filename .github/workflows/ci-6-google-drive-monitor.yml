@@ -43,8 +43,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet "setuptools>=78"
-          pip install -e ".[drive-monitor]" --quiet --no-build-isolation
+          pip install -e ".[drive-monitor]" --quiet
 
       - name: Check drift across all registries
         id: detect
@@ -116,8 +115,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet "setuptools>=78"
-          pip install -e ".[drive-monitor]" --quiet --no-build-isolation
+          pip install -e ".[drive-monitor]" --quiet
 
       - name: Download drift report
         uses: actions/download-artifact@v4
@@ -165,8 +163,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet "setuptools>=78"
-          pip install -e ".[drive-monitor]" --quiet --no-build-isolation
+          pip install -e ".[drive-monitor]" --quiet
 
       - name: Download drift report
         uses: actions/download-artifact@v4
@@ -227,8 +224,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet "setuptools>=78"
-          pip install -e ".[drive-monitor]" --quiet --no-build-isolation
+          pip install -e ".[drive-monitor]" --quiet
 
       - name: Download AFK-classified entries
         uses: actions/download-artifact@v4
