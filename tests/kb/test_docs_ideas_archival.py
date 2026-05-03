@@ -24,6 +24,11 @@ _ARCHIVE_PTR_RE = re.compile(
     r"Archived to `(raw/inbox/[^`]+)`",
 )
 
+# Matches terminal "Implemented" but NOT "Implemented (Phase N)".
+_IMPLEMENTED_RE = re.compile(
+    r"\*\*Status:\*\*\s+Implemented(?!\s*\()",
+)
+
 
 class TestDocsIdeasArchival(unittest.TestCase):
     """Validate docs/ideas/ archival stubs."""
@@ -68,11 +73,6 @@ class TestDocsIdeasArchival(unittest.TestCase):
         """A doc with terminal 'Status: Implemented' must have an archive pointer (i.e. be a stub)."""
         if not IDEAS_DIR.is_dir():
             self.skipTest("docs/ideas/ directory does not exist")
-
-        # Match terminal "Implemented" but NOT "Implemented (Phase N)"
-        _IMPLEMENTED_RE = re.compile(
-            r"\*\*Status:\*\*\s+Implemented(?!\s*\()",
-        )
 
         for md_file in sorted(IDEAS_DIR.glob("*.md")):
             text = md_file.read_text(encoding="utf-8")
