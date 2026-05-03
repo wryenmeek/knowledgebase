@@ -145,6 +145,8 @@ When implementing a feature described in a `docs/ideas/` document, update that d
 
 Status values: `Proposed` → `In Progress` → `Implemented`. For partial completion use `Implemented (Phase N)` (e.g., `Implemented (Phase 1)` when 4 of 22 skills are addressed). `Implemented` is terminal. This repo does not use `Superseded` for ideas documents — see the ADR evolution pattern below for how ADRs evolve.
 
+When a code change alters a count, structure, or claim described in a `docs/ideas/` document (script count, job count, open-findings tally, architecture description), update every occurrence in the document body — not just the status field. Use grep to find all instances before committing (e.g., `grep -n "5.script" docs/ideas/spec-*.md`). Stale body claims have been the single most frequent source of audit rework across sessions.
+
 ### `docs/ideas/` archival to intake
 
 Fully implemented and verified `docs/ideas/` documents may be archived to `raw/inbox/` for wiki source intake. This makes the design proposal citable as wiki source evidence through the normal intake pipeline.
@@ -195,6 +197,10 @@ Do not use `new Jules()`, `Jules({ apiKey })`, or `jules.createSession()` — no
 
 Always use `Path.is_relative_to(wiki_root.resolve())` to verify a resolved path stays inside `wiki_root`. Never use `str(resolved).startswith(str(wiki_root))` — it is not separator-safe and allows sibling directories (e.g. `wiki-extra/`) to pass a `wiki` prefix check. This is the canonical pattern per `docs/architecture.md` Write and safety controls.
 
+### Build system: `setuptools.build_meta` only
+
+`pyproject.toml` uses `build-backend = "setuptools.build_meta"` with `requires = ["setuptools>=64"]`. Never switch to `setuptools.backends.legacy` — it is incompatible with pip's PEP 517 hook subprocess on GitHub Actions runners (pip 26.x vendored `pyproject_hooks` launches a clean subprocess that cannot import `setuptools.backends.legacy`). This was the root cause of all CI pip-install failures in April–May 2026.
+
 ### Skill logic imports (ADR-011)
 
 Skill logic files live at `.github/skills/<name>/logic/<file>.py`. To import from `scripts.kb`, use:
@@ -243,6 +249,7 @@ Adding to certain enums or dicts triggers test failures in contract-alignment te
 | `TokenProfileId` in `scripts/kb/contracts.py` | Expected tuple in `tests/kb/test_contracts.py::test_spec_aligned_token_profiles_and_paths` |
 | `WORKFLOW_POLICY_MATRIX` in `tests/kb/test_ci_permission_asserts.py` | `expected_contracts` dict in the same file |
 | `GovernedArtifactContract` entries in `contracts.py` | `test_governed_artifact_contracts_cover_declared_state_targets` expected set |
+| Per-script rows in `AGENTS.md` write-surface matrix | Expected entries dict in `tests/kb/test_framework_write_surface_matrix.py` |
 | Files in a CONTEXT.md domain directory | Bump `last_updated` in the domain's CONTEXT.md |
 
 **CONTEXT.md domain mapping:** `scripts/kb/` → `scripts/kb/CONTEXT.md`, `schema/` → `schema/CONTEXT.md`, `scripts/github_monitor/` → `scripts/github_monitor/CONTEXT.md`, `scripts/drive_monitor/` → `scripts/drive_monitor/CONTEXT.md`, `.github/skills/` or `.github/agents/` or `.github/hooks/` → `.github/skills/CONTEXT.md`, `wiki/` → `wiki/CONTEXT.md`. Enforced by `tests/kb/test_context_md_freshness.py` — fails when ≥10 domain commits land after the `last_updated` date.
@@ -266,6 +273,10 @@ When dispatching review sub-agents (code-reviewer, security-auditor, test-engine
 ### CI: `if: always()` on steps downstream of surface scripts
 
 `run_surface_cli`-backed scripts exit `1` on partial success (some entries succeeded, some failed). Any downstream CI step — commit, PR creation, artifact upload — that should run regardless of partial failure **must** have `if: always()`. Without it, successful writes are silently discarded whenever any entry fails.
+
+### GitHub Actions secrets: `GITHUB_` prefix is banned
+
+GitHub forbids repository secrets with the `GITHUB_` prefix (HTTP 422). Use `GH_APP_ID` / `GH_APP_PRIVATE_KEY` for GitHub App credentials. Workflow YAML must reference `secrets.GH_APP_*`, not `secrets.GITHUB_APP_*`. This also applies to environment secrets.
 
 ## Interactive-only skills (autopilot guard)
 
@@ -297,6 +308,10 @@ When asked to review, audit, or investigate broad areas of the codebase, default
 ### Investigate root causes proactively
 
 When reporting on CI/automation health, investigate failure root causes — don't just count failures or report surface-level stats. If a workflow has 19 consecutive failures, read the logs and diagnose the error before reporting. When Jules PRs aren't being created, check the dispatch pipeline, not just the PR list.
+
+### Honor explicit review scope requests
+
+When the user requests review of "all changes", "all N files", or specifies a commit range, review the full scope — do not silently narrow to recent files or a convenient subset. Use `git diff` or `git log` to enumerate the complete changeset, then partition into parallel subagent reviews if the scope exceeds what one pass can cover. If you must limit scope, state the limitation explicitly before starting ("reviewing 40 of 116 files in this pass; will continue in a follow-up").
 
 ### "Fleet deployed" continuation signal
 
