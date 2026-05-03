@@ -43,6 +43,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          pip install --quiet "setuptools>=78"
           pip install -e ".[drive-monitor]" --quiet
 
       - name: Check drift across all registries
@@ -114,7 +115,9 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -e ".[drive-monitor]" --quiet
+        run: |
+          pip install --quiet "setuptools>=78"
+          pip install -e ".[drive-monitor]" --quiet
 
       - name: Download drift report
         uses: actions/download-artifact@v4
@@ -161,7 +164,9 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -e ".[drive-monitor]" --quiet
+        run: |
+          pip install --quiet "setuptools>=78"
+          pip install -e ".[drive-monitor]" --quiet
 
       - name: Download drift report
         uses: actions/download-artifact@v4
@@ -221,7 +226,9 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -e ".[drive-monitor]" --quiet
+        run: |
+          pip install --quiet "setuptools>=78"
+          pip install -e ".[drive-monitor]" --quiet
 
       - name: Download AFK-classified entries
         uses: actions/download-artifact@v4
