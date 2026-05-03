@@ -549,3 +549,39 @@ class TestCheckDriftCursors:
         data = json.loads(output.read_text())
         assert data["cursors"] == {}
         assert len(data["errors"]) > 0
+
+
+class TestArgsToKwargs:
+    """Regression tests for CLI argument parsing (_args_to_kwargs)."""
+
+    def test_registry_resolved_relative_to_repo_root(self, tmp_path):
+        """--registry is resolved relative to --repo-root, not cwd."""
+        from scripts.drive_monitor.check_drift import _args_to_kwargs
+        from types import SimpleNamespace
+
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        reg_file = repo_root / "raw" / "drive-sources" / "test.source-registry.json"
+        reg_file.parent.mkdir(parents=True)
+        reg_file.touch()
+
+        args = SimpleNamespace(
+            repo_root=str(repo_root),
+            registry="raw/drive-sources/test.source-registry.json",
+            output="drift-report.json",
+        )
+        kwargs = _args_to_kwargs(args)
+        assert kwargs["registry_paths"] == [reg_file.resolve()]
+
+    def test_no_registry_returns_none(self, tmp_path):
+        """When --registry is omitted, registry_paths is None (auto-discover)."""
+        from scripts.drive_monitor.check_drift import _args_to_kwargs
+        from types import SimpleNamespace
+
+        args = SimpleNamespace(
+            repo_root=str(tmp_path),
+            registry=None,
+            output="drift-report.json",
+        )
+        kwargs = _args_to_kwargs(args)
+        assert kwargs["registry_paths"] is None

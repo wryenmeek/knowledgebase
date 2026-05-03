@@ -282,6 +282,7 @@ jobs:
       needs.fetch-and-update.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: protected-pr-write
     concurrency:
       group: kb-write-${{ github.repository }}
       cancel-in-progress: false

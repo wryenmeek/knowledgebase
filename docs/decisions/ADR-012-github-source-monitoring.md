@@ -1,7 +1,7 @@
 # ADR-012: GitHub source monitoring pipeline
 
 ## Status
-Accepted
+Accepted — amended in-place: secret names corrected (see § Amendment)
 
 ## Date
 2026-04-21
@@ -93,7 +93,7 @@ The pipeline uses a **GitHub App** (not a PAT) for authentication:
 - External repo access: `contents: read` only — no write permissions on external repos.
 - Knowledgebase repo access (CI-5 write job): `contents: write` + `pull-requests: write`.
 - App installation ID stored in the source registry per repo: `github_app_installation_id`.
-- Secrets required: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (stored as repo secrets,
+- Secrets required: `GH_APP_ID`, `GH_APP_PRIVATE_KEY` (stored as repo secrets,
   never committed).
 - Installation tokens expire after 1 hour; token generation must occur immediately before
   the step that uses it. The token is passed via environment variable only — never as a
@@ -160,6 +160,18 @@ Both write jobs use the same `concurrency.group` as CI-3 to prevent parallel wri
 - The `docs/architecture.md` automation model table gains a CI-5 row.
 - `PolicyId.EXTERNAL_ASSETS_ALLOWED_AS_AUTHORITATIVE_IF_CHECKSUMED` in `contracts.py` is
   now exercised by this pipeline.
+
+## Amendment
+
+**Date:** 2026-05-03
+
+**What changed:** Secret names updated from `GITHUB_APP_ID`/`GITHUB_APP_PRIVATE_KEY` to
+`GH_APP_ID`/`GH_APP_PRIVATE_KEY`. GitHub rejects custom secrets with the `GITHUB_` prefix
+(HTTP 422), so the CI-5 workflow was fixed in commit `db324c4` and this ADR is updated
+to match.
+
+**What didn't change:** Authentication model (GitHub App, not PAT), installation token
+expiry handling, and the principle that secrets are passed via environment variables only.
 
 ## References
 

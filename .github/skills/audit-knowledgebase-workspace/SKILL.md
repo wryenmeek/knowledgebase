@@ -75,6 +75,7 @@ integration work back through governed planning instead of fixing it invisibly.
 ```bash
 python3 -m unittest tests.kb.test_framework_references tests.kb.test_skill_wrappers
 python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents
+python3 -m pytest tests/kb/test_doc_cascade_completeness.py tests/kb/test_docs_ideas_archival.py -v
 ```
 
 ## Boundaries

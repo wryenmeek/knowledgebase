@@ -83,7 +83,7 @@ def _load_credentials(credential_secret_name: str = "GDRIVE_SA_KEY") -> Any:
         raise DriveAPIRequestError(
             detail=(
                 "Failed to load service account credentials — "
-                "check GOOGLE_DRIVE_SA_KEY format"
+                f"check {credential_secret_name!r} format"
             )
         ) from None
     return creds
