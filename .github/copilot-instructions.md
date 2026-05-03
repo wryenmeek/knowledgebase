@@ -304,6 +304,10 @@ This rule takes precedence over any "work autonomously" instruction from the aut
 
 ## Operational patterns
 
+### Research report output
+
+When saving research reports (from `/research`, `Researching:` prefix, or any investigative analysis), write them to `docs/research/` in the repository root instead of the session-local folder. Use a slug derived from the research topic as the filename (e.g., `docs/research/elevenlabs-sdk-compatibility.md`). This keeps research artifacts version-controlled, shareable, and discoverable across sessions.
+
 ### Verify status claims before acting
 
 When a `docs/ideas/` document, plan, or feature claims a terminal status (`Implemented`, `Done`), verify its key claims against the actual codebase before taking any action that depends on that status (archiving, closing, reporting completion). Documents frequently claim completion while gaps remain — three of five "Implemented" docs in the April 2026 review had unresolved issues. Treat status fields as assertions to be checked, not facts to be trusted.
