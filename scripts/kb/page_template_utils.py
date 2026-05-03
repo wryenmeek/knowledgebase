@@ -17,6 +17,10 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 }
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
+_FRONTMATTER_RE = re.compile(
+    r"^[ \t]*---[ \t]*\r?\n(.*?)((?:\r?\n|(?<=\n))^[ \t]*---[ \t]*(?:\r?\n|$))",
+    re.MULTILINE | re.DOTALL
+)
 
 TOPICAL_NAMESPACES: frozenset[str] = frozenset({"sources", "entities", "concepts", "analyses"})
 
@@ -120,12 +124,19 @@ def validate_page_template_path(
 
 
 def extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    # Fast path: Check if the text starts with the frontmatter delimiter.
+    if not text.lstrip(" \t").startswith("---"):
         return None, text
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
+
+    # Slow path: Use regex to extract the frontmatter and body.
+    # We avoid text.splitlines() on the entire document because it is O(N) memory
+    # and eagerly tokenizes the entire string, which is extremely slow for large documents.
+    match = _FRONTMATTER_RE.match(text)
+    if match:
+        frontmatter = match.group(1)
+        body = text[match.end():]
+        return frontmatter, body
+
     return None, text
 
 
