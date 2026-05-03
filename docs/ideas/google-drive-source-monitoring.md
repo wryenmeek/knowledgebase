@@ -1,6 +1,6 @@
 # Google Drive Source Monitoring
 
-**Status:** Implemented — `scripts/drive_monitor/` landed, ADR-021 accepted, CI-6 workflow running (2026-04-29)
+**Status:** Implemented — `scripts/drive_monitor/` landed, ADR-021 accepted, CI-6 workflow running, cross-functional review remediated (2026-05-02)
 
 ## Problem Statement
 How might we monitor registered Google Drive root folders recursively for file changes, and automatically route those changes through the wiki's provenance-safe ingest pipeline — with the same governance guarantees as the existing GitHub source monitoring pipeline (`scripts/github_monitor/`)?
@@ -37,7 +37,7 @@ Structural commitments:
    - Non-native (PDF, DOCX, etc.): `raw/assets/gdrive/{alias}/{file_id}/{md5_checksum}/{filename}`
    - All paths are write-once (version-addressed or content-addressed)
 
-7. **New package surface** `scripts/drive_monitor/` — mirrors the 5-script shape of `scripts/github_monitor/`: `check_drift.py → classify_drift.py → fetch_content.py → synthesize_diff.py / create_issues.py`
+7. **New package surface** `scripts/drive_monitor/` — 6-script pipeline: `check_drift.py → classify_drift.py → fetch_content.py → synthesize_diff.py / create_issues.py`, plus `advance_cursor.py` for post-pipeline cursor advancement.
 
 8. **Auth** — Google Cloud service account for all account types (personal and Workspace). Operator creates a GCP service account and grants folder-level access by sharing each Drive folder with the service account email. Service account JSON key stored as GitHub Secret `GDRIVE_SA_KEY`. Optional `credential_secret_name` field in the registry schema allows per-alias credential override (defaults to `GDRIVE_SA_KEY`); enables multi-account setups without a schema change.
 
@@ -51,7 +51,7 @@ Structural commitments:
 
 11. **`synthesize_diff.py` strategy** — identical mechanism to `github_monitor` for MVP (raw text diff → wiki update). Markdown-structured (heading-level) synthesis noted as Phase 2 upgrade in ADR-021.
 
-12. **CI-6 workflow** — new scheduled workflow (multi-hour or daily cadence + `workflow_dispatch`), same 3-job structure as CI-5: `check-drift` (read-only) → `fetch-and-update` (write, protected env) → `synthesize` (write, protected env). Shares the same concurrency group as CI-5 to prevent parallel wiki writes.
+12. **CI-6 workflow** — new scheduled workflow (multi-hour or daily cadence + `workflow_dispatch`), 5-job structure: `check-drift` (read-only) → `fetch-and-update` (write, protected env) → `classify-drift` (read-only) → `synthesize` (write, protected env) → `advance-cursor` (write, `if: always()`). Shares the same concurrency group as CI-5 to prevent parallel wiki writes.
 
 13. **Governance artifacts** — new ADR (ADR-021), new lock `raw/.drive-sources.lock` (same `fcntl` advisory pattern), new schema contract `schema/drive-source-registry-contract.md`, new AGENTS.md write-surface matrix rows.
 

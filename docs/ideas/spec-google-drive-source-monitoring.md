@@ -7,15 +7,10 @@
 
 ## Remaining Remediation Items
 
-> Items found during 2026-04-29 verification review.
+> Items found during 2026-04-29 verification review. All resolved as of 2026-05-02.
 
-1. **`advance_cursor.py` not wired into CI-6 workflow** — The cursor
-   advancement script exists at `scripts/drive_monitor/advance_cursor.py` and
-   has test coverage (`tests/drive_monitor/test_advance_cursor.py`), but no
-   CI-6 job invokes it. After a successful `synthesize` run, `changes_page_token`
-   is not advanced, causing the next CI-6 run to re-process previously handled
-   changes. Either add an `advance-cursor` job to CI-6 or document this as a
-   known limitation with manual-advancement instructions.
+1. ~~**`advance_cursor.py` not wired into CI-6 workflow**~~ — Fixed 2026-05-02.
+   Added 5th job `advance-cursor` to CI-6 with `if: always()` gating.
 
 2. ~~**CI-6 missing from `docs/architecture.md`**~~ — Fixed 2026-04-29.
    Architecture.md now includes CI-6 row, `raw/drive-sources/**` zone,
@@ -32,13 +27,13 @@
 5. `create_issues.py` for HITL Issues reuses `scripts/github_monitor/create_issues.py` GitHub API patterns (same `GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY` secrets).
 6. Registry alias slug convention: lowercase, alphanumeric, hyphens only (matches `raw/github-sources/` naming).
 7. `drive_version` maps directly to the Drive API `files` resource `version` integer field.
-8. CI-6 workflow uses a 4-job structure (check-drift, fetch-and-update, classify-drift, synthesize) with the addition of `GDRIVE_SA_KEY` secret.
+8. CI-6 workflow uses a 5-job structure (check-drift, fetch-and-update, classify-drift, synthesize, advance-cursor) with the addition of `GDRIVE_SA_KEY` secret.
 
 ---
 
 ## Objective
 
-Build `scripts/drive_monitor/` — a 5-script Google Drive folder monitoring pipeline that:
+Build `scripts/drive_monitor/` — a 6-script Google Drive folder monitoring pipeline that:
 
 1. Detects content changes in registered Google Drive root folders (Changes API + parent-chain resolution).
 2. Exports changed files to `raw/assets/gdrive/{alias}/{file_id}/{version}/{filename}` with SHA-256 provenance.
@@ -442,39 +437,41 @@ The feature is **done** when all of the following are true:
 8. **`ADR-021`** is written and reflects all design decisions from the one-pager + grill-me session.
 9. **`AGENTS.md`** write-surface matrix has rows for all 6 `scripts/drive_monitor/` executable scripts plus 1 umbrella row.
 10. **`DriveMonitorReasonCode`** is added to `scripts/kb/contracts.py` and exported via `__all__`.
-11. **CI-6 workflow** YAML is written with a 4-job structure (check-drift, fetch-and-update, classify-drift, synthesize).
+11. **CI-6 workflow** YAML is written with a 5-job structure (check-drift, fetch-and-update, classify-drift, synthesize, advance-cursor).
 
 ---
 
 ## Open Questions
 
-1. **Changes API parent-chain validation** — Not yet confirmed that `changes.list` response entries include `file.parents` in a single call (may require a separate `files.get` for parents). The detection logic above assumes `parents` can be requested in the `fields` mask of `changes.list`. If not, each new-file change requires a separate `files.get(fields='id,parents')` call — cost is the same (O(1) per changed file), but the implementation in `check_drift.py` changes slightly.
+> Both resolved during implementation.
 
-2. **`raw/drive-sources/` directory creation** — Should the CI-6 workflow create this directory if it doesn't exist, or should it be committed as an empty directory with a `.gitkeep`? (Preference: `.gitkeep` committed, consistent with `raw/github-sources/`.)
+1. ~~**Changes API parent-chain validation**~~ — Resolved: `changes.list` does not include `file.parents` in its response. Implementation uses a separate `files.get(fileId, fields='id,parents')` call per new file. Cost is O(folder-depth) per new file, typically 2–5 hops. See `check_drift.py:94-98`.
 
----
-
-*Spec status: implemented — 27/35 original findings resolved (2026-07-22); 8 still open + 10 new findings pending remediation.*
+2. ~~**`raw/drive-sources/` directory creation**~~ — Resolved: directory is created on first registry file commit (e.g., `raw/drive-sources/sof-session-notes.source-registry.json`). No `.gitkeep` needed.
 
 ---
 
-## Cross-Functional Review Findings (Remediation Required)
+*Spec status: implemented — all P0–P3 findings remediated (2026-05-02). Remaining low-priority items deferred to GitHub issues #84–#88.*
 
-> **Review date:** 2025-07-15 (initial) · 2026-07-22 (re-verification)
+---
+
+## Cross-Functional Review Findings (Remediation Complete)
+
+> **Review date:** 2025-07-15 (initial) · 2026-07-22 (re-verification) · 2026-05-02 (remediation)
 > **Reviewers:** code-reviewer, security-auditor, test-engineer, solutions-architect, documentation-engineer, framework-engineer
 > **Scope:** All `scripts/drive_monitor/` code, tests, governance artifacts, and documentation against this spec.
-> **Re-verification summary:** 27 of 35 original findings resolved; 8 still open; 10 new findings identified. All 194 tests pass.
+> **Re-verification summary:** All 35 original findings resolved. 10 new findings identified during re-verification; all P0–P3 remediated in commit `2b2b463` (2026-05-02). 5 low-priority items deferred to GitHub issues #84–#88.
 
 #### Re-Verification Status Summary
 
 | Finding | Status | Evidence |
 |---------|--------|---------|
-| CR-1 | ✅ Resolved | Cursor flows through drift report → `advance_cursor.py`; CI wiring is documented known-gap |
+| CR-1 | ✅ Resolved | `advance-cursor` job added to CI-6 workflow (`2b2b463`) |
 | CR-2 | ✅ Resolved | Compensating rollback at `synthesize_diff.py:407-431` |
 | CR-3 | ✅ Resolved | `test_create_issues.py` exists with 30 tests |
 | HI-1 | ✅ Resolved | `ValueError` caught, re-raised with `from None` |
-| HI-2 | ⚠️ Still open | `synthesize_diff.py:128,164` missing `untitled` fallback + leading-dot strip |
-| HI-3 | ⚠️ Partially mitigated | Title uses `json.dumps`; heading + change-note body still use raw `display_name` |
+| HI-2 | ✅ Resolved | `synthesize_diff.py` now calls `safe_filename()` from `_validators.py` (`2b2b463`) |
+| HI-3 | ✅ Resolved | `_sanitize_for_md()` added for heading + change-note body; title uses `json.dumps` (`2b2b463`) |
 | HI-4 | ✅ Resolved | `httplib2.Http(timeout=30)` at `_http.py:129` |
 | HI-5 | ✅ Resolved | `test_http.py` exists with 11 tests |
 | HI-6 | ✅ Resolved | `test_registry.py` exists with 10 tests |
@@ -482,8 +479,8 @@ The feature is **done** when all of the following are true:
 | ME-1 | ✅ Resolved | Flag is `--drift-report`, not `--afk-entries` |
 | ME-2 | ✅ Resolved | `DRIVE_MONITOR = "tp-drive-monitor"` at `contracts.py:39` |
 | ME-3 | ✅ Resolved | CI-6 entry at `test_ci_permission_asserts.py:84` |
-| ME-4 | ✅ Resolved (residual) | Field names aligned; `unreachable` in contract but rejected by code — see NEW-4 |
-| ME-5 | ✅ Resolved | 4-job structure documented in spec + ADR-021 |
+| ME-4 | ✅ Resolved | Field names aligned; `unreachable` added to code frozensets (`2b2b463`) |
+| ME-5 | ✅ Resolved | 5-job structure documented in spec + ADR-021 |
 | ME-6 | ✅ Resolved | `--hitl-entries`, no `--approval` |
 | ME-7 | ✅ Resolved | `ghp_*`, `github_pat_*`, `gho_*`, `Authorization`, base64 covered |
 | ME-8 | ✅ Resolved | All docs agree: `advance_cursor.py` owns cursor |
@@ -491,19 +488,19 @@ The feature is **done** when all of the following are true:
 | ME-10 | ✅ Resolved | `${{}}` replaced with `[expr]` |
 | HK-1 | ✅ Resolved | `_is_binary()` only in `synthesize_diff.py` where used |
 | HK-2 | ✅ Resolved | Unused imports removed from `synthesize_diff.py` |
-| HK-3 | ⚠️ Still open | `urllib.parse`, `PurePosixPath`, `_FORBIDDEN_COMPONENTS`, `_MAX_PATH_DEPTH` unused |
+| HK-3 | ✅ Resolved | Dead code removed from `_validators.py` (`2b2b463`) |
 | HK-4 | ✅ Resolved | `MIME_EXPORT_MAP` not imported in `classify_drift.py` |
-| HK-5 | ⚠️ Still open | Docstring line 147 contradicts lines 144 and code 175–178 |
-| HK-6 | ⚠️ Still open | `import re` inlined at `synthesize_diff.py:127,163` and `_registry.py:229` |
+| HK-5 | ✅ Resolved | `update_last_applied()` docstring fixed (`2b2b463`) |
+| HK-6 | ✅ Resolved | Inline `import re` moved to module level in `_registry.py`; inline regex in `synthesize_diff.py` replaced by `safe_filename()` (`2b2b463`) |
 | HK-7 | Deferred | Cross-module private import; acceptable per current conventions |
 | HK-8 | ✅ Resolved | `min(attempt, len(_RETRY_DELAYS) - 1)` clamp at `_http.py:153` |
 | HK-9 | ✅ Resolved | Iterates all parents before ascending at `check_drift.py:94-98` |
 | HK-10 | ✅ Resolved | `_LEADING_DOTS_RE.sub` at `_validators.py:152` |
 | HK-11 | ✅ Resolved | `files.list` removed from CONTEXT.md |
 | HK-12 | ✅ Resolved | `add_file_entry()` added to CONTEXT.md |
-| HK-13 | ⚠️ Still open | 15+ functions lack numpydoc `Parameters`/`Returns` sections |
+| HK-13 | Deferred | Numpydoc gaps — tracked in GitHub issue #84 |
 | HK-14 | ✅ Resolved | Dual-input documented at `synthesize_diff.py:283-289` |
-| HK-15 | ⚠️ Still open | Floor-only pins, no upper bounds or lockfile |
+| HK-15 | Deferred | Floor-only pins — tracked in GitHub issue #85 |
 
 ### Status Key
 
@@ -747,91 +744,60 @@ If Issue body is consumed in a workflow `run:` block via `${{ github.event.issue
 
 ### New Findings (2026-07-22 Re-Verification)
 
-#### NEW-1: Missing `advance_cursor.py` CI-6 job 🔴
+> All P0–P3 items remediated in commit `2b2b463` (2026-05-02). Low-priority items deferred to GitHub issues.
 
-**Affected files:** `.github/workflows/ci-6-google-drive-monitor.yml`
-**Detected by:** solutions-architect, framework-engineer
+#### NEW-1: ~~Missing `advance_cursor.py` CI-6 job~~ ✅ Resolved
 
-`advance_cursor.py` exists with full implementation and test coverage but no CI-6 job invokes it. Without cursor advancement, every CI-6 run re-processes all changes since the last saved cursor. Idempotency guards (`exclusive_create_write_once`) prevent duplicate assets, but duplicate issue comments and wiki change notes accumulate.
+**Remediation:** Added 5th job `advance-cursor` to CI-6 with `if: always()` gating (`2b2b463`).
 
-**Remediation:** Add a 5th job `advance-cursor` after `synthesize` and `classify-drift`, gated on `check-drift.outputs.drift_detected == 'true'`, running with `if: always()` and `--approval approved`. Use `advance_cursor.py`'s internal error-alias skip logic to advance only successfully-processed aliases.
+#### NEW-2: ~~AGENTS.md missing per-script rows for `create_issues.py` and `advance_cursor.py`~~ ✅ Resolved
 
-#### NEW-2: AGENTS.md missing per-script rows for `create_issues.py` and `advance_cursor.py` 🔴
+**Remediation:** Added 2 per-script rows; fixed `fetch_content.py` row (`2b2b463`).
 
-**Affected files:** `AGENTS.md`
-**Detected by:** documentation-engineer, framework-engineer
+#### NEW-3: ~~Unsanitized `display_name` in Markdown body~~ ✅ Resolved
 
-The write-surface matrix has per-script rows for `check_drift.py`, `classify_drift.py`, `fetch_content.py`, and `synthesize_diff.py` but is missing rows for `create_issues.py` (GitHub Issues side effects) and `advance_cursor.py` (registry cursor writes under lock). Both are write-capable scripts that require declared write surfaces per the matrix contract.
+**Remediation:** Added `_sanitize_for_md()` helper to escape backticks and strip control characters (`2b2b463`).
 
-**Remediation:** Add 2 per-script rows specifying write boundaries, lock requirements, and fail-closed behavior.
+#### NEW-4: ~~`unreachable` tracking_status — contract vs code mismatch~~ ✅ Resolved
 
-#### NEW-3: Unsanitized `display_name` in Markdown body enables content injection 🟡
+**Remediation:** Added `"unreachable"` to both `_VALID_FILE_TRACKING_STATUSES` and `_VALID_FOLDER_TRACKING_STATUSES` (`2b2b463`).
 
-**Affected files:** `synthesize_diff.py:197-207,388`
-**Detected by:** security-auditor (extends HI-3)
+#### NEW-5: ~~Spec success criterion #9 says "5 scripts" but pipeline has 6~~ ✅ Resolved
 
-While HI-3's frontmatter injection is partially mitigated (title uses `json.dumps`), `display_name` is still used raw in: (1) Markdown heading `# {display_name}` (line 388), and (2) change-note body inside backtick delimiters (line 203). A Drive file name containing backticks or newlines can inject arbitrary Markdown into wiki pages.
+**Remediation:** Updated to "6 scripts plus 1 umbrella row" (`2b2b463`).
 
-**Remediation:** Sanitize `display_name` before Markdown embedding — escape backticks, strip control characters. Consider reusing `_sanitize_gh_md` or a shared variant.
+#### NEW-6: `version_segment` validation accepts hex for native format versions — Deferred
 
-#### NEW-4: `unreachable` tracking_status — contract vs code mismatch 🟠
+Defense-in-depth improvement. Tracked in GitHub issue #86.
 
-**Affected files:** `schema/drive-source-registry-contract.md:122`, `scripts/drive_monitor/_types.py:27-31`
-**Detected by:** documentation-engineer (residual from ME-4)
+#### NEW-7: No pagination limit on `list_changes` — Deferred
 
-The contract documents `unreachable` as a valid tracking_status, but `_VALID_FILE_TRACKING_STATUSES` and `_VALID_FOLDER_TRACKING_STATUSES` in `_types.py` do not include it. Any registry entry with `tracking_status: "unreachable"` will fail validation at runtime. Either add `"unreachable"` to the code or remove it from the contract with a note that it is reserved-but-not-yet-implemented.
+Low risk at current scale. Tracked in GitHub issue #87.
 
-#### NEW-5: Spec success criterion #9 says "5 scripts" but pipeline has 6 🟠
+#### NEW-8: ~~`update_changes_cursor()` docstring ownership~~ ✅ Resolved
 
-**Affected files:** Spec L443
-**Detected by:** documentation-engineer
+**Remediation:** Docstring updated to reference `advance_cursor.py` (`2b2b463`).
 
-With `advance_cursor.py` as the 6th public script, criterion #9 should say "6 scripts."
+#### NEW-9: Concurrency group omits `${{ github.ref }}` suffix — Deferred
 
-#### NEW-6: `version_segment` validation accepts hex for native format versions 🟡
+Low risk for schedule-only trigger. Tracked in GitHub issue #88.
 
-**Affected files:** `_validators.py:122`
-**Detected by:** security-auditor
+#### NEW-10: ~~Filename logic duplicated between `_find_old_asset` and `_find_new_asset`~~ ✅ Resolved
 
-`build_drive_asset_path` validates `version_segment` with `re.match(r"^[0-9a-f]+$", ...)` which accepts lowercase hex — correct for MD5 checksums but overly permissive for native format `drive_version` integers. Defense-in-depth: validate integer-only for native, hex-only for MD5.
-
-#### NEW-7: No pagination limit on `list_changes` — potential memory exhaustion ⚪
-
-**Affected files:** `_http.py:206-238`
-**Detected by:** security-auditor
-
-`list_changes()` aggregates all change pages into a single in-memory list with no upper bound. A Drive folder with very high change volume could cause excessive CI runner memory consumption.
-
-**Remediation:** Add a configurable `MAX_CHANGES` limit (e.g., 10,000) and fail closed when exceeded.
-
-#### NEW-8: `update_changes_cursor()` docstring says "after check_drift" — should say "after advance_cursor" ⚪
-
-**Affected files:** `_registry.py:195-197`
-**Detected by:** documentation-engineer
-
-Docstring says "after a successful `check_drift.py` run" but actual ownership (per ADR-021 and CONTEXT.md) is `advance_cursor.py`.
-
-#### NEW-9: Concurrency group omits `${{ github.ref }}` suffix ⚪
-
-**Affected files:** `.github/workflows/ci-6-google-drive-monitor.yml:99,208`
-**Detected by:** framework-engineer
-
-Job-level concurrency group uses `kb-write-${{ github.repository }}` without `${{ github.ref }}`. For schedule-triggered runs on `main` this is functionally equivalent, but a manual `workflow_dispatch` on a feature branch would contend with the scheduled run.
-
-#### NEW-10: Filename logic duplicated between `_find_old_asset` and `_find_new_asset` ⚪
-
-**Affected files:** `synthesize_diff.py:127-134,163-169`
-**Detected by:** code-reviewer
-
-Both functions inline a 7-line filename sanitization block that diverges from `safe_filename()` in `_validators.py` (root cause of still-open HI-2). Extracting a shared helper would fix HI-2, HK-6 (inline imports), and this duplication simultaneously.
+**Remediation:** Replaced inline regex with `safe_filename()` import from `_validators.py` (`2b2b463`).
 
 ---
 
-### Remediation Priority Order (Updated 2026-07-22)
+### Remediation Priority Order (Final — 2026-05-02)
 
-1. **P0 — Blocking:** NEW-1 (advance_cursor.py not in CI-6), NEW-2 (AGENTS.md missing 2 per-script rows)
-2. **P1 — Security:** HI-2 + NEW-10 (filename divergence + duplication → call `safe_filename()`), HI-3 + NEW-3 (display_name injection in Markdown body)
-3. **P2 — Alignment:** NEW-4 (unreachable enum mismatch), NEW-5 (spec says 5 scripts), NEW-6 (version_segment validation)
-4. **P3 — Housekeeping:** HK-3 (dead imports in _validators.py), HK-5 (docstring contradiction), HK-6 (inline imports), HK-13 (numpydoc gaps), HK-15 (dependency pins), NEW-7 (pagination limit), NEW-8 (docstring cursor owner), NEW-9 (concurrency group ref), NEW-10 (filename duplication)
+All P0–P3 items resolved. Remaining deferred items tracked in GitHub issues:
 
-> **Previous P0–P2 items from 2025-07-15 are now all resolved** (CR-1 cursor code, CR-2 atomicity, CR-3 + HI-5 + HI-6 test files, ME-1 CI flags, ME-2 + ME-3 contracts, HI-1 credential leakage, ME-7 redaction, ME-10 injection).
+| Priority | Items | Status |
+|----------|-------|--------|
+| P0 — Blocking | NEW-1, NEW-2 | ✅ All resolved |
+| P1 — Security | HI-2 + NEW-10, HI-3 + NEW-3 | ✅ All resolved |
+| P2 — Alignment | NEW-4, NEW-5 | ✅ All resolved |
+| P3 — Housekeeping | HK-3, HK-5, HK-6, NEW-8, NEW-10 | ✅ All resolved |
+| Deferred | HK-13 (#84), HK-15 (#85), NEW-6 (#86), NEW-7 (#87), NEW-9 (#88) | Tracked in GitHub issues |
+
+> **All original P0–P2 items from 2025-07-15 were resolved previously** (CR-1 cursor code, CR-2 atomicity, CR-3 + HI-5 + HI-6 test files, ME-1 CI flags, ME-2 + ME-3 contracts, HI-1 credential leakage, ME-7 redaction, ME-10 injection).
