@@ -243,6 +243,16 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 
 - **CI-3 manual dispatch note:** `maintainer_approved` remains a required attestation input for `workflow_dispatch`, and manual runs are gated by protected-environment reviewer approval (`ci3-manual-approval`) for authoritative control.
 
+## Support and infrastructure workflows
+
+| Workflow | Trigger | Purpose | Manual equivalent |
+|---|---|---|---|
+| `pre-commit.yml` | `push`, `pull_request` to main | Runs all pre-commit hooks in CI so governance guardrails are verified even when local hooks are skipped | `pre-commit run --all-files` |
+| `wiki-freshness.yml` | Weekly schedule (Mon 03:30 UTC), `workflow_dispatch` | Advisory freshness check on wiki pages; detects content that may be stale | `python3 -m scripts.validation.check_doc_freshness wiki/ --threshold-days 90` |
+| `github-customizations-freshness.yml` | `push` to `.github/**`, weekly schedule, `workflow_dispatch` | Validates `.github/` customizations (skills, agents, hooks) are fresh and internally consistent | `python3 -m scripts.kb.github_customizations_freshness --output drift-report.json` |
+| `fleet-dispatch.yml` | `workflow_dispatch` | Jules-based fleet orchestration: plans issue tasks, dispatches parallel Jules sessions for open issues | `cd scripts/fleet && bun run fleet-plan.ts && bun run fleet-dispatch.ts` |
+| `fleet-merge.yml` | `workflow_dispatch` | Sequential merge of Jules-authored PRs: update branch → wait for CI → squash merge; re-dispatches on conflict | `cd scripts/fleet && bun run fleet-merge.ts` |
+
 ## Milestone evidence mapping (M0..M4)
 
 | Gate | Concrete evidence in this repo |

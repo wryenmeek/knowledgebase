@@ -64,6 +64,29 @@ class TestDocsIdeasArchival(unittest.TestCase):
                     f"{md_file.name}: archive target escapes raw/inbox/: {rel_target}",
                 )
 
+    def test_implemented_docs_must_be_stubs(self) -> None:
+        """A doc with terminal 'Status: Implemented' must have an archive pointer (i.e. be a stub)."""
+        if not IDEAS_DIR.is_dir():
+            self.skipTest("docs/ideas/ directory does not exist")
+
+        # Match terminal "Implemented" but NOT "Implemented (Phase N)"
+        _IMPLEMENTED_RE = re.compile(
+            r"\*\*Status:\*\*\s+Implemented(?!\s*\()",
+        )
+
+        for md_file in sorted(IDEAS_DIR.glob("*.md")):
+            text = md_file.read_text(encoding="utf-8")
+            if not _IMPLEMENTED_RE.search(text):
+                continue
+
+            with self.subTest(doc=md_file.name):
+                self.assertIsNotNone(
+                    _ARCHIVE_PTR_RE.search(text),
+                    f"{md_file.name} has 'Status: Implemented' but no archive "
+                    f"pointer — archive to raw/inbox/ and leave a stub "
+                    f"(see copilot-instructions.md § docs/ideas/ archival)",
+                )
+
     def test_at_least_one_stub_exists(self) -> None:
         """Sanity check: at least one archival stub exists (guards against silent regex drift)."""
         if not IDEAS_DIR.is_dir():
