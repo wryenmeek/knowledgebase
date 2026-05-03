@@ -8,8 +8,7 @@ on any suspicious input rather than silently passing.
 from __future__ import annotations
 
 import re
-import urllib.parse
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from scripts.drive_monitor._types import (
     _DRIVE_FILE_ID_RE,
@@ -20,9 +19,6 @@ from scripts.drive_monitor._types import (
 _LEADING_DOTS_RE: re.Pattern[str] = re.compile(r"^\.+")
 _UNSAFE_CHARS_RE: re.Pattern[str] = re.compile(r"[^\w\-. ]+")
 _MAX_BASENAME_LEN: int = 200
-
-_FORBIDDEN_COMPONENTS: frozenset[str] = frozenset({".."})
-_MAX_PATH_DEPTH: int = 20
 
 
 def validate_alias(alias: str) -> str:

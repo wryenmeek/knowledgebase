@@ -270,3 +270,58 @@ jobs:
             --body "Automated diff-aware sync by CI-6 Google Drive source monitor (run ${{ github.run_id }})." \
             --base main \
             --head "${BRANCH}"
+
+  advance-cursor:
+    name: CI-6 advance Changes API cursor
+    needs: [check-drift, fetch-and-update, classify-drift, synthesize]
+    # Run after all pipeline stages complete (even if synthesize was skipped
+    # because all entries were HITL).  Only advance when drift was detected.
+    if: >-
+      always() &&
+      needs.check-drift.outputs.drift_detected == 'true' &&
+      needs.fetch-and-update.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: kb-write-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[drive-monitor]" --quiet
+
+      - name: Download drift report
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.check-drift.outputs.artifact_name }}
+
+      - name: Advance cursors for successfully processed aliases
+        run: |
+          set -euo pipefail
+          python -m scripts.drive_monitor.advance_cursor \
+            --drift-report drift-report.json \
+            --approval approved
+
+      - name: Commit cursor advancement
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add raw/drive-sources/
+          git diff --cached --quiet && echo "No cursor changes to commit" && exit 0
+
+          git commit -m "chore(drive-monitor): advance Changes API cursor [run ${{ github.run_id }}]"
+          git push origin HEAD:main

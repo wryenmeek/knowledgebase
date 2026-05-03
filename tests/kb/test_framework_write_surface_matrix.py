@@ -290,6 +290,20 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
         "Hard-fail behavior": ("lock unavailable", "path traversal", "last_applied_", "fail closed"),
     },
+    "scripts/drive_monitor/create_issues.py": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("None",),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("schema/drive-source-registry-contract.md", "ADR-014"),
+        "Hard-fail behavior": ("malformed json", "fail closed"),
+    },
+    "scripts/drive_monitor/advance_cursor.py` — write mode only": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("raw/drive-sources/", "changes_page_token"),
+        "Lock requirements": ("raw/.drive-sources.lock", "--approval approved"),
+        "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
+        "Hard-fail behavior": ("lock unavailable", "alias with pipeline errors", "fail closed"),
+    },
 }
 
 

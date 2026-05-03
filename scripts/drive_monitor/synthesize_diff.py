@@ -46,7 +46,6 @@ from scripts._optional_surface_common import (
 from scripts.kb.contracts import DriveMonitorReasonCode
 from scripts.kb import write_utils
 from scripts.drive_monitor._types import (
-    MIME_EXTENSION_MAP,
     MIME_EXPORT_MAP,
     OVERSIZE_LIMIT_BYTES,
     validate_drive_drift_report,
@@ -54,6 +53,7 @@ from scripts.drive_monitor._types import (
 from scripts.drive_monitor._validators import (
     build_drive_asset_path,
     build_wiki_page_path,
+    safe_filename,
     validate_file_id,
 )
 from scripts.drive_monitor._registry import (
@@ -66,6 +66,11 @@ MODE = "synthesize"
 
 _DIFF_SIZE_LIMIT = 100_000
 _DIFF_MAX_LINES = 200
+
+
+def _sanitize_for_md(name: str) -> str:
+    """Escape characters that could break Markdown structure."""
+    return name.replace("`", "\\`").replace("\n", " ").replace("\r", "")
 
 
 def _write_wiki_page(path: Path, content: str) -> None:
@@ -124,13 +129,7 @@ def _find_old_asset(
     mime_type: str,
 ) -> bytes | None:
     """Locate the previously applied asset in raw/assets/gdrive/."""
-    import re as _re
-    safe_name_base = _re.sub(r"[^\w\-. ]+", "_", display_name).strip().rstrip(".")[:200]
-    ext = MIME_EXTENSION_MAP.get(mime_type, "")
-    if ext and not safe_name_base.lower().endswith(ext):
-        safe_name = safe_name_base + ext
-    else:
-        safe_name = safe_name_base
+    safe_name = safe_filename(display_name, mime_type)
 
     if last_applied_version is not None:
         version_segment = str(last_applied_version)
@@ -160,13 +159,7 @@ def _find_new_asset(
     mime_type: str,
 ) -> bytes | None:
     """Locate the newly fetched asset in raw/assets/gdrive/."""
-    import re as _re
-    safe_name_base = _re.sub(r"[^\w\-. ]+", "_", display_name).strip().rstrip(".")[:200]
-    ext = MIME_EXTENSION_MAP.get(mime_type, "")
-    if ext and not safe_name_base.lower().endswith(ext):
-        safe_name = safe_name_base + ext
-    else:
-        safe_name = safe_name_base
+    safe_name = safe_filename(display_name, mime_type)
 
     if current_version is not None:
         version_segment = str(current_version)
@@ -200,7 +193,7 @@ def _build_change_note(
     current_version = entry.get("current_drive_version")
     lines: list[str] = [
         f"\n## Change Note — {now}\n",
-        f"\n**Source:** Google Drive `{display_name}` (`{file_id}`)\\\n",
+        f"\n**Source:** Google Drive `{_sanitize_for_md(display_name)}` (`{file_id}`)\\\n",
         f"**Event:** `{event_type}`\\\n",
     ]
     if current_version is not None:
@@ -384,7 +377,7 @@ def synthesize_diff(
                     new_content = (
                         f"---\ntitle: {safe_title}\nsource_type: google_drive\n"
                         f"alias: {alias}\nfile_id: {file_id}\n---\n"
-                        f"# {display_name}\n\n"
+                        f"# {_sanitize_for_md(display_name)}\n\n"
                         f"*Auto-created by CI-6 Drive monitor.*\n"
                         + change_note
                     )

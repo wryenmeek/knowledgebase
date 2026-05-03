@@ -25,10 +25,10 @@ _MD5_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{32}$")
 _ALIAS_RE: re.Pattern[str] = re.compile(r"^[a-z0-9][a-z0-9\-]*[a-z0-9]$|^[a-z0-9]$")
 
 _VALID_FOLDER_TRACKING_STATUSES: frozenset[str] = frozenset(
-    {"active", "paused", "archived"}
+    {"active", "paused", "archived", "unreachable"}
 )
 _VALID_FILE_TRACKING_STATUSES: frozenset[str] = frozenset(
-    {"active", "paused", "archived", "pending_review", "uninitialized"}
+    {"active", "paused", "archived", "pending_review", "uninitialized", "unreachable"}
 )
 
 REGISTRY_VERSION = "1"

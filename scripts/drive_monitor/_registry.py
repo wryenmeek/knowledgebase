@@ -18,6 +18,7 @@ import contextlib
 import glob as glob_module
 import json
 import os
+import re
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -144,7 +145,7 @@ def update_last_applied(
     resets ``last_fetched_*`` to ``None``.
 
     Returns ``True`` if the entry was found and updated, ``False`` otherwise.
-    Does NOT modify ``last_fetched_*`` fields (those are reset to ``None``).
+    Resets ``last_fetched_*`` fields to ``None`` to reflect the consumed fetch state.
     """
     if applied_at is None:
         applied_at = datetime.now(timezone.utc).isoformat()
@@ -192,8 +193,9 @@ def update_changes_cursor(
 ) -> None:
     """Under the registry lock, save the new Changes API page token.
 
-    Must be called after a successful ``check_drift.py`` run to advance
-    the cursor and avoid re-processing the same changes on the next run.
+    Must be called by ``advance_cursor.py`` after all entries for the alias
+    are durably handled, to advance the cursor and avoid re-processing the
+    same changes on the next run.
     """
     with write_utils.exclusive_write_lock(
         repo_root, lock_path=contracts.DRIVE_SOURCES_LOCK_PATH
@@ -226,7 +228,6 @@ def add_file_entry(
     version/hash fields set to ``None``.  The wiki_page is auto-assigned from
     ``wiki_namespace`` + slugified ``display_name``.
     """
-    import re
     slug = re.sub(r"[^a-z0-9]+", "-", display_name.lower()).strip("-")
     wiki_page = f"wiki/{wiki_namespace.rstrip('/')}/{slug}.md"
 

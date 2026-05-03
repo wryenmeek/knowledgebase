@@ -374,7 +374,7 @@ Bulk aggregation: if `≥ bulk_hitl_threshold` (default 3) `event_type in {"tras
 | `docs/decisions/ADR-021-google-drive-source-monitoring.md` | Governing ADR. Covers auth model, CI-6 structure, lock ordering, asset path convention, Changes API cursor semantics, normalization requirement. |
 | `raw/.drive-sources.lock` | New lock file (not committed — created at runtime by `write_utils`). |
 | `scripts/kb/contracts.py` — `DriveMonitorReasonCode` | New `StrEnum` parallel to `GitHubMonitorReasonCode`. |
-| `AGENTS.md` write-surface matrix rows | 5 rows: one per `scripts/drive_monitor/` executable script. |
+| `AGENTS.md` write-surface matrix rows | 7 rows: one umbrella plus one per `scripts/drive_monitor/` executable script. |
 
 ---
 
@@ -440,7 +440,7 @@ The feature is **done** when all of the following are true:
 6. **`python3 -m pytest tests/`** (full suite, including all existing tests) passes with no regressions.
 7. **`schema/drive-source-registry-contract.md`** is written and referenced by `_types.py` validators.
 8. **`ADR-021`** is written and reflects all design decisions from the one-pager + grill-me session.
-9. **`AGENTS.md`** write-surface matrix has rows for all 5 `scripts/drive_monitor/` executable scripts.
+9. **`AGENTS.md`** write-surface matrix has rows for all 6 `scripts/drive_monitor/` executable scripts plus 1 umbrella row.
 10. **`DriveMonitorReasonCode`** is added to `scripts/kb/contracts.py` and exported via `__all__`.
 11. **CI-6 workflow** YAML is written with a 4-job structure (check-drift, fetch-and-update, classify-drift, synthesize).
 
