@@ -1,0 +1,21 @@
+{
+  "version": "1",
+  "owner": "wryenmeek",
+  "repo": "knowledgebase",
+  "github_app_installation_id": 129030108,
+  "entries": [
+    {
+      "path": "README.md",
+      "tracking_status": "uninitialized",
+      "last_applied_commit_sha": null,
+      "last_applied_blob_sha": null,
+      "last_applied_at": null,
+      "last_fetched_commit_sha": null,
+      "last_fetched_blob_sha": null,
+      "sha256_at_last_fetched": null,
+      "sha256_at_last_applied": null,
+      "wiki_page": null,
+      "notes": "Test entry — monitors own repo README to verify CI-5 pipeline."
+    }
+  ]
+}
