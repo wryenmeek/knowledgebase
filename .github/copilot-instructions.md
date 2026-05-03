@@ -254,6 +254,16 @@ Adding to certain enums or dicts triggers test failures in contract-alignment te
 
 **CONTEXT.md domain mapping:** `scripts/kb/` → `scripts/kb/CONTEXT.md`, `schema/` → `schema/CONTEXT.md`, `scripts/github_monitor/` → `scripts/github_monitor/CONTEXT.md`, `scripts/drive_monitor/` → `scripts/drive_monitor/CONTEXT.md`, `.github/skills/` or `.github/agents/` or `.github/hooks/` → `.github/skills/CONTEXT.md`, `wiki/` → `wiki/CONTEXT.md`. Enforced by `tests/kb/test_context_md_freshness.py` — fails when ≥10 domain commits land after the `last_updated` date.
 
+### Documentation cascades (not test-enforced)
+
+Unlike contract test cascades above, these documentation updates have no automated enforcement. They drift silently and are the most common source of stale-doc audit findings.
+
+| When you add… | Also update… |
+|---|---|
+| A new ADR (`docs/decisions/ADR-NNN-*.md`) | Row in `docs/decisions/README.md` index table |
+| A new CI workflow (`ci-N-*.yml`) | `docs/architecture.md` CI table and `docs/mvp-runbook.md` fallback table |
+| A new `scripts/<pkg>/` package | `docs/ideas/spec.md` Phase 2 family list |
+
 ### CONTEXT.md required sections
 
 The pre-commit hook (`check_context_md_format.py`) validates these exact section headings: `## Terms`, `## Invariants`, `## File Roles`. These differ from what ADR-018 describes (`## Entities`, `## Patterns`) — **the hook is authoritative**. Max 200 lines. Frontmatter requires `scope` and `last_updated` fields.
