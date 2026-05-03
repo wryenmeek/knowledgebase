@@ -1,0 +1,212 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-05-03T08:06:02.127Z",
+  "root_causes": [
+    {
+      "id": "rc-1-2",
+      "title": "Shell injection and missing Node 24 support in workflows",
+      "severity": "critical",
+      "issues": [72, 83, 88],
+      "files": [
+        ".github/workflows/fleet-dispatch.yml",
+        ".github/workflows/fleet-merge.yml",
+        ".github/workflows/ci-1-gatekeeper.yml",
+        ".github/workflows/ci-2-analyst-diagnostics.yml",
+        ".github/workflows/ci-3-pr-producer.yml",
+        ".github/workflows/ci-4-framework-writer.yml",
+        ".github/workflows/ci-5-github-monitor.yml",
+        ".github/workflows/ci-6-google-drive-monitor.yml",
+        ".github/workflows/github-customizations-freshness.yml",
+        ".github/workflows/pre-commit.yml",
+        ".github/workflows/wiki-freshness.yml",
+        "tests/kb/test_ci1_workflow.py"
+      ],
+      "description": "Direct interpolation of ${{ inputs.base_branch }} allows shell injection. Workflows use deprecated Node 20 actions and ci-6 lacks a concurrency block.",
+      "solution_summary": "Move inputs to env: context. Update actions to Node 24 versions while preserving SHA pins. Add concurrency block to ci-6."
+    },
+    {
+      "id": "rc-3",
+      "title": "ADR-011 violation in ingest_render.py",
+      "severity": "medium",
+      "issues": [63],
+      "files": ["scripts/kb/ingest_render.py", "scripts/kb/ingest.py", "tests/kb/test_ingest.py"],
+      "description": "ingest.py imports underscore-prefixed symbols from its sibling ingest_render.py.",
+      "solution_summary": "Deprivatize cross-boundary symbols."
+    },
+    {
+      "id": "rc-4",
+      "title": "_optional_surface_common refactoring",
+      "severity": "medium",
+      "issues": [64, 65, 67],
+      "files": ["scripts/_optional_surface_common.py", "scripts/kb/qmd_preflight.py", "scripts/reporting/_artifact.py", "scripts/reporting/content_quality_report.py", "scripts/reporting/quality_runtime.py", "tests/kb/test_qmd_preflight.py", "tests/kb/test_optional_surface_scripts.py"],
+      "description": "_optional_surface_common.py duplicates constants without drift guards, has silent drift on LOCK_PATH, and has reporting-domain logic.",
+      "solution_summary": "Add keep-in-sync comments, import LOCK_PATH, and extract reporting IO to _artifact.py."
+    },
+    {
+      "id": "rc-7",
+      "title": "Missing Fleet Orchestration documentation",
+      "severity": "low",
+      "issues": [66],
+      "files": ["docs/architecture.md"],
+      "description": "architecture.md lacks documentation for fleet.",
+      "solution_summary": "Add a new section for Fleet orchestration."
+    },
+    {
+      "id": "rc-10",
+      "title": "Drive monitor improvements",
+      "severity": "low",
+      "issues": [84, 85, 86, 87],
+      "files": ["scripts/drive_monitor/_validators.py", "scripts/drive_monitor/_http.py", "scripts/drive_monitor/check_drift.py", "scripts/drive_monitor/_registry.py", "scripts/drive_monitor/_types.py", "scripts/drive_monitor/_normalize.py", "scripts/drive_monitor/advance_cursor.py", "scripts/drive_monitor/classify_drift.py", "scripts/drive_monitor/create_issues.py", "scripts/drive_monitor/fetch_content.py", "scripts/drive_monitor/synthesize_diff.py", "pyproject.toml"],
+      "description": "Missing explicit validation, missing docstrings, and unbounded dependency pins.",
+      "solution_summary": "Add validation for version segment, numpydoc docstrings, document pagination, and upper bounds for dependencies."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Deprivatize cross-boundary symbols in ingest_render",
+      "root_cause": "rc-3",
+      "issues": [63],
+      "files": ["scripts/kb/ingest_render.py", "scripts/kb/ingest.py"],
+      "new_files": [],
+      "test_files": ["tests/kb/test_ingest.py"],
+      "risk": "low",
+      "prompt": "Fix ADR-011 violation where `ingest.py` imports private symbols from `ingest_render.py`.\n\nFiles to modify:\n- `scripts/kb/ingest_render.py`\n- `scripts/kb/ingest.py`\n- `tests/kb/test_ingest.py`\n\nCurrently, `ingest.py` directly imports private symbols:\n```python\n# scripts/kb/ingest.py:16-20\nfrom scripts.kb.ingest_render import (\n    _PROVISIONAL_GIT_SHA,\n    _build_provisional_source_provenance,\n    _build_source_ref,\n    _escape_quotes,\n    _render_source_page,\n)\n```\n\nProposed Solution:\n1. In `ingest_render.py`: rename `_PROVISIONAL_GIT_SHA` -> `PROVISIONAL_GIT_SHA`, `_build_source_ref` -> `build_source_ref`, `_build_provisional_source_provenance` -> `build_provisional_source_provenance`, `_render_source_page` -> `render_source_page`, `_escape_quotes` -> `escape_quotes`. Add `__all__ = [\"PROVISIONAL_GIT_SHA\", \"build_source_ref\", \"build_provisional_source_provenance\", \"render_source_page\", \"escape_quotes\", \"SourceProvenance\"]`.\n2. In `ingest.py`: update the import block to use the new public names.\n3. In `tests/kb/test_ingest.py`: replace all private-name references with the renamed public names.\n\n```diff\n# scripts/kb/ingest_render.py\n- _PROVISIONAL_GIT_SHA = \"0\" * 40\n+ PROVISIONAL_GIT_SHA = \"0\" * 40\n\n+ __all__ = [\"PROVISIONAL_GIT_SHA\", \"build_source_ref\", \"build_provisional_source_provenance\", \"render_source_page\", \"escape_quotes\", \"SourceProvenance\"]\n```\n\nAcceptance Criteria:\n1. `ingest_render.py` exports these symbols publicly.\n2. No private symbol is imported or used by sibling files.\n3. Tests pass.\n\nTest Scenarios:\nRun `pytest tests/kb/test_ingest.py` to verify that imports and pipelines continue to function without raising `ImportError` or `AttributeError`.\n\nFILE BOUNDARY RULE: You may ONLY modify the files listed above. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-2",
+      "title": "Refactor _optional_surface_common.py features",
+      "root_cause": "rc-4",
+      "issues": [64, 65, 67],
+      "files": ["scripts/_optional_surface_common.py", "scripts/kb/qmd_preflight.py", "scripts/reporting/content_quality_report.py", "scripts/reporting/quality_runtime.py"],
+      "new_files": ["scripts/reporting/_artifact.py"],
+      "test_files": ["tests/kb/test_qmd_preflight.py", "tests/kb/test_optional_surface_scripts.py"],
+      "risk": "medium",
+      "prompt": "Fix missing drift guards, silent imports, and extract report artifact IO.\n\nFiles to modify:\n- `scripts/_optional_surface_common.py`\n- `scripts/kb/qmd_preflight.py`\n- `scripts/reporting/content_quality_report.py`\n- `scripts/reporting/quality_runtime.py`\n- `tests/kb/test_qmd_preflight.py`\n- `tests/kb/test_optional_surface_scripts.py`\nNew file to create:\n- `scripts/reporting/_artifact.py`\n\nCurrently, `_optional_surface_common.py` defines `LOCK_PATH = \"wiki/.kb_write.lock\"` completely separately from contracts, which creates a drift risk.\n\nProposed Solution:\n1. In `scripts/_optional_surface_common.py`, replace `LOCK_PATH = \"wiki/.kb_write.lock\"` with `from scripts.kb.contracts import WRITE_LOCK_PATH as LOCK_PATH`.\n2. In `scripts/kb/qmd_preflight.py`, add `# keep in sync with scripts/_optional_surface_common.<NAME>` to `STATUS_PASS`, `STATUS_FAIL`, `REASON_CODE_OK`, `REASON_CODE_INVALID_INPUT`.\n3. In `_optional_surface_common.py`, update the comment block for `qmd_preflight.py` duplication to mention `ADR-011 explicit keep in sync pattern`.\n4. Move `validate_report_artifact`, `write_report_artifact`, `REPORT_ARTIFACT_WRITE_ROOT`, `_REPORT_TYPE_FINDINGS_KEYS`, `_REPORT_TYPE_SUMMARY_KEYS`, and `_REPORT_ENVELOPE_REQUIRED` from `_optional_surface_common.py` to `_artifact.py` verbatim. Ensure `scripts/reporting/_artifact.py` has `__all__` listing `validate_report_artifact`, `write_report_artifact`, and `REPORT_ARTIFACT_WRITE_ROOT`.\n5. Update `content_quality_report.py` and `quality_runtime.py` to import `write_report_artifact` from `scripts.reporting._artifact`.\n\n```diff\n# scripts/kb/qmd_preflight.py\n- STATUS_PASS = \"pass\"\n+ STATUS_PASS = \"pass\"  # keep in sync with scripts/_optional_surface_common.STATUS_PASS\n\n# scripts/_optional_surface_common.py\n- LOCK_PATH = \"wiki/.kb_write.lock\"\n+ from scripts.kb.contracts import WRITE_LOCK_PATH as LOCK_PATH\n```\n\nTest Scenarios:\nRun `pytest tests/kb/test_qmd_preflight.py` and `pytest tests/kb/test_optional_surface_scripts.py`. Validate that `write_report_artifact` operates appropriately across tests.\n\nFILE BOUNDARY RULE: You may ONLY modify the files listed above. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-3",
+      "title": "Document fleet orchestration in architecture.md",
+      "root_cause": "rc-7",
+      "issues": [66],
+      "files": ["docs/architecture.md"],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "Document fleet orchestration layer in architecture.md.\n\nFiles to modify:\n- `docs/architecture.md`\n\nProposed Solution:\nAdd a \"Fleet orchestration\" section immediately after the CI-1..CI-6 automation model table. Cover:\n1. What fleet scripts do (Jules SDK integration, PR-producing dispatch/merge/analyze)\n2. That it is a separate TypeScript/Bun runtime - not covered by pytest.\n3. Build verification command: `cd scripts/fleet && bun build --target=bun --outdir=out fleet-plan.ts fleet-dispatch.ts fleet-merge.ts fleet-analyze.ts`\n4. Which CI workflows invoke fleet (`fleet-dispatch.yml`, `fleet-merge.yml`).\n5. That `bun build` must pass after any edit to `scripts/fleet/`.\n\nTest Scenarios:\nNone required. Visual documentation review only.\n\nFILE BOUNDARY RULE: You may ONLY modify the files listed above. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-4",
+      "title": "Resolve Drive Monitor improvements",
+      "root_cause": "rc-10",
+      "issues": [84, 85, 86, 87],
+      "files": ["scripts/drive_monitor/_validators.py", "scripts/drive_monitor/_http.py", "scripts/drive_monitor/check_drift.py", "scripts/drive_monitor/_registry.py", "scripts/drive_monitor/_types.py", "scripts/drive_monitor/_normalize.py", "scripts/drive_monitor/advance_cursor.py", "scripts/drive_monitor/classify_drift.py", "scripts/drive_monitor/create_issues.py", "scripts/drive_monitor/fetch_content.py", "scripts/drive_monitor/synthesize_diff.py", "pyproject.toml"],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "Resolve multiple issues in the drive_monitor subpackage.\n\nFiles to modify:\n- `scripts/drive_monitor/_validators.py`\n- `scripts/drive_monitor/_http.py`\n- `scripts/drive_monitor/check_drift.py`\n- `scripts/drive_monitor/_registry.py`\n- `scripts/drive_monitor/_types.py`\n- `scripts/drive_monitor/_normalize.py`\n- `scripts/drive_monitor/advance_cursor.py`\n- `scripts/drive_monitor/classify_drift.py`\n- `scripts/drive_monitor/create_issues.py`\n- `scripts/drive_monitor/fetch_content.py`\n- `scripts/drive_monitor/synthesize_diff.py`\n- `pyproject.toml`\n\nCurrently, `version_segment` checks are inline and accept infinite hex sequences:\n```python\n# scripts/drive_monitor/_validators.py:91-94\n    if not re.match(r\"^[0-9a-f]+$\", version_segment):\n        raise ValueError(\n            f\"version_segment must be an integer string or a lowercase hex string, \"\n            f\"got {version_segment!r}\"\n        )\n```\n\nProposed Solution:\n1. Add a function `validate_version_segment(segment: str) -> str:` to `scripts/drive_monitor/_validators.py` that verifies the segment is either a positive integer string or a valid 32, 40, or 64 character lowercase hex string. Use this explicitly inside `build_drive_asset_path` instead of the inline regex.\n2. Add numpy-style docstrings (Parameters, Returns, Raises) to all public functions across `scripts/drive_monitor/`.\n3. Add tests to ensure multi-page change API responses correctly aggregate in `list_changes` (and note its pagination usage in docstrings).\n4. Update `google-api-python-client>=2.100` to `google-api-python-client>=2.100,<3.0` and `google-auth>=2.23` to `google-auth>=2.23,<3.0` under the `drive-monitor` optional dependencies in `pyproject.toml`.\n\n```diff\n# pyproject.toml\n-    \"google-api-python-client>=2.100\",\n-    \"google-auth>=2.23\",\n+    \"google-api-python-client>=2.100,<3.0\",\n+    \"google-auth>=2.23,<3.0\",\n```\n\nTest Scenarios:\nEnsure no syntax issues exist and the manual validation logic accurately catches invalid lengths.\n\nFILE BOUNDARY RULE: You may ONLY modify the files listed above. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-5",
+      "title": "Update GitHub Actions to Node 24, fix shell injection, and add CI-6 concurrency",
+      "root_cause": "rc-1-2",
+      "issues": [72, 83, 88],
+      "files": [
+        ".github/workflows/fleet-dispatch.yml",
+        ".github/workflows/fleet-merge.yml",
+        ".github/workflows/ci-1-gatekeeper.yml",
+        ".github/workflows/ci-2-analyst-diagnostics.yml",
+        ".github/workflows/ci-3-pr-producer.yml",
+        ".github/workflows/ci-4-framework-writer.yml",
+        ".github/workflows/ci-5-github-monitor.yml",
+        ".github/workflows/ci-6-google-drive-monitor.yml",
+        ".github/workflows/github-customizations-freshness.yml",
+        ".github/workflows/pre-commit.yml",
+        ".github/workflows/wiki-freshness.yml"
+      ],
+      "new_files": [],
+      "test_files": ["tests/kb/test_ci1_workflow.py"],
+      "risk": "high",
+      "prompt": "Fix shell injection in fleet workflows, update all GitHub actions to Node 24 and add concurrency to CI-6.\n\nFiles to modify:\n- `.github/workflows/fleet-dispatch.yml`\n- `.github/workflows/fleet-merge.yml`\n- `.github/workflows/ci-1-gatekeeper.yml`\n- `.github/workflows/ci-2-analyst-diagnostics.yml`\n- `.github/workflows/ci-3-pr-producer.yml`\n- `.github/workflows/ci-4-framework-writer.yml`\n- `.github/workflows/ci-5-github-monitor.yml`\n- `.github/workflows/ci-6-google-drive-monitor.yml`\n- `.github/workflows/github-customizations-freshness.yml`\n- `.github/workflows/pre-commit.yml`\n- `.github/workflows/wiki-freshness.yml`\n- `tests/kb/test_ci1_workflow.py`\n\nProposed Solution:\n1. In `fleet-dispatch.yml` and `fleet-merge.yml`, move all `${{ inputs.* }}` and `${{ steps.*.outputs.* }}` references in `run:` blocks to the `env:` context of the respective steps, and reference them in bash as `$VAR_NAME`.\n2. Update all action references (e.g., `actions/checkout`, `actions/setup-python`, `actions/upload-artifact`, `actions/download-artifact`, `actions/cache`) to their Node 24-compatible major versions across all workflows. For example, `actions/checkout@v4` and `actions/setup-python@v5`. Preserve commit SHA pinning format if used.\n3. In `.github/workflows/ci-6-google-drive-monitor.yml`, add a root-level concurrency block:\n```yaml\nconcurrency:\n  group: ci-6-drive-monitor-${{ github.ref }}\n  cancel-in-progress: false\n```\n4. Update the string patterns checked in `tests/kb/test_ci1_workflow.py` if they expect old SHAs or versions.\n\n```diff\n# .github/workflows/fleet-dispatch.yml\n-      - name: Dispatch task sessions\n-        working-directory: scripts/fleet\n-        env:\n-          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}\n-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n-        run: |\n-          set -euo pipefail\n-          git pull --ff-only origin \"${{ inputs.base_branch || 'main' }}\"\n-          bun fleet-dispatch.ts\n+      - name: Dispatch task sessions\n+        working-directory: scripts/fleet\n+        env:\n+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}\n+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n+          FLEET_BASE_BRANCH: ${{ inputs.base_branch || 'main' }}\n+        run: |\n+          set -euo pipefail\n+          git pull --ff-only origin \"$FLEET_BASE_BRANCH\"\n+          bun fleet-dispatch.ts\n```\n\nTest Scenarios:\n1. Input a branch name like `main\"; echo \"hacked`. Ensure the action runs safely without executing the injected code.\n2. Ensure GitHub action syntax is uncompromised and properly runs without Node 20 deprecation warnings.\n\nFILE BOUNDARY RULE: You may ONLY modify the files listed above. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [
+    {
+      "issue": 82,
+      "reason": "API dependency FAILED_PRECONDITION is server-side issue",
+      "suggested_owner": "API Team"
+    },
+    {
+      "issue": 13,
+      "reason": "Add regression tests for symlink-safe writes cannot be addressed without knowledge of write-boundary path internals that aren't defined in this task set.",
+      "suggested_owner": "Automation Team"
+    },
+    {
+      "issue": 14,
+      "reason": "Batch CI-3 ingest to avoid repeated index rebuilds requires an agent task spanning too many unknown files outside context.",
+      "suggested_owner": "Automation Team"
+    },
+    {
+      "issue": 15,
+      "reason": "Replace CI-3 source list GITHUB_OUTPUT handoff needs extensive workflow and integration test redesign not well-defined here.",
+      "suggested_owner": "Automation Team"
+    },
+    {
+      "issue": 16,
+      "reason": "Eliminate duplicate workflow YAML parsing in CI-2 requires refactoring CI-2 which interacts with undocumented internal tools.",
+      "suggested_owner": "Automation Team"
+    },
+    {
+      "issue": 17,
+      "reason": "Skip persist_query index rebuild is an optimization task affecting `persist_query.py` logic which wasn't fully defined.",
+      "suggested_owner": "Automation Team"
+    },
+    {
+      "issue": 18,
+      "reason": "Optimize lint_wiki and update_index repeated filesystem passes is an open-ended optimization without code references in the issue text.",
+      "suggested_owner": "Automation Team"
+    },
+    {
+      "issue": 19,
+      "reason": "Add performance instrumentation and runtime budgets to KB automation needs architectural definition of where budgets are maintained.",
+      "suggested_owner": "Automation Team"
+    }
+  ],
+  "file_ownership": {
+    "scripts/kb/ingest_render.py": "task-1",
+    "scripts/kb/ingest.py": "task-1",
+    "tests/kb/test_ingest.py": "task-1",
+    "scripts/_optional_surface_common.py": "task-2",
+    "scripts/kb/qmd_preflight.py": "task-2",
+    "scripts/reporting/_artifact.py": "task-2",
+    "scripts/reporting/content_quality_report.py": "task-2",
+    "scripts/reporting/quality_runtime.py": "task-2",
+    "tests/kb/test_qmd_preflight.py": "task-2",
+    "tests/kb/test_optional_surface_scripts.py": "task-2",
+    "docs/architecture.md": "task-3",
+    "scripts/drive_monitor/_validators.py": "task-4",
+    "scripts/drive_monitor/_http.py": "task-4",
+    "scripts/drive_monitor/check_drift.py": "task-4",
+    "scripts/drive_monitor/_registry.py": "task-4",
+    "scripts/drive_monitor/_types.py": "task-4",
+    "scripts/drive_monitor/_normalize.py": "task-4",
+    "scripts/drive_monitor/advance_cursor.py": "task-4",
+    "scripts/drive_monitor/classify_drift.py": "task-4",
+    "scripts/drive_monitor/create_issues.py": "task-4",
+    "scripts/drive_monitor/fetch_content.py": "task-4",
+    "scripts/drive_monitor/synthesize_diff.py": "task-4",
+    "pyproject.toml": "task-4",
+    ".github/workflows/fleet-dispatch.yml": "task-5",
+    ".github/workflows/fleet-merge.yml": "task-5",
+    ".github/workflows/ci-1-gatekeeper.yml": "task-5",
+    ".github/workflows/ci-2-analyst-diagnostics.yml": "task-5",
+    ".github/workflows/ci-3-pr-producer.yml": "task-5",
+    ".github/workflows/ci-4-framework-writer.yml": "task-5",
+    ".github/workflows/ci-5-github-monitor.yml": "task-5",
+    ".github/workflows/ci-6-google-drive-monitor.yml": "task-5",
+    ".github/workflows/github-customizations-freshness.yml": "task-5",
+    ".github/workflows/pre-commit.yml": "task-5",
+    ".github/workflows/wiki-freshness.yml": "task-5",
+    "tests/kb/test_ci1_workflow.py": "task-5"
+  }
+}
