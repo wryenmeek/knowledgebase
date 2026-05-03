@@ -639,7 +639,7 @@ def _build_parser() -> JsonArgumentParser:
 
 def _args_to_kwargs(args: Any) -> dict[str, Any]:
     repo_root = Path(args.repo_root).resolve()
-    registry_paths = [Path(args.registry)] if args.registry else None
+    registry_paths = [(repo_root / args.registry).resolve()] if args.registry else None
     return {
         "repo_root": repo_root,
         "registry_paths": registry_paths,
