@@ -454,15 +454,56 @@ The feature is **done** when all of the following are true:
 
 ---
 
-*Spec status: implemented — pending remediation of cross-functional review findings below.*
+*Spec status: implemented — 27/35 original findings resolved (2026-07-22); 8 still open + 10 new findings pending remediation.*
 
 ---
 
 ## Cross-Functional Review Findings (Remediation Required)
 
-> **Review date:** 2025-07-15
+> **Review date:** 2025-07-15 (initial) · 2026-07-22 (re-verification)
 > **Reviewers:** code-reviewer, security-auditor, test-engineer, solutions-architect, documentation-engineer, framework-engineer
 > **Scope:** All `scripts/drive_monitor/` code, tests, governance artifacts, and documentation against this spec.
+> **Re-verification summary:** 27 of 35 original findings resolved; 8 still open; 10 new findings identified. All 194 tests pass.
+
+#### Re-Verification Status Summary
+
+| Finding | Status | Evidence |
+|---------|--------|---------|
+| CR-1 | ✅ Resolved | Cursor flows through drift report → `advance_cursor.py`; CI wiring is documented known-gap |
+| CR-2 | ✅ Resolved | Compensating rollback at `synthesize_diff.py:407-431` |
+| CR-3 | ✅ Resolved | `test_create_issues.py` exists with 30 tests |
+| HI-1 | ✅ Resolved | `ValueError` caught, re-raised with `from None` |
+| HI-2 | ⚠️ Still open | `synthesize_diff.py:128,164` missing `untitled` fallback + leading-dot strip |
+| HI-3 | ⚠️ Partially mitigated | Title uses `json.dumps`; heading + change-note body still use raw `display_name` |
+| HI-4 | ✅ Resolved | `httplib2.Http(timeout=30)` at `_http.py:129` |
+| HI-5 | ✅ Resolved | `test_http.py` exists with 11 tests |
+| HI-6 | ✅ Resolved | `test_registry.py` exists with 10 tests |
+| HI-7 | ✅ Resolved | `binascii`/`struct` imports removed |
+| ME-1 | ✅ Resolved | Flag is `--drift-report`, not `--afk-entries` |
+| ME-2 | ✅ Resolved | `DRIVE_MONITOR = "tp-drive-monitor"` at `contracts.py:39` |
+| ME-3 | ✅ Resolved | CI-6 entry at `test_ci_permission_asserts.py:84` |
+| ME-4 | ✅ Resolved (residual) | Field names aligned; `unreachable` in contract but rejected by code — see NEW-4 |
+| ME-5 | ✅ Resolved | 4-job structure documented in spec + ADR-021 |
+| ME-6 | ✅ Resolved | `--hitl-entries`, no `--approval` |
+| ME-7 | ✅ Resolved | `ghp_*`, `github_pat_*`, `gho_*`, `Authorization`, base64 covered |
+| ME-8 | ✅ Resolved | All docs agree: `advance_cursor.py` owns cursor |
+| ME-9 | ✅ Resolved | `__init__.py` no longer shows `--approval` for `create_issues.py` |
+| ME-10 | ✅ Resolved | `${{}}` replaced with `[expr]` |
+| HK-1 | ✅ Resolved | `_is_binary()` only in `synthesize_diff.py` where used |
+| HK-2 | ✅ Resolved | Unused imports removed from `synthesize_diff.py` |
+| HK-3 | ⚠️ Still open | `urllib.parse`, `PurePosixPath`, `_FORBIDDEN_COMPONENTS`, `_MAX_PATH_DEPTH` unused |
+| HK-4 | ✅ Resolved | `MIME_EXPORT_MAP` not imported in `classify_drift.py` |
+| HK-5 | ⚠️ Still open | Docstring line 147 contradicts lines 144 and code 175–178 |
+| HK-6 | ⚠️ Still open | `import re` inlined at `synthesize_diff.py:127,163` and `_registry.py:229` |
+| HK-7 | Deferred | Cross-module private import; acceptable per current conventions |
+| HK-8 | ✅ Resolved | `min(attempt, len(_RETRY_DELAYS) - 1)` clamp at `_http.py:153` |
+| HK-9 | ✅ Resolved | Iterates all parents before ascending at `check_drift.py:94-98` |
+| HK-10 | ✅ Resolved | `_LEADING_DOTS_RE.sub` at `_validators.py:152` |
+| HK-11 | ✅ Resolved | `files.list` removed from CONTEXT.md |
+| HK-12 | ✅ Resolved | `add_file_entry()` added to CONTEXT.md |
+| HK-13 | ⚠️ Still open | 15+ functions lack numpydoc `Parameters`/`Returns` sections |
+| HK-14 | ✅ Resolved | Dual-input documented at `synthesize_diff.py:283-289` |
+| HK-15 | ⚠️ Still open | Floor-only pins, no upper bounds or lockfile |
 
 ### Status Key
 
@@ -704,10 +745,93 @@ If Issue body is consumed in a workflow `run:` block via `${{ github.event.issue
 
 ---
 
-### Remediation Priority Order
+### New Findings (2026-07-22 Re-Verification)
 
-1. **P0 — Blocking:** CR-1 (cursor never advanced), ME-1 (CI YAML runtime failure), ME-2 + ME-3 (missing contract enum + test)
-2. **P1 — Security:** CR-2 (non-atomic write), HI-1 (credential leakage), HI-3 (YAML injection), ME-7 (redaction gaps), ME-10 (`${{}}` injection)
-3. **P2 — Test gaps:** CR-3 (`test_create_issues.py`), HI-5 (`test_http.py`), HI-6 (`test_registry.py`)
-4. **P3 — Alignment:** HI-2 (filename divergence), ME-4–ME-9 (doc/spec/contract alignment)
-5. **P4 — Housekeeping:** HI-7, HK-1 through HK-15
+#### NEW-1: Missing `advance_cursor.py` CI-6 job 🔴
+
+**Affected files:** `.github/workflows/ci-6-google-drive-monitor.yml`
+**Detected by:** solutions-architect, framework-engineer
+
+`advance_cursor.py` exists with full implementation and test coverage but no CI-6 job invokes it. Without cursor advancement, every CI-6 run re-processes all changes since the last saved cursor. Idempotency guards (`exclusive_create_write_once`) prevent duplicate assets, but duplicate issue comments and wiki change notes accumulate.
+
+**Remediation:** Add a 5th job `advance-cursor` after `synthesize` and `classify-drift`, gated on `check-drift.outputs.drift_detected == 'true'`, running with `if: always()` and `--approval approved`. Use `advance_cursor.py`'s internal error-alias skip logic to advance only successfully-processed aliases.
+
+#### NEW-2: AGENTS.md missing per-script rows for `create_issues.py` and `advance_cursor.py` 🔴
+
+**Affected files:** `AGENTS.md`
+**Detected by:** documentation-engineer, framework-engineer
+
+The write-surface matrix has per-script rows for `check_drift.py`, `classify_drift.py`, `fetch_content.py`, and `synthesize_diff.py` but is missing rows for `create_issues.py` (GitHub Issues side effects) and `advance_cursor.py` (registry cursor writes under lock). Both are write-capable scripts that require declared write surfaces per the matrix contract.
+
+**Remediation:** Add 2 per-script rows specifying write boundaries, lock requirements, and fail-closed behavior.
+
+#### NEW-3: Unsanitized `display_name` in Markdown body enables content injection 🟡
+
+**Affected files:** `synthesize_diff.py:197-207,388`
+**Detected by:** security-auditor (extends HI-3)
+
+While HI-3's frontmatter injection is partially mitigated (title uses `json.dumps`), `display_name` is still used raw in: (1) Markdown heading `# {display_name}` (line 388), and (2) change-note body inside backtick delimiters (line 203). A Drive file name containing backticks or newlines can inject arbitrary Markdown into wiki pages.
+
+**Remediation:** Sanitize `display_name` before Markdown embedding — escape backticks, strip control characters. Consider reusing `_sanitize_gh_md` or a shared variant.
+
+#### NEW-4: `unreachable` tracking_status — contract vs code mismatch 🟠
+
+**Affected files:** `schema/drive-source-registry-contract.md:122`, `scripts/drive_monitor/_types.py:27-31`
+**Detected by:** documentation-engineer (residual from ME-4)
+
+The contract documents `unreachable` as a valid tracking_status, but `_VALID_FILE_TRACKING_STATUSES` and `_VALID_FOLDER_TRACKING_STATUSES` in `_types.py` do not include it. Any registry entry with `tracking_status: "unreachable"` will fail validation at runtime. Either add `"unreachable"` to the code or remove it from the contract with a note that it is reserved-but-not-yet-implemented.
+
+#### NEW-5: Spec success criterion #9 says "5 scripts" but pipeline has 6 🟠
+
+**Affected files:** Spec L443
+**Detected by:** documentation-engineer
+
+With `advance_cursor.py` as the 6th public script, criterion #9 should say "6 scripts."
+
+#### NEW-6: `version_segment` validation accepts hex for native format versions 🟡
+
+**Affected files:** `_validators.py:122`
+**Detected by:** security-auditor
+
+`build_drive_asset_path` validates `version_segment` with `re.match(r"^[0-9a-f]+$", ...)` which accepts lowercase hex — correct for MD5 checksums but overly permissive for native format `drive_version` integers. Defense-in-depth: validate integer-only for native, hex-only for MD5.
+
+#### NEW-7: No pagination limit on `list_changes` — potential memory exhaustion ⚪
+
+**Affected files:** `_http.py:206-238`
+**Detected by:** security-auditor
+
+`list_changes()` aggregates all change pages into a single in-memory list with no upper bound. A Drive folder with very high change volume could cause excessive CI runner memory consumption.
+
+**Remediation:** Add a configurable `MAX_CHANGES` limit (e.g., 10,000) and fail closed when exceeded.
+
+#### NEW-8: `update_changes_cursor()` docstring says "after check_drift" — should say "after advance_cursor" ⚪
+
+**Affected files:** `_registry.py:195-197`
+**Detected by:** documentation-engineer
+
+Docstring says "after a successful `check_drift.py` run" but actual ownership (per ADR-021 and CONTEXT.md) is `advance_cursor.py`.
+
+#### NEW-9: Concurrency group omits `${{ github.ref }}` suffix ⚪
+
+**Affected files:** `.github/workflows/ci-6-google-drive-monitor.yml:99,208`
+**Detected by:** framework-engineer
+
+Job-level concurrency group uses `kb-write-${{ github.repository }}` without `${{ github.ref }}`. For schedule-triggered runs on `main` this is functionally equivalent, but a manual `workflow_dispatch` on a feature branch would contend with the scheduled run.
+
+#### NEW-10: Filename logic duplicated between `_find_old_asset` and `_find_new_asset` ⚪
+
+**Affected files:** `synthesize_diff.py:127-134,163-169`
+**Detected by:** code-reviewer
+
+Both functions inline a 7-line filename sanitization block that diverges from `safe_filename()` in `_validators.py` (root cause of still-open HI-2). Extracting a shared helper would fix HI-2, HK-6 (inline imports), and this duplication simultaneously.
+
+---
+
+### Remediation Priority Order (Updated 2026-07-22)
+
+1. **P0 — Blocking:** NEW-1 (advance_cursor.py not in CI-6), NEW-2 (AGENTS.md missing 2 per-script rows)
+2. **P1 — Security:** HI-2 + NEW-10 (filename divergence + duplication → call `safe_filename()`), HI-3 + NEW-3 (display_name injection in Markdown body)
+3. **P2 — Alignment:** NEW-4 (unreachable enum mismatch), NEW-5 (spec says 5 scripts), NEW-6 (version_segment validation)
+4. **P3 — Housekeeping:** HK-3 (dead imports in _validators.py), HK-5 (docstring contradiction), HK-6 (inline imports), HK-13 (numpydoc gaps), HK-15 (dependency pins), NEW-7 (pagination limit), NEW-8 (docstring cursor owner), NEW-9 (concurrency group ref), NEW-10 (filename duplication)
+
+> **Previous P0–P2 items from 2025-07-15 are now all resolved** (CR-1 cursor code, CR-2 atomicity, CR-3 + HI-5 + HI-6 test files, ME-1 CI flags, ME-2 + ME-3 contracts, HI-1 credential leakage, ME-7 redaction, ME-10 injection).
