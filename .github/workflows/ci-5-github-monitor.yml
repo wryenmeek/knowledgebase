@@ -54,7 +54,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --quiet "setuptools>=78"
-          pip install -e . --quiet
+          pip install -e . --quiet --no-build-isolation
 
       - name: Check drift across all registries
         id: detect
@@ -138,7 +138,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --quiet "setuptools>=78"
-          pip install -e . --quiet
+          pip install -e . --quiet --no-build-isolation
 
       - name: Download drift report
         uses: actions/download-artifact@v4
@@ -187,7 +187,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --quiet "setuptools>=78"
-          pip install -e . --quiet
+          pip install -e . --quiet --no-build-isolation
 
       - name: Download drift report
         uses: actions/download-artifact@v4
@@ -258,7 +258,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --quiet "setuptools>=78"
-          pip install -e . --quiet
+          pip install -e . --quiet --no-build-isolation
 
       - name: Download AFK-classified entries
         uses: actions/download-artifact@v4
