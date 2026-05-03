@@ -342,6 +342,18 @@ After non-trivial implementation work, proactively suggest a cross-functional re
 
 This parallels the quality-pass-chain skill but uses custom agents for richer, domain-specific review.
 
+### Auto-remediate P0–P2 findings after cross-functional review
+
+After completing a cross-functional review, automatically proceed to remediate all P0–P2 findings without waiting for user approval — the review itself is the approval gate. Present the findings report, then immediately start fixing them. Only pause for user input on P3+ (suggestions/style) or findings where the correct fix is genuinely ambiguous.
+
+### Grill-me decision logs are sufficient specs
+
+When grill-me produces a complete decision log with resolved questions, treat that log as a sufficient spec for implementation. Do not require a separate spec-driven-development pass unless the scope is large enough to warrant formal task breakdown (5+ files, new module, or cross-cutting concern).
+
+### Batch all review finding types in one remediation commit
+
+When remediating review findings, batch all finding types (code, test, doc, security) into a single remediation commit rather than addressing them type-by-type in separate passes. A review that surfaces a code bug, a missing test, and a stale doc reference must land all three fixes together — not code first, tests later, docs last.
+
 ## Boundaries
 
 - **Always:** follow skill workflow requirements when applicable.
