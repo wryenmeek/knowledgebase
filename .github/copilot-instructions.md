@@ -287,7 +287,7 @@ When dispatching review sub-agents (code-reviewer, security-auditor, test-engine
 
 ### GitHub Actions secrets: `GITHUB_` prefix is banned
 
-GitHub forbids repository secrets with the `GITHUB_` prefix (HTTP 422). Use `GH_APP_ID` / `GH_APP_PRIVATE_KEY` for GitHub App credentials. Workflow YAML must reference `secrets.GH_APP_*`, not `secrets.GITHUB_APP_*`. This also applies to environment secrets.
+
 
 ## Interactive-only skills (autopilot guard)
 

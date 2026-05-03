@@ -1,6 +1,15 @@
 ---
 scope: directory
 last_updated: 2026-04-29
+type: process
+title: "CONTEXT — wiki/"
+status: active
+sources: []
+open_questions: []
+confidence: 1
+sensitivity: internal
+updated_at: "2026-04-29T00:00:00Z"
+tags: []
 ---
 
 # CONTEXT — wiki/

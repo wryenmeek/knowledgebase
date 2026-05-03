@@ -1,7 +1,7 @@
 {
   "version": "1",
   "alias": "sof-session-notes",
-  "credential_secret_name": "GDRIVE_SA_KEY",
+  "credential_secret_name": "GDRIVE_SA_KEY", // pragma: allowlist secret
   "changes_page_token": null,
   "last_full_scan_at": null,
   "folder_entries": [
