@@ -116,8 +116,12 @@ When writing Mermaid diagrams in markdown research reports or docs:
 - **Avoid** `**` glob patterns in node labels — interpreted as bold markdown
 - **Avoid** bare `%` in labels — treated as comment prefix
 - **Avoid** unquoted parentheses inside node text — use `["label (text)"]` quoting
+- **Avoid** parentheses in subgraph titles entirely — even quoted `["Title (note)"]` truncates on GitHub
 - **Avoid** `\n` for line breaks in node labels — GitHub's renderer shows them literally; use `<br/>` instead
+- **Avoid** back-edges (cycles) in `flowchart TD` — they invert the layout, pushing target nodes above source nodes; describe feedback loops in prose instead
+- **Avoid** subgraph-to-subgraph connections (`subgraphA --> subgraphB`) — connect node-to-node instead
 - **Prefer** short node labels with detail in a companion table — dense labels make diagrams unreadable at render scale
+- **Prefer** a single subgraph for the primary grouping — multiple subgraphs with cross-edges produce chaotic layouts
 - After writing any Mermaid block, mentally parse each node label for these characters
 
 ### Grill-me: verify codebase facts before proposing

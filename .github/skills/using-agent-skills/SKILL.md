@@ -84,37 +84,37 @@ flowchart TD
         intake["Source Intake Steward"]
         evidence["Evidence Verifier"]
         policy["Policy Arbiter"]
-
-        orch -->|"intake bundle"| intake
-        intake -->|"provenance package"| evidence
-        evidence -->|"evidence verdict"| policy
+        orch --> intake --> evidence --> policy
     end
 
-    policy -->|"approved"| downstream
+    policy --> synthesis["Synthesis Curator"]
+    policy --> query["Query Synthesist"]
+    policy -->|"blocked"| escalate["Human Steward"]
 
-    subgraph downstream ["Downstream Lanes (post-clearance)"]
-        synthesis["Synthesis Curator"]
-        query["Query Synthesist"]
-        topo["Topology Librarian"]
-    end
-
-    synthesis -->|"draft for review"| policy
-    synthesis & query -->|"topology follow-up"| topo
+    synthesis --> topo["Topology Librarian"]
+    query --> topo
     topo --> sync["sync-knowledgebase-state"]
 
-    subgraph ops ["Operational Lanes"]
-        maint["Maintenance Auditor"]
-        patrol["Change Patrol"]
-        quality["Quality Analyst"]
-    end
-
-    orch --> ops
-    ops -->|"reassessment needed"| orch
+    orch --> maint["Maintenance Auditor"]
+    orch --> patrol["Change Patrol"]
+    orch --> quality["Quality Analyst"]
 
     intake -->|"rejected"| reject["log-intake-rejection"]
-    evidence -->|"fail-closed"| orch
-    policy -->|"blocked"| escalate["Human Steward"]
 ```
+
+**Reading the diagram:**
+
+- **Ingest-safe lane** — every new source passes orchestrator, intake, evidence,
+  and policy in order. No wiki write opens until policy clears the package.
+- **Downstream agents** — after clearance, work goes to synthesis curator
+  (page drafting), query synthesist (answering questions), or topology librarian
+  (links and indexes). Synthesis drafts loop back through policy for publication
+  approval (not shown to keep the diagram readable).
+- **Operational agents** — maintenance auditor, change patrol, and quality analyst
+  run on existing wiki state. Any finding requiring content change routes back
+  through the orchestrator and the ingest-safe lane.
+- **Fail paths** — rejected intake goes to log-intake-rejection; blocked policy
+  decisions escalate to the human steward.
 
 ### Agent skill mapping
 
