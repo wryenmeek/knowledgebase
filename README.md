@@ -5,6 +5,9 @@ linting, query, and policy-gated persistence workflows.
 
 ## Quick start
 
+> **New here?** Read the [User Guide](docs/user-guide.md) for a complete
+> walkthrough of reading, contributing, and operating the knowledgebase.
+
 ```bash
 # 1) ingest one source from inbox
 python3 scripts/kb/ingest.py --source raw/inbox/<source-file>.md --wiki-root wiki --schema AGENTS.md
