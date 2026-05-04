@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import "./env.js";
 import { getIssuesAsMarkdown } from "./github/markdown.js";
 
 async function main() {
