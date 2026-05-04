@@ -217,7 +217,8 @@ class Ci1WorkflowContractTests(unittest.TestCase):
             "reject:trusted_trigger_model:ref_not_protected",
             "action_required:trusted_trigger_model:enable_branch_protection",
             "reject:path_filter:no_changed_paths_detected",
-            "reject:path_filter:outside_raw_inbox:",
+            "reject:path_filter:no_inbox_paths_after_filter",
+            "reject:path_filter:sensitive_control_plane_path:",
             "reject:permissions_scope:token_profile_mismatch",
             "reject:permissions_scope:minimum_permissions_mismatch",
             "reject:permissions_scope:forbidden_write_scope_declared",
@@ -297,14 +298,28 @@ class Ci1WorkflowContractTests(unittest.TestCase):
             combined_output,
         )
 
-    def test_preflight_behavior_rejects_outside_inbox_paths(self) -> None:
+    def test_preflight_behavior_allows_benign_non_inbox_paths(self) -> None:
+        """Benign paths (docs, tests, README) alongside inbox paths should pass."""
         result = _run_ci1_preflight_script(
             self.workflow_text,
             changed_paths=("raw/inbox/SPEC.md", "README.md"),
         )
         combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("benign_non_inbox_count=1", combined_output)
+
+    def test_preflight_behavior_rejects_sensitive_control_plane_paths(self) -> None:
+        """Sensitive paths (workflows, scripts) alongside inbox must be rejected."""
+        result = _run_ci1_preflight_script(
+            self.workflow_text,
+            changed_paths=("raw/inbox/SPEC.md", "scripts/kb/ingest.py"),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
         self.assertNotEqual(result.returncode, 0, combined_output)
-        self.assertIn("reject:path_filter:outside_raw_inbox:README.md", combined_output)
+        self.assertIn(
+            "reject:path_filter:sensitive_control_plane_path:scripts/kb/ingest.py",
+            combined_output,
+        )
 
     def test_preflight_behavior_rejects_missing_changed_paths(self) -> None:
         result = _run_ci1_preflight_script(

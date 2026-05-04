@@ -117,12 +117,46 @@ jobs:
             prereq_trusted_trigger_model="FAIL"
           fi
 
+          # Separate inbox paths from non-inbox paths. Non-inbox paths
+          # are tolerated UNLESS they touch control-plane surfaces that
+          # CI-3 executes with write permissions.
+          inbox_paths=()
+          benign_non_inbox=()
+          sensitive_non_inbox=()
           for changed_path in "${changed_paths[@]}"; do
-            if [[ "${changed_path}" != ${REQUIRED_PATH_PREFIX}* ]]; then
-              reason_list+=("reject:path_filter:outside_raw_inbox:${changed_path}")
-              prereq_trusted_trigger_model="FAIL"
+            if [[ "${changed_path}" == ${REQUIRED_PATH_PREFIX}* ]]; then
+              inbox_paths+=("${changed_path}")
+            elif [[ "${changed_path}" == .github/workflows/* ]] \
+              || [[ "${changed_path}" == scripts/kb/* ]] \
+              || [[ "${changed_path}" == scripts/ingest/* ]] \
+              || [[ "${changed_path}" == AGENTS.md ]]; then
+              sensitive_non_inbox+=("${changed_path}")
+            else
+              benign_non_inbox+=("${changed_path}")
             fi
           done
+
+          if [[ "${#inbox_paths[@]}" -eq 0 ]]; then
+            reason_list+=("reject:path_filter:no_inbox_paths_after_filter")
+            prereq_trusted_trigger_model="FAIL"
+          fi
+
+          if [[ "${#sensitive_non_inbox[@]}" -gt 0 ]]; then
+            for p in "${sensitive_non_inbox[@]}"; do
+              reason_list+=("reject:path_filter:sensitive_control_plane_path:${p}")
+            done
+            prereq_trusted_trigger_model="FAIL"
+          fi
+
+          if [[ "${#benign_non_inbox[@]}" -gt 0 ]]; then
+            echo "::notice::CI-1 ignoring ${#benign_non_inbox[@]} benign non-inbox paths (covered by other CI workflows)."
+            for p in "${benign_non_inbox[@]}"; do
+              echo "  skipped: ${p}"
+            done
+          fi
+
+          # Use inbox paths only for downstream reporting
+          changed_paths=("${inbox_paths[@]}")
 
           if [[ "${TOKEN_PROFILE}" != "tp-gatekeeper" ]]; then
             reason_list+=("reject:permissions_scope:token_profile_mismatch")
@@ -163,8 +197,11 @@ jobs:
             echo "concurrency_guard=${prereq_concurrency_guard}"
             echo "fallback_manual_path=${prereq_fallback_manual_path}"
             echo "changed_paths_count=${#changed_paths[@]}"
+            echo "inbox_paths_count=${#inbox_paths[@]}"
+            echo "benign_non_inbox_count=${#benign_non_inbox[@]}"
+            echo "sensitive_non_inbox_count=${#sensitive_non_inbox[@]}"
             for changed_path in "${changed_paths[@]}"; do
-              echo "changed_path=${changed_path}"
+              echo "inbox_path=${changed_path}"
             done
           } | tee preflight/preflight-summary.log
 
@@ -186,8 +223,10 @@ jobs:
                   echo "::notice::FIX: the target branch must have branch protection enabled. Enable it in repository Settings → Branches." ;;
                 reject:path_filter:no_changed_paths_detected)
                   echo "::notice::FIX: no paths matched the raw/inbox/** filter. Ensure your commit includes changes to raw/inbox/." ;;
-                reject:path_filter:outside_raw_inbox:*)
-                  echo "::notice::FIX: changed paths must be under raw/inbox/ only. Move files outside that directory to a separate commit." ;;
+                reject:path_filter:no_inbox_paths_after_filter)
+                  echo "::notice::FIX: no raw/inbox/ paths found after filtering. Ensure your commit includes changes to raw/inbox/." ;;
+                reject:path_filter:sensitive_control_plane_path:*)
+                  echo "::notice::FIX: commit includes control-plane paths (workflows, scripts, AGENTS.md) alongside inbox changes. Split into separate commits." ;;
                 reject:permissions_scope:token_profile_mismatch)
                   echo "::notice::FIX: the workflow must use the tp-gatekeeper token profile. Check the TOKEN_PROFILE env var in the workflow." ;;
                 reject:permissions_scope:minimum_permissions_mismatch | reject:permissions_scope:forbidden_write_scope_declared)
