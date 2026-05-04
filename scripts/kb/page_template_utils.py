@@ -17,6 +17,10 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 }
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
+_FRONTMATTER_RE = re.compile(
+    r"^[ \t]*---[ \t]*\r?\n(.*?)(?:\r?\n|(?<=\n))^[ \t]*---[ \t]*(?:\r?\n|$)",
+    re.DOTALL | re.MULTILINE
+)
 
 TOPICAL_NAMESPACES: frozenset[str] = frozenset({"sources", "entities", "concepts", "analyses"})
 
@@ -120,13 +124,20 @@ def validate_page_template_path(
 
 
 def extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    """Extract YAML frontmatter and the remaining body from markdown text.
+
+    Performance optimized: Uses a literal prefix check and regular expression to
+    extract frontmatter without tokenizing the entire document into lines, preventing
+    massive latency and memory overhead on large files.
+    """
+    if not text.lstrip(" \t").startswith("---"):
         return None, text
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
-    return None, text
+
+    match = _FRONTMATTER_RE.match(text)
+    if not match:
+        return None, text
+
+    return match.group(1), text[match.end():]
 
 
 def parse_frontmatter(frontmatter: str) -> dict[str, str]:
