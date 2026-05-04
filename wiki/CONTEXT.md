@@ -1,4 +1,8 @@
 ---
+type: context
+title: CONTEXT - wiki
+status: active
+updated_at: 2026-04-29
 scope: directory
 last_updated: 2026-04-29
 ---
