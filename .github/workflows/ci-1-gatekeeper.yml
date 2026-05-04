@@ -117,22 +117,24 @@ jobs:
             prereq_trusted_trigger_model="FAIL"
           fi
 
-          # Separate inbox paths from non-inbox paths. Non-inbox paths
-          # are tolerated UNLESS they touch control-plane surfaces that
-          # CI-3 executes with write permissions.
+          # Separate inbox paths from non-inbox paths. Use a benign
+          # allowlist — everything not explicitly benign is treated as
+          # sensitive control-plane to prevent co-mingled write-surface changes.
           inbox_paths=()
           benign_non_inbox=()
           sensitive_non_inbox=()
           for changed_path in "${changed_paths[@]}"; do
             if [[ "${changed_path}" == ${REQUIRED_PATH_PREFIX}* ]]; then
               inbox_paths+=("${changed_path}")
-            elif [[ "${changed_path}" == .github/workflows/* ]] \
-              || [[ "${changed_path}" == scripts/kb/* ]] \
-              || [[ "${changed_path}" == scripts/ingest/* ]] \
-              || [[ "${changed_path}" == AGENTS.md ]]; then
-              sensitive_non_inbox+=("${changed_path}")
-            else
+            elif [[ "${changed_path}" == docs/* ]] \
+              || [[ "${changed_path}" == tests/* ]] \
+              || [[ "${changed_path}" == wiki/pages/* ]] \
+              || [[ "${changed_path}" == wiki/sources/* ]] \
+              || [[ "${changed_path}" == README.md ]] \
+              || [[ "${changed_path}" == LICENSE* ]]; then
               benign_non_inbox+=("${changed_path}")
+            else
+              sensitive_non_inbox+=("${changed_path}")
             fi
           done
 

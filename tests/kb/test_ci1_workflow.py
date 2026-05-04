@@ -321,6 +321,52 @@ class Ci1WorkflowContractTests(unittest.TestCase):
             combined_output,
         )
 
+    def test_preflight_rejects_workflow_yaml_alongside_inbox(self) -> None:
+        """Workflow YAML is sensitive — must be rejected even with inbox paths."""
+        result = _run_ci1_preflight_script(
+            self.workflow_text,
+            changed_paths=("raw/inbox/SPEC.md", ".github/workflows/ci-2.yml"),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn("sensitive_control_plane_path:", combined_output)
+
+    def test_preflight_rejects_agents_md_alongside_inbox(self) -> None:
+        """AGENTS.md is not in the benign allowlist — treated as sensitive."""
+        result = _run_ci1_preflight_script(
+            self.workflow_text,
+            changed_paths=("raw/inbox/SPEC.md", "AGENTS.md"),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn("sensitive_non_inbox_count=1", combined_output)
+
+    def test_preflight_rejects_pyproject_alongside_inbox(self) -> None:
+        """pyproject.toml controls pip install — must not sneak in with inbox."""
+        result = _run_ci1_preflight_script(
+            self.workflow_text,
+            changed_paths=("raw/inbox/SPEC.md", "pyproject.toml"),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn("sensitive_non_inbox_count=1", combined_output)
+
+    def test_preflight_mixed_all_three_buckets(self) -> None:
+        """Mixed inbox + benign + sensitive should reject with correct counts."""
+        result = _run_ci1_preflight_script(
+            self.workflow_text,
+            changed_paths=(
+                "raw/inbox/SPEC.md",
+                "docs/ideas/test.md",
+                "scripts/kb/ingest.py",
+            ),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn("inbox_paths_count=1", combined_output)
+        self.assertIn("benign_non_inbox_count=1", combined_output)
+        self.assertIn("sensitive_non_inbox_count=1", combined_output)
+
     def test_preflight_behavior_rejects_missing_changed_paths(self) -> None:
         result = _run_ci1_preflight_script(
             self.workflow_text,

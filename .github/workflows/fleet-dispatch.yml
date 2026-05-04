@@ -89,12 +89,13 @@ jobs:
           echo "⏳ Waiting for Jules planning PR (session $PLAN_SESSION_ID)..."
 
           for i in $(seq 1 60); do
-            # Match PR by session ID in body only — Jules may create PRs
-            # under the user's identity or a bot account depending on auth mode
+            # Match PR by session ID in body AND Jules branch-name prefix.
+            # Jules creates branches like jules/<slug>-<session_id>.
             PR=$(gh pr list --state open --base "$BASE" --limit 100 \
-              --json number,body \
+              --json number,body,headRefName \
               --jq "[.[] | select(
-                .body | contains(\"$PLAN_SESSION_ID\")
+                (.body | contains(\"$PLAN_SESSION_ID\"))
+                and (.headRefName | startswith(\"jules/\"))
               )] | .[0].number // empty")
             if [ -n "$PR" ]; then
               echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
