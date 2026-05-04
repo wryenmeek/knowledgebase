@@ -17,7 +17,7 @@ tags:
 Catalog generated deterministically from wiki content.
 
 ## Sources
-- [Source: Spec](sources/SPEC.md) _(status: active; confidence: 5; updated_at: 1970-01-01T00:00:00Z)_
+- [Source: Spec](sources/SPEC.md) _(status: active; confidence: 5; updated_at: 2026-05-04T02:55:00Z)_
 
 ## Entities
 - _None_
