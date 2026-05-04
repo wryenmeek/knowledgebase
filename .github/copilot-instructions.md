@@ -116,6 +116,8 @@ When writing Mermaid diagrams in markdown research reports or docs:
 - **Avoid** `**` glob patterns in node labels — interpreted as bold markdown
 - **Avoid** bare `%` in labels — treated as comment prefix
 - **Avoid** unquoted parentheses inside node text — use `["label (text)"]` quoting
+- **Avoid** `\n` for line breaks in node labels — GitHub's renderer shows them literally; use `<br/>` instead
+- **Prefer** short node labels with detail in a companion table — dense labels make diagrams unreadable at render scale
 - After writing any Mermaid block, mentally parse each node label for these characters
 
 ### Grill-me: verify codebase facts before proposing

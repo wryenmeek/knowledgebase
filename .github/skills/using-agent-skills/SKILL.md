@@ -79,56 +79,61 @@ sequence, lane branching, and the key skills each agent invokes.
 flowchart TD
     start["Incoming wiki task"] --> orch
 
-    subgraph ingest ["Ingest-Safe Lane (mandatory sequence)"]
-        orch["Orchestrator\n- route-wiki-task\n- plan-wiki-job\n- enforce-repository-boundaries\n- fail-closed-on-errors"]
-        intake["Source Intake Steward\n- validate-inbox-source\n- checksum-asset\n- create-intake-manifest\n- register-source-provenance"]
-        evidence["Evidence Verifier\n- verify-citations\n- claim-inventory\n- semi-formal-reasoning\n- detect-ai-tells"]
-        policy["Policy Arbiter\n- validate-wiki-governance\n- enforce-npov\n- detect-original-research\n- compare-against-existing-pages"]
+    subgraph ingest ["Ingest-Safe Lane"]
+        orch["Orchestrator"]
+        intake["Source Intake Steward"]
+        evidence["Evidence Verifier"]
+        policy["Policy Arbiter"]
 
         orch -->|"intake bundle"| intake
         intake -->|"provenance package"| evidence
         evidence -->|"evidence verdict"| policy
     end
 
-    policy -->|"cleared for drafting"| synthesis
-    policy -->|"cleared for query"| query
-    policy -->|"cleared for topology"| topo
+    policy -->|"approved"| downstream
 
-    synthesis["Synthesis Curator\n- extract-entities-and-claims\n- enforce-page-template\n- entity-resolution\n- edit-article"]
-    query["Query Synthesist\n- retrieve-from-index\n- synthesize-cited-answer\n- persist-query-result"]
-    topo["Topology Librarian\n- check-link-topology\n- suggest-backlinks\n- update-index\n- manage-redirects-and-anchors"]
+    subgraph downstream ["Downstream Lanes (post-clearance)"]
+        synthesis["Synthesis Curator"]
+        query["Query Synthesist"]
+        topo["Topology Librarian"]
+    end
 
-    synthesis -->|"draft bundle"| policy
-    synthesis -->|"prose pass"| topo
-    query -->|"durable result"| topo
-    topo -->|"index sync"| sync["sync-knowledgebase-state"]
+    synthesis -->|"draft for review"| policy
+    synthesis & query -->|"topology follow-up"| topo
+    topo --> sync["sync-knowledgebase-state"]
 
-    orch -->|"maintenance scope"| maint["Maintenance Auditor\n- scan-content-freshness\n- cross-reference-symmetry-check\n- propose-supersede-or-archive\n- semantic-wiki-lint"]
-    orch -->|"change review"| patrol["Change Patrol\n- patrol-human-edits\n- log-patrol-incident\n- verify-citations"]
-    orch -->|"quality review"| quality["Quality Analyst\n- report-content-quality\n- compute-kpis\n- analyze-missed-queries\n- prioritize-curation-backlog"]
+    subgraph ops ["Operational Lanes"]
+        maint["Maintenance Auditor"]
+        patrol["Change Patrol"]
+        quality["Quality Analyst"]
+    end
 
-    maint -->|"reassessment needed"| orch
-    patrol -->|"governance risk"| orch
-    quality -->|"prioritized backlog"| orch
+    orch --> ops
+    ops -->|"reassessment needed"| orch
 
-    intake -->|"rejection"| reject["log-intake-rejection"]
+    intake -->|"rejected"| reject["log-intake-rejection"]
     evidence -->|"fail-closed"| orch
-    policy -->|"blocked"| escalate["Human Steward escalation"]
+    policy -->|"blocked"| escalate["Human Steward"]
 ```
 
-**Reading the diagram:**
+### Agent skill mapping
 
-- **Ingest-safe lane** (top box) — every new source must pass through all four
-  agents in order. No wiki write opens until `policy-arbiter` clears the package.
-- **Downstream lanes** — after policy clearance, work branches to `synthesis-curator`
-  (page drafting), `query-synthesist` (answering questions), or `topology-librarian`
-  (link and index maintenance). Synthesis drafts loop back through `policy-arbiter`
-  for publication approval.
-- **Operational lanes** — `maintenance-auditor`, `change-patrol`, and `quality-analyst`
-  run independently on existing wiki state. Any finding that requires content change
-  routes back through the orchestrator and the ingest-safe lane.
-- **Skills listed** under each agent are representative, not exhaustive. See
-  each agent's persona file in `.github/agents/` for the full skill reference list.
+Each agent invokes a governed set of skills. Representative skills per agent:
+
+| Agent | Key skills |
+|---|---|
+| **Orchestrator** | route-wiki-task, plan-wiki-job, enforce-repository-boundaries, fail-closed-on-errors |
+| **Source Intake Steward** | validate-inbox-source, checksum-asset, create-intake-manifest, register-source-provenance |
+| **Evidence Verifier** | verify-citations, claim-inventory, semi-formal-reasoning, detect-ai-tells |
+| **Policy Arbiter** | validate-wiki-governance, enforce-npov, detect-original-research, compare-against-existing-pages |
+| **Synthesis Curator** | extract-entities-and-claims, enforce-page-template, entity-resolution-and-canonicalization, edit-article |
+| **Query Synthesist** | retrieve-from-index, synthesize-cited-answer, persist-query-result |
+| **Topology Librarian** | check-link-topology, suggest-backlinks, update-index, manage-redirects-and-anchors |
+| **Maintenance Auditor** | scan-content-freshness, cross-reference-symmetry-check, propose-supersede-or-archive, semantic-wiki-lint |
+| **Change Patrol** | patrol-human-edits, log-patrol-incident, verify-citations |
+| **Quality Analyst** | report-content-quality, compute-kpis, analyze-missed-queries, prioritize-curation-backlog |
+
+Skills listed are representative — see each agent's persona file in `.github/agents/` for the full reference list.
 
 ## Core Operating Behaviors
 
