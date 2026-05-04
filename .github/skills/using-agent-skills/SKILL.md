@@ -69,6 +69,67 @@ Task arrives
         └── Route query for durable follow-up? → prepare-high-value-synthesis-handoff
 ```
 
+## Wiki Agent Workflow
+
+The knowledgebase agents form a governed pipeline. Work flows through mandatory
+gates before any wiki write can occur. The diagram below shows the agent
+sequence, lane branching, and the key skills each agent invokes.
+
+```mermaid
+flowchart TD
+    start["Incoming wiki task"] --> orch
+
+    subgraph ingest ["Ingest-Safe Lane (mandatory sequence)"]
+        orch["Orchestrator\n- route-wiki-task\n- plan-wiki-job\n- enforce-repository-boundaries\n- fail-closed-on-errors"]
+        intake["Source Intake Steward\n- validate-inbox-source\n- checksum-asset\n- create-intake-manifest\n- register-source-provenance"]
+        evidence["Evidence Verifier\n- verify-citations\n- claim-inventory\n- semi-formal-reasoning\n- detect-ai-tells"]
+        policy["Policy Arbiter\n- validate-wiki-governance\n- enforce-npov\n- detect-original-research\n- compare-against-existing-pages"]
+
+        orch -->|"intake bundle"| intake
+        intake -->|"provenance package"| evidence
+        evidence -->|"evidence verdict"| policy
+    end
+
+    policy -->|"cleared for drafting"| synthesis
+    policy -->|"cleared for query"| query
+    policy -->|"cleared for topology"| topo
+
+    synthesis["Synthesis Curator\n- extract-entities-and-claims\n- enforce-page-template\n- entity-resolution\n- edit-article"]
+    query["Query Synthesist\n- retrieve-from-index\n- synthesize-cited-answer\n- persist-query-result"]
+    topo["Topology Librarian\n- check-link-topology\n- suggest-backlinks\n- update-index\n- manage-redirects-and-anchors"]
+
+    synthesis -->|"draft bundle"| policy
+    synthesis -->|"prose pass"| topo
+    query -->|"durable result"| topo
+    topo -->|"index sync"| sync["sync-knowledgebase-state"]
+
+    orch -->|"maintenance scope"| maint["Maintenance Auditor\n- scan-content-freshness\n- cross-reference-symmetry-check\n- propose-supersede-or-archive\n- semantic-wiki-lint"]
+    orch -->|"change review"| patrol["Change Patrol\n- patrol-human-edits\n- log-patrol-incident\n- verify-citations"]
+    orch -->|"quality review"| quality["Quality Analyst\n- report-content-quality\n- compute-kpis\n- analyze-missed-queries\n- prioritize-curation-backlog"]
+
+    maint -->|"reassessment needed"| orch
+    patrol -->|"governance risk"| orch
+    quality -->|"prioritized backlog"| orch
+
+    intake -->|"rejection"| reject["log-intake-rejection"]
+    evidence -->|"fail-closed"| orch
+    policy -->|"blocked"| escalate["Human Steward escalation"]
+```
+
+**Reading the diagram:**
+
+- **Ingest-safe lane** (top box) — every new source must pass through all four
+  agents in order. No wiki write opens until `policy-arbiter` clears the package.
+- **Downstream lanes** — after policy clearance, work branches to `synthesis-curator`
+  (page drafting), `query-synthesist` (answering questions), or `topology-librarian`
+  (link and index maintenance). Synthesis drafts loop back through `policy-arbiter`
+  for publication approval.
+- **Operational lanes** — `maintenance-auditor`, `change-patrol`, and `quality-analyst`
+  run independently on existing wiki state. Any finding that requires content change
+  routes back through the orchestrator and the ingest-safe lane.
+- **Skills listed** under each agent are representative, not exhaustive. See
+  each agent's persona file in `.github/agents/` for the full skill reference list.
+
 ## Core Operating Behaviors
 
 These behaviors apply at all times, across all skills. They are non-negotiable.
