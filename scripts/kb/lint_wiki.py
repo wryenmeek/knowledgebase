@@ -133,6 +133,10 @@ def _collect_valid_pages(wiki_root: Path) -> tuple[list[Path], list[Violation]]:
     for path in sorted(wiki_root.rglob("*.md")):
         if not path.is_file():
             continue
+        # CONTEXT.md files use a different schema (scope/last_updated)
+        # and are not wiki content pages.
+        if path.name == "CONTEXT.md":
+            continue
         if path.is_symlink():
             violations.append(
                 Violation(
