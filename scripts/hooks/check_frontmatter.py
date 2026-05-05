@@ -17,7 +17,7 @@ from scripts.kb.page_template_utils import (
     REQUIRED_PERSONA_FIELDS,
     REQUIRED_SKILL_FIELDS,
     REQUIRED_WIKI_FIELDS,
-    parse_frontmatter,
+    parse_page_frontmatter,
 )
 
 
@@ -55,7 +55,7 @@ def _check_file(path_str: str) -> list[str]:
         return [f"{path_str}: missing frontmatter (empty file)"]
 
     try:
-        frontmatter = parse_frontmatter(text)
+        frontmatter = parse_page_frontmatter(text)
     except Exception:
         frontmatter = {}
 
