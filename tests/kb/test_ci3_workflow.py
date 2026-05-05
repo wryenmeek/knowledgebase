@@ -335,8 +335,8 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         )
         self.assertGreaterEqual(
             len(snippets),
-            2,
-            "Expected at least two embedded python snippets in CI-3 workflow",
+            1,
+            "Expected at least one embedded python snippet in CI-3 workflow",
         )
         for index, snippet in enumerate(snippets, start=1):
             with self.subTest(snippet=index):

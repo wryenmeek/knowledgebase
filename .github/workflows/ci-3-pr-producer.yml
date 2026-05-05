@@ -492,20 +492,11 @@ jobs:
             fi
           done <<< "${SOURCE_LIST}"
 
-          echo "[CI-3] update_index --write (locked)"
+          # update_index.main() acquires exclusive_write_lock internally —
+          # do NOT wrap in an outer lock (flock is non-reentrant across fds).
+          echo "[CI-3] update_index --write"
           set +e
-          index_output="$(python3 - <<'PY'
-          import sys
-          from scripts.kb import update_index, write_utils
-
-          try:
-              with write_utils.exclusive_write_lock("."):
-                  raise SystemExit(update_index.main(["--wiki-root", "wiki", "--write"]))
-          except write_utils.LockUnavailableError as exc:
-              print(exc.failure_reason)
-              raise SystemExit(1)
-          PY
-          )"
+          index_output="$(python3 -c 'import sys; from scripts.kb import update_index; sys.exit(update_index.main(["--wiki-root", "wiki", "--write"]))')"
           index_exit=$?
           set -e
 
