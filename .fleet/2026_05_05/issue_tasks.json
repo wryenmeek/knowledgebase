@@ -73,7 +73,7 @@
         ".github/workflows/pre-commit.yml",
         ".github/workflows/wiki-freshness.yml"
       ],
-      "description": "GitHub Actions need Node 24 update. Plus CI-2 duplicate logic removal, CI-3 batch ingest, CI-6 concurrency additions. Also enforce authoritative approval and remove lock deletion in CI-3.",
+      "description": "GitHub Actions need Node 24 update. Plus CI-2 duplicate logic removal, CI-3 batch ingest, CI-6 concurrency additions.",
       "solution_summary": "Update actions. Remove ruby logic in CI-2. Update CI-3 to use manifest. Add concurrency group in CI-6. Remove `rm -f wiki/.kb_write.lock` from ci-3-pr-producer.yml. Enforce approval for manual dispatch."
     },
     {
@@ -406,7 +406,7 @@
         "tests/kb/test_workflow_yaml_syntax.py"
       ],
       "risk": "high",
-      "prompt": "Apply multiple CI workflow updates to avoid merge conflicts across files.\n\n**Diagnosis & Implementation**:\n1. Update GitHub Actions to Node 24 compatible versions across all workflows (except fleet):\n   - `actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd` # v5\n   - `actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405` # v6\n   - `actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02` # v4\n   - `actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02` # v4\n   Update the unit tests in `tests/kb/test_ci*_workflow.py` to match the new SHAs.\n\n2. In `.github/workflows/ci-2-analyst-diagnostics.yml`, completely remove the `ruby -e 'require \"psych\"'` step that parses YAML to avoid duplicate effort.\n\n3. In `.github/workflows/ci-3-pr-producer.yml`, update the ingest step to use a manifest. Write the `SOURCE_LIST` to a file `.ci-bin/sources.manifest` and invoke `python3 -m scripts.kb.ingest --sources-manifest .ci-bin/sources.manifest --batch-policy continue_and_report_per_source --wiki-root wiki --schema AGENTS.md --report-json` instead of looping through each source.\n\n4. In `.github/workflows/ci-6-google-drive-monitor.yml`, add a concurrency block:\n```yaml\nconcurrency:\n  group: ci-6-drive-monitor-${{ github.ref }}\n  cancel-in-progress: false\n```\n\n**Acceptance Criteria**:\n- Workflows parse correctly via actionlint.\n- Workflow tests pass successfully.\n\n**FILE BOUNDARY RULE**: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n5. In `.github/workflows/ci-3-pr-producer.yml`, remove the `rm -f wiki/.kb_write.lock` command from the `Run CI-3 required checks and write path` step.\n6. Also in CI-3, add authoritative approval for workflow_dispatch (e.g. require the `ci3-manual-approval` environment) and verify it with the `test_ci3_workflow.py`."
+      "prompt": "Apply multiple CI workflow updates to avoid merge conflicts across files.\n\n**Diagnosis & Implementation**:\n1. Update GitHub Actions to Node 24 compatible versions across all workflows (except fleet):\n   - `actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd` # v5\n   - `actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405` # v6\n   - `actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02` # v4\n   - `actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02` # v4\n   Update the unit tests in `tests/kb/test_ci*_workflow.py` to match the new SHAs.\n\n2. In `.github/workflows/ci-2-analyst-diagnostics.yml`, completely remove the `ruby -e 'require \"psych\"'` step that parses YAML to avoid duplicate effort.\n\n3. In `.github/workflows/ci-3-pr-producer.yml`, update the ingest step to use a manifest. Write the `SOURCE_LIST` to a file `.ci-bin/sources.manifest` and invoke `python3 -m scripts.kb.ingest --sources-manifest .ci-bin/sources.manifest --batch-policy continue_and_report_per_source --wiki-root wiki --schema AGENTS.md --report-json` instead of looping through each source.\n\n4. In `.github/workflows/ci-6-google-drive-monitor.yml`, add a concurrency block:\n```yaml\nconcurrency:\n  group: ci-6-drive-monitor-${{ github.ref }}\n  cancel-in-progress: false\n```\n\n5. In `.github/workflows/ci-3-pr-producer.yml`, remove the `rm -f wiki/.kb_write.lock` command from the `Run CI-3 required checks and write path` step.\n6. Also in CI-3, add authoritative approval for workflow_dispatch (e.g. require the `ci3-manual-approval` environment) and verify it with the `test_ci3_workflow.py`.\n\n**Acceptance Criteria**:\n- Workflows parse correctly via actionlint.\n- Workflow tests pass successfully.\n\n**FILE BOUNDARY RULE**: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
     },
     {
       "id": "task-shell-injection",
@@ -430,43 +430,12 @@
       "issue": 82,
       "reason": "FAILED_PRECONDITION is server-side enforcement blocking API. Requires backend change.",
       "suggested_owner": "Backend team"
-    },
-    {
-      "issue": 19,
-      "reason": "Add performance instrumentation and runtime budgets to KB automation. Open-ended product decision.",
-      "suggested_owner": "Architecture Team"
     }
   ],
   "file_ownership": {
-    "scripts/reporting/content_quality_report.py": "task-report-io",
-    "scripts/reporting/quality_runtime.py": "task-report-io",
-    "scripts/_optional_surface_common.py": "task-report-io",
-    "scripts/kb/qmd_preflight.py": "task-report-io",
-    "scripts/reporting/_artifact.py": "task-report-io",
-    "tests/kb/test_optional_surface_scripts.py": "task-report-io",
-    "tests/kb/test_qmd_preflight.py": "task-report-io",
     "scripts/kb/ingest_render.py": "task-deprivatize",
     "scripts/kb/ingest.py": "task-deprivatize",
     "tests/kb/test_ingest.py": "task-deprivatize",
-    ".github/workflows/fleet-dispatch.yml": "task-shell-injection",
-    ".github/workflows/fleet-merge.yml": "task-shell-injection",
-    ".github/workflows/ci-1-gatekeeper.yml": "task-github-actions",
-    ".github/workflows/ci-2-analyst-diagnostics.yml": "task-github-actions",
-    ".github/workflows/ci-3-pr-producer.yml": "task-github-actions",
-    ".github/workflows/ci-4-framework-writer.yml": "task-github-actions",
-    ".github/workflows/ci-5-github-monitor.yml": "task-github-actions",
-    ".github/workflows/ci-6-google-drive-monitor.yml": "task-github-actions",
-    ".github/workflows/github-customizations-freshness.yml": "task-github-actions",
-    ".github/workflows/pre-commit.yml": "task-github-actions",
-    ".github/workflows/wiki-freshness.yml": "task-github-actions",
-    "tests/kb/test_ci1_workflow.py": "task-github-actions",
-    "tests/kb/test_ci2_workflow.py": "task-github-actions",
-    "tests/kb/test_ci3_workflow.py": "task-github-actions",
-    "tests/kb/test_workflow_yaml_syntax.py": "task-github-actions",
-    "scripts/kb/lint_wiki.py": "task-optimize",
-    "scripts/kb/update_index.py": "task-optimize",
-    "tests/kb/test_lint_wiki.py": "task-optimize",
-    "tests/kb/test_update_index.py": "task-optimize",
     "scripts/kb/persist_query.py": "task-persist",
     "tests/kb/test_persist_query.py": "task-persist",
     "scripts/drive_monitor/_validators.py": "task-drive-validators",
@@ -485,6 +454,32 @@
     "tests/drive_monitor/test_http.py": "task-drive-docstrings",
     "docs/architecture.md": "task-doc-fleet",
     ".gitignore": "task-gitignore",
-    "tests/kb/test_security_regressions.py": "task-security-regression-tests"
+    "tests/kb/test_security_regressions.py": "task-security-regression-tests",
+    "scripts/reporting/content_quality_report.py": "task-report-io",
+    "scripts/reporting/quality_runtime.py": "task-report-io",
+    "scripts/_optional_surface_common.py": "task-report-io",
+    "scripts/kb/qmd_preflight.py": "task-report-io",
+    "scripts/reporting/_artifact.py": "task-report-io",
+    "tests/kb/test_optional_surface_scripts.py": "task-report-io",
+    "tests/kb/test_qmd_preflight.py": "task-report-io",
+    "scripts/kb/lint_wiki.py": "task-optimize",
+    "scripts/kb/update_index.py": "task-optimize",
+    "tests/kb/test_lint_wiki.py": "task-optimize",
+    "tests/kb/test_update_index.py": "task-optimize",
+    ".github/workflows/ci-1-gatekeeper.yml": "task-github-actions",
+    ".github/workflows/ci-2-analyst-diagnostics.yml": "task-github-actions",
+    ".github/workflows/ci-3-pr-producer.yml": "task-github-actions",
+    ".github/workflows/ci-4-framework-writer.yml": "task-github-actions",
+    ".github/workflows/ci-5-github-monitor.yml": "task-github-actions",
+    ".github/workflows/ci-6-google-drive-monitor.yml": "task-github-actions",
+    ".github/workflows/github-customizations-freshness.yml": "task-github-actions",
+    ".github/workflows/pre-commit.yml": "task-github-actions",
+    ".github/workflows/wiki-freshness.yml": "task-github-actions",
+    "tests/kb/test_ci1_workflow.py": "task-github-actions",
+    "tests/kb/test_ci2_workflow.py": "task-github-actions",
+    "tests/kb/test_ci3_workflow.py": "task-github-actions",
+    "tests/kb/test_workflow_yaml_syntax.py": "task-github-actions",
+    ".github/workflows/fleet-dispatch.yml": "task-shell-injection",
+    ".github/workflows/fleet-merge.yml": "task-shell-injection"
   }
 }

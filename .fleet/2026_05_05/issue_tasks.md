@@ -91,12 +91,7 @@ concurrency:
           echo "${SOURCE_LIST}" > .ci-bin/sources.manifest
 
           echo "[CI-3] batch ingest sources"
-          ingest_json="$(python3 -m scripts.kb.ingest \
-            --sources-manifest .ci-bin/sources.manifest \
-            --batch-policy continue_and_report_per_source \
-            --wiki-root wiki \
-            --schema AGENTS.md \
-            --report-json)"
+          ingest_json="$(python3 -m scripts.kb.ingest             --sources-manifest .ci-bin/sources.manifest             --batch-policy continue_and_report_per_source             --wiki-root wiki             --schema AGENTS.md             --report-json)"
 ```
 
 #### Test Plan
@@ -141,7 +136,7 @@ def _require_frontmatter(markdown_text: str, page_path: Path) -> str:
 
 # After
 def _require_frontmatter(markdown_text: str, page_path: Path) -> str:
-    if not markdown_text.lstrip(" \t").startswith("---"):
+    if not markdown_text.lstrip(" 	").startswith("---"):
         raise IndexGenerationError(f"{page_path}: missing YAML frontmatter start delimiter")
     frontmatter, _ = page_template_utils.extract_frontmatter(markdown_text)
     if frontmatter is None:
