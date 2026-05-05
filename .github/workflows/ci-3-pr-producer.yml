@@ -316,10 +316,50 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     environment:
       name: ci3-manual-approval
     steps:
+      - name: Display approval checklist
+        run: |
+          set -euo pipefail
+          cat <<'EOF'
+          ┌─────────────────────────────────────────────────────────────────┐
+          │  CI-3 MANUAL DISPATCH — APPROVAL CHECKLIST                      │
+          ├─────────────────────────────────────────────────────────────────┤
+          │                                                                 │
+          │  You are being asked to approve because this CI-3 run was       │
+          │  triggered manually (workflow_dispatch), bypassing CI-1's        │
+          │  automated gatekeeper. Without CI-1, there is no trusted         │
+          │  validation that the source material is safe to process.         │
+          │                                                                 │
+          │  Before approving, verify ALL of the following:                  │
+          │                                                                 │
+          │  1. SOURCE LEGITIMACY                                           │
+          │     - The source file(s) under raw/inbox/ are authentic and      │
+          │       were placed there intentionally by an authorized person    │
+          │                                                                 │
+          │  2. PATH SAFETY                                                 │
+          │     - The source_path input (if provided) points to a real       │
+          │       file under raw/inbox/ — not a symlink or path traversal    │
+          │                                                                 │
+          │  3. NO SENSITIVE CONTROL PLANE CHANGES                          │
+          │     - The commit being processed does not also modify            │
+          │       workflows, scripts/kb/, AGENTS.md, or schema/ files        │
+          │       (CI-1 would have caught and rejected these)                │
+          │                                                                 │
+          │  4. PREFLIGHT PASSED                                            │
+          │     - The preflight job above shows green (PASS)                 │
+          │     - Review any ::notice:: annotations for warnings             │
+          │                                                                 │
+          │  5. WRITE SCOPE IS BOUNDED                                      │
+          │     - CI-3 will only write to: wiki/**, raw/processed/**,        │
+          │       raw/rejected/** — confirm this is acceptable               │
+          │                                                                 │
+          │  If ANY check fails, REJECT this deployment.                     │
+          │  The source can be re-processed via the normal CI-1 path.        │
+          └─────────────────────────────────────────────────────────────────┘
+          EOF
       - name: Confirm protected-environment approval
         run: |
           set -euo pipefail
