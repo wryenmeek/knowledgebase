@@ -18,7 +18,16 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
-TOPICAL_NAMESPACES: frozenset[str] = frozenset({"sources", "entities", "concepts", "analyses"})
+# Regex to efficiently extract YAML frontmatter enclosed in '---' without tokenizing the entire file into memory.
+# Uses `[ \t]` instead of `\s` to avoid unintentionally consuming newlines and corrupting captured boundaries.
+_FRONTMATTER_BLOCK_RE = re.compile(
+    r"^[ \t]*---[ \t]*\r?\n(.*?(?:\r?\n|(?<=\n)))^[ \t]*---[ \t]*(?:\r?\n|$)",
+    re.DOTALL | re.MULTILINE,
+)
+
+TOPICAL_NAMESPACES: frozenset[str] = frozenset(
+    {"sources", "entities", "concepts", "analyses"}
+)
 
 REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
     "type",
@@ -74,13 +83,18 @@ def validate_page_template_path(
     *,
     repo_root: str | Path,
     required_frontmatter_keys: tuple[str, ...],
-    template_section_requirements: dict[str, tuple[str, ...]] = TEMPLATE_SECTION_REQUIREMENTS,
+    template_section_requirements: dict[
+        str, tuple[str, ...]
+    ] = TEMPLATE_SECTION_REQUIREMENTS,
 ) -> tuple[str, tuple[tuple[str, str], ...]]:
     normalized_page = normalize_page_path(page)
     violations: list[tuple[str, str]] = []
     if not normalized_page.startswith("wiki/") or not normalized_page.endswith(".md"):
         violations.append(
-            ("invalid-page-path", "page must be a repo-relative markdown path under wiki/**")
+            (
+                "invalid-page-path",
+                "page must be a repo-relative markdown path under wiki/**",
+            )
         )
         return normalized_page, tuple(violations)
 
@@ -92,41 +106,66 @@ def validate_page_template_path(
     text = page_path.read_text(encoding="utf-8")
     frontmatter, body = extract_frontmatter(text)
     if frontmatter is None:
-        violations.append(("missing-frontmatter", "page must start with a YAML frontmatter block"))
+        violations.append(
+            ("missing-frontmatter", "page must start with a YAML frontmatter block")
+        )
         return normalized_page, tuple(violations)
 
     metadata = parse_frontmatter(frontmatter)
     for key in required_frontmatter_keys:
         if key not in metadata:
-            violations.append(("missing-frontmatter-key", f"required key '{key}' is missing"))
+            violations.append(
+                ("missing-frontmatter-key", f"required key '{key}' is missing")
+            )
 
     title = strip_quotes(metadata.get("title", ""))
     headings = extract_headings(body)
     if not title:
-        violations.append(("missing-frontmatter-key", "required key 'title' is missing"))
+        violations.append(
+            ("missing-frontmatter-key", "required key 'title' is missing")
+        )
     else:
         expected_heading = f"# {title}"
         if expected_heading not in headings:
-            violations.append(("title-heading-mismatch", "H1 heading must match frontmatter title exactly"))
+            violations.append(
+                (
+                    "title-heading-mismatch",
+                    "H1 heading must match frontmatter title exactly",
+                )
+            )
 
     page_type = strip_quotes(metadata.get("type", ""))
     for required_section in template_section_requirements.get(page_type, ()):
         if required_section not in headings:
             violations.append(
-                ("missing-body-section", f"required section '{required_section}' is missing")
+                (
+                    "missing-body-section",
+                    f"required section '{required_section}' is missing",
+                )
             )
 
     return normalized_page, tuple(violations)
 
 
 def extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    # ⚡ Bolt Optimization: Fast-path literal check prevents regex overhead on files without frontmatter.
+    if not text.lstrip(" \t").startswith("---"):
         return None, text
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
-    return None, text
+
+    # ⚡ Bolt Optimization: Replacing text.splitlines() with regex extraction avoids tokenizing
+    # the entire text (which can be large) row-by-row into memory just to extract a small header.
+    match = _FRONTMATTER_BLOCK_RE.match(text)
+    if not match:
+        return None, text
+
+    frontmatter = match.group(1)
+    if frontmatter.endswith("\n"):
+        frontmatter = frontmatter[:-1]
+    if frontmatter.endswith("\r"):
+        frontmatter = frontmatter[:-1]
+
+    body = text[match.end() :]
+    return frontmatter, body
 
 
 def parse_frontmatter(frontmatter: str) -> dict[str, str]:
@@ -177,13 +216,13 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
         stripped = line.strip()
         if not stripped.startswith("sources:"):
             continue
-        inline_value = stripped[len("sources:"):].strip()
+        inline_value = stripped[len("sources:") :].strip()
         if inline_value == "[]":
             return []
         if inline_value:
             return [strip_quotes(inline_value)]
         sources: list[str] = []
-        for raw_line in lines[index + 1:]:
+        for raw_line in lines[index + 1 :]:
             if not raw_line.startswith("  "):
                 break
             item = raw_line.strip()
