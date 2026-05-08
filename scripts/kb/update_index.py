@@ -66,8 +66,9 @@ class PageSummary:
 
 
 def _require_frontmatter(markdown_text: str, page_path: Path) -> str:
-    lines = markdown_text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    # We must enforce that the start delimiter is either followed by a newline or by whitespace and a newline
+    import re
+    if not markdown_text.lstrip(" \t").startswith("---") or not re.match(r"^[ \t]*---[ \t]*(?:\r?\n|$)", markdown_text):
         raise IndexGenerationError(
             f"{page_path}: missing YAML frontmatter start delimiter (ensure the file begins with '---')"
         )
