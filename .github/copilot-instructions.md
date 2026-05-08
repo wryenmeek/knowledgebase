@@ -60,6 +60,7 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 ### Lifecycle mapping
 
 - **Orient** → `zoom-out`
+- **Research** → `verified-research`
 - **Explore** → `idea-refine`
 - **Stress-test** → `grill-me`
 - **Define** → `spec-driven-development`
@@ -93,6 +94,7 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - New skill creation → `write-a-skill`
 - Refactoring proposal / request → `request-refactor-plan`
 - Issue triage / classification → `triage-issue`
+- Research / comparative analysis / investigation → `verified-research`
 - Architecture improvement → `improve-codebase-architecture`
 
 ## Quality and safety

@@ -49,6 +49,7 @@ Task arrives
     │   ├── Architecture proposals? ─→ @solutions-architect
     │   └── Framework authoring? ────→ @framework-engineer
     ├── Simplifying existing code? ───→ code-simplification
+    ├── Research / investigation? ────→ verified-research
     ├── Removing/migrating systems? ──→ deprecation-and-migration
     ├── Auditing framework workspace? → audit-knowledgebase-workspace
     ├── Jules session stalled/review? → jules-session-triage
@@ -262,7 +263,7 @@ Skills fall into three routing categories based on **execution role**:
 `write-a-skill`, `request-refactor-plan`, `triage-issue`,
 `improve-codebase-architecture`, `reconsider-rejected-source`,
 `code-simplification`, `deprecation-and-migration`,
-`audit-knowledgebase-workspace`, `jules-session-triage`,
+`audit-knowledgebase-workspace`, `jules-session-triage`, `verified-research`,
 `information-architecture-and-taxonomy`, `knowledge-schema-and-metadata-governance`,
 `ontology-and-entity-modeling`,
 `report-content-quality`, `scan-content-freshness`,
@@ -340,6 +341,7 @@ See the Route column in the Quick Reference table for a per-skill label.
 | Meta | improve-codebase-architecture | Direct | Identify and propose architecture improvements |
 | Meta | audit-knowledgebase-workspace | Direct | Verify skills, agents, tests, and wrappers point at real surfaces |
 | Meta | jules-session-triage | Direct | Triage Jules sessions and route review feedback to stuck sessions |
+| Research | verified-research | Direct | 7-phase research with built-in adversarial verification per claim |
 | KB / Governance | information-architecture-and-taxonomy | Direct | Govern wiki namespace placement, browse paths, and tags |
 | KB / Governance | knowledge-schema-and-metadata-governance | Direct | Validate frontmatter, propose fields, assess schema-change policy |
 | KB / Governance | ontology-and-entity-modeling | Direct | Model canonical subjects, aliases, and relationship vocabulary |
