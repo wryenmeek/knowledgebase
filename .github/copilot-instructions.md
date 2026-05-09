@@ -107,6 +107,10 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 
 Before marking any task complete, run `git log origin/HEAD..HEAD --oneline`. If unpushed commits exist, either push them or call them out explicitly in the task summary. Never silently leave work unshipped.
 
+### Detect remote-ahead state before assuming "nothing new"
+
+When the user reports pushing content, triggering CI, or says "Fleet deployed," run `git fetch origin && git log HEAD..origin/main --oneline` to detect remote-ahead commits. Do not rely solely on `git status` — a clean working tree does not mean the remote has no new content. This prevents the recurring error of telling the user "nothing new to process" when they just pushed.
+
 ### SQL tracking table currency
 
 SQL tracking tables (`todos`, `review_findings`, etc.) must be updated in the **same step** as the code change that resolves them — not as a separate cleanup pass. A finding that is fixed in code but still shows `open` in SQL is stale and misleading. Update status atomically with the fix.
@@ -272,6 +276,20 @@ Unlike contract test cascades above, these documentation updates were historical
 | A new CI or support workflow (`.github/workflows/*.yml`) | Row in `docs/mvp-runbook.md` workflow table | `tests/kb/test_doc_cascade_completeness.py` |
 | `Status: Implemented` on a `docs/ideas/` doc | Archive to `raw/inbox/` and leave stub | `tests/kb/test_docs_ideas_archival.py` |
 | A new `scripts/<pkg>/` package | `docs/ideas/spec.md` Phase 2 family list | *(not yet enforced)* |
+| A new skill (`.github/skills/<name>/SKILL.md`) | All 6 wiring targets below | *(not yet enforced)* |
+
+### Skill creation wiring targets
+
+Creating a new skill requires updating 6 locations. The `write-a-skill` skill lists these but they are easy to miss. Check all 6 after every skill creation:
+
+| Wiring target | File | What to add |
+|---|---|---|
+| Discovery tree | `.github/skills/using-agent-skills/SKILL.md` | Entry in the ASCII tree under the correct category |
+| Quick Reference table | `.github/skills/using-agent-skills/SKILL.md` | Row in the Quick Reference table near the end |
+| Routing category list | `.github/skills/using-agent-skills/SKILL.md` | Entry in the Direct / Persona / Both routing section |
+| Lifecycle mapping | `.github/copilot-instructions.md` | Row in the lifecycle mapping table |
+| Intent mapping | `.github/copilot-instructions.md` | Row in the intent-to-skill mapping table |
+| CONTEXT.md freshness | `.github/skills/CONTEXT.md` | Bump `last_updated` date |
 
 ### CONTEXT.md required sections
 
@@ -288,6 +306,10 @@ Sub-agents launched via the `task` tool do not share the parent session's SQL da
 ### Review sub-agent scope boundary
 
 When dispatching review sub-agents (code-reviewer, security-auditor, test-engineer, etc.), explicitly constrain them to the current repository root in the prompt. Sub-agents must not read or review files from parent or sibling directories, even if referenced in documentation. This prevents confusion when multiple repos share a common parent directory.
+
+### Research subagent primary-source verification
+
+When dispatching research or explore subagents, instruct them to verify every statistic, count, and factual claim at the primary source (API response, directory listing, file contents, README text) — never cite numbers from model memory. This applies to citation counts, skill/file counts, API parameter lists, and academic findings. Model memory has a 25%+ error rate on specific numbers (observed: citation counts inflated 2×, skill counts off by 20%, study protocols described as completed research).
 
 ### CI: `if: always()` on steps downstream of surface scripts
 
