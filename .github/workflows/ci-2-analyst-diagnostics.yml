@@ -37,6 +37,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: false  # CI-2 is read-only; no pull-requests:write
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -45,6 +46,8 @@ jobs:
 
       - name: Cache pip dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
           path: ~/.cache/pip
           key: pip-${{ runner.os }}-py3.12-${{ hashFiles('**/pyproject.toml') }}
@@ -54,11 +57,9 @@ jobs:
       - name: Dependency vulnerability audit (pip-audit)
         run: |
           set -euo pipefail
+          pip install --quiet --upgrade pip
           pip install --quiet pip-audit
-          # CVE-2026-3219 affects pip 26.0.1 on ubuntu-latest; no fix version
-          # available yet — ignore until upstream releases a patched pip.
-          # TODO(2026-09): re-evaluate once pip > 26.0.1 ships on ubuntu-latest.
-          pip-audit --desc on --ignore-vuln CVE-2026-3219
+          pip-audit --desc on
 
       - name: Bootstrap repo-local qmd preflight shim
         run: |
@@ -152,6 +153,8 @@ jobs:
       - name: Upload diagnostics artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
           name: ci2-analyst-diagnostics-${{ github.run_id }}
           path: diagnostics/
