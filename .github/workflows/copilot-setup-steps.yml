@@ -1,0 +1,50 @@
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python package and dev dependencies
+        run: |
+          pip install --quiet -e ".[dev,drive-monitor]"
+          pip install --quiet pytest pre-commit
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install TypeScript fleet dependencies
+        working-directory: scripts/fleet
+        run: bun install
+
+      - name: Verify Python setup
+        run: |
+          python3 -c "import scripts.kb.contracts; print('scripts.kb OK')"
+          python3 -m pytest --co -q 2>&1 | tail -3
+
+      - name: Verify Bun setup
+        working-directory: scripts/fleet
+        run: bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts --outdir /tmp/fleet-check

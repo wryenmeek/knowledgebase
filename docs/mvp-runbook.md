@@ -252,6 +252,7 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 | `github-customizations-freshness.yml` | `push` to `.github/**`, weekly schedule, `workflow_dispatch` | Validates `.github/` customizations (skills, agents, hooks) are fresh and internally consistent | `python3 -m scripts.kb.github_customizations_freshness --output drift-report.json` |
 | `fleet-dispatch.yml` | `workflow_dispatch` | Jules-based fleet orchestration: plans issue tasks, dispatches parallel Jules sessions for open issues | `cd scripts/fleet && bun run fleet-plan.ts && bun run fleet-dispatch.ts` |
 | `fleet-merge.yml` | `workflow_dispatch` | Sequential merge of Jules-authored PRs: update branch → wait for CI → squash merge; re-dispatches on conflict | `cd scripts/fleet && bun run fleet-merge.ts` |
+| `copilot-setup-steps.yml` | `workflow_dispatch`, `push`/`pull_request` on self | Configures Copilot cloud agent environment with Python 3.12, Bun, and all project dependencies | Push the file to default branch; runs automatically when Copilot cloud agent starts a session |
 
 ## Milestone evidence mapping (M0..M4)
 
