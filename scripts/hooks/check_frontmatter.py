@@ -35,6 +35,9 @@ def _check_file(path_str: str) -> list[str]:
     is_persona = not is_skill and ("/agents/" in norm or norm.startswith("agents/"))
     # Wiki page: any .md file that has "/wiki/" as a path component.
     is_wiki = not is_skill and not is_persona and ("/wiki/" in norm or norm.startswith("wiki/"))
+    # CONTEXT.md files are structurally different and excluded
+    if is_wiki and basename == "CONTEXT.md":
+        is_wiki = False
 
     if not is_skill and not is_persona and not is_wiki:
         return []
