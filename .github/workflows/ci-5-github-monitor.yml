@@ -49,7 +49,9 @@ jobs:
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
       - name: Mask GitHub App token
-        run: echo "::add-mask::${{ steps.app-token.outputs.token }}"
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: echo "::add-mask::${APP_TOKEN}"
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -223,7 +225,9 @@ jobs:
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
       - name: Mask GitHub App token
-        run: echo "::add-mask::${{ steps.app-token.outputs.token }}"
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: echo "::add-mask::${APP_TOKEN}"
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
