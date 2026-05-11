@@ -17,7 +17,7 @@ from scripts.kb.page_template_utils import (
     REQUIRED_PERSONA_FIELDS,
     REQUIRED_SKILL_FIELDS,
     REQUIRED_WIKI_FIELDS,
-    parse_frontmatter,
+    parse_page_frontmatter,
 )
 
 
@@ -34,7 +34,7 @@ def _check_file(path_str: str) -> list[str]:
     # Agent persona: any .md file under a .github/agents/ path component.
     is_persona = not is_skill and ("/agents/" in norm or norm.startswith("agents/"))
     # Wiki page: any .md file that has "/wiki/" as a path component.
-    is_wiki = not is_skill and not is_persona and ("/wiki/" in norm or norm.startswith("wiki/"))
+    is_wiki = not is_skill and not is_persona and basename != "CONTEXT.md" and ("/wiki/" in norm or norm.startswith("wiki/"))
 
     if not is_skill and not is_persona and not is_wiki:
         return []
@@ -55,7 +55,7 @@ def _check_file(path_str: str) -> list[str]:
         return [f"{path_str}: missing frontmatter (empty file)"]
 
     try:
-        frontmatter = parse_frontmatter(text)
+        frontmatter = parse_page_frontmatter(text)
     except Exception:
         frontmatter = {}
 
