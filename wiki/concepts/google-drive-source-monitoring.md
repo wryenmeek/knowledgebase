@@ -17,6 +17,8 @@ tags:
   - adr-021
   - ci-6
   - pipeline
+search:
+  boost: 2
 ---
 
 # Google Drive Source Monitoring

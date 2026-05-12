@@ -13,6 +13,8 @@ tags:
   - git-hooks
   - governance
   - adr-016
+search:
+  boost: 2
 ---
 
 # Pre-commit Guardrails

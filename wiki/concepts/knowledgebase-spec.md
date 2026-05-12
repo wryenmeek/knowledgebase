@@ -13,6 +13,8 @@ tags:
   - governance
   - architecture
   - spec
+search:
+  boost: 2
 ---
 
 # Knowledgebase Specification

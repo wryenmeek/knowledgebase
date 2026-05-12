@@ -13,6 +13,8 @@ tags:
   - governance
   - freshness-ci
   - semantic-graph
+search:
+  boost: 2
 ---
 
 # .github/ Customizations Governance

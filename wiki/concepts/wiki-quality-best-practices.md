@@ -14,6 +14,8 @@ tags:
   - llm-wiki
   - best-practices
   - information-architecture
+search:
+  boost: 2
 ---
 
 # Wiki Quality Best Practices

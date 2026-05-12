@@ -37,6 +37,7 @@ plugins:
   - search:
       lang: en
       separator: '[\s\-\./]+'
+  - tags
 
 markdown_extensions:
   - pymdownx.highlight:
@@ -66,6 +67,7 @@ nav:
       - "Google Drive Spec": sources/spec-google-drive-source-monitoring.md
       - "Pre-commit Guardrails": sources/pre-commit-guardrails.md
       - "LLMwiki Best Practices Research": "sources/LLMwiki-best practices-research.md"
+  - Tags: tags.md
   - Log: log.md
 
 exclude_docs: |

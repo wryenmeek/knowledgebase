@@ -13,6 +13,8 @@ tags:
   - agent-context
   - domain-vocabulary
   - session-continuity
+search:
+  boost: 2
 ---
 
 # CONTEXT.md Domain Model
