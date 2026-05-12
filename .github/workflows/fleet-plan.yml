@@ -83,7 +83,7 @@ jobs:
           printf '%s\n%s\n' "$PLAN_SESSION_ID" "$BASE_BRANCH" > .fleet/.pending_session
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .fleet/.pending_session
+          git add -f .fleet/.pending_session
           git commit -m "chore(fleet): store pending planning session $PLAN_SESSION_ID"
           git push origin "$BASE_BRANCH"
           echo "✅ Session $PLAN_SESSION_ID stored. Waiting for Jules to post planning PR."
