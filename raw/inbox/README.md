@@ -24,3 +24,5 @@ If CI-3 is not triggering automatically, push a change to any file in this direc
 to re-trigger CI-1 → CI-3.
 
 > Last pipeline re-trigger: 2026-05-12 (unblocking after CI-3 lint fix for CONTEXT.md)
+
+<!-- re-trigger 2026-05-12T04:08:48Z -->
