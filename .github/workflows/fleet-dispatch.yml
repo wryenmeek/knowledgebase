@@ -44,9 +44,9 @@ jobs:
       - name: Checkout base branch
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          # Always check out main (not the PR head) so we can read the pending
-          # session file and run fleet-dispatch.ts after merging.
+          # Always check out main (not the PR head) so we can run fleet-dispatch.ts.
           ref: main
+          fetch-depth: 0
 
       - name: Check if this PR is the fleet planning PR
         id: check
@@ -57,20 +57,22 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ ! -f .fleet/.pending_session ]; then
-            echo "ℹ️  No pending fleet session. Skipping."
+          # Read pending session from fleet-state branch (unprotected state branch).
+          git fetch origin fleet-state 2>/dev/null || true
+          if ! git rev-parse origin/fleet-state >/dev/null 2>&1; then
+            echo "ℹ️  No fleet-state branch. Skipping."
+            echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          PENDING_DATA=$(git show origin/fleet-state:.fleet/.pending_session 2>/dev/null || echo "")
+          if [ -z "$PENDING_DATA" ]; then
+            echo "ℹ️  No pending fleet session in fleet-state. Skipping."
             echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          PENDING_SESSION_ID=$(sed -n '1p' .fleet/.pending_session)
-          PENDING_BASE=$(sed -n '2p' .fleet/.pending_session)
-
-          if [ -z "$PENDING_SESSION_ID" ]; then
-            echo "ℹ️  .pending_session is empty. Skipping."
-            echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          PENDING_SESSION_ID=$(printf '%s' "$PENDING_DATA" | sed -n '1p')
+          PENDING_BASE=$(printf '%s' "$PENDING_DATA" | sed -n '2p')
 
           # Match: session ID appears in PR body OR in the branch name.
           if echo "$PR_BODY" | grep -qF "$PENDING_SESSION_ID" || \
@@ -100,14 +102,17 @@ jobs:
         if: steps.check.outputs.is_fleet_pr == 'true'
         run: |
           set -euo pipefail
-          BASE="${{ steps.check.outputs.pending_base }}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --ff-only origin "$BASE"
+          git checkout -B fleet-state origin/fleet-state
           rm -f .fleet/.pending_session
           git add .fleet/.pending_session
-          git commit -m "chore(fleet): clear pending session after planning PR merged"
-          git push origin "$BASE"
+          if git diff --cached --quiet; then
+            echo "Nothing to clear in fleet-state."
+          else
+            git commit -m "chore(fleet): clear pending session after planning PR merged"
+            git push origin fleet-state
+          fi
 
       - name: Setup Bun
         if: steps.check.outputs.is_fleet_pr == 'true'
