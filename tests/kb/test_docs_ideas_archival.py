@@ -3,7 +3,8 @@
 When a completed docs/ideas/ document is archived to raw/inbox/ for wiki
 source intake, a minimal stub is left behind.  This test validates:
   - every stub with an archive pointer has a ``Status: Implemented`` line,
-  - the pointed-to file in raw/inbox/ actually exists.
+  - the pointed-to file exists in raw/inbox/ (awaiting ingest) OR has already
+    been ingested to wiki/sources/ (post-ingest state).
 
 See ``.github/copilot-instructions.md`` → ``docs/ideas/ archival to intake``
 for the convention these tests enforce.
@@ -18,6 +19,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 IDEAS_DIR = REPO_ROOT / "docs" / "ideas"
 INBOX_DIR = REPO_ROOT / "raw" / "inbox"
+WIKI_SOURCES_DIR = REPO_ROOT / "wiki" / "sources"
 
 # Pattern that matches the archive pointer in a stub.
 _ARCHIVE_PTR_RE = re.compile(
@@ -56,18 +58,23 @@ class TestDocsIdeasArchival(unittest.TestCase):
                     f"{md_file.name}: archival stub missing 'Status: Implemented' line",
                 )
 
-                # Target file must exist
-                target = REPO_ROOT / rel_target
+                # Target file must exist — either still in raw/inbox/ (pre-ingest)
+                # or already moved to wiki/sources/ (post-ingest).
+                target_inbox = REPO_ROOT / rel_target
+                # Derive the wiki/sources counterpart (same filename).
+                ingested = WIKI_SOURCES_DIR / Path(rel_target).name
                 self.assertTrue(
-                    target.exists(),
-                    f"{md_file.name}: archive target does not exist: {rel_target}",
+                    target_inbox.exists() or ingested.exists(),
+                    f"{md_file.name}: archive target not found at {rel_target} "
+                    f"or post-ingest at wiki/sources/{Path(rel_target).name}",
                 )
 
-                # Target must be inside raw/inbox/ (path traversal guard)
-                self.assertTrue(
-                    target.resolve().is_relative_to(INBOX_DIR.resolve()),
-                    f"{md_file.name}: archive target escapes raw/inbox/: {rel_target}",
-                )
+                # If still in inbox, verify it stays inside raw/inbox/.
+                if target_inbox.exists():
+                    self.assertTrue(
+                        target_inbox.resolve().is_relative_to(INBOX_DIR.resolve()),
+                        f"{md_file.name}: archive target escapes raw/inbox/: {rel_target}",
+                    )
 
     def test_implemented_docs_must_be_stubs(self) -> None:
         """A doc with terminal 'Status: Implemented' must have an archive pointer (i.e. be a stub)."""
