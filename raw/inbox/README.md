@@ -22,3 +22,5 @@ CI-3 processes all files in this directory on each run. After ingest, files are
 moved to `raw/processed/` and wiki source pages are created under `wiki/sources/`.
 If CI-3 is not triggering automatically, push a change to any file in this directory
 to re-trigger CI-1 → CI-3.
+
+> Last pipeline re-trigger: 2026-05-12 (unblocking after CI-3 lint fix for CONTEXT.md)
