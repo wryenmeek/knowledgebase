@@ -1,7 +1,7 @@
 ---
 type: source
 title: "Source: Readme"
-status: active
+status: retired
 sources:
   - "repo://local/knowledgebase/raw/processed/README.md@0000000000000000000000000000000000000000#asset?sha256=eae6a70eea1307d95a5989ec3dc2f44c4b3513473748edcae3e033b3edf91a01"
 open_questions: []

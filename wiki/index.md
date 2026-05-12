@@ -17,20 +17,25 @@ tags:
 Catalog generated deterministically from wiki content.
 
 ## Sources
-- [Source: Context Md Domain Model](sources/context-md-domain-model.md) _(status: active; confidence: 5; updated_at: 1970-01-01T00:00:00Z)_
-- [Source: Github Customizations Governance](sources/github-customizations-governance.md) _(status: active; confidence: 5; updated_at: 1970-01-01T00:00:00Z)_
-- [Source: Google Drive Source Monitoring](sources/google-drive-source-monitoring.md) _(status: active; confidence: 5; updated_at: 1970-01-01T00:00:00Z)_
-- [Source: Llmwiki Best Practices Research](sources/LLMwiki-best practices-research.md) _(status: active; confidence: 5; updated_at: 1970-01-01T00:00:00Z)_
-- [Source: Pre Commit Guardrails](sources/pre-commit-guardrails.md) _(status: active; confidence: 5; updated_at: 1970-01-01T00:00:00Z)_
-- [Source: Readme](sources/README.md) _(status: active; confidence: 5; updated_at: 1970-01-01T00:00:00Z)_
+- [Source: Context Md Domain Model](sources/context-md-domain-model.md) _(status: active; confidence: 5; updated_at: 2026-05-12T01:55:00Z)_
+- [Source: Github Customizations Governance](sources/github-customizations-governance.md) _(status: active; confidence: 5; updated_at: 2026-05-12T01:55:00Z)_
+- [Source: Google Drive Source Monitoring](sources/google-drive-source-monitoring.md) _(status: active; confidence: 5; updated_at: 2026-05-12T01:55:00Z)_
+- [Source: Llmwiki Best Practices Research](sources/LLMwiki-best practices-research.md) _(status: active; confidence: 5; updated_at: 2026-05-12T01:55:00Z)_
+- [Source: Pre Commit Guardrails](sources/pre-commit-guardrails.md) _(status: active; confidence: 5; updated_at: 2026-05-12T01:55:00Z)_
+- [Source: Readme](sources/README.md) _(status: retired; confidence: 5; updated_at: 1970-01-01T00:00:00Z)_
 - [Source: Spec](sources/SPEC.md) _(status: active; confidence: 5; updated_at: 2026-05-04T02:55:00Z)_
-- [Source: Spec Google Drive Source Monitoring](sources/spec-google-drive-source-monitoring.md) _(status: active; confidence: 5; updated_at: 1970-01-01T00:00:00Z)_
+- [Source: Spec Google Drive Source Monitoring](sources/spec-google-drive-source-monitoring.md) _(status: active; confidence: 5; updated_at: 2026-05-12T01:55:00Z)_
 
 ## Entities
 - _None_
 
 ## Concepts
-- _None_
+- [.github/ Customizations Governance](concepts/github-customizations-governance.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
+- [CONTEXT.md Domain Model](concepts/context-md-domain-model.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
+- [Google Drive Source Monitoring](concepts/google-drive-source-monitoring.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
+- [Knowledgebase Specification](concepts/knowledgebase-spec.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
+- [Pre-commit Guardrails](concepts/pre-commit-guardrails.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
+- [Wiki Quality Best Practices](concepts/wiki-quality-best-practices.md) _(status: active; confidence: 3; updated_at: 2026-05-12T06:00:00Z)_
 
 ## Analyses
 - _None_

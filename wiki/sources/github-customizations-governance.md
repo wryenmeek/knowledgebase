@@ -3,11 +3,11 @@ type: source
 title: "Source: Github Customizations Governance"
 status: active
 sources:
-  - "repo://local/knowledgebase/raw/processed/github-customizations-governance.md@0000000000000000000000000000000000000000#asset?sha256=a3b9f5b680f468740adf55bd051285010fe39a0ec2489455ceee0de3453c0290"
+  - "repo://local/knowledgebase/raw/processed/github-customizations-governance.md@021d32778765eb6ba54644c53740f2eb2fb70473#asset?sha256=a3b9f5b680f468740adf55bd051285010fe39a0ec2489455ceee0de3453c0290"
 open_questions: []
 confidence: 5
 sensitivity: internal
-updated_at: "1970-01-01T00:00:00Z"
+updated_at: "2026-05-12T01:55:00Z"
 tags:
   - source
 ---
@@ -16,11 +16,11 @@ tags:
 
 - inbox_path: `raw/inbox/github-customizations-governance.md`
 - processed_path: `raw/processed/github-customizations-governance.md`
-- sourceref: `repo://local/knowledgebase/raw/processed/github-customizations-governance.md@0000000000000000000000000000000000000000#asset?sha256=a3b9f5b680f468740adf55bd051285010fe39a0ec2489455ceee0de3453c0290`
-- provenance_status: `provisional`
-- provenance_authoritative: `false`
-- provenance_review_mode: `authoritative_review_required`
-- provenance_reconciliation: `commit_bound_pending`
-- provenance_git_sha_kind: `placeholder`
+- sourceref: `repo://local/knowledgebase/raw/processed/github-customizations-governance.md@021d32778765eb6ba54644c53740f2eb2fb70473#asset?sha256=a3b9f5b680f468740adf55bd051285010fe39a0ec2489455ceee0de3453c0290`
+- provenance_status: `authoritative`
+- provenance_authoritative: `true`
+- provenance_review_mode: `authoritative`
+- provenance_reconciliation: `commit_bound_confirmed`
+- provenance_git_sha_kind: `real`
 - checksum_sha256: `a3b9f5b680f468740adf55bd051285010fe39a0ec2489455ceee0de3453c0290`
 - bytes: 9593

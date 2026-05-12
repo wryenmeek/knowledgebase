@@ -27,6 +27,10 @@ all wiki content must satisfy.
 - sourceref: `repo://local/knowledgebase/raw/processed/SPEC.md@498df4202c004c35dc73bd56ca4ef7f8810826db#asset?sha256=19a9dd9be5f70a2113f2728b507bf2828dc34eb7f7a35de07a49b56b4d3417cb`
 - checksum_sha256: `19a9dd9be5f70a2113f2728b507bf2828dc34eb7f7a35de07a49b56b4d3417cb`
 - bytes: 40166
+- provenance_status: `authoritative`
+- provenance_authoritative: `true`
+- provenance_reconciliation: `commit_bound_confirmed`
+- provenance_git_sha_kind: `real`
 
 ## Open Questions
 
