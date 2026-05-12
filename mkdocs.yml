@@ -27,12 +27,16 @@ theme:
     - navigation.sections
     - navigation.expand
     - navigation.top
+    - navigation.instant
     - search.highlight
     - search.suggest
+    - search.share
     - content.code.copy
 
 plugins:
-  - search
+  - search:
+      lang: en
+      separator: '[\s\-\./]+'
 
 markdown_extensions:
   - pymdownx.highlight:
