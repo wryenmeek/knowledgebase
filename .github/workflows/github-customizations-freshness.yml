@@ -1,0 +1,215 @@
+name: GitHub Customizations Freshness
+
+on:
+  push:
+    paths:
+      - ".github/**"
+  schedule:
+    - cron: "30 3 * * 1" # Monday 03:30 UTC, same as wiki-freshness
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# CI permission policy markers (machine-checked by test_ci_permission_asserts.py)
+env:
+  CI_ID: CI-customizations-freshness
+  TOKEN_PROFILE: tp-customizations-readwrite
+
+concurrency:
+  group: kb-customizations-freshness-${{ github.repository }}
+  # Only cancel detect-drift; never cancel write jobs mid-flight (avoids orphaned branches).
+  cancel-in-progress: false
+
+jobs:
+  detect-drift:
+    name: Detect .github/ customization drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      drift_found: ${{ steps.drift.outputs.drift_found }}
+      resolvable_count: ${{ steps.drift.outputs.resolvable_count }}
+      ambiguous_count: ${{ steps.drift.outputs.ambiguous_count }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Run drift detection
+        id: drift
+        run: |
+          set -euo pipefail
+          python3 -m scripts.kb.github_customizations_freshness --output drift-report.json
+          SCRIPT_EXIT=$?
+          # exit 1 = drift detected (expected); exit 2+ = script error (hard failure)
+          if [ "$SCRIPT_EXIT" -ge 2 ]; then
+            echo "::error::Freshness script failed with exit $SCRIPT_EXIT" >&2
+            exit 1
+          fi
+          RESOLVABLE=$(python3 -c "import json; d=json.load(open('drift-report.json')); print(len(d['resolvable']))")
+          AMBIGUOUS=$(python3 -c "import json; d=json.load(open('drift-report.json')); print(len(d['ambiguous']))")
+          echo "resolvable_count=${RESOLVABLE}" >> "$GITHUB_OUTPUT"
+          echo "ambiguous_count=${AMBIGUOUS}" >> "$GITHUB_OUTPUT"
+          if [ "$RESOLVABLE" -gt 0 ] || [ "$AMBIGUOUS" -gt 0 ]; then
+            echo "drift_found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "drift_found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: customizations-drift-report
+          path: drift-report.json
+          retention-days: 14
+
+  open-repair-pr:
+    name: Open fix PR for resolvable drift
+    needs: detect-drift
+    if: needs.detect-drift.outputs.drift_found == 'true' && needs.detect-drift.outputs.resolvable_count > '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Download drift report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: customizations-drift-report
+
+      - name: Assert required labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label list --json name --jq '.[].name' | grep -qx 'auto:framework-repair' \
+            || { echo "::error::Label 'auto:framework-repair' does not exist. Create it before enabling this workflow."; exit 1; }
+
+      - name: Draft and open repair PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Deterministic branch name: force-push avoids stale branch accumulation.
+          BRANCH="auto/framework-repair-latest"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Configure credentials explicitly (persist-credentials: false above)
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
+          git reset --hard HEAD
+
+          python3 - <<'PY'
+          import json, pathlib, sys
+
+          report = json.loads(pathlib.Path("drift-report.json").read_text())
+          resolvable = report.get("resolvable", [])
+
+          if not resolvable:
+              print("No resolvable drift — nothing to fix.")
+              sys.exit(0)
+
+          lines = ["# Proposed Fixes\n\nThe following broken references were detected and a replacement was found:\n"]
+          for entry in resolvable:
+              lines.append(f"- **{entry['file']}**: `{entry['ref_broken']}` → `{entry['ref_suggested']}`")
+
+          pathlib.Path("drift-repair-summary.md").write_text("\n".join(lines) + "\n")
+          print(f"Staged {len(resolvable)} proposed fixes.")
+          PY
+
+          if [ ! -f drift-repair-summary.md ]; then
+            echo "No summary generated, skipping PR."
+            exit 0
+          fi
+
+          git add drift-repair-summary.md
+          # Only commit if there are staged changes (prevents phantom empty-diff PRs)
+          if git diff --staged --quiet; then
+            echo "No changes to commit — repair summary unchanged from prior run."
+            exit 0
+          fi
+          git commit -m "chore: framework drift repair proposal (auto)"
+          git push --force origin "$BRANCH"
+
+          gh pr create \
+            --title "chore: auto framework repair — resolvable .github/ drift" \
+            --body-file drift-repair-summary.md \
+            --label "auto:framework-repair" \
+            --head "$BRANCH" \
+            --base main
+
+  open-drift-issue:
+    name: Open issue for ambiguous drift
+    needs: detect-drift
+    if: needs.detect-drift.outputs.drift_found == 'true' && needs.detect-drift.outputs.ambiguous_count > '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Download drift report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: customizations-drift-report
+
+      - name: Assert required labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label list --json name --jq '.[].name' | grep -qx 'drift:needs-review' \
+            || { echo "::error::Label 'drift:needs-review' does not exist. Create it before enabling this workflow."; exit 1; }
+
+      - name: Open needs-review issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib
+
+          report = json.loads(pathlib.Path("drift-report.json").read_text())
+          ambiguous = report.get("ambiguous", [])
+
+          lines = [
+              "## Ambiguous .github/ Customization Drift\n",
+              "The following broken references could not be auto-resolved and require human review:\n",
+          ]
+          for entry in ambiguous:
+              lines.append(f"- **{entry['file']}**: `{entry['ref_broken']}`")
+              if "context" in entry:
+                  lines.append(f"  - Context: {entry['context']}")
+
+          lines.append("\nPlease review and update the affected files manually.")
+          body = "\n".join(lines)
+
+          pathlib.Path("drift-issue-body.md").write_text(body)
+          print(f"Prepared issue body for {len(ambiguous)} ambiguous entries.")
+          PY
+
+          gh issue create \
+            --title ".github/ customization drift: needs human review" \
+            --body-file drift-issue-body.md \
+            --label "drift:needs-review"

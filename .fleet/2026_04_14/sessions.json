@@ -1,0 +1,30 @@
+[
+  {
+    "taskId": "task-ci3-batching-and-lock",
+    "sessionId": "mock-session-id-0"
+  },
+  {
+    "taskId": "task-persist-query-optimizations",
+    "sessionId": "mock-session-id-1"
+  },
+  {
+    "taskId": "task-write-path-hardening",
+    "sessionId": "mock-session-id-2"
+  },
+  {
+    "taskId": "task-lint-optimization",
+    "sessionId": "mock-session-id-3"
+  },
+  {
+    "taskId": "task-gitignore-hardening",
+    "sessionId": "mock-session-id-4"
+  },
+  {
+    "taskId": "task-test-coverage",
+    "sessionId": "mock-session-id-5"
+  },
+  {
+    "taskId": "task-ci-telemetry",
+    "sessionId": "mock-session-id-6"
+  }
+]

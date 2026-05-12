@@ -1,0 +1,140 @@
+name: Wiki Freshness Check
+
+on:
+  schedule:
+    - cron: "30 3 * * 1" # Monday 03:30 UTC
+  workflow_dispatch:
+    inputs:
+      enforcement_mode:
+        description: "Whether freshness failures block the run (signal=advisory, blocking=hard-fail)"
+        type: choice
+        options:
+          - signal
+          - blocking
+        default: signal
+
+permissions:
+  contents: read
+
+# CI permission policy markers (machine-checked by test_ci_permission_asserts.py)
+env:
+  CI_ID: CI-freshness
+  TOKEN_PROFILE: tp-freshness-readonly
+
+concurrency:
+  group: kb-freshness-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  wiki-freshness:
+    name: Wiki freshness analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENFORCEMENT_MODE: ${{ inputs.enforcement_mode || 'signal' }}
+    steps:
+      - name: Checkout repository snapshot
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Run wiki freshness check
+        # Governed constants: freshness_stale_days=90, see docs/architecture.md
+        id: freshness
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p freshness-reports
+          python3 scripts/validation/check_doc_freshness.py \
+            --scope wiki \
+            --as-of "$(date -u +%Y-%m-%d)" \
+            --max-age-days 90 \
+            --failures-only \
+            > freshness-reports/wiki-freshness.json
+
+      - name: Annotate stale pages
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ ! -f freshness-reports/wiki-freshness.json ]]; then
+            echo "No freshness report generated."
+            exit 0
+          fi
+          python3 - <<'EOF'
+          import json, sys
+          with open("freshness-reports/wiki-freshness.json") as f:
+              report = json.load(f)
+          files = report.get("files", [])
+          if not files:
+              print("All wiki pages are within the freshness threshold.")
+              sys.exit(0)
+          for entry in files:
+              path = entry.get("path", "unknown")
+              msg = entry.get("message", "stale document")
+              print(f"::warning file={path}::{msg} FIX: update page content and set updated_at to today's date in the YAML frontmatter.")
+          EOF
+
+      - name: Classify stale pages for routing
+        # Governed constants: freshness_afk_threshold_days=180, see docs/architecture.md
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ ! -f freshness-reports/wiki-freshness.json ]]; then
+            echo '{"stale_pages":[]}' > freshness-reports/freshness-routing.json
+            exit 0
+          fi
+          python3 -m scripts.validation.classify_stale \
+            --freshness-report freshness-reports/wiki-freshness.json \
+            --output freshness-reports/freshness-routing.json \
+            --afk-threshold-days 180
+
+      - name: Advisory governance signal sweep
+        continue-on-error: true  # advisory; crashes must not fail the scheduled run
+        run: |
+          set -euo pipefail
+          mkdir -p freshness-reports
+          python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py \
+            --mode signal \
+            --quiet \
+            --validator sourceref-shape \
+            --validator page-template \
+            --validator append-only-log \
+            --validator topology-hygiene \
+            --validator freshness-threshold \
+            > freshness-reports/governance-signal.json
+          python3 - <<'EOF'
+          import json, sys
+          with open("freshness-reports/governance-signal.json") as f:
+              report = json.load(f)
+          findings = report.get("findings", [])
+          fail_findings = [fn for fn in findings if fn.get("status") == "fail"]
+          if not fail_findings:
+              print("Governance signal sweep: no advisory findings.")
+              sys.exit(0)
+          for fn in fail_findings:
+              target = fn.get("target", "wiki")
+              msg = fn.get("message", "governance finding")
+              validator = fn.get("validator", "governance")
+              print(f"::warning file={target}::[{validator}] {msg} (advisory — signal mode)")
+          EOF
+
+      - name: Upload freshness report artifact
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: wiki-freshness-${{ github.run_id }}
+          path: freshness-reports/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail on stale wiki pages (blocking mode only)
+        if: env.ENFORCEMENT_MODE == 'blocking' && steps.freshness.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          echo "::error::Wiki freshness check failed in blocking mode. Review the uploaded freshness report artifact." >&2
+          exit 1

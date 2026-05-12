@@ -1,0 +1,35 @@
+{
+  "version": "1",
+  "alias": "sof-session-notes",
+  "credential_secret_name": "GDRIVE_SA_KEY",
+  "changes_page_token": null,
+  "last_full_scan_at": null,
+  "folder_entries": [
+    {
+      "folder_id": "1tvekaSuYG10kDnyWCOpOMTldNaNgzalX",
+      "folder_name": "SoF Session Notes",
+      "wiki_namespace": "test/",
+      "tracking_status": "active"
+    }
+  ],
+  "file_entries": [
+    {
+      "file_id": "1rz7BZCsCV_k3K5h2-KKZTJMZq6Zqaz4yZMxcrCCzDcE",
+      "display_name": "SoF | Session Notes",
+      "display_path": "SoF Session Notes/SoF | Session Notes",
+      "mime_type": "application/vnd.google-apps.document",
+      "tracking_status": "uninitialized",
+      "wiki_page": "wiki/pages/topical/test/sof-session-notes.md",
+      "drive_version": null,
+      "md5_checksum_at_last_applied": null,
+      "sha256_at_last_applied": null,
+      "sha256_at_last_fetched": null,
+      "last_applied_drive_version": null,
+      "last_fetched_drive_version": null,
+      "md5_checksum_at_last_fetched": null,
+      "last_applied_at": null,
+      "last_fetched_at": null,
+      "notes": "Test file for validating CI-6 pipeline end-to-end."
+    }
+  ]
+}

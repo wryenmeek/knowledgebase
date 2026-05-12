@@ -1,0 +1,261 @@
+name: CI-1 Gatekeeper Trusted Handoff
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - raw/inbox/**
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: kb-write-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gatekeeper-preflight:
+    name: CI-1 gatekeeper preflight (tp-gatekeeper)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CI_ID: CI-1
+      TOKEN_PROFILE: tp-gatekeeper
+      REQUIRED_EVENT: push
+      REQUIRED_PATH_PREFIX: raw/inbox/
+      FALLBACK_MANUAL_INSTRUCTIONS: Follow SPEC.md fallback/manual execution path and open a PR through required checks.
+    steps:
+      - name: Checkout repository snapshot (read-only token)
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Secret scan (gitleaks)
+        # TODO: upgrade once gitleaks/gitleaks-action releases a node24-compatible version.
+        # v2.3.9 (latest) still uses node20; tracked at github.com/gitleaks/gitleaks-action/issues.
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assert CI-1 gatekeeper profile context
+        run: |
+          set -euo pipefail
+          mkdir -p preflight
+          test "${CI_ID}" = "CI-1"
+          test "${TOKEN_PROFILE}" = "tp-gatekeeper"
+          {
+            echo "ci_id=${CI_ID}"
+            echo "token_profile=${TOKEN_PROFILE}"
+            echo "permission_contract=actions:read,contents:read"
+            echo "required_event=${REQUIRED_EVENT}"
+            echo "required_path_prefix=${REQUIRED_PATH_PREFIX}"
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "ref=${GITHUB_REF}"
+            echo "sha=${GITHUB_SHA}"
+          } | tee preflight/context.log
+
+      - name: Run CI-1 trusted-trigger preflight checks
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+          WORKFLOW_FILE: .github/workflows/ci-1-gatekeeper.yml
+        run: |
+          set -euo pipefail
+
+          reason_list=()
+          prereq_ghaw_readiness="PASS"
+          prereq_trusted_trigger_model="PASS"
+          prereq_permissions_scope="PASS"
+          prereq_concurrency_guard="PASS"
+          prereq_fallback_manual_path="PASS"
+
+          if ! command -v python3 >/dev/null 2>&1; then
+            reason_list+=("prereq_missing:ghaw_readiness:python3_unavailable")
+            prereq_ghaw_readiness="FAIL"
+          fi
+
+          for required_file in scripts/kb/ingest.py scripts/kb/update_index.py scripts/kb/lint_wiki.py "${WORKFLOW_FILE}"; do
+            if [[ ! -f "${required_file}" ]]; then
+              reason_list+=("prereq_missing:ghaw_readiness:missing_${required_file//\//_}")
+              prereq_ghaw_readiness="FAIL"
+            fi
+          done
+
+          if [[ -z "${CURRENT_SHA}" ]]; then
+            reason_list+=("prereq_missing:ghaw_readiness:missing_commit_sha")
+            prereq_ghaw_readiness="FAIL"
+          fi
+
+          if [[ "${EVENT_NAME}" != "${REQUIRED_EVENT}" ]]; then
+            reason_list+=("reject:trusted_trigger_model:event_not_push")
+            prereq_trusted_trigger_model="FAIL"
+          fi
+          if [[ "${REF_NAME}" != "${DEFAULT_BRANCH}" ]]; then
+            reason_list+=("reject:trusted_trigger_model:not_default_branch")
+            prereq_trusted_trigger_model="FAIL"
+          fi
+          if [[ "${REF_PROTECTED}" != "true" ]]; then
+            reason_list+=("reject:trusted_trigger_model:ref_not_protected")
+            reason_list+=("action_required:trusted_trigger_model:enable_branch_protection")
+            prereq_trusted_trigger_model="FAIL"
+          fi
+
+          mapfile -t changed_paths < <(
+            if [[ -n "${BEFORE_SHA}" ]] && [[ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]]; then
+              git diff --name-only "${BEFORE_SHA}" "${CURRENT_SHA}"
+            else
+              git diff-tree --no-commit-id --name-only -r "${CURRENT_SHA}"
+            fi
+          )
+
+          if [[ "${#changed_paths[@]}" -eq 0 ]]; then
+            reason_list+=("reject:path_filter:no_changed_paths_detected")
+            prereq_trusted_trigger_model="FAIL"
+          fi
+
+          # Separate inbox paths from non-inbox paths. Use a benign
+          # allowlist — everything not explicitly benign is treated as
+          # sensitive control-plane to prevent co-mingled write-surface changes.
+          inbox_paths=()
+          benign_non_inbox=()
+          sensitive_non_inbox=()
+          for changed_path in "${changed_paths[@]}"; do
+            if [[ "${changed_path}" == ${REQUIRED_PATH_PREFIX}* ]]; then
+              inbox_paths+=("${changed_path}")
+            elif [[ "${changed_path}" == docs/* ]] \
+              || [[ "${changed_path}" == tests/* ]] \
+              || [[ "${changed_path}" == wiki/pages/* ]] \
+              || [[ "${changed_path}" == wiki/sources/* ]] \
+              || [[ "${changed_path}" == README.md ]] \
+              || [[ "${changed_path}" == LICENSE* ]]; then
+              benign_non_inbox+=("${changed_path}")
+            else
+              sensitive_non_inbox+=("${changed_path}")
+            fi
+          done
+
+          if [[ "${#inbox_paths[@]}" -eq 0 ]]; then
+            reason_list+=("reject:path_filter:no_inbox_paths_after_filter")
+            prereq_trusted_trigger_model="FAIL"
+          fi
+
+          if [[ "${#sensitive_non_inbox[@]}" -gt 0 ]]; then
+            for p in "${sensitive_non_inbox[@]}"; do
+              reason_list+=("reject:path_filter:sensitive_control_plane_path:${p}")
+            done
+            prereq_trusted_trigger_model="FAIL"
+          fi
+
+          if [[ "${#benign_non_inbox[@]}" -gt 0 ]]; then
+            echo "::notice::CI-1 ignoring ${#benign_non_inbox[@]} benign non-inbox paths (covered by other CI workflows)."
+            for p in "${benign_non_inbox[@]}"; do
+              echo "  skipped: ${p}"
+            done
+          fi
+
+          # Use inbox paths only for downstream reporting
+          changed_paths=("${inbox_paths[@]}")
+
+          if [[ "${TOKEN_PROFILE}" != "tp-gatekeeper" ]]; then
+            reason_list+=("reject:permissions_scope:token_profile_mismatch")
+            prereq_permissions_scope="FAIL"
+          fi
+
+          if ! grep -Eq '^[[:space:]][[:space:]]actions:[[:space:]]*read[[:space:]]*$' "${WORKFLOW_FILE}" \
+            || ! grep -Eq '^[[:space:]][[:space:]]contents:[[:space:]]*read[[:space:]]*$' "${WORKFLOW_FILE}"; then
+            reason_list+=("reject:permissions_scope:minimum_permissions_mismatch")
+            prereq_permissions_scope="FAIL"
+          fi
+
+          if grep -Eiq '^[[:space:]][[:space:]](contents|actions|checks|pull-requests|issues|packages|id-token)[[:space:]]*:[[:space:]]*write[[:space:]]*$' "${WORKFLOW_FILE}"; then
+            reason_list+=("reject:permissions_scope:forbidden_write_scope_declared")
+            prereq_permissions_scope="FAIL"
+          fi
+
+          if ! grep -Eq '^[[:space:]][[:space:]]group:[[:space:]]*kb-write-\$\{\{ github\.repository \}\}-\$\{\{ github\.ref \}\}[[:space:]]*$' "${WORKFLOW_FILE}"; then
+            reason_list+=("prereq_missing:concurrency_guard:missing_kb_write_group")
+            prereq_concurrency_guard="FAIL"
+          fi
+
+          if ! grep -Eq '^[[:space:]][[:space:]]cancel-in-progress:[[:space:]]*false[[:space:]]*$' "${WORKFLOW_FILE}"; then
+            reason_list+=("prereq_missing:concurrency_guard:cancel_in_progress_mismatch")
+            prereq_concurrency_guard="FAIL"
+          fi
+
+          if [[ -z "${FALLBACK_MANUAL_INSTRUCTIONS}" ]]; then
+            reason_list+=("prereq_missing:fallback_manual_path")
+            prereq_fallback_manual_path="FAIL"
+          fi
+
+          mkdir -p preflight
+          {
+            echo "ghaw_readiness=${prereq_ghaw_readiness}"
+            echo "trusted_trigger_model=${prereq_trusted_trigger_model}"
+            echo "permissions_scope=${prereq_permissions_scope}"
+            echo "concurrency_guard=${prereq_concurrency_guard}"
+            echo "fallback_manual_path=${prereq_fallback_manual_path}"
+            echo "changed_paths_count=${#changed_paths[@]}"
+            echo "inbox_paths_count=${#inbox_paths[@]}"
+            echo "benign_non_inbox_count=${#benign_non_inbox[@]}"
+            echo "sensitive_non_inbox_count=${#sensitive_non_inbox[@]}"
+            for changed_path in "${changed_paths[@]}"; do
+              echo "inbox_path=${changed_path}"
+            done
+          } | tee preflight/preflight-summary.log
+
+          if [[ "${#reason_list[@]}" -gt 0 ]]; then
+            for reason in "${reason_list[@]}"; do
+              echo "::error::CI-1 gatekeeper rejection reason=${reason}" >&2
+              case "${reason}" in
+                prereq_missing:ghaw_readiness:python3_unavailable)
+                  echo "::notice::FIX: ensure Python 3.12+ is available in the CI runner environment." ;;
+                prereq_missing:ghaw_readiness:missing_commit_sha)
+                  echo "::notice::FIX: GITHUB_SHA is not set. This check requires a push or pull_request event context." ;;
+                prereq_missing:ghaw_readiness:missing_*)
+                  echo "::notice::FIX: the required file referenced in reason code is missing from the repository. Add it before merging." ;;
+                reject:trusted_trigger_model:event_not_push)
+                  echo "::notice::FIX: CI-1 only runs on push events to the default branch. Use workflow_dispatch to test manually." ;;
+                reject:trusted_trigger_model:not_default_branch)
+                  echo "::notice::FIX: CI-1 only processes pushes to the default branch. Merge to main/master to trigger." ;;
+                reject:trusted_trigger_model:ref_not_protected)
+                  echo "::notice::FIX: the target branch must have branch protection enabled. Enable it in repository Settings → Branches." ;;
+                reject:path_filter:no_changed_paths_detected)
+                  echo "::notice::FIX: no paths matched the raw/inbox/** filter. Ensure your commit includes changes to raw/inbox/." ;;
+                reject:path_filter:no_inbox_paths_after_filter)
+                  echo "::notice::FIX: no raw/inbox/ paths found after filtering. Ensure your commit includes changes to raw/inbox/." ;;
+                reject:path_filter:sensitive_control_plane_path:*)
+                  echo "::notice::FIX: commit includes control-plane paths (workflows, scripts, AGENTS.md) alongside inbox changes. Split into separate commits." ;;
+                reject:permissions_scope:token_profile_mismatch)
+                  echo "::notice::FIX: the workflow must use the tp-gatekeeper token profile. Check the TOKEN_PROFILE env var in the workflow." ;;
+                reject:permissions_scope:minimum_permissions_mismatch | reject:permissions_scope:forbidden_write_scope_declared)
+                  echo "::notice::FIX: review the permissions block in this workflow. Only the minimum declared permissions are allowed." ;;
+                prereq_missing:concurrency_guard:*)
+                  echo "::notice::FIX: the concurrency block is missing or misconfigured. Ensure group and cancel-in-progress match the expected values." ;;
+              esac
+            done
+            exit 1
+          fi
+
+          echo "CI-1 gatekeeper preflight PASS: trusted trigger and tp-gatekeeper checks satisfied."
+          echo "Manual fallback path (automation unavailable): ${FALLBACK_MANUAL_INSTRUCTIONS}"
+
+      - name: Record CI-1 handoff status (no CI-3 execution)
+        run: |
+          set -euo pipefail
+          echo "CI-1 handoff gate passed for raw/inbox/**."
+          echo "CI-3 PR-producing behavior is intentionally out of scope for this workflow."
+
+      - name: Upload CI-1 preflight artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ci1-gatekeeper-preflight-${{ github.run_id }}
+          path: preflight/
+          if-no-files-found: warn
+          retention-days: 7

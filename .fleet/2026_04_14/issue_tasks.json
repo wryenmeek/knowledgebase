@@ -1,0 +1,247 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-04-14T07:54:37Z",
+  "root_causes": [
+    {
+      "id": "rc-ci3-batching-and-lock",
+      "title": "CI-3 Inefficient Batching and Lock Management",
+      "severity": "high",
+      "issues": [14, 15, 9],
+      "files": [
+        ".github/workflows/ci-3-pr-producer.yml",
+        "tests/kb/test_ci3_workflow.py"
+      ],
+      "description": "The CI-3 workflow scales poorly because it passes multiline source files via GITHUB_OUTPUT and sequentially invokes ingest.py for each file. It also improperly handles lock files by manually removing them.",
+      "solution_summary": "Implement a batch processing approach using a sources manifest file and the `--sources-manifest` flag on ingest.py. Remove the explicit lock deletion step."
+    },
+    {
+      "id": "rc-persist-query-optimizations",
+      "title": "Inefficient Query Persistence and Interface Ambiguity",
+      "severity": "medium",
+      "issues": [17, 8, 7],
+      "files": [
+        "scripts/kb/persist_query.py",
+        "tests/kb/test_persist_query.py",
+        "tests/kb/test_integration_verification_matrix.py"
+      ],
+      "description": "persist_query rebuilds the entire index even when the analysis outcome remains unchanged. Furthermore, the CLI flags `--result-json` (no-op) and `--require-no-contradiction` (non-configurable) create interface ambiguity.",
+      "solution_summary": "Gate index updates on actual analysis content changes. Remove the unused `--result-json` flag and use argparse.BooleanOptionalAction for contradiction enforcement to allow operators to disable it."
+    },
+    {
+      "id": "rc-write-boundary-and-locks",
+      "title": "Write Boundary Traversal, Spec Drift, and Missing Locks",
+      "severity": "critical",
+      "issues": [2, 3, 4, 5, 13],
+      "files": [
+        "scripts/kb/write_utils.py",
+        "scripts/kb/ingest.py",
+        "scripts/kb/update_index.py",
+        "raw/processed/SPEC.md",
+        "docs/architecture.md",
+        "tests/kb/test_write_utils.py",
+        "tests/kb/test_ingest.py",
+        "tests/kb/test_update_index.py",
+        "tests/kb/test_regression_verification_matrix.py",
+        "tests/kb/test_ci1_workflow.py"
+      ],
+      "description": "File operations across write tools lack symlink traversal guards, and update_index --write writes directly without a local write lock. Ingest generated SourceRefs use an invalid synthetic SHA, and architectural documents incorrectly claim ingest populates entities and concepts.",
+      "solution_summary": "Add strict repo-relative path resolution guards in write_utils and enforce them in ingest and update_index. Ensure update_index --write uses the exclusive_write_lock. Update ingest to resolve real HEAD SHAs, and correct spec drift by removing entity/concept generation mentions."
+    },
+    {
+      "id": "rc-lint-optimization",
+      "title": "Lint Optimization and CI-2 Redundancy",
+      "severity": "medium",
+      "issues": [16, 18],
+      "files": [
+        "scripts/kb/lint_wiki.py",
+        ".github/workflows/ci-2-analyst-diagnostics.yml",
+        "tests/kb/test_ci2_workflow.py",
+        "tests/kb/test_workflow_yaml_syntax.py"
+      ],
+      "description": "CI-2 redundantly validates YAML workflow syntax using Ruby while a Python test does the same. lint_wiki repeats redundant file stat calls for identical markdown links during large corpus passes.",
+      "solution_summary": "Remove the inline YAML parsing step from CI-2, trusting the Python test. Refactor lint_wiki to cache path exist checks and avoid duplicate os stat invocations per distinct target path."
+    },
+    {
+      "id": "rc-gitignore-hardening",
+      "title": "Missing Gitignore Protections",
+      "severity": "low",
+      "issues": [12],
+      "files": [
+        ".gitignore"
+      ],
+      "description": "Local secrets and agent cache directories are missing from the repo .gitignore.",
+      "solution_summary": "Append required local and cache exclusions (.env.local, .claude/, etc.) to .gitignore."
+    },
+    {
+      "id": "rc-test-coverage",
+      "title": "Test Coverage & Enforcement",
+      "severity": "high",
+      "issues": [6],
+      "files": [
+        "tests/kb/test_unit_verification_matrix.py",
+        "tests/kb/test_qmd_preflight.py",
+        "tests/kb/test_sourceref.py"
+      ],
+      "description": "Missing unit test blocks from the verification matrix, and no 90% coverage threshold is enforced.",
+      "solution_summary": "Add the missing unit tests for qmd preflight, sourceref assets, and verification matrix behaviors."
+    },
+    {
+      "id": "rc-telemetry",
+      "title": "CI Telemetry",
+      "severity": "low",
+      "issues": [19],
+      "files": [
+        ".github/workflows/ci-1-gatekeeper.yml"
+      ],
+      "description": "Missing lightweight timing telemetry for key CI stages.",
+      "solution_summary": "Prefix core commands in the CI workflow with the `time` command to track duration directly in logs."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-ci3-batching-and-lock",
+      "title": "CI-3 Batching and Lock Cleanup",
+      "root_cause": "rc-ci3-batching-and-lock",
+      "issues": [14, 15, 9],
+      "files": [
+        ".github/workflows/ci-3-pr-producer.yml"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_ci3_workflow.py"
+      ],
+      "risk": "low",
+      "prompt": "You are assigned to optimize the CI-3 workflow by switching to batch source processing and removing ad-hoc lock handling. \n\n1. Modify `.github/workflows/ci-3-pr-producer.yml`:\n   - In the `Resolve CI-3 source inputs` step, replace writing multi-line `GITHUB_OUTPUT` with writing the array of sources to a new file named `.kb_sources_manifest.txt` in the workspace. E.g. `printf '%s\\n' \"${source_paths[@]}\" > .kb_sources_manifest.txt`. Ensure you still output `has_sources=true`.\n   - In the `Run CI-3 required checks and write path` step, instead of using a `while IFS= read` loop, invoke `python3 -m scripts.kb.ingest` exactly ONCE using the `--sources-manifest .kb_sources_manifest.txt` argument (along with the existing `--batch-policy`, `--wiki-root`, and `--schema` arguments). Check its exit code as before.\n   - Remove the line `rm -f wiki/.kb_write.lock` from the workflow file entirely.\n2. Modify `tests/kb/test_ci3_workflow.py` to assert the updated behaviors: ensure `rm -f wiki/.kb_write.lock` and the loop check `while IFS= read -r source_path; do` are NOT expected. Ensure `--sources-manifest` is expected.\n\nFILE BOUNDARY: You may ONLY modify `.github/workflows/ci-3-pr-producer.yml` and `tests/kb/test_ci3_workflow.py`. Do NOT touch any other files."
+    },
+    {
+      "id": "task-persist-query-optimizations",
+      "title": "Persist Query Optimizations",
+      "root_cause": "rc-persist-query-optimizations",
+      "issues": [17, 8, 7],
+      "files": [
+        "scripts/kb/persist_query.py"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_persist_query.py",
+        "tests/kb/test_integration_verification_matrix.py"
+      ],
+      "risk": "low",
+      "prompt": "You are assigned to optimize the `persist_query.py` write path and clean up interface ambiguity.\n\n1. Modify `scripts/kb/persist_query.py`: \n   - In `_execute()`, change the condition for `_update_index_if_changed` so that it is only called if `analysis_changed` is true. `index_updated = _update_index_if_changed(request.wiki_root) if analysis_changed else False`.\n   - Remove the `--result-json` argument from the CLI parser completely.\n   - Change `--require-no-contradiction` to use `action=argparse.BooleanOptionalAction` (since Python 3.9+) instead of `action='store_true'`. Keep default `True`.\n2. Modify `tests/kb/test_persist_query.py` and `tests/kb/test_integration_verification_matrix.py`:\n   - Remove all instances of passing `--result-json` in subprocess calls or CLI commands.\n   - Ensure the new `--no-require-no-contradiction` behavior is tested or at least doesn't break existing tests.\n\nFILE BOUNDARY: You may ONLY modify `scripts/kb/persist_query.py`, `tests/kb/test_persist_query.py`, and `tests/kb/test_integration_verification_matrix.py`."
+    },
+    {
+      "id": "task-write-path-hardening",
+      "title": "Write Path Hardening & Spec Alignment",
+      "root_cause": "rc-write-boundary-and-locks",
+      "issues": [2, 3, 4, 5, 13],
+      "files": [
+        "scripts/kb/write_utils.py",
+        "scripts/kb/ingest.py",
+        "scripts/kb/update_index.py",
+        "raw/processed/SPEC.md",
+        "docs/architecture.md"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_write_utils.py",
+        "tests/kb/test_ingest.py",
+        "tests/kb/test_update_index.py",
+        "tests/kb/test_regression_verification_matrix.py",
+        "tests/kb/test_ci1_workflow.py"
+      ],
+      "risk": "high",
+      "prompt": "You are assigned critical write path hardening and spec alignment tasks.\n\n1. Modify `scripts/kb/write_utils.py`: Add a security guard `ensure_safe_write_path(path: Path, repo_root: Path)`. It must resolve the path (`path.resolve()`) and ensure it is `.is_relative_to(repo_root.resolve())`. If not, raise an `OSError(\"path traversal detected\")`.\n2. Modify `scripts/kb/ingest.py`: \n   - Use `ensure_safe_write_path` before moving/writing files (`source_path`, `processed_path`, `source_page_path`).\n   - Replace `_FIXED_GIT_SHA = \"0\" * 40` with a function `_get_git_sha()` that attempts to get the git SHA using `subprocess.run([\"git\", \"rev-parse\", \"HEAD\"], capture_output=True, text=True, check=True).stdout.strip()`. If it fails, return `\"0\" * 40`.\n3. Modify `scripts/kb/update_index.py`: \n   - Use `ensure_safe_write_path` for `index_path`.\n   - In `main()`, wrap the read/write logic for `index.md` inside `with write_utils.exclusive_write_lock(wiki_root.parent):` to enforce locking.\n4. Modify `raw/processed/SPEC.md` and `docs/architecture.md` to remove claims that ingest creates `entities/` or `concepts/` pages (it only creates `sources/`).\n5. Update test files to cover these changes and add the missing SHA pinning and symlink tests. Specifically, in `test_regression_verification_matrix.py` add symlink escape attempts. In `test_ci1_workflow.py` or similar, assert that github actions use SHA pinned versions.\n\nFILE BOUNDARY: Modify ONLY the listed source and test files."
+    },
+    {
+      "id": "task-lint-optimization",
+      "title": "Lint Optimization and CI-2 Redundancy",
+      "root_cause": "rc-lint-optimization",
+      "issues": [16, 18],
+      "files": [
+        "scripts/kb/lint_wiki.py",
+        ".github/workflows/ci-2-analyst-diagnostics.yml"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_ci2_workflow.py",
+        "tests/kb/test_workflow_yaml_syntax.py"
+      ],
+      "risk": "medium",
+      "prompt": "You are assigned to optimize `lint_wiki` and remove redundant CI steps.\n\n1. Modify `.github/workflows/ci-2-analyst-diagnostics.yml`: Remove the step named `Validate workflow YAML syntax` completely.\n2. Modify `tests/kb/test_ci2_workflow.py`: Remove assertions that verify the `Validate workflow YAML syntax` step is present.\n3. Modify `scripts/kb/lint_wiki.py`: In the `_read_page` loop or validation phase, introduce a cache for file existence checks (`target_path.exists()` and `target_path.is_file()`). Create a dictionary to memoize the results of these OS stat calls across the thread pool or loop to prevent repeated stat operations for common links.\n\nFILE BOUNDARY: Modify ONLY the listed source and test files."
+    },
+    {
+      "id": "task-gitignore-hardening",
+      "title": "Gitignore Hardening",
+      "root_cause": "rc-gitignore-hardening",
+      "issues": [12],
+      "files": [
+        ".gitignore"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "You are assigned to harden `.gitignore` for secret hygiene.\n\n1. Append the following lines to `.gitignore`:\n   `.env.local`\n   `.env.*.local`\n   `.claude/`\n   `.claude/.simplify-ignore-cache/`\n\nFILE BOUNDARY: You may ONLY modify `.gitignore`."
+    },
+    {
+      "id": "task-test-coverage",
+      "title": "Test Coverage & Enforcement",
+      "root_cause": "rc-test-coverage",
+      "issues": [6],
+      "files": [],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_unit_verification_matrix.py",
+        "tests/kb/test_qmd_preflight.py",
+        "tests/kb/test_sourceref.py"
+      ],
+      "risk": "high",
+      "prompt": "You are assigned to close test coverage gaps described in Issue 6.\n\n1. Add unit tests in `tests/kb/test_unit_verification_matrix.py` to cover Mermaid preservation regressions and normative precedence / Phase-2 deferral guard coverage.\n2. Add tests in `tests/kb/test_qmd_preflight.py` covering qmd index/query contract behavior.\n3. Add tests in `tests/kb/test_sourceref.py` covering authoritative boundary tests for checksummed raw/assets behavior.\n\nFILE BOUNDARY: You may ONLY modify the specified test files."
+    },
+    {
+      "id": "task-ci-telemetry",
+      "title": "CI Telemetry",
+      "root_cause": "rc-telemetry",
+      "issues": [19],
+      "files": [
+        ".github/workflows/ci-1-gatekeeper.yml"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "You are assigned to add lightweight telemetry to CI-1.\n\n1. Modify `.github/workflows/ci-1-gatekeeper.yml` to prefix long-running python script executions (like linting or tests) with the `time` bash builtin.\n\nFILE BOUNDARY: You may ONLY modify `.github/workflows/ci-1-gatekeeper.yml`."
+    }
+  ],
+  "unaddressable": [
+    {
+      "issue": 11,
+      "reason": "CI-3 manual dispatch authorization relies on strict GitHub environment setups and actor roles which are managed at the repository settings/infra level. Code-level changes alone cannot securely enforce actor identity roles without external API calls or strict GitHub environment configurations.",
+      "suggested_owner": "DevOps / Repository Admin"
+    }
+  ],
+  "file_ownership": {
+    ".github/workflows/ci-3-pr-producer.yml": "task-ci3-batching-and-lock",
+    "tests/kb/test_ci3_workflow.py": "task-ci3-batching-and-lock",
+    "scripts/kb/persist_query.py": "task-persist-query-optimizations",
+    "tests/kb/test_persist_query.py": "task-persist-query-optimizations",
+    "tests/kb/test_integration_verification_matrix.py": "task-persist-query-optimizations",
+    "scripts/kb/write_utils.py": "task-write-path-hardening",
+    "scripts/kb/ingest.py": "task-write-path-hardening",
+    "scripts/kb/update_index.py": "task-write-path-hardening",
+    "raw/processed/SPEC.md": "task-write-path-hardening",
+    "docs/architecture.md": "task-write-path-hardening",
+    "tests/kb/test_write_utils.py": "task-write-path-hardening",
+    "tests/kb/test_ingest.py": "task-write-path-hardening",
+    "tests/kb/test_update_index.py": "task-write-path-hardening",
+    "tests/kb/test_regression_verification_matrix.py": "task-write-path-hardening",
+    "tests/kb/test_ci1_workflow.py": "task-write-path-hardening",
+    "scripts/kb/lint_wiki.py": "task-lint-optimization",
+    ".github/workflows/ci-2-analyst-diagnostics.yml": "task-lint-optimization",
+    "tests/kb/test_ci2_workflow.py": "task-lint-optimization",
+    "tests/kb/test_workflow_yaml_syntax.py": "task-lint-optimization",
+    ".gitignore": "task-gitignore-hardening",
+    "tests/kb/test_unit_verification_matrix.py": "task-test-coverage",
+    "tests/kb/test_qmd_preflight.py": "task-test-coverage",
+    "tests/kb/test_sourceref.py": "task-test-coverage",
+    ".github/workflows/ci-1-gatekeeper.yml": "task-ci-telemetry"
+  }
+}

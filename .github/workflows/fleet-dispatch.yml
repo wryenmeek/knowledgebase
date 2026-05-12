@@ -1,0 +1,138 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# .github/workflows/fleet-dispatch.yml
+#
+# Phase 2 of the fleet pipeline (event-driven, ~2 min):
+#   Triggered when any PR is opened. Checks whether it is the Jules planning
+#   PR for the pending session stored in .fleet/.pending_session. If so:
+#     1. Merges the planning PR into the base branch.
+#     2. Removes .fleet/.pending_session so the next plan cycle is clean.
+#     3. Runs fleet-dispatch.ts to spawn one Jules session per task.
+#
+# Phase 1 (fleet-plan.yml) runs on a schedule and writes .fleet/.pending_session.
+name: Fleet Dispatch
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: fleet-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          # Always check out main (not the PR head) so we can run fleet-dispatch.ts.
+          ref: main
+          fetch-depth: 0
+
+      - name: Check if this PR is the fleet planning PR
+        id: check
+        env:
+          PR_NUMBER:   ${{ github.event.pull_request.number }}
+          PR_BODY:     ${{ github.event.pull_request.body }}
+          PR_BRANCH:   ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+
+          # Read pending session from fleet-state branch (unprotected state branch).
+          git fetch origin fleet-state 2>/dev/null || true
+          if ! git rev-parse origin/fleet-state >/dev/null 2>&1; then
+            echo "ℹ️  No fleet-state branch. Skipping."
+            echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          PENDING_DATA=$(git show origin/fleet-state:.fleet/.pending_session 2>/dev/null || echo "")
+          if [ -z "$PENDING_DATA" ]; then
+            echo "ℹ️  No pending fleet session in fleet-state. Skipping."
+            echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PENDING_SESSION_ID=$(printf '%s' "$PENDING_DATA" | sed -n '1p')
+          PENDING_BASE=$(printf '%s' "$PENDING_DATA" | sed -n '2p')
+
+          # Match: session ID appears in PR body OR in the branch name.
+          if echo "$PR_BODY" | grep -qF "$PENDING_SESSION_ID" || \
+             echo "$PR_BRANCH" | grep -qF "$PENDING_SESSION_ID"; then
+            echo "✅ PR #$PR_NUMBER matches pending session $PENDING_SESSION_ID"
+            {
+              echo "is_fleet_pr=true"
+              echo "pending_session=$PENDING_SESSION_ID"
+              echo "pending_base=$PENDING_BASE"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "ℹ️  PR #$PR_NUMBER (branch: $PR_BRANCH) does not match pending session $PENDING_SESSION_ID. Skipping."
+            echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge planning PR
+        if: steps.check.outputs.is_fleet_pr == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" --squash --delete-branch
+          echo "✅ Planning PR #$PR_NUMBER merged."
+
+      - name: Clear pending session file
+        if: steps.check.outputs.is_fleet_pr == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B fleet-state origin/fleet-state
+          rm -f .fleet/.pending_session
+          git add .fleet/.pending_session
+          if git diff --cached --quiet; then
+            echo "Nothing to clear in fleet-state."
+          else
+            git commit -m "chore(fleet): clear pending session after planning PR merged"
+            git push origin fleet-state
+          fi
+
+      - name: Setup Bun
+        if: steps.check.outputs.is_fleet_pr == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.1"
+
+      - name: Install fleet dependencies
+        if: steps.check.outputs.is_fleet_pr == 'true'
+        working-directory: scripts/fleet
+        run: bun install
+
+      - name: Dispatch task sessions
+        if: steps.check.outputs.is_fleet_pr == 'true'
+        working-directory: scripts/fleet
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FLEET_BASE_BRANCH: ${{ steps.check.outputs.pending_base }}
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin "$FLEET_BASE_BRANCH"
+          bun fleet-dispatch.ts

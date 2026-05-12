@@ -1,0 +1,188 @@
+---
+name: security-and-hardening
+description: Hardens code against vulnerabilities. Use when handling user input, authentication, data storage, or external integrations. Use when building any feature that accepts untrusted data, manages user sessions, or interacts with third-party services.
+---
+
+# Security and Hardening
+
+## Overview
+
+Security-first development practices for web applications. Treat every external input as hostile, every secret as sacred, and every authorization check as mandatory. Security isn't a phase — it's a constraint on every line of code that touches user data, authentication, or external systems.
+
+## When to Use
+
+- Building anything that accepts user input
+- Implementing authentication or authorization
+- Storing or transmitting sensitive data
+- Integrating with external APIs or services
+- Adding file uploads, webhooks, or callbacks
+- Handling payment or PII data
+
+## The Three-Tier Boundary System
+
+### Always Do (No Exceptions)
+
+- **Validate all external input** at the system boundary (API routes, form handlers)
+- **Parameterize all database queries** — never concatenate user input into SQL
+- **Encode output** to prevent XSS (use framework auto-escaping, don't bypass it)
+- **Use HTTPS** for all external communication
+- **Hash passwords** with bcrypt/scrypt/argon2 (never store plaintext)
+- **Set security headers** (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
+- **Use httpOnly, secure, sameSite cookies** for sessions
+- **Run `npm audit`** (or equivalent) before every release
+
+### Ask First (Requires Human Approval)
+
+- Adding new authentication flows or changing auth logic
+- Storing new categories of sensitive data (PII, payment info)
+- Adding new external service integrations
+- Changing CORS configuration
+- Adding file upload handlers
+- Modifying rate limiting or throttling
+- Granting elevated permissions or roles
+
+### Never Do
+
+- **Never commit secrets** to version control (API keys, passwords, tokens)
+- **Never log sensitive data** (passwords, tokens, full credit card numbers)
+- **Never trust client-side validation** as a security boundary
+- **Never disable security headers** for convenience
+- **Never use `eval()` or `innerHTML`** with user-provided data
+- **Never store sessions in client-accessible storage** (localStorage for auth tokens)
+- **Never expose stack traces** or internal error details to users
+
+## OWASP Top 10 Prevention
+
+Concrete prevention examples for the OWASP Top 10 (injection, broken auth, XSS, broken access control, security misconfiguration, sensitive data exposure) live in [`references/owasp-prevention-examples.md`](references/owasp-prevention-examples.md). Use them alongside the three-tier boundary rules above.
+
+## Input Validation Patterns
+
+### Schema Validation at Boundaries
+
+```typescript
+import { z } from 'zod';
+
+const CreateTaskSchema = z.object({
+  title: z.string().min(1).max(200).trim(),
+  description: z.string().max(2000).optional(),
+  priority: z.enum(['low', 'medium', 'high']).default('medium'),
+  dueDate: z.string().datetime().optional(),
+});
+
+// Validate at the route handler
+app.post('/api/tasks', async (req, res) => {
+  const result = CreateTaskSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(422).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid input',
+        details: result.error.flatten(),
+      },
+    });
+  }
+  // result.data is now typed and validated
+  const task = await taskService.create(result.data);
+  return res.status(201).json(task);
+});
+```
+
+### File Upload Safety
+
+```typescript
+// Restrict file types and sizes
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+
+function validateUpload(file: UploadedFile) {
+  if (!ALLOWED_TYPES.includes(file.mimetype)) {
+    throw new ValidationError('File type not allowed');
+  }
+  if (file.size > MAX_SIZE) {
+    throw new ValidationError('File too large (max 5MB)');
+  }
+  // Don't trust the file extension — check magic bytes if critical
+}
+```
+
+## Triaging npm audit Results
+
+Not all audit findings require immediate action:
+
+- **Critical/high + reachable in production:** Fix immediately (update, patch, or replace)
+- **Critical/high + dev-only or unreachable:** Fix soon, not a blocker
+- **Moderate:** Fix in the next release cycle
+- **Low:** Track and fix during regular dependency updates
+
+Key questions: Is the vulnerable function called in your code path? Is it a runtime or dev-only dependency? Is it exploitable in your deployment context? When deferring, document the reason and set a review date.
+
+## Rate Limiting
+
+Apply rate limiting to all public endpoints, with stricter limits on auth:
+
+```typescript
+import rateLimit from 'express-rate-limit';
+
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
+app.use('/api/auth/', rateLimit({ windowMs: 15 * 60 * 1000, max: 10 }));
+```
+
+## Secrets Management
+
+```
+.env files:
+  ├── .env.example  → Committed (template with placeholder values)
+  ├── .env          → NOT committed (contains real secrets)
+  └── .env.local    → NOT committed (local overrides)
+
+.gitignore must include:
+  .env
+  .env.local
+  .env.*.local
+  *.pem
+  *.key
+```
+
+**Always check before committing:**
+```bash
+# Check for accidentally staged secrets
+git diff --cached | grep -i "password\|secret\|api_key\|token"
+```
+
+## Security Review Checklist
+
+See [`references/security-checklist.md`](references/security-checklist.md) for the complete security review checklist (authentication, authorization, input, data, infrastructure).
+
+## See Also
+
+For detailed security checklists and pre-commit verification steps, see `references/security-checklist.md`.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "This is an internal tool" | Internal tools get compromised. Attackers target the weakest link. |
+| "We'll add security later" | Retrofitting is 10x harder than building it in. Add it now. |
+| "No one would try to exploit this" | Automated scanners will find it. Obscurity ≠ security. |
+
+## Red Flags
+
+- User input passed directly to database queries, shell commands, or HTML rendering
+- Secrets in source code or commit history
+- API endpoints without authentication or authorization checks
+- Missing CORS configuration or wildcard (`*`) origins
+- No rate limiting on authentication endpoints
+- Stack traces or internal errors exposed to users
+- Dependencies with known critical vulnerabilities
+
+## Verification
+
+After implementing security-relevant code:
+
+- [ ] `npm audit` shows no critical or high vulnerabilities
+- [ ] No secrets in source code or git history
+- [ ] All user input validated at system boundaries
+- [ ] Authentication and authorization checked on every protected endpoint
+- [ ] Security headers present in response (check with browser DevTools)
+- [ ] Error responses don't expose internal details
+- [ ] Rate limiting active on auth endpoints
