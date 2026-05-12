@@ -1,67 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/log/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/log/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/concepts/context-md-domain-model/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/concepts/context-md-domain-model/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/concepts/github-customizations-governance/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/concepts/github-customizations-governance/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/concepts/google-drive-source-monitoring/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/concepts/google-drive-source-monitoring/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/concepts/knowledgebase-spec/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/concepts/knowledgebase-spec/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/concepts/pre-commit-guardrails/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/concepts/pre-commit-guardrails/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/concepts/wiki-quality-best-practices/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/concepts/wiki-quality-best-practices/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/sources/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/sources/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/sources/LLMwiki-best%20practices-research/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/sources/LLMwiki-best%20practices-research/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/sources/SPEC/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/sources/SPEC/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/sources/context-md-domain-model/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/sources/context-md-domain-model/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/sources/github-customizations-governance/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/sources/github-customizations-governance/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/sources/google-drive-source-monitoring/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/sources/google-drive-source-monitoring/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/sources/pre-commit-guardrails/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/sources/pre-commit-guardrails/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
     <url>
-         <loc>https://wryenmeek.github.io/knowledgebase/sources/spec-google-drive-source-monitoring/</loc>
+         <loc>https://wryenmeek.com/knowledgebase/sources/spec-google-drive-source-monitoring/</loc>
          <lastmod>2026-05-12</lastmod>
     </url>
 </urlset>
