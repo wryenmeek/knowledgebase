@@ -28,7 +28,29 @@ jobs:
       - name: Install MkDocs Material
         run: pip install mkdocs-material
 
-      - name: Build and deploy
-        run: mkdocs gh-deploy --force --clean --verbose
+      - name: Bootstrap qmd preflight shim
+        run: |
+          mkdir -p .ci-bin .qmd/index
+          cat > .ci-bin/qmd <<'EOF'
+          #!/usr/bin/env sh
+          set -eu
+          exit 0
+          EOF
+          chmod +x .ci-bin/qmd
+
+      - name: Run qmd preflight
+        run: PATH="$PWD/.ci-bin:$PATH" python3 scripts/kb/qmd_preflight.py --repo-root .
+
+      - name: Build MkDocs site
+        run: mkdocs build --strict
+
+      - name: Build Pagefind index
+        run: npx --yes pagefind --site site
+
+      - name: Deploy to gh-pages
+        run: |
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          python3 -m ghp_import -n -p -f site
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

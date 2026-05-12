@@ -248,6 +248,7 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 | Workflow | Trigger | Purpose | Manual equivalent |
 |---|---|---|---|
 | `pre-commit.yml` | `push`, `pull_request` to main | Runs all pre-commit hooks in CI so governance guardrails are verified even when local hooks are skipped | `pre-commit run --all-files` |
+| `pages.yml` | `push` to main (`wiki/**`, `mkdocs.yml`), `workflow_dispatch` | Builds MkDocs Material site from `wiki/`, runs Pagefind indexing, deploys to `gh-pages` branch for GitHub Pages publication | `mkdocs build --strict && npx pagefind --site site && python3 -m ghp_import -n -p -f site` |
 | `wiki-freshness.yml` | Weekly schedule (Mon 03:30 UTC), `workflow_dispatch` | Advisory freshness check on wiki pages; detects content that may be stale | `python3 -m scripts.validation.check_doc_freshness --scope wiki --as-of $(date +%Y-%m-%d) --max-age-days 90` |
 | `github-customizations-freshness.yml` | `push` to `.github/**`, weekly schedule, `workflow_dispatch` | Validates `.github/` customizations (skills, agents, hooks) are fresh and internally consistent | `python3 -m scripts.kb.github_customizations_freshness --output drift-report.json` |
 | `fleet-plan.yml` | Weekly schedule (Mon 05:00 UTC), `workflow_dispatch` | Fleet phase 1: creates a Jules planning session for open issues; stores the pending session ID in the `fleet-state` branch | `cd scripts/fleet && bun run fleet-plan.ts` |
