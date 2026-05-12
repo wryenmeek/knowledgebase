@@ -560,6 +560,9 @@ jobs:
             if [[ "${changed_path}" == *" -> "* ]]; then
               changed_path="${changed_path##* -> }"
             fi
+            # Strip surrounding double-quotes git adds for paths with spaces or special chars
+            changed_path="${changed_path#\"}"
+            changed_path="${changed_path%\"}"
             [[ -z "${changed_path}" ]] && continue
 
             changed_paths+=("${changed_path}")
