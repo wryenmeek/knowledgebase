@@ -222,3 +222,4 @@ tests/kb/.runtime_skill_wrappers/
 
 # CI-3 runner shim — transient, never commit
 .ci-bin/
+site/

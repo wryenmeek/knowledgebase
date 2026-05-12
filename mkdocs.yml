@@ -1,0 +1,68 @@
+site_name: Medicare Coverage Tools — Knowledgebase
+site_url: https://wryenmeek.github.io/knowledgebase/
+site_description: Curated knowledgebase for the Medicare Coverage Tools project
+repo_url: https://github.com/wryenmeek/knowledgebase
+repo_name: wryenmeek/knowledgebase
+
+docs_dir: wiki
+site_dir: site
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Concepts:
+      - "Knowledgebase Specification": concepts/knowledgebase-spec.md
+      - "CONTEXT.md Domain Model": concepts/context-md-domain-model.md
+      - ".github/ Customizations Governance": concepts/github-customizations-governance.md
+      - "Google Drive Source Monitoring": concepts/google-drive-source-monitoring.md
+      - "Pre-commit Guardrails": concepts/pre-commit-guardrails.md
+      - "Wiki Quality Best Practices": concepts/wiki-quality-best-practices.md
+  - Sources:
+      - "Knowledgebase SPEC": sources/SPEC.md
+      - "Context MD Domain Model": sources/context-md-domain-model.md
+      - ".github/ Customizations": sources/github-customizations-governance.md
+      - "Google Drive Monitoring": sources/google-drive-source-monitoring.md
+      - "Google Drive Spec": sources/spec-google-drive-source-monitoring.md
+      - "Pre-commit Guardrails": sources/pre-commit-guardrails.md
+      - "LLMwiki Best Practices Research": "sources/LLMwiki-best practices-research.md"
+  - Log: log.md
+
+exclude_docs: |
+  CONTEXT.md
