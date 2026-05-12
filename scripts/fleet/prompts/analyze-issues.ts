@@ -14,12 +14,17 @@
 
 import type { AnalyzeIssuesPromptOptions } from "../types.js";
 
+export function getFleetDate(): string {
+  const now = new Date();
+  return `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, "0")}_${String(now.getDate()).padStart(2, "0")}`;
+}
+
 export function analyzeIssuesPrompt({
   issuesMarkdown,
   repoFullName,
 }: AnalyzeIssuesPromptOptions): string {
   const now = new Date();
-  const YYYY_MM_DD = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, "0")}_${String(now.getDate()).padStart(2, "0")}`;
+  const YYYY_MM_DD = getFleetDate();
 
   return `Analyze ${repoFullName} open issues and produce implementation tasks.
 

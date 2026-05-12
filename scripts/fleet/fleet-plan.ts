@@ -14,7 +14,7 @@
 
 import fs from 'node:fs'
 import { jules } from '@google/jules-sdk'
-import { analyzeIssuesPrompt } from './prompts/analyze-issues.js'
+import { analyzeIssuesPrompt, getFleetDate } from './prompts/analyze-issues.js'
 import { getIssuesAsMarkdown } from './github/markdown.js'
 import { getGitRepoInfo, getCurrentBranch } from './github/git.js'
 
@@ -34,9 +34,12 @@ if (!GITHUB_TOKEN) {
 const repoInfo = await getGitRepoInfo()
 const baseBranch = process.env.FLEET_BASE_BRANCH ?? await getCurrentBranch()
 const issuesMarkdown = await getIssuesAsMarkdown()
+// Capture the fleet date at planning time so fleet-dispatch reads the same
+// dated directory even if Jules takes more than a day to post its PR.
+const fleetDate = getFleetDate()
 const prompt = analyzeIssuesPrompt({ issuesMarkdown, repoFullName: repoInfo.fullName })
 
-console.log(`🔍 Planning fleet for ${repoInfo.fullName} (branch: ${baseBranch})`)
+console.log(`🔍 Planning fleet for ${repoInfo.fullName} (branch: ${baseBranch}, date: ${fleetDate})`)
 
 // jules.run() auto-approves the plan and auto-creates a PR (autoPr defaults to true).
 // jules.session() would pause waiting for manual plan approval — wrong for CI.
@@ -50,7 +53,8 @@ const run = await jules.run({
 
 console.log(`✅ Planning run started: ${run.id}`)
 
-// Export session ID for the downstream "Wait for planning PR" CI step.
+// Export session ID and fleet date for the downstream Store step.
 if (process.env.GITHUB_OUTPUT) {
   fs.appendFileSync(process.env.GITHUB_OUTPUT, `plan_session_id=${run.id}\n`)
+  fs.appendFileSync(process.env.GITHUB_OUTPUT, `fleet_date=${fleetDate}\n`)
 }

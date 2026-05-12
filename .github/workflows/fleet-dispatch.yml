@@ -73,6 +73,7 @@ jobs:
 
           PENDING_SESSION_ID=$(printf '%s' "$PENDING_DATA" | sed -n '1p')
           PENDING_BASE=$(printf '%s' "$PENDING_DATA" | sed -n '2p')
+          PENDING_DATE=$(printf '%s' "$PENDING_DATA" | sed -n '3p')
 
           # Match: session ID appears in PR body OR in the branch name.
           if echo "$PR_BODY" | grep -qF "$PENDING_SESSION_ID" || \
@@ -82,6 +83,7 @@ jobs:
               echo "is_fleet_pr=true"
               echo "pending_session=$PENDING_SESSION_ID"
               echo "pending_base=$PENDING_BASE"
+              echo "pending_date=$PENDING_DATE"
             } >> "$GITHUB_OUTPUT"
           else
             echo "ℹ️  PR #$PR_NUMBER (branch: $PR_BRANCH) does not match pending session $PENDING_SESSION_ID. Skipping."
@@ -135,4 +137,4 @@ jobs:
         run: |
           set -euo pipefail
           git pull --ff-only origin "$FLEET_BASE_BRANCH"
-          bun fleet-dispatch.ts
+          bun fleet-dispatch.ts "${{ steps.check.outputs.pending_date }}"

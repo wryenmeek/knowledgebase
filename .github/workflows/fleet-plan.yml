@@ -73,6 +73,7 @@ jobs:
         env:
           BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
           PLAN_SESSION_ID: ${{ steps.plan.outputs.plan_session_id }}
+          FLEET_DATE: ${{ steps.plan.outputs.fleet_date }}
         run: |
           set -euo pipefail
           if [ -z "$PLAN_SESSION_ID" ]; then
@@ -86,8 +87,11 @@ jobs:
             && git checkout -B fleet-state origin/fleet-state \
             || git checkout --orphan fleet-state
           mkdir -p .fleet
-          printf '%s\n%s\n' "$PLAN_SESSION_ID" "$BASE_BRANCH" > .fleet/.pending_session
+          # Line 1: session ID, Line 2: base branch, Line 3: fleet date (YYYY_MM_DD).
+          # fleet-dispatch reads line 3 so it finds the right dated directory even
+          # if Jules takes more than a day to post its planning PR.
+          printf '%s\n%s\n%s\n' "$PLAN_SESSION_ID" "$BASE_BRANCH" "$FLEET_DATE" > .fleet/.pending_session
           git add -f .fleet/.pending_session
           git commit -m "chore(fleet): store pending planning session $PLAN_SESSION_ID"
           git push origin fleet-state
-          echo "✅ Session $PLAN_SESSION_ID stored in fleet-state branch. Waiting for Jules to post planning PR."
+          echo "✅ Session $PLAN_SESSION_ID (date: $FLEET_DATE) stored in fleet-state branch."
