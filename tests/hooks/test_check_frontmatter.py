@@ -136,6 +136,74 @@ class CheckFrontmatterSkillTests(unittest.TestCase):
         self.assertEqual(main([str(p)]), 0)
 
 
+class CheckFrontmatterContextMdTests(unittest.TestCase):
+    """CONTEXT.md files use context-doc frontmatter and must be skipped."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.mkdtemp()
+        self._root = Path(self._tmp)
+        (self._root / "wiki").mkdir()
+
+    def test_wiki_context_md_is_skipped(self) -> None:
+        """wiki/CONTEXT.md with context-doc fields passes (validated by check_context_md_format)."""
+        p = self._root / "wiki" / "CONTEXT.md"
+        p.write_text(textwrap.dedent("""\
+            ---
+            scope: directory
+            last_updated: 2026-01-01
+            ---
+            # CONTEXT — wiki/
+            ## Terms
+            ## Invariants
+            ## File Roles
+        """), encoding="utf-8")
+        self.assertEqual(main([str(p)]), 0)
+
+    def test_wiki_context_md_without_wiki_fields_passes(self) -> None:
+        """wiki/CONTEXT.md lacking 'type'/'title'/'status'/'updated_at' still passes."""
+        p = self._root / "wiki" / "CONTEXT.md"
+        p.write_text(textwrap.dedent("""\
+            ---
+            scope: directory
+            last_updated: 2026-04-29
+            ---
+            # CONTEXT — wiki/
+            ## Terms
+            ## Invariants
+            ## File Roles
+        """), encoding="utf-8")
+        self.assertEqual(main([str(p)]), 0)
+
+    def test_nested_context_md_is_skipped(self) -> None:
+        """wiki/subdir/CONTEXT.md is also skipped — all CONTEXT.md files are context docs."""
+        subdir = self._root / "wiki" / "concepts"
+        subdir.mkdir(parents=True)
+        p = subdir / "CONTEXT.md"
+        p.write_text(textwrap.dedent("""\
+            ---
+            scope: directory
+            last_updated: 2026-01-01
+            ---
+            # CONTEXT
+            ## Terms
+            ## Invariants
+            ## File Roles
+        """), encoding="utf-8")
+        self.assertEqual(main([str(p)]), 0)
+
+    def test_ordinary_wiki_page_still_requires_wiki_fields(self) -> None:
+        """Regression: ordinary wiki pages still require type/title/status/updated_at."""
+        p = self._root / "wiki" / "page.md"
+        p.write_text(textwrap.dedent("""\
+            ---
+            scope: directory
+            last_updated: 2026-01-01
+            ---
+            # Page
+        """), encoding="utf-8")
+        self.assertEqual(main([str(p)]), 1)
+
+
 class CheckFrontmatterEdgeCaseTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.mkdtemp()

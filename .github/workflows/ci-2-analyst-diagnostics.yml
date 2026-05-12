@@ -54,10 +54,9 @@ jobs:
       - name: Dependency vulnerability audit (pip-audit)
         run: |
           set -euo pipefail
-          pip install --quiet pip-audit
-          # CVE-2026-3219 affects pip 26.0.1 on ubuntu-latest; no fix version
-          # available yet — ignore until upstream releases a patched pip.
-          # TODO(2026-09): re-evaluate once pip > 26.0.1 ships on ubuntu-latest.
+          python -m pip install --quiet 'pip>=26.1' pip-audit
+          # CVE-2026-3219 affects pip 26.x — no upstream fix version published.
+          # TODO(2026-12): re-evaluate once upstream releases a fix for CVE-2026-3219.
           pip-audit --desc on --ignore-vuln CVE-2026-3219
 
       - name: Bootstrap repo-local qmd preflight shim

@@ -2,6 +2,7 @@
 
 Pre-commit passes filenames as positional arguments. For each file:
 - ``**/SKILL.md`` → checked for REQUIRED_SKILL_FIELDS (takes precedence).
+- ``**/CONTEXT.md`` → skipped (validated by check_context_md_format.py).
 - ``wiki/**/*.md`` → checked for REQUIRED_WIKI_FIELDS.
 - All other markdown files → skipped.
 
@@ -31,10 +32,13 @@ def _check_file(path_str: str) -> list[str]:
 
     # SKILL.md takes precedence over wiki/**/*.md for dual-match files.
     is_skill = basename == "SKILL.md"
+    # CONTEXT.md files use context-doc frontmatter (scope/last_updated), not wiki-page
+    # frontmatter. They are validated separately by check_context_md_format.py.
+    is_context = basename == "CONTEXT.md"
     # Agent persona: any .md file under a .github/agents/ path component.
-    is_persona = not is_skill and ("/agents/" in norm or norm.startswith("agents/"))
+    is_persona = not is_skill and not is_context and ("/agents/" in norm or norm.startswith("agents/"))
     # Wiki page: any .md file that has "/wiki/" as a path component.
-    is_wiki = not is_skill and not is_persona and ("/wiki/" in norm or norm.startswith("wiki/"))
+    is_wiki = not is_skill and not is_persona and not is_context and ("/wiki/" in norm or norm.startswith("wiki/"))
 
     if not is_skill and not is_persona and not is_wiki:
         return []
