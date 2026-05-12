@@ -23,3 +23,10 @@ Append-only chronology for knowledgebase state changes.
 - No-op runs should not append entries.
 - ingest: processed 1 source(s): raw/inbox/SPEC.md->raw/processed/SPEC.md
 - state changed
+- ingest: processed 1 source(s): raw/inbox/LLMwiki-best practices-research.md->raw/processed/LLMwiki-best practices-research.md
+- ingest: processed 1 source(s): raw/inbox/README.md->raw/processed/README.md
+- ingest: processed 1 source(s): raw/inbox/context-md-domain-model.md->raw/processed/context-md-domain-model.md
+- ingest: processed 1 source(s): raw/inbox/github-customizations-governance.md->raw/processed/github-customizations-governance.md
+- ingest: processed 1 source(s): raw/inbox/google-drive-source-monitoring.md->raw/processed/google-drive-source-monitoring.md
+- ingest: processed 1 source(s): raw/inbox/pre-commit-guardrails.md->raw/processed/pre-commit-guardrails.md
+- ingest: processed 1 source(s): raw/inbox/spec-google-drive-source-monitoring.md->raw/processed/spec-google-drive-source-monitoring.md
