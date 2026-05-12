@@ -76,9 +76,11 @@ jobs:
           if echo "$PR_BODY" | grep -qF "$PENDING_SESSION_ID" || \
              echo "$PR_BRANCH" | grep -qF "$PENDING_SESSION_ID"; then
             echo "✅ PR #$PR_NUMBER matches pending session $PENDING_SESSION_ID"
-            echo "is_fleet_pr=true"          >> "$GITHUB_OUTPUT"
-            echo "pending_session=$PENDING_SESSION_ID" >> "$GITHUB_OUTPUT"
-            echo "pending_base=$PENDING_BASE" >> "$GITHUB_OUTPUT"
+            {
+              echo "is_fleet_pr=true"
+              echo "pending_session=$PENDING_SESSION_ID"
+              echo "pending_base=$PENDING_BASE"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "ℹ️  PR #$PR_NUMBER (branch: $PR_BRANCH) does not match pending session $PENDING_SESSION_ID. Skipping."
             echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
