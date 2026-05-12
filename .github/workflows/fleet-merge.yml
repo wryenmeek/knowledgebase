@@ -61,8 +61,7 @@ jobs:
           MAX_CI_WAIT=600           # 10 minutes per PR
           MAX_RETRIES=2             # max re-dispatch attempts per PR
           PR_POLL_TIMEOUT=900       # 15 minutes to wait for re-dispatched PR
-          POLL_INTERVAL=30          # seconds between status polls
-          CI_NONE_THRESHOLD=$((4 * POLL_INTERVAL))  # proceed if no checks register after this many consecutive seconds
+          POLL_INTERVAL=30          # seconds between re-dispatch PR polls
 
           echo "🔍 Finding open Jules-authored PRs targeting ${BASE_BRANCH}..."
 
@@ -165,44 +164,27 @@ jobs:
                 continue
               fi
 
-              # Wait for branch update and checks to register before first poll
-              sleep "$POLL_INTERVAL"
-
-              # Wait for CI checks to pass
-              echo "  🧪 Waiting for CI checks..."
-              ELAPSED=$POLL_INTERVAL
+              # Wait for CI checks to pass using gh pr checks --watch.
+              # Sleep briefly first to give the runner time to register checks.
+              echo "  🧪 Waiting for CI checks (up to ${MAX_CI_WAIT}s)..."
               CI_PASSED=false
-              CI_NONE_ELAPSED=0
-
-              while [ $ELAPSED -lt $MAX_CI_WAIT ]; do
-                STATUS=$(gh pr checks "$PR_NUM" --json name,state --jq '[.[].state] | if length == 0 then "none" elif all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL") then "pass" elif any(. == "FAILURE" or . == "TIMED_OUT" or . == "CANCELLED" or . == "ACTION_REQUIRED") then "fail" else "pending" end')
-
-                case "$STATUS" in
-                  "pass")
-                    CI_PASSED=true
-                    break
-                    ;;
-                  "none")
-                    CI_NONE_ELAPSED=$((CI_NONE_ELAPSED + POLL_INTERVAL))
-                    if [ $CI_NONE_ELAPSED -ge $CI_NONE_THRESHOLD ]; then
-                      echo "  ℹ️  No CI checks registered after ${CI_NONE_ELAPSED}s. Proceeding."
-                      CI_PASSED=true
-                      break
-                    fi
-                    echo "  ⏳ Checks not yet registered... (${ELAPSED}s/${MAX_CI_WAIT}s)"
-                    ;;
-                  "fail")
-                    echo "  ❌ CI failed for PR #${PR_NUM}. Skipping."
-                    break
-                    ;;
-                  *)
-                    CI_NONE_ELAPSED=0
-                    echo "  ⏳ CI pending... (${ELAPSED}s/${MAX_CI_WAIT}s)"
-                    ;;
+              sleep 15
+              CHECK_COUNT=$(gh pr checks "$PR_NUM" --json name --jq 'length' 2>/dev/null || echo 0)
+              if [ "$CHECK_COUNT" -eq 0 ]; then
+                echo "  ℹ️  No CI checks registered. Proceeding."
+                CI_PASSED=true
+              else
+                echo "  ⏳ Watching $CHECK_COUNT check(s)..."
+                set +e
+                timeout "$MAX_CI_WAIT" gh pr checks "$PR_NUM" --watch --interval 10
+                CHECK_EXIT=$?
+                set -e
+                case $CHECK_EXIT in
+                  0)   CI_PASSED=true ;;
+                  124) echo "  ⏰ CI timed out after ${MAX_CI_WAIT}s for PR #${PR_NUM}." ;;
+                  *)   echo "  ❌ CI checks failed for PR #${PR_NUM}." ;;
                 esac
-                sleep "$POLL_INTERVAL"
-                ELAPSED=$((ELAPSED + POLL_INTERVAL))
-              done
+              fi
 
               if [ "$CI_PASSED" = false ]; then
                 echo "  ⏭️  Skipping PR #${PR_NUM} (CI did not pass)"
