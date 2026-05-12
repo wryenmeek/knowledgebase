@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload drift report artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ${{ steps.detect.outputs.artifact_name || format('drift-report-{0}', github.run_id) }}
           path: drift-report.json
@@ -139,7 +139,7 @@ jobs:
           pip install -e . --quiet
 
       - name: Download drift report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: ${{ needs.check-drift.outputs.artifact_name }}
 
@@ -154,7 +154,7 @@ jobs:
 
       - name: Upload fetched state for downstream jobs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: fetched-state-${{ github.run_id }}
           path: |
@@ -187,7 +187,7 @@ jobs:
           pip install -e . --quiet
 
       - name: Download drift report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: ${{ needs.check-drift.outputs.artifact_name }}
 
@@ -200,7 +200,7 @@ jobs:
 
       - name: Upload classification artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: drift-classification-${{ github.run_id }}
           path: |
@@ -257,12 +257,12 @@ jobs:
           pip install -e . --quiet
 
       - name: Download AFK-classified entries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: drift-classification-${{ github.run_id }}
 
       - name: Download fetched assets and registry state
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: fetched-state-${{ github.run_id }}
 

@@ -33,6 +33,8 @@ jobs:
           persist-credentials: false
 
       - name: Secret scan (gitleaks)
+        # TODO: upgrade once gitleaks/gitleaks-action releases a node24-compatible version.
+        # v2.3.9 (latest) still uses node20; tracked at github.com/gitleaks/gitleaks-action/issues.
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -251,7 +253,7 @@ jobs:
 
       - name: Upload CI-1 preflight artifacts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ci1-gatekeeper-preflight-${{ github.run_id }}
           path: preflight/
