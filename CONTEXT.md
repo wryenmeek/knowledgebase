@@ -1,6 +1,6 @@
 ---
 scope: repo
-last_updated: 2026-04-29
+last_updated: 2026-05-12
 ---
 
 # CONTEXT
@@ -18,7 +18,7 @@ Shared vocabulary for the `wryenmeek/knowledgebase` repository. This file is des
 | write-surface matrix | The table in `AGENTS.md` declaring every automation surface's runtime mode, writable paths, lock requirements, and hard-fail behavior. Every `scripts/**/*.py` and `.github/skills/**/logic/**/*.py` must have a row. |
 | KB_WRITE_LOCK | The file `wiki/.kb_write.lock` — the primary concurrency guard for all wiki writes. Always acquired first when combining with other locks (see ADR-005, ADR-012). |
 | AFK | "Away from Keyboard" — a processing mode where automation handles a task end-to-end without human review at each step. Requires an ADR-014 allowlist entry. |
-| HITL | "Human in the Loop" — default processing mode requiring human review before any durable state change. Default when AFK is not explicitly allowlisted. |
+| HITL | "Human in the Loop" — default processing mode requiring human review before any governed write. Default when AFK is not explicitly allowlisted. |
 | drift report | The JSON artifact produced by `scripts/github_monitor/check_drift.py` or `scripts/drive_monitor/check_drift.py` describing which monitored sources have changed since their last applied state. |
 | knowledgebase-orchestrator | The custom agent persona in `.github/agents/knowledgebase-orchestrator.md` that routes wiki tasks through the correct lane (ingest-safe, AFK, HITL) and enforces gate ordering. |
 | rejection registry | The write-once collection of records under `raw/rejected/` documenting why a source was rejected during intake. Governed by `schema/rejection-registry-contract.md` and ADR-013. |
@@ -26,6 +26,9 @@ Shared vocabulary for the `wryenmeek/knowledgebase` repository. This file is des
 | raw/processed | Immutable post-ingest artifacts. Files written here are write-once — they are never overwritten after the initial ingest commit. |
 | wiki | The curated knowledge directory. All wiki writes go through the declared write-surface matrix. `wiki/log.md` is append-only. |
 | SurfaceResult | The `dataclass` from `scripts/_optional_surface_common.py` used as the structured exit contract for all `run_surface_cli`-backed surfaces. |
+| afk-candidate | Provisional page or source classification emitted by `classify_stale.py` or `classify_drift.py`. Indicates a candidate for AFK-lane processing but is **not operative** — `validate_afk_output.py` must confirm all 5 safety checks pass before any write proceeds. Do not treat `afk-candidate` as a write authorization. |
+| AFK automation workflow | A GitHub Actions workflow performing ADR-014 AFK-allowlisted tasks. Two sub-tiers per ADR-022: (1) **AFK deterministic write** — Python scripts for bounded writes, no LLM; (2) **AFK advisory pass** — `copilot -p` skill invocations producing structured findings but no governed writes, feeding downstream patrol cycles or batched issues. Neither sub-tier notifies a human per-finding. |
+| AFK advisory pass | A Tier-2 AFK automation workflow invoking a read-only advisory skill via `copilot -p`. Produces structured findings (backlink suggestions, link-symmetry gaps, AI-tell detections, etc.) uploaded as a workflow artifact. Never writes to `wiki/` directly. Human involvement is triggered only by downstream aggregation — patrol cycle or issue threshold. See ADR-022. |
 
 ## Invariants
 

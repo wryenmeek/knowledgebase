@@ -55,6 +55,17 @@ WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
         requires_write_concurrency_guard=True,
     ),
     WorkflowPolicyExpectation(
+        ci_id="CI-4",
+        workflow_path=Path(".github/workflows/ci-4-framework-writer.yml"),
+        token_profile=contracts.TokenProfileId.FRAMEWORK_WRITER.value,
+        permissions={
+            "actions": "read",
+            "checks": "read",
+            "contents": "read",
+        },
+        write_contract="job-scoped-write",
+    ),
+    WorkflowPolicyExpectation(
         ci_id="CI-5",
         workflow_path=Path(".github/workflows/ci-5-github-monitor.yml"),
         token_profile=contracts.TokenProfileId.GITHUB_MONITOR.value,
@@ -241,6 +252,7 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
             "CI-1": "no-write",
             "CI-2": "read-only",
             "CI-3": "allowlisted-write",
+            "CI-4": "job-scoped-write",
             "CI-5": "job-scoped-write",
             "CI-freshness": "read-only",
             "CI-customizations-freshness": "job-scoped-write",

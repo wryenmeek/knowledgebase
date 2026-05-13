@@ -1,5 +1,7 @@
 # Wiki curation agent framework
 
+**Status:** In Progress — core agent roster implemented; skill expansion and framework extension deferred
+
 ## Executive Summary
 
 This repository should model wiki curation as a **small control plane plus specialized worker agents**, not as one monolithic "wiki maintainer" prompt.[^1][^3] The control plane belongs in `AGENTS.md` and should hold only stable guardrails such as write boundaries, provenance rules, append-only logging, and schema compliance, while deterministic operational work should move into on-demand skills so the system stays inside the instruction budget described in the research.[^3][^4][^8] For this knowledgebase, the minimum viable roster is: **Knowledgebase Orchestrator, Source Intake Steward, Evidence Verifier, Policy Arbiter, Synthesis Curator, Query Synthesist, Topology Librarian, Maintenance Auditor, Change Patrol, and Quality Analyst**, with a **Human Steward** retained as the escalation point for contradictions, deletions, and policy arbitration.[^7][^9][^10][^11][^13]

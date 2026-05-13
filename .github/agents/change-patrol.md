@@ -21,6 +21,17 @@ This role does not invent a broad repo crawler, daemon, webhook mesh, or other s
 - Diff-based review guidance from `.github/skills/policy-diff-review/SKILL.md` and incident packaging guidance from `.github/skills/log-patrol-incident/SKILL.md`
 - Relevant schema and page contracts from `schema/ingest-checklist.md`, `schema/page-template.md`, and `schema/metadata-schema-contract.md`
 
+### High-risk diff patterns (require active escalation or lane routing)
+
+The following change patterns are high-risk and must be actively flagged when encountered in any diff scope:
+
+- **Cron schedule change** in workflow YAML files under `.github/workflows/`: a changed `cron:` line requires `docs/mvp-runbook.md` to be updated in the same diff with the new raw cron string. Flag if the runbook update is missing.
+- **ADR status changes to "amended" or "extended"**: a `## Status` change in any ADR file under `docs/decisions/` that introduces "amended" or "extended" requires `docs/decisions/README.md` to be updated in the same diff. Flag if the README update is missing.
+- **New TOKEN_PROFILE value in a workflow**: a new token profile value must be registered in `scripts/kb/contracts.py` `TokenProfileId` enum and `tests/kb/test_contracts.py`. Flag if either is missing.
+- **docs/ideas/ Status field transition to "Implemented"**: triggers the archival convention described in copilot-instructions.md under the docs/ideas/ archival to intake section. Flag if archival is missing or stub is incomplete.
+- **Citation removal from wiki pages**: any diff that removes a SourceRef citation from wiki pages requires evidence review before the change can be considered safe.
+- **Schema contract changes** in `schema/`: changes to schema files may break downstream tooling contracts; route through `evidence-verifier` and `policy-arbiter` before accepting.
+
 ## Outputs
 
 - Change-risk triage describing whether the change is intake, evidence, policy, topology, maintenance, or Human Steward work

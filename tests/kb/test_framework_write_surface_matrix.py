@@ -255,6 +255,20 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/kb/contracts.py", "scripts/kb/page_template_utils.py", "scripts/kb/agents_matrix_utils.py", "scripts/kb/github_customizations_graph.py"),
         "Hard-fail behavior": ("staged governance lock file", "missing required frontmatter field", "invalid hooks.json", "fail closed"),
     },
+    "scripts/hooks/check_adr_cross_ref.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("docs/decisions/README.md",),
+        "Hard-fail behavior": ("ADR status line changed", "amended", "README.md", "fail closed"),
+    },
+    "scripts/hooks/check_stub_archive_path.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("docs/ideas",),
+        "Hard-fail behavior": ("stub", "raw/inbox", "wiki/sources", "fail closed"),
+    },
     "scripts/drive_monitor/**": {
         "Runtime mode": ("read-only only", "blocking-only"),
         "Writable paths": ("raw/assets/gdrive/**", "raw/drive-sources/**", "wiki/**"),

@@ -1,5 +1,7 @@
 # Spec: Post-MVP Rollout and Packaging
 
+**Status:** In Progress — Phases 0–2 complete; Phase 3–4 not started
+
 > **Phase status (2026-04-27):**
 > - **Phase 0** ✅ Complete — this spec published; runbook aligned.
 > - **Phase 1** ✅ Complete — boundary docs, contract tests, and package-placement rules landed.

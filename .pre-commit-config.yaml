@@ -51,6 +51,22 @@ repos:
         types: [python]
         pass_filenames: true
 
+      - id: adr-cross-ref-cascade
+        name: ADR status change cascade — README.md must be staged
+        language: python
+        entry: python -m scripts.hooks.check_adr_cross_ref
+        files: '^docs/decisions/ADR-'
+        types: [markdown]
+        pass_filenames: true
+
+      - id: stub-archive-path
+        name: docs/ideas/ stub archive pointer validation
+        language: python
+        entry: python -m scripts.hooks.check_stub_archive_path
+        files: '^docs/ideas/'
+        types: [markdown]
+        pass_filenames: true
+
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:

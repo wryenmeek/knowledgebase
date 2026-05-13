@@ -107,3 +107,57 @@ class TestDocsIdeasArchival(unittest.TestCase):
             "No archival stubs found in docs/ideas/ — if all stubs were removed, "
             "this test should also be removed."
         )
+
+
+class TestDocsIdeasStatusField(unittest.TestCase):
+    """Every docs/ideas/*.md must declare a **Status:** field.
+
+    The docs/ideas/ lifecycle requires every document to carry an explicit
+    status so agents and reviewers can determine what work is in progress,
+    complete, or deferred without reading the full document body.
+
+    Allowed values: Proposed, In Progress, Implemented, Implemented (Phase N).
+    See copilot-instructions.md § docs/ideas/ status lifecycle.
+    """
+
+    _STATUS_RE = re.compile(r"\*\*Status:\*\*")
+    _ALLOWED_STATUSES_RE = re.compile(
+        r"\*\*Status:\*\*\s+"
+        r"(Proposed|In Progress|Implemented(?:\s+\(Phase \d+\))?(?:\s+—[^*\n]+)?)"
+    )
+
+    def test_every_ideas_doc_has_status_field(self) -> None:
+        if not IDEAS_DIR.is_dir():
+            self.skipTest("docs/ideas/ directory does not exist")
+
+        for md_file in sorted(IDEAS_DIR.glob("*.md")):
+            text = md_file.read_text(encoding="utf-8")
+            with self.subTest(doc=md_file.name):
+                self.assertRegex(
+                    text,
+                    self._STATUS_RE,
+                    f"{md_file.name}: missing '**Status:**' field. "
+                    f"Add a status line near the top of the document. "
+                    f"Allowed values: Proposed, In Progress, Implemented, "
+                    f"Implemented (Phase N). "
+                    f"See copilot-instructions.md § docs/ideas/ status lifecycle.",
+                )
+
+    def test_status_field_uses_allowed_values(self) -> None:
+        if not IDEAS_DIR.is_dir():
+            self.skipTest("docs/ideas/ directory does not exist")
+
+        for md_file in sorted(IDEAS_DIR.glob("*.md")):
+            text = md_file.read_text(encoding="utf-8")
+            if not self._STATUS_RE.search(text):
+                continue  # Missing status handled by test above
+
+            with self.subTest(doc=md_file.name):
+                self.assertRegex(
+                    text,
+                    self._ALLOWED_STATUSES_RE,
+                    f"{md_file.name}: **Status:** field uses an unrecognized value. "
+                    f"Allowed values: Proposed, In Progress, Implemented, "
+                    f"Implemented (Phase N) (optionally followed by ' — <detail>'). "
+                    f"See copilot-instructions.md § docs/ideas/ status lifecycle.",
+                )

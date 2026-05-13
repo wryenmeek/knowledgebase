@@ -157,6 +157,8 @@ When implementing a feature described in a `docs/ideas/` document, update that d
 
 Status values: `Proposed` → `In Progress` → `Implemented`. For partial completion use `Implemented (Phase N)` (e.g., `Implemented (Phase 1)` when 4 of 22 skills are addressed). `Implemented` is terminal. This repo does not use `Superseded` for ideas documents — see the ADR evolution pattern below for how ADRs evolve.
 
+**Every `docs/ideas/*.md` must have a `**Status:**` field.** Enforced by `tests/kb/test_docs_ideas_archival.py::TestDocsIdeasStatusField`. Add the status line immediately after the document title (second line). Documents without this field fail CI.
+
 When a code change alters a count, structure, or claim described in a `docs/ideas/` document (script count, job count, open-findings tally, architecture description), update every occurrence in the document body — not just the status field. Use grep to find all instances before committing (e.g., `grep -n "5.script" docs/ideas/spec-*.md`). Stale body claims have been the single most frequent source of audit rework across sessions.
 
 ### `docs/ideas/` archival to intake
@@ -277,6 +279,17 @@ Unlike contract test cascades above, these documentation updates were historical
 | `Status: Implemented` on a `docs/ideas/` doc | Archive to `raw/inbox/` and leave stub | `tests/kb/test_docs_ideas_archival.py` |
 | A new `scripts/<pkg>/` package | `docs/ideas/spec.md` Phase 2 family list | *(not yet enforced)* |
 | A new skill (`.github/skills/<name>/SKILL.md`) | All 6 wiring targets below | *(not yet enforced)* |
+| An ADR `## Status` changed to include "amended" or "extended" | `docs/decisions/README.md` status cell updated in same commit | `scripts/hooks/check_adr_cross_ref.py` (pre-commit), `tests/kb/test_adr_readme_status_sync.py` |
+| A cron schedule added or changed in any `.github/workflows/*.yml` | Runbook trigger column/description updated with raw cron string | `tests/kb/test_workflow_schedule_docs_sync.py` |
+| A new TOKEN_PROFILE value used in a workflow | `scripts/kb/contracts.py` `TokenProfileId` enum + `tests/kb/test_contracts.py` expected tuple | `tests/kb/test_token_profile_registry_completeness.py` |
+
+### Workflow schedule documentation rule
+
+When setting or changing a `cron:` schedule in any workflow YAML, update `docs/mvp-runbook.md` in the same commit. The runbook's Trigger column must include the **raw cron string** (e.g., `cron \`0 6 * * *\``) so `tests/kb/test_workflow_schedule_docs_sync.py` can verify it verbatim. Human-readable descriptions like "Weekly Mon 05:00 UTC" are welcome additions but are not machine-checkable — the raw cron string is required.
+
+### ADR status amendment cascade rule
+
+When an ADR's `## Status` section is updated to include "amended" or "extended", `docs/decisions/README.md` must be updated in the **same commit** to reflect the new normalized status (e.g., `Accepted — amended in-place`). The pre-commit hook `check_adr_cross_ref.py` enforces this at commit time; `test_adr_readme_status_sync.py` enforces it in CI. Both use the normalized form: strip implementation detail after the first `: ` in compound status strings.
 
 ### Skill creation wiring targets
 

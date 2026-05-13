@@ -33,6 +33,7 @@ class TokenProfileId(StrEnum):
     GATEKEEPER = "tp-gatekeeper"
     ANALYST_READONLY = "tp-analyst-readonly"
     PR_PRODUCER = "tp-pr-producer"
+    FRAMEWORK_WRITER = "tp-framework-writer"
     GITHUB_MONITOR = "tp-github-monitor"
     FRESHNESS_READONLY = "tp-freshness-readonly"
     CUSTOMIZATIONS_READWRITE = "tp-customizations-readwrite"

@@ -158,6 +158,7 @@ class SharedContractsTests(unittest.TestCase):
                 "tp-gatekeeper",
                 "tp-analyst-readonly",
                 "tp-pr-producer",
+                "tp-framework-writer",
                 "tp-github-monitor",
                 "tp-freshness-readonly",
                 "tp-customizations-readwrite",
