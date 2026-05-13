@@ -17,6 +17,7 @@ import { findUpSync } from "find-up";
 import type { IssueAnalysis, Task } from "./types.js";
 import { branchExists, getCurrentBranch, getGitRepoInfo } from "./github/git.js";
 import { jules } from "@google/jules-sdk";
+import "./env.js";
 import {
   assertMutationPreflight,
   getSanitizedErrorMessage,

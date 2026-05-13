@@ -17,6 +17,7 @@ import { jules } from "@google/jules-sdk";
 import { analyzeIssuesPrompt, getFleetDate } from "./prompts/analyze-issues.js";
 import { getIssuesAsMarkdown } from "./github/markdown.js";
 import { branchExists, getGitRepoInfo, getCurrentBranch } from "./github/git.js";
+import "./env.js";
 import {
   assertMutationPreflight,
   getSanitizedErrorMessage,
