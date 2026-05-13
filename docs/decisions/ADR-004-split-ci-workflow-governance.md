@@ -1,7 +1,7 @@
 # ADR-004: Split CI governance into gatekeeper, analyst, and PR-producing workflows
 
 ## Status
-Accepted — extended by ADR-015 (CI-4 and CI-5 added to trust model)
+Accepted — extended by ADR-015; extended by ADR-021
 
 ## Date
 2026-04-12
@@ -21,6 +21,9 @@ Adopt the three-workflow governance model:
 - **CI-1:** trusted-trigger gatekeeper/handoff (`tp-gatekeeper`).
 - **CI-2:** read-only diagnostics/analysis (`tp-analyst-readonly`).
 - **CI-3:** PR-producing write-capable path (`tp-pr-producer`).
+- **CI-4:** framework write path (`tp-framework-writer`) — added by ADR-015.
+- **CI-5:** scheduled GitHub source monitoring (`tp-github-monitor`) — added by ADR-015.
+- **CI-6:** scheduled Google Drive source monitoring (`tp-drive-monitor`) — added by ADR-021.
 
 Enforce fail-closed preflight checks for trust context, permissions scope,
 allowlisted write paths, and prerequisite readiness before write-capable steps.
@@ -48,3 +51,5 @@ allowlisted write paths, and prerequisite readiness before write-capable steps.
 ## References
 
 - `raw/processed/SPEC.md` (gh-aw Automation Model; Token permission profiles; Runtime prerequisite checks; CI quality gate requirements; Security and Trust Model)
+- `ADR-015-extended-ci-trust-model.md` — adds CI-4 (tp-framework-writer) and CI-5 (tp-github-monitor)
+- `ADR-021-google-drive-source-monitoring.md` — adds CI-6 (tp-drive-monitor)

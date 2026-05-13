@@ -1,7 +1,7 @@
 # ADR-007: Layer the wiki-curation control plane over deterministic scripts
 
 ## Status
-Accepted
+Accepted — amended in-place: post-MVP package surface approvals added (see § Approved post-MVP package surfaces)
 
 ## Date
 2026-04-16
@@ -89,7 +89,14 @@ The repository boundary is widened for post-MVP implementation work at:
 - `scripts/context/**` and `scripts/maintenance/**` for context-sync and
   maintenance orchestration invoked by thin skills,
 - `scripts/ingest/**` for heavyweight repository-local ingest/conversion
-  helpers.
+  helpers,
+- `scripts/github_monitor/**` for GitHub source monitoring pipeline — authorized
+  by ADR-012,
+- `scripts/drive_monitor/**` for Google Drive source monitoring pipeline —
+  authorized by ADR-021,
+- `scripts/hooks/**` for pre-commit and CI hook scripts — authorized by ADR-016,
+- `scripts/fleet/**` for Jules fleet orchestration helpers — authorized by
+  ADR-019.
 
 These are approved packaging locations, not blanket runtime write
 authorization. `scripts/kb/ingest.py`, `scripts/kb/update_index.py`,

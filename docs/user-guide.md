@@ -59,10 +59,11 @@ qmd query "your question here"
 This builds a local vector index and returns ranked results from the wiki
 content.
 
-### GitHub Pages (planned)
+### GitHub Pages
 
-A browsable website version of the wiki is planned. Until then, use GitHub file
-navigation or qmd for search.
+The wiki is deployed as a browsable website at
+**<https://wryenmeek.github.io/knowledgebase>**. The `pages.yml` workflow builds
+the MkDocs Material site and publishes it to GitHub Pages on every push.
 
 ### Understanding wiki pages
 

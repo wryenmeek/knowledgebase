@@ -29,7 +29,7 @@ file-level ownership conflicts before dispatch.
 Adopt a **three-phase fleet orchestration pattern** implemented in
 `scripts/fleet/` (TypeScript/Bun) with corresponding CI workflows:
 
-### Phase 1 — Plan (`fleet-plan.ts`, triggered by `fleet-dispatch.yml`)
+### Phase 1 — Plan (`fleet-plan.ts`, triggered by `fleet-plan.yml`)
 
 A Jules planning session analyzes open GitHub issues and produces a structured
 task manifest at `.fleet/<date>/issue_tasks.json`. The manifest assigns each
@@ -134,7 +134,8 @@ import { jules } from '@google/jules-sdk';
 ## References
 
 - `scripts/fleet/` — TypeScript/Bun fleet orchestration scripts
-- `.github/workflows/fleet-dispatch.yml` — plan + dispatch pipeline
+- `.github/workflows/fleet-plan.yml` — Phase 1 scheduled planning pipeline
+- `.github/workflows/fleet-dispatch.yml` — Phase 2 dispatch pipeline (triggered by plan PR merge)
 - `.github/workflows/fleet-merge.yml` — sequential PR merge pipeline
 - `docs/decisions/ADR-004-split-ci-workflow-governance.md` — CI trust model that fleet PRs enter
 - `docs/decisions/ADR-015-extended-ci-trust-model.md` — CI-4/CI-5 context

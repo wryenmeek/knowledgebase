@@ -1,7 +1,7 @@
 # ADR-006: Restrict authoritative ingestion scope to repository-local inputs
 
 ## Status
-Accepted
+Accepted — extended by ADR-021: Google Drive sources added `raw/drive-sources/` and `raw/assets/gdrive/` paths
 
 ## Date
 2026-04-12
@@ -21,6 +21,12 @@ Define authoritative source scope as:
 
 Treat all non-vendored or non-checksummed external material as citation-only
 context in MVP (not authoritative ingest input).
+
+> **Extension (ADR-021):** Google Drive source monitoring added two additional
+> authoritative paths: `raw/assets/gdrive/**` (versioned Drive asset storage) and
+> `raw/drive-sources/**` (mutable registry files tracking Drive file state). Both
+> paths follow the same checksum and provenance requirements as the original
+> `raw/assets/**` boundary.
 
 ## Alternatives considered
 
@@ -45,3 +51,4 @@ context in MVP (not authoritative ingest input).
 ## References
 
 - `raw/processed/SPEC.md` (Assumptions and Defaults; Scope; Canonical sources format; Security and Trust Model; Threat model mapping)
+- `ADR-021-google-drive-source-monitoring.md` — extends source boundary with `raw/drive-sources/` and `raw/assets/gdrive/`

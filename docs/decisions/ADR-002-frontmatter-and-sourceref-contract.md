@@ -19,7 +19,7 @@ The spec defines mandatory frontmatter fields and a canonical SourceRef format:
 ## Decision
 
 Require all generated wiki pages to include the frontmatter contract from the spec,
-including `type`, `status`, `sources`, `open_questions`, `confidence`,
+including `title`, `type`, `status`, `sources`, `open_questions`, `confidence`,
 `sensitivity`, `updated_at`, and `tags`.
 
 Require `sources` entries to be canonical SourceRef values with:

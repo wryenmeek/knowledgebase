@@ -107,10 +107,12 @@ A new scheduled workflow (daily at 06:00 UTC, plus `workflow_dispatch`):
    API, emits JSON drift report. Exits nonzero if any API call fails.
 2. **`fetch-and-update` job** (`contents: write`, `pull-requests: write`, protected
    environment): runs only when drift is detected; fetches assets, updates registry.
-3. **`synthesize` job** (same permissions, protected environment): applies diff-aware wiki
+3. **`classify-drift` job** (`contents: read`): classifies fetched drift entries as AFK or
+   HITL per ADR-014 allowlist thresholds.
+4. **`synthesize` job** (same permissions, protected environment): applies diff-aware wiki
    updates, opens a PR.
 
-Both write jobs use the same `concurrency.group` as CI-3 to prevent parallel writes.
+Both write jobs use `concurrency.group: kb-write-${{ github.repository }}` (no `${{ github.ref }}` suffix). This differs from CI-3's branch-scoped group (`kb-write-${{ github.repository }}-${{ github.ref }}`); CI-5 runs on a schedule rather than per-branch, so ref-scoping is not applicable.
 
 ## Alternatives considered
 

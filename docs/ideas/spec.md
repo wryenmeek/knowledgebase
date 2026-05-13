@@ -55,6 +55,7 @@ python3 -m unittest \
   tests.kb.test_framework_skills \
   tests.kb.test_framework_agents \
   tests.kb.test_framework_references \
+  tests.kb.test_framework_write_surface_matrix \
   tests.kb.test_skill_wrappers
 
 # full repo regression baseline
@@ -130,7 +131,7 @@ introduced, promoted, and eventually consolidated.
 
 | MVP suite | Current command or files | Why it stays green |
 |---|---|---|
-| Focused framework suite | `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_skill_wrappers` | Guards the current wrapper, agent, skill, and boundary-doc contract surface. |
+| Focused framework suite | `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_framework_write_surface_matrix tests.kb.test_skill_wrappers` | Guards the current wrapper, agent, skill, and boundary-doc contract surface. |
 | MVP script surface suites | `tests/kb/test_ingest.py`, `test_update_index.py`, `test_lint_wiki.py`, `test_qmd_preflight.py`, `test_persist_query.py` | Keeps the authoritative `scripts/kb/**` execution surface stable while post-MVP planning evolves. |
 | MVP workflow governance suites | `tests/kb/test_ci1_workflow.py`, `test_ci2_workflow.py`, `test_ci3_workflow.py`, `test_ci_permission_asserts.py` | Preserves the landed CI-1/CI-2/CI-3 trust and permission split. |
 | MVP verification-matrix suites | `tests/kb/test_unit_verification_matrix.py`, `test_integration_verification_matrix.py`, `test_regression_verification_matrix.py` | Protects the already-ratified unit/integration/regression expectations. |
@@ -277,6 +278,7 @@ only for explicitly approved contract surfaces.
 **Does not include yet**
 - Downstream write expansion for synthesis/topology automation.
 - Optional analytics or telemetry systems.
+- `scripts/fleet/**` (TypeScript/Bun, authorized by ADR-019) exists but operates as a separate TypeScript surface outside the Python test suite scope; it is not governed by this phase gate.
 
 ### Phase 3 — Open controlled downstream write-capable workflow slices (**approval-gated**)
 

@@ -1,5 +1,7 @@
 # DDC vs Knowledgebase: Comparative Analysis
 
+> ⚠️ **Review note (2026-05-13):** The AFK adoption recommendations in §Recommendations are blocked by [ADR-014](../decisions/ADR-014-hitl-afk-work-classification.md). LLM-driven wiki updates do not qualify for the AFK allowlist (which permits only deterministic, bounded writes). The adversarial review is at [DDC Adversarial Review](./ddc-adversarial-review.md). Treat recommendations requiring LLM judgment as HITL tasks.
+
 ## Executive Summary
 
 DDC (Demand-Driven Context) and the `wryenmeek/knowledgebase` repo share a fundamental conviction—**curated, structured knowledge stored in-repo dramatically outperforms retrieval-augmented generation over raw documentation**—but they attack the problem from opposite ends. DDC is a **bottom-up methodology** that grows knowledge iteratively by forcing AI agents to fail on real problems and then curating only the minimum context needed to succeed. The knowledgebase is a **top-down governance framework** that controls how knowledge is ingested, validated, cited, published, and maintained through deterministic policy gates. DDC prioritizes *demand discovery* and *convergence measurement*; the knowledgebase prioritizes *provenance integrity* and *write-path safety*. The two approaches are deeply complementary: DDC's demand-driven curation methodology could feed the knowledgebase's governed publication pipeline, and the knowledgebase's quality and freshness tooling could close gaps DDC currently leaves open.
@@ -73,7 +75,7 @@ The knowledgebase is a **policy-governed, self-organizing knowledge repository**
 | `schema/` | 12 contract files governing every write operation[^12] |
 | `scripts/kb/` | Deterministic Python execution surface[^13] |
 | `.github/agents/` | 17 agent personas in a strict orchestration pipeline[^14] |
-| `.github/skills/` | 85+ skills across 14 functional categories[^15] |
+| `.github/skills/` | 85+ skills across 14 functional categories[^15] *(Note: actual count as of 2026-05: 102 skills)* |
 | `docs/decisions/` | 21 Architecture Decision Records, all Accepted[^16] |
 
 ### Key Architectural Differences
@@ -257,14 +259,14 @@ The knowledgebase uses **17 agent personas** in a strict orchestration pipeline 
 **Dev-Support Agents (advisory):**
 - `code-reviewer`, `test-engineer`, `security-auditor`, `documentation-engineer`, `solutions-architect`, `framework-engineer`
 
-The knowledgebase uses **85+ skills** across 14 functional categories[^15], with each skill defined by a `SKILL.md` procedural contract. Skills are classified as Direct (operator-safe), Persona (pipeline-only), or Both.
+The knowledgebase uses **85+ skills** across 14 functional categories[^15] *(Note: actual count as of 2026-05: 102 skills)*, with each skill defined by a `SKILL.md` procedural contract. Skills are classified as Direct (operator-safe), Persona (pipeline-only), or Both.
 
 ### Key Differences
 
 | Dimension | DDC | Knowledgebase |
 |-----------|-----|---------------|
 | **Agent count** | 5 domain advisors | 17 governance + advisory |
-| **Skill count** | 4 slash commands | 85+ workflow skills |
+| **Skill count** | 4 slash commands | 85+ workflow skills *(Note: actual count as of 2026-05: 102 skills)* |
 | **Orchestration** | Flat (user invokes directly) | Hierarchical pipeline (orchestrator routes) |
 | **Agent purpose** | Domain expertise simulation | Governance enforcement |
 | **Enforcement** | Formatting rules (`.claude/rules/`)[^39] | Write-surface matrix + contract tests[^40] |

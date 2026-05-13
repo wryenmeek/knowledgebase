@@ -71,6 +71,7 @@ before any code is committed:
 | `scripts/github_monitor/**` | External source drift detection, content fetch, and bounded wiki synthesis | ADR-012 |
 | `scripts/fleet/**` | Jules-based parallel issue-to-PR dispatch orchestration (TypeScript/Bun) | ADR-019 |
 | `scripts/hooks/**` | Pre-commit governance hook scripts (read-only, no repo writes) | ADR-016 |
+| `scripts/drive_monitor/**` | Google Drive source drift detection, content fetch, and bounded wiki synthesis | ADR-021 |
 
 ### What does NOT require a new package family
 

@@ -35,6 +35,7 @@ modules for existing functionality:
 | `scripts/kb/write_utils.py` | All safe file writes, atomic operations, symlink path checks, write-lock primitives, and rollback helpers. |
 | `scripts/kb/contracts.py` | All status enums, reason codes, governed artifact contracts, and result type definitions. |
 | `scripts/_optional_surface_common.py` | All optional-surface CLI framework, `SurfaceResult`, `run_surface_cli`, `JsonArgumentParser`, and shared CLI reason codes. |
+| `scripts/kb/agents_matrix_utils.py` | Agent write-surface matrix parsing and validation utilities used by pre-commit hooks. |
 
 **Rules:**
 
@@ -65,6 +66,7 @@ modules for existing functionality:
 - `scripts/kb/write_utils.py` — canonical write, lock, and path-safety helpers
 - `scripts/kb/contracts.py` — canonical status enums, reason codes, and result types
 - `scripts/_optional_surface_common.py` — canonical CLI surface framework
+- `scripts/kb/agents_matrix_utils.py` — canonical agent write-surface matrix utilities
 - `.github/skills/code-review-and-quality/SKILL.md` — utility reuse check in review workflow
 - `.github/skills/incremental-implementation/SKILL.md` — Step 0 utility search phase
 - `.github/skills/code-simplification/SKILL.md` — duplicate-helper detection

@@ -195,8 +195,11 @@ avoid lock contention), plus `workflow_dispatch`:
 3. **`classify-drift` job** (read-only): classifies drift entries into AFK/HITL lists.
 4. **`synthesize` job** (same permissions, protected environment): applies diff-aware wiki
    updates for AFK entries; opens HITL Issues for non-AFK entries.
+5. **`advance-cursor` job** (`contents: write`, protected environment): advances the Drive
+   Changes API page token after successful pipeline completion, enabling incremental drift
+   detection on the next run.
 
-All write jobs use the same `concurrency.group` as CI-3 and CI-5 to prevent parallel writes.
+All write jobs use `concurrency.group: kb-write-${{ github.repository }}` (no `${{ github.ref }}` suffix), the same schedule-scoped format as CI-5. This differs from CI-3's branch-scoped group (`kb-write-${{ github.repository }}-${{ github.ref }}`); CI-6 runs on a schedule rather than per-branch, so ref-scoping is not applicable.
 
 ## Alternatives considered
 

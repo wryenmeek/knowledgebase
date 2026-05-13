@@ -32,7 +32,7 @@ Beyond the thesis failure, the report inflates all academic citation counts (Eli
 | `.github/skills/edit-article/SKILL.md` (final line) | "Adapted from mattpocock/skills `edit-article`. KB variant narrows to prose-only restructuring." |
 | `docs/decisions/ADR-014-hitl-afk-work-classification.md` | "Inspired by the `to-issues` skill's HITL/AFK classification pattern" |
 | `tests/kb/test_framework_skills.py` | `# mattpocock-inspired skills (ADR-014, research adoption)` |
-| `raw/inbox/context-md-domain-model.md` | Research reference |
+| `wiki/sources/context-md-domain-model.md` | Research reference |
 | `docs/ideas/skill-size-refactoring.md` | "the mattpocock target is ≤100 lines per skill" |
 
 Cross-reference checks: mattpocock/skills has zero references to wryenmeek or ddc. ea-toolkit/ddc has zero references to mattpocock or wryenmeek [^1].
@@ -102,6 +102,8 @@ Cross-reference checks: mattpocock/skills has zero references to wryenmeek or dd
 | O3 | `zoom-out` and `prototype` are published engineering skills the report never analyzes [^4] | Wrong skill inventory; both have context-solicitation relevance |
 | O4 | `qa` (deprecated) explicitly caps questions at "2-3 short clarifying questions" [^3] | Counter-evidence to the no-limit questioning thesis that the report misses entirely |
 | O5 | KB's wiki is completely empty (all `.gitkeep` files, epoch timestamps) | Report compares DDC's 41+ entities against KB's 102 skills — scaffolding vs. content, a category error |
+
+> **Update (2026-05-13):** `wiki/concepts/` now contains 6 curated pages (`context-md-domain-model.md`, `github-customizations-governance.md`, `google-drive-source-monitoring.md`, `knowledgebase-spec.md`, `pre-commit-guardrails.md`, `wiki-quality-best-practices.md`) and `wiki/sources/` contains 7 processed source documents.
 
 ### 3.2 Major omissions (materially change analysis)
 

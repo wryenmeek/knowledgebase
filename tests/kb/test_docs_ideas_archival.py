@@ -22,8 +22,9 @@ INBOX_DIR = REPO_ROOT / "raw" / "inbox"
 WIKI_SOURCES_DIR = REPO_ROOT / "wiki" / "sources"
 
 # Pattern that matches the archive pointer in a stub.
+# Accepts both raw/inbox/ (pre-ingest) and wiki/sources/ (post-ingest) pointers.
 _ARCHIVE_PTR_RE = re.compile(
-    r"Archived to `(raw/inbox/[^`]+)`",
+    r"Archived to `((raw/inbox|wiki/sources)/[^`]+)`",
 )
 
 # Matches terminal "Implemented" but NOT "Implemented (Phase N)".
@@ -58,23 +59,22 @@ class TestDocsIdeasArchival(unittest.TestCase):
                     f"{md_file.name}: archival stub missing 'Status: Implemented' line",
                 )
 
-                # Target file must exist — either still in raw/inbox/ (pre-ingest)
-                # or already moved to wiki/sources/ (post-ingest).
-                target_inbox = REPO_ROOT / rel_target
-                # Derive the wiki/sources counterpart (same filename).
-                ingested = WIKI_SOURCES_DIR / Path(rel_target).name
+                # Target file must exist at the declared path (raw/inbox/ or wiki/sources/).
+                target_path = REPO_ROOT / rel_target
                 self.assertTrue(
-                    target_inbox.exists() or ingested.exists(),
-                    f"{md_file.name}: archive target not found at {rel_target} "
-                    f"or post-ingest at wiki/sources/{Path(rel_target).name}",
+                    target_path.exists(),
+                    f"{md_file.name}: archive target not found at {rel_target}",
                 )
 
-                # If still in inbox, verify it stays inside raw/inbox/.
-                if target_inbox.exists():
-                    self.assertTrue(
-                        target_inbox.resolve().is_relative_to(INBOX_DIR.resolve()),
-                        f"{md_file.name}: archive target escapes raw/inbox/: {rel_target}",
-                    )
+                # Verify the resolved path stays within an expected archive location.
+                inbox_root = REPO_ROOT / "raw" / "inbox"
+                sources_root = REPO_ROOT / "wiki" / "sources"
+                resolved = target_path.resolve()
+                self.assertTrue(
+                    resolved.is_relative_to(inbox_root.resolve())
+                    or resolved.is_relative_to(sources_root.resolve()),
+                    f"{md_file.name}: archive target escapes both raw/inbox/ and wiki/sources/: {rel_target}",
+                )
 
     def test_implemented_docs_must_be_stubs(self) -> None:
         """A doc with terminal 'Status: Implemented' must have an archive pointer (i.e. be a stub)."""
@@ -90,7 +90,7 @@ class TestDocsIdeasArchival(unittest.TestCase):
                 self.assertIsNotNone(
                     _ARCHIVE_PTR_RE.search(text),
                     f"{md_file.name} has 'Status: Implemented' but no archive "
-                    f"pointer — archive to raw/inbox/ and leave a stub "
+                    f"pointer — archive to raw/inbox/ or wiki/sources/ and leave a stub "
                     f"(see copilot-instructions.md § docs/ideas/ archival)",
                 )
 

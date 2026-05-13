@@ -14,7 +14,7 @@
 > `security-and-hardening` (OWASP prevention examples), and
 > `performance-optimization` (anti-pattern examples). The remaining 3 skills
 > have only scaffolding (symlinks to global references). **Exception:**
-> `using-agent-skills` grew from 191 → 349 lines (all skills catalogued with
+> `using-agent-skills` grew from 191 → 417 lines (all skills catalogued with
 > Route column). The line counts in §2 remain accurate for all other skills.
 >
 > **Decision (2026-05-04):** Option B selected — target maximum feasible
@@ -69,7 +69,7 @@ All SKILL.md files exceeding 150 lines, verified via `wc -l`:
 | 17 | deprecation-and-migration | 206 | +106 |
 | 18 | spec-driven-development | 200 | +100 |
 | 19 | source-driven-development | 194 | +94 |
-| 20 | using-agent-skills | 349 | +249 | *(grew: now covers all 97 skills)* |
+| 20 | using-agent-skills | 417 | +317 | *(grew: now covers all 102 skills)* |
 | 21 | performance-optimization | 183 | +83 |
 | 22 | idea-refine | 178 | +78 |
 
