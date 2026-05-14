@@ -79,7 +79,7 @@ write behavior.
 | Global policy and trust boundaries | `AGENTS.md` + ADRs | Keep fail-closed, provenance, append-only log, and write-scope rules always on. |
 | Agent personas | `.github/agents/**` | Define router/worker missions, handoffs, and stop conditions. |
 | Skill workflows and thin wrappers | `.github/skills/**` | Hold procedural workflow docs plus narrow wrappers that invoke deterministic tooling. |
-| Deterministic execution surface | `scripts/kb/**` | Remains the authoritative Python implementation for ingest, index, lint, qmd preflight, and query persistence. |
+| Deterministic execution surface | `scripts/kb/**` | Remains the authoritative Python implementation for ingest, index, lint, qmd preflight, query persistence, and batch query persistence. |
 | Verification surface | `tests/kb/**` | Validates the deterministic execution layer and any framework references to it. |
 
 ### In scope for the framework MVP
@@ -109,7 +109,7 @@ though they are not all landed today:
 | Surface | Approved post-MVP use | Invariants that still apply |
 |---|---|---|
 | `scripts/validation/**` | Deterministic validators, freshness checks, and baseline/snapshot utilities | CI-1 and CI-2 stay read-only, and CI-3 may only write through explicit allowlists plus preflight. |
-| `scripts/reporting/**` | Repository-scoped quality and coverage reporting | Packaging approval does not grant new write authority; undeclared paths remain deny-by-default. |
+| `scripts/reporting/**` | Repository-scoped quality and coverage reporting | Packaging approval does not grant new write authority; undeclared paths remain deny-by-default. Landed surfaces: content_quality_report.py, quality_runtime.py, coverage_report.py (Phase 4). |
 | `scripts/context/**` + `scripts/maintenance/**` | Context-sync and maintenance orchestration invoked by thin skills | Heavy repo-wide logic still sits behind explicit wrappers and fail-closed checks. |
 | `scripts/fleet/**` | TypeScript/Bun fleet orchestration for parallel Jules-based issue-to-PR dispatch | Fleet scripts are a TypeScript/Bun project orthogonal to the Python write-surface matrix. Fleet-produced PRs enter normal CI review (CI-1..CI-3). Fleet does not bypass write allowlists or the `wiki/.kb_write.lock` concurrency model. |
 | `scripts/ingest/**` | Heavyweight ingest/conversion helpers | ADR-006 still limits authoritative ingest inputs to `raw/inbox/**` plus checksummed `raw/assets/**`. |

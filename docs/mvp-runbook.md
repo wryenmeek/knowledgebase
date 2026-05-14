@@ -158,7 +158,7 @@ Framework test entrypoints already present under `tests/kb/`:
 | Framework contract suites | `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_framework_write_surface_matrix` | Run whenever framework docs, skills, agents, or the `AGENTS.md` write-surface matrix change. |
 | Wrapper behavior suite | `python3 -m unittest tests.kb.test_skill_wrappers` | Confirms the fixed wrapper order, allowlists, and fail-closed execution envelope. |
 | Helper surface suites | `python3 -m unittest tests.kb.test_context_import_helpers tests.kb.test_documentation_helpers tests.kb.test_validate_source_registry tests.kb.test_validate_wiki_topology tests.kb.test_harnesses` | Covers skill-local helper contracts without widening repo-write authority. |
-| Repo script suites | `python3 -m unittest tests.kb.test_contracts tests.kb.test_sourceref tests.kb.test_ingest tests.kb.test_update_index tests.kb.test_lint_wiki tests.kb.test_qmd_preflight tests.kb.test_persist_query tests.kb.test_write_utils` | Required when `scripts/kb/**` or approved repo-level helper packages change. |
+| Repo script suites | `python3 -m unittest tests.kb.test_contracts tests.kb.test_sourceref tests.kb.test_ingest tests.kb.test_update_index tests.kb.test_lint_wiki tests.kb.test_qmd_preflight tests.kb.test_persist_query tests.kb.test_write_utils tests.kb.test_batch_persist_query tests.kb.test_coverage_report` | Required when `scripts/kb/**` or approved repo-level helper packages change. |
 | Workflow governance suites | `python3 -m unittest tests.kb.test_workflow_yaml_syntax tests.kb.test_ci1_workflow tests.kb.test_ci2_workflow tests.kb.test_ci3_workflow tests.kb.test_ci_permission_asserts` | Keep CI-1 no-write trusted handoff, CI-2 read-only diagnostics, and CI-3 allowlisted writes aligned with workflow YAML. |
 | Verification matrix suites | `python3 -m unittest tests.kb.test_unit_verification_matrix tests.kb.test_integration_verification_matrix tests.kb.test_regression_verification_matrix` | Final verification pass for unit, integration, and regression coverage expectations. |
 | Broad regression suite | `python3 -m pytest tests/ -q` | Final merge gate after the focused lanes above stay green. |
@@ -183,7 +183,7 @@ approved, keep these existing MVP suites green:
 - Helper surface suites:
   `python3 -m unittest tests.kb.test_context_import_helpers tests.kb.test_documentation_helpers tests.kb.test_validate_source_registry tests.kb.test_validate_wiki_topology tests.kb.test_harnesses`
 - Repo script suites:
-  `python3 -m unittest tests.kb.test_contracts tests.kb.test_sourceref tests.kb.test_ingest tests.kb.test_update_index tests.kb.test_lint_wiki tests.kb.test_qmd_preflight tests.kb.test_persist_query tests.kb.test_write_utils`
+  `python3 -m unittest tests.kb.test_contracts tests.kb.test_sourceref tests.kb.test_ingest tests.kb.test_update_index tests.kb.test_lint_wiki tests.kb.test_qmd_preflight tests.kb.test_persist_query tests.kb.test_write_utils tests.kb.test_batch_persist_query tests.kb.test_coverage_report`
 - Workflow governance suites:
   `python3 -m unittest tests.kb.test_workflow_yaml_syntax tests.kb.test_ci1_workflow tests.kb.test_ci2_workflow tests.kb.test_ci3_workflow tests.kb.test_ci_permission_asserts`
 - Verification matrix suites:

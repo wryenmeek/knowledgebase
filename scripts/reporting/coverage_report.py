@@ -1,9 +1,32 @@
-"""Wiki coverage analytics with approval-gated persist mode."""
+"""Wiki coverage analytics with approval-gated persist mode.
+
+Modes:
+  summary  (default, read-only) — Scans wiki/** pages and emits a JSON
+            SurfaceResult with per-namespace page counts, placeholder counts,
+            stale-page counts (pages whose updated_at exceeds
+            _STALE_THRESHOLD_DAYS days old), empty-namespace list, and an
+            overall coverage_ratio. No file is written.
+
+  persist  (write-capable, approval-gated) — Runs the same analysis, then
+            writes a governed report artifact to
+            wiki/reports/coverage-report-<date>.json.
+            Requires --approval approved and acquires wiki/.kb_write.lock
+            (ADR-005) before writing. Fails closed on missing approval, lock
+            contention, wiki path boundary violation, or OSError.
+
+Fail-closed invariants:
+  - persist mode hard-fails without --approval approved.
+  - Directory symlinks are never followed during wiki page collection
+    (_collect_pages uses os.scandir with follow_symlinks=False).
+  - LockUnavailableError and OSError on write propagate as STATUS_FAIL
+    envelopes; no partial artifact is left on disk.
+"""
 
 from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 import sys
 from typing import Sequence, TextIO
@@ -109,6 +132,9 @@ def _is_stale(frontmatter: dict[str, str], now: datetime) -> bool:
     """Return True if the page's updated_at is older than _STALE_THRESHOLD_DAYS."""
     updated_at = _parse_updated_at(frontmatter)
     if updated_at is None:
+        # Intentional: pages without updated_at (pre-dates the field requirement) are
+        # treated as non-stale to avoid false positives. Operators should prioritize
+        # adding updated_at to legacy pages separately.
         return False
     return (now - updated_at).days > _STALE_THRESHOLD_DAYS
 
@@ -116,22 +142,33 @@ def _is_stale(frontmatter: dict[str, str], now: datetime) -> bool:
 def _collect_pages(wiki_root: Path) -> list[Path]:
     """Collect all wiki pages, excluding canonical top-level artifact files.
 
+    Uses a manual os.scandir walk that never follows directory symlinks,
+    eliminating the symlink-traversal DoS vector that rglob introduces.
     Uses ``Path.is_relative_to`` for boundary enforcement — never ``startswith``.
     """
     resolved_wiki = wiki_root.resolve()
     pages: list[Path] = []
-    for path in sorted(wiki_root.rglob("*.md")):
-        if not path.is_file():
+    stack: list[Path] = [resolved_wiki]
+    while stack:
+        current = stack.pop()
+        try:
+            entries = list(os.scandir(current))
+        except OSError:
             continue
-        resolved = path.resolve()
-        # Safety: skip any path that escapes wiki root (e.g., via symlink traversal)
-        if not resolved.is_relative_to(resolved_wiki):
-            continue
-        # Exclude the canonical top-level artifact files
-        if path.parent.resolve() == resolved_wiki and path.name in _EXCLUDED_TOP_LEVEL:
-            continue
-        pages.append(path)
-    return pages
+        for entry in entries:
+            if entry.is_symlink():
+                continue  # never follow symlinks
+            entry_path = Path(entry.path)
+            if entry.is_dir(follow_symlinks=False):
+                candidate = entry_path.resolve()
+                if candidate.is_relative_to(resolved_wiki):
+                    stack.append(candidate)
+            elif entry.is_file(follow_symlinks=False) and entry.name.endswith(".md"):
+                # Exclude canonical top-level artifact files
+                if entry_path.parent.resolve() == resolved_wiki and entry.name in _EXCLUDED_TOP_LEVEL:
+                    continue
+                pages.append(entry_path)
+    return sorted(pages)
 
 
 def _compute_coverage(
@@ -274,6 +311,10 @@ def run_coverage_report(
             "total_placeholders": summary_stats["total_placeholders"],
             "total_stale": summary_stats["total_stale"],
             "coverage_ratio": summary_stats["coverage_ratio"],
+            "pages_by_namespace": summary_stats["pages_by_namespace"],
+            "placeholder_pages_by_namespace": summary_stats["placeholder_pages_by_namespace"],
+            "stale_pages_by_namespace": summary_stats["stale_pages_by_namespace"],
+            "empty_namespaces": summary_stats["empty_namespaces"],
         },
     }
     try:

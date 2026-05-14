@@ -43,7 +43,7 @@ fields:
 
 | Field | Type | Required | Semantics |
 |---|---|---|---|
-| `report_type` | string | yes | Identifier for the report class. Must match the filename prefix. One of: `quality-scores`, `quality-report`, `content-quality`. |
+| `report_type` | string | yes | Identifier for the report class. Must match the filename prefix. One of: `quality-scores`, `quality-report`, `content-quality`, `coverage-report`. |
 | `generated_at` | string | yes | ISO-8601 UTC timestamp of when the report was produced (e.g., `"2026-04-19T01:23:00Z"`). |
 | `scope` | array of strings | yes | Repo-relative glob patterns or explicit paths that were analyzed (e.g., `["wiki/**/*.md"]`). |
 | `surface` | string | yes | The script surface that produced this artifact (e.g., `"scripts/reporting/quality_runtime.py"`). |
@@ -91,7 +91,7 @@ Uses the same findings and summary schema as `quality-scores` (see above)
 but with `"report_type": "quality-report"` and `"scoring_mode": "report"` in
 the summary. Intended for human-readable quality review snapshots.
 
-
+### `content-quality` (from `content_quality_report.py persist`)
 
 Produced by `scripts/reporting/content_quality_report.py` in `persist` mode.
 Captures structural quality signals per wiki page.
@@ -113,6 +113,34 @@ Captures structural quality signals per wiki page.
 | `missing_sources_count` | integer | yes | Number of pages missing `sources`. |
 | `missing_updated_at_count` | integer | yes | Number of pages missing `updated_at`. |
 | `placeholder_file_count` | integer | yes | Number of pages with at least one placeholder. |
+
+### `coverage-report` (from `coverage_report.py persist`)
+
+Produced by `scripts/reporting/coverage_report.py` in `persist` mode.
+Captures per-page coverage findings plus namespace-level aggregate coverage
+statistics for the wiki surface.
+
+**`findings` item fields:**
+
+| Field | Type | Required | Semantics |
+|---|---|---|---|
+| `path` | string | yes | Repo-relative path to the analyzed wiki page. |
+| `namespace` | string | yes | Derived wiki namespace (`topical` for top-level pages, otherwise first subdirectory under `wiki/`). |
+| `is_placeholder` | boolean | yes | Whether the page body contains at least one unresolved placeholder marker. |
+| `is_stale` | boolean | yes | Whether `updated_at` is older than the reporting threshold. |
+
+**`summary` fields:**
+
+| Field | Type | Required | Semantics |
+|---|---|---|---|
+| `total_pages` | integer | yes | Number of wiki pages included in the analysis. |
+| `total_placeholders` | integer | yes | Number of pages that contain at least one placeholder marker. |
+| `total_stale` | integer | yes | Number of pages classified as stale by `updated_at`. |
+| `coverage_ratio` | number | yes | `(total_pages - total_placeholders) / total_pages`, or `1.0` when no pages exist. |
+| `pages_by_namespace` | object | yes | Mapping of namespace name to page count. |
+| `placeholder_pages_by_namespace` | object | yes | Mapping of namespace name to placeholder-page count. |
+| `stale_pages_by_namespace` | object | yes | Mapping of namespace name to stale-page count. |
+| `empty_namespaces` | array of strings | yes | Declared topical namespaces with zero pages at report time. |
 
 ## Write semantics
 

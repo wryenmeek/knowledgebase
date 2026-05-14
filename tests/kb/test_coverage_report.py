@@ -300,6 +300,103 @@ class CoverageReportSummaryModeTests(RuntimeWorkspaceTestCase):
         self.assertTrue(hasattr(self.module, "run_coverage_report"))
         self.assertTrue(hasattr(self.module, "main"))
 
+    def test_persist_mode_lock_contention_returns_lock_unavailable(self) -> None:
+        """When the write lock is unavailable, persist mode must return status=fail with reason_code=lock_unavailable and write no artifact."""
+        from unittest.mock import patch
+        from scripts.kb.write_utils import LockUnavailableError
+
+        (self.workspace / "wiki").mkdir(parents=True, exist_ok=True)
+        self._write_wiki_page("page.md", _topical_page())
+
+        def _raise_lock(*args, **kwargs):
+            raise LockUnavailableError()
+
+        with patch("scripts.kb.write_utils.exclusive_write_lock", side_effect=_raise_lock):
+            result = self.module.run_coverage_report(
+                repo_root=self.workspace,
+                mode="persist",
+                approval="approved",
+            )
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.reason_code, "lock_unavailable")
+        self.assertTrue(result.lock_required)
+        reports_dir = self.workspace / "wiki" / "reports"
+        self.assertFalse(
+            reports_dir.exists(),
+            "No artifact should be written when the lock is unavailable",
+        )
+
+    def test_deeply_nested_page_detected_in_correct_namespace(self) -> None:
+        """wiki/analyses/subdir/page.md must be counted in the 'analyses' namespace."""
+        (self.workspace / "wiki").mkdir(parents=True, exist_ok=True)
+        self._write_wiki_page("analyses/subdir/deep_page.md", _topical_page("Deep"))
+        self._write_wiki_page("analyses/shallow.md", _topical_page("Shallow"))
+
+        result = self.module.run_coverage_report(
+            repo_root=self.workspace,
+            mode="summary",
+        )
+
+        self.assertEqual(result.summary["total_pages"], 2)
+        self.assertEqual(result.summary["pages_by_namespace"].get("analyses", 0), 2)
+        self.assertEqual(result.summary["pages_by_namespace"].get("topical", 0), 0)
+
+    def test_absent_wiki_directory_returns_empty_stats(self) -> None:
+        """When wiki/ does not exist at all (not just empty), empty stats are returned."""
+        wiki = self.workspace / "wiki"
+        self.assertFalse(wiki.exists(), "wiki/ must not exist for this test")
+
+        result = self.module.run_coverage_report(
+            repo_root=self.workspace,
+            mode="summary",
+        )
+
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(result.summary["total_pages"], 0)
+        self.assertAlmostEqual(result.summary["coverage_ratio"], 1.0)
+        self.assertIsInstance(result.summary["empty_namespaces"], list)
+        self.assertGreater(len(result.summary["empty_namespaces"]), 0)
+
+    def test_all_pages_placeholders_yields_zero_coverage_ratio(self) -> None:
+        """When every page is a placeholder, coverage_ratio must be exactly 0.0."""
+        (self.workspace / "wiki").mkdir(parents=True, exist_ok=True)
+        self._write_wiki_page("page_a.md", _placeholder_page("A"))
+        self._write_wiki_page("page_b.md", _placeholder_page("B"))
+
+        result = self.module.run_coverage_report(
+            repo_root=self.workspace,
+            mode="summary",
+        )
+
+        self.assertEqual(result.summary["total_pages"], 2)
+        self.assertEqual(result.summary["total_placeholders"], 2)
+        self.assertAlmostEqual(result.summary["coverage_ratio"], 0.0)
+
+    def test_invalid_updated_at_format_treated_as_non_stale(self) -> None:
+        """A page with an unparseable updated_at must be treated as non-stale (i.e., the silent fallback is verified rather than left untested)."""
+        garbled_page = (
+            "---\n"
+            'title: "Garbled Date"\n'
+            'type: concept\n'
+            'status: active\n'
+            'updated_at: "last-tuesday"\n'
+            "sources: []\n"
+            "---\n\n"
+            "# Garbled Date\n\nBody.\n"
+        )
+        (self.workspace / "wiki").mkdir(parents=True, exist_ok=True)
+        self._write_wiki_page("garbled.md", garbled_page)
+
+        result = self.module.run_coverage_report(
+            repo_root=self.workspace,
+            mode="summary",
+        )
+
+        self.assertEqual(result.summary["total_pages"], 1)
+        self.assertEqual(result.summary["total_stale"], 0)
+        self.assertEqual(result.summary["stale_pages_by_namespace"], {})
+
 
 if __name__ == "__main__":
     unittest.main()

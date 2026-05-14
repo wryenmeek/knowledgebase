@@ -318,7 +318,7 @@ class BatchPersistQueryCliTests(RuntimeWorkspaceTestCase):
         self.assertIn("apply", batch_persist_query.SUPPORTED_MODES)
 
     def test_all_exports_present(self) -> None:
-        for name in ("SURFACE", "SUPPORTED_MODES", "run_batch_cli", "main"):
+        for name in ("SURFACE", "SUPPORTED_MODES", "MAX_BATCH_SIZE", "run_batch_cli", "main"):
             self.assertIn(name, batch_persist_query.__all__)
 
     def test_single_lock_acquisition_for_entire_batch(self) -> None:
@@ -402,6 +402,190 @@ class BatchPersistQueryCliTests(RuntimeWorkspaceTestCase):
         new_lines = log_after[len(log_before):].strip().splitlines()
         batch_lines = [l for l in new_lines if "batch_persist_query" in l]
         self.assertEqual(len(batch_lines), 1, "Exactly one batch log entry expected")
+
+    def test_batch_entry_with_invalid_sensitivity_fails_pre_validation(self) -> None:
+        """A batch entry with a disallowed sensitivity value must fail pre-validation."""
+        entry = self._valid_entry("What does Part A cover?")
+        entry["sensitivity"] = "public\ninjected_key: injected_value"
+        batch_path = self._write_batch_file([entry])
+
+        exit_code, payload = self._run_cli(batch_path)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["written"], 0)
+        self.assertEqual(payload["failed"], 1)
+        entry_result = payload["entries"][0]
+        self.assertEqual(entry_result["status"], "failed")
+        self.assertEqual(entry_result["reason_code"], "invalid_input")
+        analyses_dir = self.wiki_root / "analyses"
+        self.assertFalse(analyses_dir.exists())
+
+    def test_batch_file_absolute_path_outside_repo_rejected(self) -> None:
+        """An absolute --batch-file path outside the repo root must fail closed."""
+        outside_path = Path("/outside-repo-batch.json")
+
+        exit_code, payload = self._run_cli(outside_path)
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["status"], "fail")
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertEqual(payload["total"], 0)
+
+    def test_batch_exceeding_max_size_fails_closed(self) -> None:
+        """A batch larger than MAX_BATCH_SIZE must fail closed before acquiring the lock."""
+        from scripts.kb.batch_persist_query import MAX_BATCH_SIZE
+
+        entries = [
+            self._valid_entry(f"Query {i}?", sources=[self._source(f"src-{i}", str(i % 10))])
+            for i in range(MAX_BATCH_SIZE + 1)
+        ]
+        batch_path = self._write_batch_file(entries)
+        before = self.snapshot_workspace()
+
+        exit_code, payload = self._run_cli(batch_path)
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["status"], "fail")
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertEqual(before, self.snapshot_workspace())
+
+    def test_per_entry_write_failure_mid_batch_rollback_and_continue(self) -> None:
+        """An OSError on entry 1's write: entry 0 stays written, entry 1 is rolled back and marked failed, entry 2 is processed and written."""
+        from unittest.mock import patch as _patch
+
+        entry_0 = self._valid_entry("What does Part A cover?")
+        entry_1 = self._valid_entry(
+            "What does Part B cover?",
+            sources=[self._source("src-b1", "b"), self._source("src-b2", "c")],
+        )
+        entry_2 = self._valid_entry(
+            "What does Part C cover?",
+            sources=[self._source("src-c1", "d"), self._source("src-c2", "e")],
+        )
+        batch_path = self._write_batch_file([entry_0, entry_1, entry_2])
+
+        call_count = [0]
+        real_write = write_utils.write_text_if_changed
+
+        def _fail_on_second_call(path, content, **kw):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                raise OSError("simulated disk error on entry 1")
+            return real_write(path, content, **kw)
+
+        with _patch("scripts.kb.write_utils.write_text_if_changed", side_effect=_fail_on_second_call):
+            exit_code, payload = self._run_cli(batch_path)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["total"], 3)
+        self.assertEqual(payload["written"], 2)
+        self.assertEqual(payload["failed"], 1)
+
+        statuses = {e["query"]: e["status"] for e in payload["entries"]}
+        self.assertEqual(statuses["What does Part A cover?"], "written")
+        self.assertEqual(statuses["What does Part B cover?"], "failed")
+        self.assertEqual(statuses["What does Part C cover?"], "written")
+
+        written = [e for e in payload["entries"] if e["status"] == "written"]
+        for written_entry in written:
+            self.assertTrue((self.workspace / written_entry["analysis_path"]).is_file())
+        failed = [e for e in payload["entries"] if e["status"] == "failed"]
+        self.assertIsNone(failed[0]["analysis_path"])
+
+    def test_out_of_scope_wiki_root_all_entries_fail_pre_validation(self) -> None:
+        """An invalid --wiki-root causes all entries to fail pre-validation; top-level passes."""
+        entry_a = self._valid_entry("What does Part A cover?")
+        entry_b = self._valid_entry("What does Part B cover?")
+        batch_path = self._write_batch_file([entry_a, entry_b])
+
+        output = StringIO()
+        error = StringIO()
+        exit_code = batch_persist_query.run_batch_cli(
+            argv=[
+                "--batch-file", str(batch_path),
+                "--wiki-root", "not-wiki",
+                "--schema", str(self.workspace / "AGENTS.md"),
+            ],
+            output_stream=output,
+            error_stream=error,
+            repo_root=self.workspace,
+        )
+        payload = json.loads(output.getvalue())
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual(payload["written"], 0)
+        self.assertEqual(payload["failed"], 2)
+        for entry in payload["entries"]:
+            self.assertEqual(entry["status"], "failed")
+            self.assertEqual(entry["reason_code"], "invalid_input")
+
+    def test_duplicate_queries_in_batch_idempotent(self) -> None:
+        """Two entries with identical normalized query + sources produce the same analysis path. The second write is a no-op and both entries are reported as written."""
+        entry = self._valid_entry("What does Part A cover?")
+        batch_path = self._write_batch_file([entry, entry])
+
+        exit_code, payload = self._run_cli(batch_path)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual(payload["written"], 2)
+        self.assertEqual(payload["skipped"], 0)
+        self.assertEqual(payload["failed"], 0)
+
+        paths = [e["analysis_path"] for e in payload["entries"]]
+        self.assertEqual(paths[0], paths[1])
+        analyses = list((self.wiki_root / "analyses").glob("*.md"))
+        self.assertEqual(len(analyses), 1)
+
+    def test_log_entry_truncates_paths_beyond_five(self) -> None:
+        """When more than 5 entries are written, the log entry uses '... (N more)'."""
+        entries = [
+            self._valid_entry(
+                f"Query {i} about Medicare?",
+                sources=[self._source(f"src-{i}a", str(i)), self._source(f"src-{i}b", chr(ord("a") + i))],
+            )
+            for i in range(6)
+        ]
+        batch_path = self._write_batch_file(entries)
+
+        exit_code, payload = self._run_cli(batch_path)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["written"], 6)
+
+        log_text = (self.workspace / write_utils.LOG_PATH).read_text(encoding="utf-8")
+        self.assertIn("batch_persist_query: 6 written", log_text)
+        self.assertIn("... (1 more)", log_text)
+
+    def test_missing_schema_file_all_entries_fail_pre_validation(self) -> None:
+        """When the --schema file does not exist, all entries fail pre-validation."""
+        entry = self._valid_entry("What does Part A cover?")
+        batch_path = self._write_batch_file([entry])
+
+        output = StringIO()
+        error = StringIO()
+        exit_code = batch_persist_query.run_batch_cli(
+            argv=[
+                "--batch-file", str(batch_path),
+                "--wiki-root", str(self.wiki_root),
+                "--schema", str(self.workspace / "MISSING_AGENTS.md"),
+            ],
+            output_stream=output,
+            error_stream=error,
+            repo_root=self.workspace,
+        )
+        payload = json.loads(output.getvalue())
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["written"], 0)
+        self.assertEqual(payload["failed"], 1)
+        self.assertEqual(payload["entries"][0]["status"], "failed")
+        self.assertEqual(payload["entries"][0]["reason_code"], "invalid_input")
 
 
 if __name__ == "__main__":

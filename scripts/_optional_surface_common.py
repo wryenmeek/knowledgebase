@@ -409,6 +409,7 @@ def validate_staged_manifest(
 
 
 REPORT_ARTIFACT_WRITE_ROOT = "wiki/reports"
+_MAX_REPORT_COLLISIONS = 99
 
 _REPORT_TYPE_FINDINGS_KEYS: dict[str, tuple[str, ...]] = {
     "content-quality": ("path", "missing_sources", "missing_updated_at", "placeholder_count"),
@@ -433,7 +434,16 @@ _REPORT_TYPE_SUMMARY_KEYS: dict[str, tuple[str, ...]] = {
     "quality-report": (
         "selected_count", "prioritized_count", "query_evidence_count", "recommendation_only", "scoring_mode",
     ),
-    "coverage-report": ("total_pages", "total_placeholders", "total_stale", "coverage_ratio"),
+    "coverage-report": (
+        "total_pages",
+        "total_placeholders",
+        "total_stale",
+        "coverage_ratio",
+        "pages_by_namespace",
+        "placeholder_pages_by_namespace",
+        "stale_pages_by_namespace",
+        "empty_namespaces",
+    ),
 }
 
 _REPORT_ENVELOPE_REQUIRED = ("report_type", "generated_at", "scope", "surface", "findings", "summary")
@@ -485,19 +495,24 @@ def write_report_artifact(repo_root: Path, report_type: str, artifact: dict) -> 
     """
     validate_report_artifact(artifact, report_type)
     reports_dir = repo_root / REPORT_ARTIFACT_WRITE_ROOT
-    reports_dir.mkdir(parents=True, exist_ok=True)
     content = json.dumps(artifact, indent=2, ensure_ascii=False) + "\n"
     with write_utils.exclusive_write_lock(repo_root):
+        reports_dir.mkdir(parents=True, exist_ok=True)
         # Filename allocation must be inside the lock to prevent concurrent collision.
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         output_path = reports_dir / f"{report_type}-{date_str}.json"
         if output_path.exists():
             counter = 2
-            while True:
+            while counter <= _MAX_REPORT_COLLISIONS + 1:
                 output_path = reports_dir / f"{report_type}-{date_str}-{counter}.json"
                 if not output_path.exists():
                     break
                 counter += 1
+            else:
+                raise OSError(
+                    f"too many {report_type} report files for {date_str}; "
+                    f"manual cleanup required under {REPORT_ARTIFACT_WRITE_ROOT}"
+                )
         write_utils.write_text_capturing_previous_safe(output_path, content)
     return output_path
 

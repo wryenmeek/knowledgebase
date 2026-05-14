@@ -1,8 +1,29 @@
 """Batch policy-gated persistence for high-value query outputs.
 
 Handles N queries in one governed operation: validates each entry, acquires
-the wiki write lock once, writes all passing entries, updates the index once,
-and appends a single batch summary log entry.
+the wiki write lock (wiki/.kb_write.lock, ADR-005) once for the entire
+batch, writes all policy-passing entries to wiki/analyses/**, regenerates
+wiki/index.md once after all entries, and appends a single batch summary
+entry to wiki/log.md.
+
+Supported modes: apply (SUPPORTED_MODES = ("apply",)).
+
+Writable paths: wiki/analyses/** (write-once per query fingerprint),
+wiki/index.md (regenerated once), wiki/log.md (single append-only summary).
+
+Maximum batch size: MAX_BATCH_SIZE = 100 entries per run.
+
+Fail-closed invariants:
+  - --batch-file must resolve within the repository boundary.
+  - Malformed or missing batch JSON → hard fail, no lock acquired.
+  - Batch size > MAX_BATCH_SIZE → hard fail, no lock acquired.
+  - Lock unavailable → all pre-validated entries marked failed; top-level
+    status = fail.
+  - Per-entry policy rejection → status = skipped; not a top-level failure.
+  - Per-entry OSError → that entry is rolled back and marked failed;
+    remaining entries continue.
+  - Index update failure after writes is logged as a warning (intentional
+    divergence from persist_query.py rollback — see inline comment).
 """
 
 from __future__ import annotations
@@ -33,13 +54,13 @@ from scripts.kb.write_utils import (
     append_log_only_state_changes,
     read_optional_text,
     rollback_file_state,
-    write_text_if_changed,
 )
 
 SURFACE = "scripts/kb/batch_persist_query.py"
 SUPPORTED_MODES = ("apply",)
+MAX_BATCH_SIZE: int = 100
 
-__all__ = ["SURFACE", "SUPPORTED_MODES", "run_batch_cli", "main"]
+__all__ = ["SURFACE", "SUPPORTED_MODES", "MAX_BATCH_SIZE", "run_batch_cli", "main"]
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +213,18 @@ def _execute_batch(
     batch_file = Path(args.batch_file)
     if not batch_file.is_absolute():
         batch_file = repo_root / batch_file
+    batch_file = batch_file.resolve()
+    if not batch_file.is_relative_to(repo_root):
+        _emit_fail(
+            output_stream=output_stream,
+            reason_code=contracts.ReasonCode.INVALID_INPUT.value,
+            total=0,
+            entries=[],
+        )
+        error_stream.write(
+            f"error: --batch-file must resolve within the repository boundary: {args.batch_file}\n"
+        )
+        return 1
 
     if not batch_file.exists():
         _emit_fail(
@@ -227,6 +260,17 @@ def _execute_batch(
         return 1
 
     total = len(batch)
+    if total > MAX_BATCH_SIZE:
+        _emit_fail(
+            output_stream=output_stream,
+            reason_code=contracts.ReasonCode.INVALID_INPUT.value,
+            total=total,
+            entries=[],
+        )
+        error_stream.write(
+            f"error: batch size {total} exceeds maximum {MAX_BATCH_SIZE}\n"
+        )
+        return 1
 
     # ------------------------------------------------------------------ #
     # 2. Empty batch — succeed immediately without touching the lock       #
@@ -328,7 +372,7 @@ def _execute_batch(
                 snapshot = read_optional_text(analysis_absolute)
 
                 try:
-                    changed = write_text_if_changed(analysis_absolute, analysis_markdown)
+                    changed = write_utils.write_text_if_changed(analysis_absolute, analysis_markdown)
                     rel_str = analysis_relative.as_posix()
                     entry_results[idx] = _entry_result(
                         query_text,
@@ -357,6 +401,9 @@ def _execute_batch(
             try:
                 update_index.generate_and_write_index(wiki_root_path)
             except (OSError, update_index.IndexGenerationError) as exc:
+                # Intentional divergence from persist_query.py: in batch mode, rolling back
+                # N already-confirmed writes would be more destructive than a stale index.
+                # The index is advisory; it will be regenerated on the next successful run.
                 error_stream.write(f"warning: index update failed: {exc}\n")
 
             # -------------------------------------------------------------- #

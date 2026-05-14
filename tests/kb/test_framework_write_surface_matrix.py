@@ -127,7 +127,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Writable paths": ("wiki/analyses/**", "wiki/index.md", "wiki/log.md"),
         "Lock requirements": ("wiki/.kb_write.lock", "ADR-005"),
         "Artifact / schema owners": ("scripts/kb/contracts.py", "scripts/kb/persist_query.py", "scripts/kb/write_utils.py"),
-        "Hard-fail behavior": ("Malformed batch JSON", "lock unavailable", "path outside repo boundary", "fail closed"),
+        "Hard-fail behavior": (
+            "Malformed batch JSON",
+            "lock unavailable",
+            "path outside repo boundary",
+            "MAX_BATCH_SIZE (100)",
+            "fail closed",
+        ),
     },
     "scripts/validation/**": {
         "Runtime mode": ("read-only only",),

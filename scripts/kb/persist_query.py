@@ -23,6 +23,7 @@ _POLICY_IDS: tuple[str, ...] = (
     contracts.PolicyId.AUTO_PERSIST_WHEN_HIGH_VALUE.value,
     contracts.PolicyId.LOG_ONLY_STATE_CHANGES.value,
 )
+_VALID_SENSITIVITY_VALUES: frozenset[str] = frozenset({"public", "internal", "restricted"})
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -170,6 +171,12 @@ def _validate_request(args: argparse.Namespace, repo_root: Path) -> PersistReque
 
     if args.min_sources < 1:
         raise PersistQueryInputError("min-sources must be >= 1")
+
+    if args.sensitivity not in _VALID_SENSITIVITY_VALUES:
+        raise PersistQueryInputError(
+            f"sensitivity must be one of {sorted(_VALID_SENSITIVITY_VALUES)!r}, "
+            f"got {args.sensitivity!r}"
+        )
 
     wiki_root = _resolve_within_repo(repo_root, args.wiki_root, label="wiki-root")
     if wiki_root.relative_to(repo_root).as_posix() != "wiki":
