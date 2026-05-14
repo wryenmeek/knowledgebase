@@ -122,6 +122,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("raw/processed/SPEC.md", "schema/**"),
         "Hard-fail behavior": ("permission mismatch", "partial validator result", "undeclared writes"),
     },
+    "scripts/kb/batch_persist_query.py` — `apply` mode": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("wiki/analyses/**", "wiki/index.md", "wiki/log.md"),
+        "Lock requirements": ("wiki/.kb_write.lock", "ADR-005"),
+        "Artifact / schema owners": ("scripts/kb/contracts.py", "scripts/kb/persist_query.py", "scripts/kb/write_utils.py"),
+        "Hard-fail behavior": ("Malformed batch JSON", "lock unavailable", "path outside repo boundary", "fail closed"),
+    },
     "scripts/validation/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "narrower contract"),
@@ -156,6 +163,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
         "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("schema validation failure", "lock contention", "fail closed"),
+    },
+    "scripts/reporting/coverage_report.py` — `summary` and `persist` modes": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("wiki/reports/coverage-report-*.json",),
+        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
+        "Hard-fail behavior": ("Missing approval", "lock contention", "wiki path escapes boundary", "fail closed"),
     },
     "scripts/context/**": {
         "Runtime mode": ("blocking-only",),

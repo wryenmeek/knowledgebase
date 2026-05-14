@@ -1,6 +1,6 @@
 # Spec: Post-MVP Rollout and Packaging
 
-**Status:** In Progress — Phases 0–2 complete; Phase 3–4 not started
+**Status:** Implemented — all phases complete (2026-05-14)
 
 > **Phase status (2026-04-27):**
 > - **Phase 0** ✅ Complete — this spec published; runbook aligned.
@@ -8,9 +8,8 @@
 > - **Phase 2** ✅ Complete — all script families promoted: `scripts/validation/**`,
 >   `scripts/reporting/**`, `scripts/context/**`, `scripts/maintenance/**`,
 >   `scripts/ingest/**`, `scripts/github_monitor/**`, and `scripts/drive_monitor/**`.
-> - **Phase 3** 🔲 Not started — downstream write-capable workflow slices; requires
->   explicit maintainer approval per §High-risk phase-transition gates.
-> - **Phase 4** 🔲 Not started — optional analytics and discovery follow-ons.
+> - **Phase 3** ✅ Complete — `scripts/kb/batch_persist_query.py` landed; batch write surface with single-lock governance, per-entry policy evaluation, and allowlisted writes to `wiki/analyses/**` (2026-05-14).
+> - **Phase 4** ✅ Complete — `scripts/reporting/coverage_report.py` landed; read-only coverage analytics with approval-gated persist mode writing to `wiki/reports/` (2026-05-14).
 
 ## Authority and objective
 

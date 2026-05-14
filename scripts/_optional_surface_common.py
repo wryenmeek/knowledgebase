@@ -420,6 +420,7 @@ _REPORT_TYPE_FINDINGS_KEYS: dict[str, tuple[str, ...]] = {
         "path", "priority_score", "confidence", "missing_sources", "missing_updated_at",
         "placeholder_count", "missed_query_count", "missed_query_demand", "recommended_next_step",
     ),
+    "coverage-report": ("path", "namespace", "is_placeholder", "is_stale"),
 }
 
 _REPORT_TYPE_SUMMARY_KEYS: dict[str, tuple[str, ...]] = {
@@ -432,6 +433,7 @@ _REPORT_TYPE_SUMMARY_KEYS: dict[str, tuple[str, ...]] = {
     "quality-report": (
         "selected_count", "prioritized_count", "query_evidence_count", "recommendation_only", "scoring_mode",
     ),
+    "coverage-report": ("total_pages", "total_placeholders", "total_stale", "coverage_ratio"),
 }
 
 _REPORT_ENVELOPE_REQUIRED = ("report_type", "generated_at", "scope", "surface", "findings", "summary")

@@ -1,6 +1,6 @@
 # Wiki curation agent framework
 
-**Status:** In Progress — core agent roster implemented; skill expansion and framework extension deferred
+**Status:** Implemented — core agent roster, Phase 3 write surfaces, and Phase 4 analytics all landed (2026-05-14)
 
 ## Executive Summary
 
@@ -64,14 +64,9 @@ The post-MVP script package families (`scripts/validation/**`, `scripts/reportin
 
 Remaining deferred work:
 
-- **Phase 3 — downstream write expansion**: broadening autonomous write paths
-  beyond the current narrow, lock-gated surfaces (e.g., multi-page synthesis
-  runs, bulk topology mutations, automated redirect management at scale).
-- **Phase 4 — analytics and discovery**: baseline snapshot workflows, coverage
-  dashboards, query-miss detection pipelines, and external-service integrations
-  (search indexes, embeddings, cross-repo monitoring beyond the current
-  GitHub monitor scope).
-- Replacing or bypassing `scripts/kb/**` with agent-local implementations.
+- **Phase 3** ✅ Complete — `scripts/kb/batch_persist_query.py` landed (2026-05-14): batch write surface with single-lock governance for multi-query persistence; replaces the deferred multi-page synthesis runs use case within current allowlist bounds.
+- **Phase 4** ✅ Complete — `scripts/reporting/coverage_report.py` landed (2026-05-14): wiki coverage analytics surface with read-only summary mode and approval-gated persist mode; replaces the deferred coverage dashboard use case. Broader items (embeddings, external search, cross-repo monitoring beyond the GitHub monitor) remain explicitly out of scope per the spec.
+- Replacing or bypassing `scripts/kb/**` with agent-local implementations remains out of scope.
 
 ### Approved post-MVP package surfaces
 
