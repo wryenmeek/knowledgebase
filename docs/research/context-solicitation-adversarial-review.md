@@ -103,7 +103,7 @@ Cross-reference checks: mattpocock/skills has zero references to wryenmeek or dd
 | O4 | `qa` (deprecated) explicitly caps questions at "2-3 short clarifying questions" [^3] | Counter-evidence to the no-limit questioning thesis that the report misses entirely |
 | O5 | KB's wiki is completely empty (all `.gitkeep` files, epoch timestamps) | Report compares DDC's 41+ entities against KB's 102 skills — scaffolding vs. content, a category error |
 
-> **Update (2026-05-13):** `wiki/concepts/` now contains 6 curated pages (`context-md-domain-model.md`, `github-customizations-governance.md`, `google-drive-source-monitoring.md`, `knowledgebase-spec.md`, `pre-commit-guardrails.md`, `wiki-quality-best-practices.md`) and `wiki/sources/` contains 7 processed source documents.
+> **Update (2026-05-13):** `wiki/concepts/` now contains 6 curated pages (`context-md-domain-model.md`, `github-customizations-governance.md`, `google-drive-source-monitoring.md`, `knowledgebase-spec.md`, `pre-commit-guardrails.md`, `wiki-quality-best-practices.md`) and `wiki/sources/` contains 7 processed source documents (excluding the directory README).
 
 ### 3.2 Major omissions (materially change analysis)
 

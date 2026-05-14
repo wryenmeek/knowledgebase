@@ -1,6 +1,6 @@
 # DDC vs Knowledgebase: Comparative Analysis
 
-> ⚠️ **Review note (2026-05-13):** The AFK adoption recommendations in §Recommendations are blocked by [ADR-014](../decisions/ADR-014-hitl-afk-work-classification.md). LLM-driven wiki updates do not qualify for the AFK allowlist (which permits only deterministic, bounded writes). The adversarial review is at [DDC Adversarial Review](./ddc-adversarial-review.md). Treat recommendations requiring LLM judgment as HITL tasks.
+> ⚠️ **Review note (2026-05-13):** The AFK adoption recommendations in §Recommendations are blocked by [ADR-014](../decisions/ADR-014-hitl-afk-work-classification.md). LLM-driven wiki updates do not qualify for the AFK allowlist (which permits only deterministic, bounded writes). The adversarial review is at [DDC Adversarial Review](./ddc-adversarial-review.md). Per ADR-014, treat recommendations requiring LLM judgment as HITL tasks.
 
 ## Executive Summary
 
@@ -66,7 +66,7 @@ DDC is a **monorepo methodology toolkit** organized around the iterative "fail-t
 
 ### Knowledgebase Architecture
 
-The knowledgebase is a **policy-governed, self-organizing knowledge repository** with six CI lanes, 21 ADRs, dual-layer concurrency guards, and a deny-by-default write-surface matrix[^9]:
+The knowledgebase is a **policy-governed, self-organizing knowledge repository** with six CI lanes, 22 ADRs, dual-layer concurrency guards, and a deny-by-default write-surface matrix[^9]:
 
 | Component | Purpose |
 |-----------|---------|
@@ -75,7 +75,7 @@ The knowledgebase is a **policy-governed, self-organizing knowledge repository**
 | `schema/` | 12 contract files governing every write operation[^12] |
 | `scripts/kb/` | Deterministic Python execution surface[^13] |
 | `.github/agents/` | 17 agent personas in a strict orchestration pipeline[^14] |
-| `.github/skills/` | 85+ skills across 14 functional categories[^15] *(Note: actual count as of 2026-05: 102 skills)* |
+| `.github/skills/` | 102 skills (as of 2026-05)[^15] |
 | `docs/decisions/` | 21 Architecture Decision Records, all Accepted[^16] |
 
 ### Key Architectural Differences
@@ -259,7 +259,7 @@ The knowledgebase uses **17 agent personas** in a strict orchestration pipeline 
 **Dev-Support Agents (advisory):**
 - `code-reviewer`, `test-engineer`, `security-auditor`, `documentation-engineer`, `solutions-architect`, `framework-engineer`
 
-The knowledgebase uses **85+ skills** across 14 functional categories[^15] *(Note: actual count as of 2026-05: 102 skills)*, with each skill defined by a `SKILL.md` procedural contract. Skills are classified as Direct (operator-safe), Persona (pipeline-only), or Both.
+The knowledgebase uses **102 skills** (as of 2026-05)[^15], with each skill defined by a `SKILL.md` procedural contract. Skills are classified as Direct (operator-safe), Persona (pipeline-only), or Both.
 
 ### Key Differences
 
@@ -599,7 +599,7 @@ This could be a new `wiki/curation-logs/` namespace with its own page type.
 [^13]: wryenmeek/knowledgebase:scripts/kb/ — Deterministic Python execution surface
 [^14]: [wryenmeek/knowledgebase:.github/agents/](https://github.com/wryenmeek/knowledgebase/tree/main/.github/agents) — 17 agent personas
 [^15]: [wryenmeek/knowledgebase:.github/skills/using-agent-skills/SKILL.md](https://github.com/wryenmeek/knowledgebase/blob/main/.github/skills/using-agent-skills/SKILL.md) — Complete skills inventory
-[^16]: [wryenmeek/knowledgebase:docs/decisions/README.md](https://github.com/wryenmeek/knowledgebase/blob/main/docs/decisions/README.md) — ADR index (21 ADRs)
+[^16]: [wryenmeek/knowledgebase:docs/decisions/README.md](https://github.com/wryenmeek/knowledgebase/blob/main/docs/decisions/README.md) — ADR index (22 ADRs)
 [^17]: ea-toolkit/ddc — No `.github/workflows/` directory found; no CI/CD
 [^18]: [wryenmeek/knowledgebase:docs/architecture.md:51-63](https://github.com/wryenmeek/knowledgebase/blob/main/docs/architecture.md) — CI-1 through CI-6 lane descriptions
 [^19]: ea-toolkit/ddc — No `tests/`, `pytest.ini`, or test files found

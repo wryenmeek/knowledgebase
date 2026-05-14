@@ -276,7 +276,7 @@ Unlike contract test cascades above, these documentation updates were historical
 |---|---|---|
 | A new ADR (`docs/decisions/ADR-NNN-*.md`) | Row in `docs/decisions/README.md` index table | `tests/kb/test_doc_cascade_completeness.py` |
 | A new CI or support workflow (`.github/workflows/*.yml`) | Row in `docs/mvp-runbook.md` workflow table | `tests/kb/test_doc_cascade_completeness.py` |
-| `Status: Implemented` on a `docs/ideas/` doc | Archive to `raw/inbox/` and leave stub | `tests/kb/test_docs_ideas_archival.py` |
+| `Status: Implemented` on a `docs/ideas/` doc | Archive to `raw/inbox/` (pre-ingest) or `wiki/sources/` (post-ingest) and leave stub | `tests/kb/test_docs_ideas_archival.py` |
 | A new `scripts/<pkg>/` package | `docs/ideas/spec.md` Phase 2 family list | *(not yet enforced)* |
 | A new skill (`.github/skills/<name>/SKILL.md`) | All 6 wiring targets below | *(not yet enforced)* |
 | An ADR `## Status` changed to include "amended" or "extended" | `docs/decisions/README.md` status cell updated in same commit | `scripts/hooks/check_adr_cross_ref.py` (pre-commit), `tests/kb/test_adr_readme_status_sync.py` |

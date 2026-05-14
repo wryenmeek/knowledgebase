@@ -121,9 +121,9 @@ class TestDocsIdeasStatusField(unittest.TestCase):
     """
 
     _STATUS_RE = re.compile(r"\*\*Status:\*\*")
-    _ALLOWED_STATUSES_RE = re.compile(
-        r"\*\*Status:\*\*\s+"
-        r"(Proposed|In Progress|Implemented(?:\s+\(Phase \d+\))?(?:\s+—[^*\n]+)?)"
+    _STATUS_VALUE_RE = re.compile(r"\*\*Status:\*\*\s+([^\n]+)")
+    _ALLOWED_STATUS_VALUE_RE = re.compile(
+        r"^(Proposed|In Progress|Implemented(?:\s+\(Phase \d+\))?)(?:\s+—[^*\n]+)?$"
     )
 
     def test_every_ideas_doc_has_status_field(self) -> None:
@@ -149,15 +149,17 @@ class TestDocsIdeasStatusField(unittest.TestCase):
 
         for md_file in sorted(IDEAS_DIR.glob("*.md")):
             text = md_file.read_text(encoding="utf-8")
-            if not self._STATUS_RE.search(text):
+            m = self._STATUS_VALUE_RE.search(text)
+            if m is None:
                 continue  # Missing status handled by test above
 
             with self.subTest(doc=md_file.name):
+                value = m.group(1).strip()
                 self.assertRegex(
-                    text,
-                    self._ALLOWED_STATUSES_RE,
-                    f"{md_file.name}: **Status:** field uses an unrecognized value. "
-                    f"Allowed values: Proposed, In Progress, Implemented, "
+                    value,
+                    self._ALLOWED_STATUS_VALUE_RE,
+                    f"{md_file.name}: **Status:** field uses an unrecognized value "
+                    f"'{value}'. Allowed values: Proposed, In Progress, Implemented, "
                     f"Implemented (Phase N) (optionally followed by ' — <detail>'). "
                     f"See copilot-instructions.md § docs/ideas/ status lifecycle.",
                 )

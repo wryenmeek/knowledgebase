@@ -11,7 +11,7 @@
 
 The original comparative report is **structurally sound but materially misleading** in three critical ways:
 
-1. **The KB has zero curated content.** The wiki directories are empty (`.gitkeep` only). The report compares DDC's 41 curated entities against KB's 101 skills *(actual: 102 as of 2026-05)* and 21 ADRs as if they represent comparable knowledge systems. They don't — one is a populated research archive, the other is a built-but-unfilled filing cabinet.
+1. **The KB has zero curated content.** The wiki directories are empty (`.gitkeep` only). The report compares DDC's 41 curated entities against KB's 101 skills and 21 ADRs as if they represent comparable knowledge systems. They don't — one is a populated research archive, the other is a built-but-unfilled filing cabinet.
 
 2. **"Deeply complementary" is diplomatically wrong.** DDC's philosophy explicitly rejects the governance-first model the KB institutionalizes. DDC content (expert-oral, tribal, sourceless) would be structurally rejected by KB's intake pipeline. They are philosophically antagonistic systems that could coexist only by task-segmentation, not by integration.
 
@@ -50,7 +50,7 @@ The report contains **6 factual errors**, **8 material omissions**, and **4 fram
 | # | Claim | Verdict | Evidence |
 |---|-------|---------|----------|
 | K1 | 17 agent personas | ✅ **TRUE** | Exact 17 files, exact name list match. |
-| K2 | "85+ skills across 14 functional categories" | ❌ **FALSE** | **101 skills** *(actual: 102 as of 2026-05)* (not 85+). "14 categories" is a selective miscount: 23 distinct Phase groupings exist in the Quick Reference table; "14" counts only KB/\* (10) + Dev/\* (4) while ignoring 9 general-engineering phases. No structural category system exists. |
+| K2 | "85+ skills across 14 functional categories" | ❌ **FALSE** | **101 skills** (not 85+). "14 categories" is a selective miscount: 23 distinct Phase groupings exist in the Quick Reference table; "14" counts only KB/\* (10) + Dev/\* (4) while ignoring 9 general-engineering phases. No structural category system exists. |
 | K3 | 21 ADRs, all Accepted | ✅ **TRUE** | 21 ADRs in README index, all "Accepted." |
 | K4 | 6 CI lanes | ✅ **TRUE** (as stated) | 6 named CI-1..CI-6 lanes correct. But **11 total workflows** — the report omits 5 additional workflows (`fleet-dispatch`, `fleet-merge`, `github-customizations-freshness`, `pre-commit`, `wiki-freshness`). |
 | K5 | 12 contract files in schema/ | ⚠️ **PARTIALLY TRUE** | 12 files is exact. But only 9 are named `*-contract.md`. The other 3 are `CONTEXT.md` (vocabulary), `ingest-checklist.md` (checklist), and `page-template.md` (template). |
@@ -111,9 +111,9 @@ The report contains **6 factual errors**, **8 material omissions**, and **4 fram
 | `raw/inbox/` | 6 files — all infrastructure design docs, no domain content |
 | Source monitors | All `uninitialized`, all timestamps `null` |
 
-> **Update (2026-05-13):** `wiki/concepts/` now contains 6 curated pages (`context-md-domain-model.md`, `github-customizations-governance.md`, `google-drive-source-monitoring.md`, `knowledgebase-spec.md`, `pre-commit-guardrails.md`, `wiki-quality-best-practices.md`) and `wiki/sources/` contains 7 processed source documents.
+> **Update (2026-05-13):** `wiki/concepts/` now contains 6 curated pages (`context-md-domain-model.md`, `github-customizations-governance.md`, `google-drive-source-monitoring.md`, `knowledgebase-spec.md`, `pre-commit-guardrails.md`, `wiki-quality-best-practices.md`) and `wiki/sources/` contains 7 processed source documents (excluding the directory README).
 
-**Impact:** The report compares DDC's 41 curated entities and 5 completed cycle logs against KB's framework infrastructure (101 skills *(actual: 102 as of 2026-05)*, 21 ADRs, 6 CI lanes). This is a category error — it compares populated content against empty scaffolding. The report should have stated plainly: "The KB has zero curated domain content. All comparisons are between DDC's demonstrated output and KB's theoretical capability."
+**Impact:** The report compares DDC's 41 curated entities and 5 completed cycle logs against KB's framework infrastructure (101 skills, 21 ADRs, 6 CI lanes). This is a category error — it compares populated content against empty scaffolding. The report should have stated plainly: "The KB has zero curated domain content. All comparisons are between DDC's demonstrated output and KB's theoretical capability."
 
 ### Omission 2: Context Gap Scanner Is a Shipped Web Application
 

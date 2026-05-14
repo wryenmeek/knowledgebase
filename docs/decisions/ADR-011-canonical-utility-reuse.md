@@ -25,7 +25,7 @@ New code drifted toward re-implementing helpers it was unaware of.
 
 ## Decision
 
-**Four modules are the canonical utility library for this codebase.** Before implementing
+**Five modules are the canonical utility library for this codebase.** Before implementing
 any new helper function, constant, or utility, all agents and developers MUST search these
 modules for existing functionality:
 

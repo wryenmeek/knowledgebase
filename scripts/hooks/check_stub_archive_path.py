@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 INBOX_DIR = REPO_ROOT / "raw" / "inbox"
 WIKI_SOURCES_DIR = REPO_ROOT / "wiki" / "sources"
 
-_ARCHIVE_PTR_RE = re.compile(r"Archived to `(raw/inbox/[^`]+)`")
+_ARCHIVE_PTR_RE = re.compile(r"Archived to `((raw/inbox|wiki/sources)/[^`]+)`")
 
 
 def _get_staged_content(path: str) -> str | None:

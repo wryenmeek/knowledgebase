@@ -28,7 +28,12 @@ POLICY_IDENTIFIERS: tuple[str, ...] = tuple(policy.value for policy in PolicyId)
 
 
 class TokenProfileId(StrEnum):
-    """Canonical CI token profile identifiers from SPEC.md."""
+    """Canonical CI token profile identifiers from SPEC.md.
+
+    Declaration order matches CI workflow numbering (CI-1..CI-N).
+    tests/kb/test_contracts.py asserts the positional tuple — maintain CI order
+    when adding new profiles.
+    """
 
     GATEKEEPER = "tp-gatekeeper"
     ANALYST_READONLY = "tp-analyst-readonly"

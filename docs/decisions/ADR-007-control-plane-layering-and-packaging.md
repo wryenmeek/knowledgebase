@@ -10,13 +10,22 @@ Accepted — amended in-place: post-MVP package surface approvals added (see § 
 
 When accepted on 2026-04-16, ADR-007 defined an MVP-only package boundary
 limited to `.github/agents/**`, `.github/skills/**`, `scripts/kb/**`, and
-`tests/kb/**`. This amendment keeps that boundary as the statement of what is
-currently landed and additionally approves post-MVP package surfaces at
-`scripts/validation/**`, `scripts/reporting/**`, `scripts/context/**`,
-`scripts/maintenance/**`, and `scripts/ingest/**`. It does **not** change the
-CI-1/CI-2/CI-3 permission split from ADR-004, the workflow-plus-lock
-concurrency model from ADR-005, the authoritative source boundary from
-ADR-006, or deny-by-default behavior for undeclared write paths.
+`tests/kb/**`.
+
+## Amendment
+
+**Date:** 2026-04-16
+
+**What changed:** Post-MVP package surfaces approved — `scripts/validation/**`,
+`scripts/reporting/**`, `scripts/context/**`, `scripts/maintenance/**`,
+`scripts/ingest/**`, `scripts/github_monitor/**` (authorized by ADR-012),
+`scripts/drive_monitor/**` (authorized by ADR-021), `scripts/hooks/**`
+(authorized by ADR-016), and `scripts/fleet/**` (authorized by ADR-019).
+See § Approved post-MVP package surfaces for the full list.
+
+**What didn't change:** CI-1/CI-2/CI-3 permission split (ADR-004), the
+workflow-plus-lock concurrency model (ADR-005), the authoritative source
+boundary (ADR-006), and deny-by-default behavior for undeclared write paths.
 
 ## Context
 

@@ -28,7 +28,7 @@ The system is designed to keep knowledge:
 
 ## Canonical utility modules
 
-Before implementing any new helper, check these four canonical modules. See ADR-011.
+Before implementing any new helper, check these five canonical modules. See ADR-011.
 
 | Module | Scope |
 |---|---|
@@ -36,6 +36,7 @@ Before implementing any new helper, check these four canonical modules. See ADR-
 | `scripts/kb/write_utils.py` | Safe file writes, atomic operations, `check_no_symlink_path`, write-lock primitives, rollback helpers. |
 | `scripts/kb/contracts.py` | Status enums, reason codes, governed artifact contracts, result type definitions. |
 | `scripts/_optional_surface_common.py` | Optional-surface CLI framework, `SurfaceResult`, `run_surface_cli`, `JsonArgumentParser`. |
+| `scripts/kb/agents_matrix_utils.py` | Agent write-surface matrix parsing and validation utilities used by pre-commit hooks. |
 
 **Rule:** Import from canonical modules rather than re-implementing equivalent logic. Extend the canonical module if a related helper needs expanding. Local copies of module-level constants require a `# keep in sync with <module>.<CONSTANT>` drift guard.
 
@@ -114,6 +115,7 @@ though they are not all landed today:
 | `scripts/ingest/**` | Heavyweight ingest/conversion helpers | ADR-006 still limits authoritative ingest inputs to `raw/inbox/**` plus checksummed `raw/assets/**`. |
 | `scripts/github_monitor/**` | GitHub source monitoring: drift detection, asset fetching, diff-aware wiki synthesis | ADR-012 governs the fetch-and-vendor cycle; `raw/assets/{owner}/{repo}/{sha}/**` assets are authoritative only when checksummed per ADR-006; write-capable surfaces must be declared in `AGENTS.md` before writing. |
 | `scripts/drive_monitor/**` | Google Drive source monitoring: drift detection, asset fetching, diff-aware wiki synthesis | ADR-021 governs the fetch-and-vendor cycle; `raw/assets/gdrive/{alias}/{file_id}/{version}/**` assets are authoritative only when checksummed; write-capable surfaces must be declared in `AGENTS.md` before writing. |
+| `scripts/hooks/**` | Pre-commit and CI governance hook scripts | Hooks are read-only — no repository writes. They enforce local governance guardrails (ADR-016 authorizes this family). |
 
 Any future post-MVP writer that touches shared wiki artifacts must keep the
 ADR-005 workflow-concurrency plus `wiki/.kb_write.lock` model, and any

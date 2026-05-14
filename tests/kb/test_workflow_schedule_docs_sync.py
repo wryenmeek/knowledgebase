@@ -9,7 +9,6 @@ workflow table.
 
 from __future__ import annotations
 
-import re
 import unittest
 from pathlib import Path
 
@@ -18,9 +17,6 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 RUNBOOK_PATH = REPO_ROOT / "docs" / "mvp-runbook.md"
-
-# Matches a cron value in either single or double quotes (as used in workflow YAML).
-_CRON_VALUE_RE = re.compile(r"""cron:\s+['"]([^'"]+)['"]""")
 
 
 def _extract_cron_schedules(workflow_path: Path) -> list[str]:

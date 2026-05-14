@@ -62,7 +62,7 @@ content.
 ### GitHub Pages
 
 The wiki is deployed as a browsable website at
-**<https://wryenmeek.github.io/knowledgebase>**. The `pages.yml` workflow builds
+**<https://wryenmeek.com/knowledgebase/>**. The `pages.yml` workflow builds
 the MkDocs Material site and publishes it to GitHub Pages on every push.
 
 ### Understanding wiki pages

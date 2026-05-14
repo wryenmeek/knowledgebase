@@ -117,6 +117,31 @@ unchanged; only the dispatch mechanism changed.
 **Setup:** `scripts/hooks/setup-hooks.sh` automates installation:
 `pip install pre-commit && pre-commit install`.
 
+### Amendment 2 — Documentation cascade and archive-pointer hooks (2026-05-13)
+
+**Date:** 2026-05-13
+
+**What changed:** Two new hooks added to `.pre-commit-config.yaml`:
+
+1. **`check_adr_cross_ref.py` (id: `adr-cross-ref-cascade`)** — when an ADR's
+   `## Status` line changes to include "amended" or "extended", `docs/decisions/README.md`
+   must also be staged in the same commit. Enforces the ADR → README cascade rule
+   documented in `.github/copilot-instructions.md` § Documentation cascades.
+
+2. **`check_stub_archive_path.py` (id: `stub-archive-path`)** — validates that
+   `docs/ideas/` stubs with an `Archived to \`…\`` pointer reference a file that
+   exists at either `raw/inbox/<file>` (pre-ingest) or `wiki/sources/<file>`
+   (post-ingest). Enforces archive-pointer integrity so stale pointers are caught
+   at commit time rather than discovered during intake.
+
+Both hooks read staged content via `git show :<path>` and are `read-only` —
+they produce no repository writes. Their write-surface matrix rows are declared
+in `AGENTS.md`.
+
+**What didn't change:** All prior hook behavior, the pre-commit framework
+dispatch mechanism, the `scripts/hooks/` script location, and the CI-2
+enforcement gate.
+
 ## References
 
 - `scripts/hooks/` — hook implementation scripts

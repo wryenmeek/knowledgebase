@@ -128,5 +128,6 @@ before any code is committed:
 - `docs/decisions/ADR-012-github-source-monitoring.md` — approval of `scripts/github_monitor/**`
 - `docs/decisions/ADR-016-pre-commit-hooks-governance.md` — approval of `scripts/hooks/**`
 - `docs/decisions/ADR-019-fleet-jules-orchestration.md` — approval of `scripts/fleet/**`
+- `docs/decisions/ADR-021-google-drive-source-monitoring.md` — approval of `scripts/drive_monitor/**`
 - `AGENTS.md` § Write-surface matrix — operational enforcement of approved families
 - `docs/ideas/spec.md` — post-MVP rollout spec with package placement rules

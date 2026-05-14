@@ -1,6 +1,6 @@
 # Context-Solicitation Skill Design Patterns: A Three-Repository Comparative Analysis
 
-> ⚠️ **Superseded.** The convergence thesis in this document is disputed by the adversarial review. See [Final Synthesis: Context-Solicitation Skill Design Patterns](./context-solicitation-final-synthesis.md) for validated findings. The original is preserved for provenance.
+> ⚠️ **Superseded.** The convergence thesis in this document is disputed by the adversarial review. See [Final Synthesis: Context-Solicitation Skill Design Patterns](./context-solicitation-final-synthesis.md) for corrected findings. The original is preserved for provenance.
 
 **Scope:** How `mattpocock/skills`, `ea-toolkit/ddc`, and `wryenmeek/knowledgebase` approach the problem of designing AI agent skills that effectively solicit, validate, and preserve context from human collaborators.
 
