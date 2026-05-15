@@ -173,7 +173,7 @@ prevents ADR-007 drift into a second runtime.
 | Policy/evidence/self-audit workflows | Active, doc-only | `validate-inbox-source`, `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace` |
 | Ingest and query persistence wrappers | Active, doc-only | `run-ingest`, `persist-query-result` |
 | Intake provenance workflows | Active, doc-only | `register-source-provenance`, `checksum-asset`, `create-intake-manifest`, `log-ingest-event` |
-| Synthesis workflows | Active, doc-only | `synthesize-entity-page`, `synthesize-concept-page`, `claim-inventory` |
+| Synthesis workflows | Active, mixed | `extract-entities-and-claims` (has `logic/`; calls GitHub Models API, read-only extraction bundle), `synthesize-entity-page` (has `logic/`; writes `wiki/entities/**` drafts via CI-3), `synthesize-concept-page` (has `logic/`; writes `wiki/concepts/**` drafts via CI-3), `claim-inventory` (doc-only) |
 | Maintenance-arm workflows | Active, doc-only | `semantic-wiki-lint`, `freshness-audit`, `cross-reference-symmetry-check`, `propose-supersede-or-archive`, `append-maintenance-log`, `patrol-human-edits`, `route-noncompliant-edit-for-review`, `manage-redirects-and-anchors`, `detect-original-research`, `compare-against-existing-pages`, `escalate-contradictions` |
 | Topology / discovery workflows | Active, has logic/ | `suggest-backlinks` — neighborhood-scoped scanner (`logic/suggest_backlinks.py`) proposes backlink candidates; no direct page mutation |
 | Quality and orchestration workflows | Active, doc-only | `score-page-quality`, `compute-kpis`, `analyze-missed-queries`, `prioritize-curation-backlog`, `route-wiki-task`, `plan-wiki-job`, `fail-closed-on-errors`, `quality-pass-chain` |

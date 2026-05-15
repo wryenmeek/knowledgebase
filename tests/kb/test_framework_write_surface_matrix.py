@@ -240,6 +240,27 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("schema/rejection-registry-contract.md", "docs/decisions/ADR-013-rejected-source-registry.md"),
         "Hard-fail behavior": ("duplicate sha256", "path outside", "lock unavailable", "fail closed", "append failure"),
     },
+    ".github/skills/extract-entities-and-claims/logic/**": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "writes are forbidden"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("scripts/kb/page_template_utils.py", "schema/page-template.md"),
+        "Hard-fail behavior": ("soft_skipped", "hard exit 1", "missing source file"),
+    },
+    ".github/skills/synthesize-entity-page/logic/**": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("wiki/entities/",),
+        "Lock requirements": ("wiki/.kb_write.lock",),
+        "Artifact / schema owners": ("scripts/kb/write_utils.py", "schema/page-template.md"),
+        "Hard-fail behavior": ("lock_unavailable", "ambiguous dedup", "slug collision", "fail closed"),
+    },
+    ".github/skills/synthesize-concept-page/logic/**": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("wiki/concepts/",),
+        "Lock requirements": ("wiki/.kb_write.lock",),
+        "Artifact / schema owners": ("scripts/kb/write_utils.py", "schema/page-template.md"),
+        "Hard-fail behavior": ("lock_unavailable", "ambiguous dedup", "slug collision", "fail closed"),
+    },
     "scripts/ingest/**": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("None by default", "raw/processed/**", "wiki/**"),

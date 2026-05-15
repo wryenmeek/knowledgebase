@@ -15,7 +15,7 @@ pages.
 
 ## Classification
 
-- **Mode:** Doc-only workflow
+- **Mode:** Blocking-only with read-only extraction
 - **MVP status:** Active
 - **Execution boundary:** Extraction, packaging, and handoff only. Do not create
   pages, mutate `wiki/`, or invent claim-verification runtime here.

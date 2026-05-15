@@ -238,6 +238,7 @@ class Ci3WorkflowContractTests(unittest.TestCase):
                 "actions": "read",
                 "checks": "read",
                 "contents": "write",
+                "models": "read",
                 "pull-requests": "write",
             },
         )

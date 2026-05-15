@@ -14,11 +14,11 @@ and `schema/ontology-entity-contract.md`. The draft is not published directly â€
 routes back through `knowledgebase-orchestrator` for topology and index review before
 any write gate opens.
 
-**Doc-only workflow.** No `logic/` dir is introduced.
+**Blocking-only with narrow write capability.** Has `logic/` dir for CI-3 synthesis stage.
 
 ## Classification
 
-- **Mode:** Doc-only workflow
+- **Mode:** Blocking-only with narrow write capability
 - **MVP status:** Active
 - **Execution boundary:** Drafting only. No direct wiki write; draft routes back through
   `knowledgebase-orchestrator` before publication.

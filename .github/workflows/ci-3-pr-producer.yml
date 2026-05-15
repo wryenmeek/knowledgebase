@@ -121,6 +121,7 @@ jobs:
               "actions": "read",
               "checks": "read",
               "contents": "write",
+              "models": "read",
               "pull-requests": "write",
           }
 
@@ -377,6 +378,7 @@ jobs:
       actions: read
       checks: read
       contents: write
+      models: read
       pull-requests: write
     env:
       CI_ID: CI-3
@@ -458,6 +460,7 @@ jobs:
         if: steps.sources.outputs.has_sources == 'true'
         env:
           SOURCE_LIST: ${{ steps.sources.outputs.sources }}
+          SYNTHESIS_GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -466,6 +469,7 @@ jobs:
             python3 -c $'import json, sys\nfield = sys.argv[1]\npayload = sys.stdin.read().strip()\ntry:\n    value = json.loads(payload).get(field, "")\nexcept Exception:\n    value = ""\nprint("" if value is None else value)' "${field_name}"
           }
 
+          written_source_pages=()
           while IFS= read -r source_path; do
             [[ -z "${source_path}" ]] && continue
 
@@ -490,7 +494,57 @@ jobs:
               fi
               exit 1
             fi
+
+            # Collect written source page path for synthesis stage
+            written_page="$(printf '%s' "${ingest_json}" | python3 -c $'import json,sys\nd=json.load(sys.stdin)\nfor s in d.get("per_source",[]):\n    if s.get("status")=="written" and s.get("source_page"):\n        print(s["source_page"])\n        break' 2>/dev/null || true)"
+            if [[ -n "${written_page}" ]]; then
+              written_source_pages+=("${written_page}")
+            fi
           done <<< "${SOURCE_LIST}"
+
+          # --- Synthesis Curator stage ---
+          # Runs before update_index so entity/concept drafts are included in the index.
+          if [[ "${#written_source_pages[@]}" -gt 0 ]]; then
+            echo "[CI-3] synthesis: processing ${#written_source_pages[@]} source page(s)"
+            for source_page in "${written_source_pages[@]}"; do
+              echo "[CI-3] synthesis: extract from ${source_page}"
+              bundle_path="/tmp/ci3-bundle-$(basename "${source_page}" .md).json"
+
+              set +e
+              python3 .github/skills/extract-entities-and-claims/logic/extract_entities.py \
+                --source-page "${source_page}" \
+                --wiki-root wiki \
+                --github-token "${SYNTHESIS_GITHUB_TOKEN}" \
+                --output "${bundle_path}"
+              extract_exit=$?
+              set -e
+
+              if [[ "${extract_exit}" -ne 0 ]]; then
+                echo "::warning::Synthesis extraction failed for ${source_page}; skipping." >&2
+                continue
+              fi
+
+              set +e
+              python3 .github/skills/synthesize-entity-page/logic/synthesize_entity_page.py \
+                --extraction-bundle "${bundle_path}" \
+                --wiki-root wiki
+              entity_exit=$?
+              set -e
+              if [[ "${entity_exit}" -ne 0 ]]; then
+                echo "::warning::Entity synthesis had errors for ${source_page}; continuing." >&2
+              fi
+
+              set +e
+              python3 .github/skills/synthesize-concept-page/logic/synthesize_concept_page.py \
+                --extraction-bundle "${bundle_path}" \
+                --wiki-root wiki
+              concept_exit=$?
+              set -e
+              if [[ "${concept_exit}" -ne 0 ]]; then
+                echo "::warning::Concept synthesis had errors for ${source_page}; continuing." >&2
+              fi
+            done
+          fi
 
           # update_index.main() acquires exclusive_write_lock internally —
           # do NOT wrap in an outer lock (flock is non-reentrant across fds).

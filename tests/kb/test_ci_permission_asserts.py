@@ -111,6 +111,7 @@ CI3_PR_PRODUCER_JOB_PERMISSIONS = {
     "actions": "read",
     "checks": "read",
     "contents": "write",
+    "models": "read",
     "pull-requests": "write",
 }
 

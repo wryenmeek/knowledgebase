@@ -47,7 +47,7 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     "sync-knowledgebase-state": {"logic": True},
     "review-wiki-plan": {"logic": False, "classification": "Doc-only workflow"},
     "audit-knowledgebase-workspace": {"logic": False, "classification": "Doc-only workflow"},
-    "extract-entities-and-claims": {"logic": False, "classification": "Doc-only workflow"},
+    "extract-entities-and-claims": {"logic": True, "classification": "Blocking-only with read-only extraction"},
     "retrieve-from-index": {"logic": False, "classification": "Doc-only workflow"},
     "synthesize-cited-answer": {"logic": False, "classification": "Doc-only workflow"},
     "prepare-high-value-synthesis-handoff": {"logic": False, "classification": "Doc-only workflow"},
@@ -61,8 +61,8 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     "create-intake-manifest": {"logic": False, "classification": "Doc-only workflow"},
     "log-ingest-event": {"logic": False, "classification": "Doc-only workflow"},
     # G3a Wave 2 — synthesis (synthesis-curator, evidence-verifier)
-    "synthesize-entity-page": {"logic": False, "classification": "Doc-only workflow"},
-    "synthesize-concept-page": {"logic": False, "classification": "Doc-only workflow"},
+    "synthesize-entity-page": {"logic": True, "classification": "Blocking-only with narrow write capability"},
+    "synthesize-concept-page": {"logic": True, "classification": "Blocking-only with narrow write capability"},
     "claim-inventory": {"logic": False, "classification": "Doc-only workflow"},
     # G4b — post-draft claim verification (evidence-verifier)
     "semi-formal-reasoning": {"logic": False, "classification": "Doc-only workflow"},
