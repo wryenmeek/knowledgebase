@@ -39,6 +39,32 @@ boundary is understood, and any content-changing action routes back through
 `test-engineer`, `security-auditor`) help review changes but do not bypass the
 wiki governance lane.
 
+## Template instantiation (new instances only)
+
+When setting up a fresh copy of this repository from the GitHub template, use
+`scripts/init.py` to wipe placeholder content and regenerate skeleton artifacts
+before starting real curation work.
+
+```bash
+# Interactive (prompts for confirmation):
+python3 scripts/init.py --fresh
+
+# Non-interactive (CI-safe; requires INIT_ALLOW_WIPE=1 env var):
+INIT_ALLOW_WIPE=1 python3 scripts/init.py --fresh --yes
+```
+
+What `--fresh` does:
+- Verifies `REPO_ROOT` sentinel files (`pyproject.toml`, `.git`, `AGENTS.md`, `schema/`) are present
+- Checks that `wiki/.kb_write.lock` is not held (blocks if it is)
+- Wipes 10 content directories: `wiki/analyses/`, `wiki/concepts/`, `wiki/entities/`, `wiki/sources/`, `raw/inbox/`, `raw/processed/`, `raw/assets/`, `raw/rejected/`, `raw/github-sources/`, `raw/drive-sources/`
+- Removes stale lock files under `raw/` (but never touches `wiki/.kb_write.lock`)
+- Regenerates `raw/processed/SPEC.md` skeleton, a sample inbox source, and stub wiki artifacts
+- Runs `pip install -e ".[dev]"` and `pytest tests/` to verify the clean state
+
+**Do not run on a live instance.** This is a destructive reset intended only for
+template instances before any real content has been added. See `TEMPLATE.md` for
+the full setup guide.
+
 ## Phase 0 bootstrap: runtime prerequisites
 
 Make wrapper validation runnable through the same repo-local bootstrap contract

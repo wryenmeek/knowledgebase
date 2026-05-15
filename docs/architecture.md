@@ -116,6 +116,7 @@ though they are not all landed today:
 | `scripts/github_monitor/**` | GitHub source monitoring: drift detection, asset fetching, diff-aware wiki synthesis | ADR-012 governs the fetch-and-vendor cycle; `raw/assets/{owner}/{repo}/{sha}/**` assets are authoritative only when checksummed per ADR-006; write-capable surfaces must be declared in `AGENTS.md` before writing. |
 | `scripts/drive_monitor/**` | Google Drive source monitoring: drift detection, asset fetching, diff-aware wiki synthesis | ADR-021 governs the fetch-and-vendor cycle; `raw/assets/gdrive/{alias}/{file_id}/{version}/**` assets are authoritative only when checksummed; write-capable surfaces must be declared in `AGENTS.md` before writing. |
 | `scripts/hooks/**` | Pre-commit and CI governance hook scripts | Hooks are read-only — no repository writes. They enforce local governance guardrails (ADR-016 authorizes this family). |
+| `scripts/init.py` | Operator-only fresh-instance initialization for template instances; resets all content directories and regenerates skeleton artifacts (`raw/processed/SPEC.md`, sample inbox doc, stub wiki artifacts) | Operator-use only — never invoke in CI automation on a live instance; requires `--fresh` flag; `--yes` flag requires `INIT_ALLOW_WIPE=1` env var; checks `wiki/.kb_write.lock` before any write (blocks if held); uses `check_no_symlink_path` from `write_utils`; sole declared exception to the append-only `wiki/log.md` guardrail (full overwrite on clean-slate reset). |
 
 Any future post-MVP writer that touches shared wiki artifacts must keep the
 ADR-005 workflow-concurrency plus `wiki/.kb_write.lock` model, and any
@@ -214,6 +215,7 @@ Operators can validate the landed framework with these repo-local entrypoints:
 - Raw immutability: `raw/processed/**` must not be mutated after ingest.
 - Ingest-time SourceRefs may use provisional placeholder git SHAs; only reconciled commit-bound SourceRefs whose `git_sha` resolves to a real revision containing the cited artifact bytes count as authoritative provenance.
 - Concurrency guard: workflow-level concurrency group plus local lock file (`wiki/.kb_write.lock`).
+- **`wiki/log.md` append-only guardrail:** all governed surfaces must append-only; the sole declared exception is `scripts/init.py --fresh`, which performs a full overwrite as part of a clean-slate template reset. This exception is documented in `AGENTS.md` and is intentional.
 - Fail-closed behavior: missing prerequisites, permission mismatches, or lock contention stop writes.
 - Policy-gated query persistence: write only when `auto_persist_when_high_value` criteria pass.
 - Paths outside the current MVP surfaces plus the approved post-MVP package
