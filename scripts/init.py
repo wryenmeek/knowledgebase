@@ -1,0 +1,339 @@
+"""Fresh-instance initializer for the knowledgebase template.
+
+Usage:
+    python3 scripts/init.py --fresh [--yes]
+
+--fresh   Required flag. Wipes the content layer and scaffolds a clean
+          domain-ready instance.
+--yes     Skip the confirmation prompt (for CI / scripted use).
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Directories whose entire contents are wiped (dirs themselves are kept).
+CONTENT_DIRS = [
+    "wiki/analyses",
+    "wiki/concepts",
+    "wiki/entities",
+    "wiki/sources",
+    "raw/inbox",
+    "raw/processed",
+    "raw/assets",
+    "raw/rejected",
+    "raw/github-sources",
+    "raw/drive-sources",
+]
+
+# Stale lock files produced during normal operation; removed on fresh init.
+LOCK_FILES = [
+    "raw/.rejection-registry.lock",
+    "raw/.github-sources.lock",
+    "raw/.drive-sources.lock",
+    "wiki/.kb_write.lock",
+]
+
+_LOG_STUB = """\
+---
+type: process
+title: Knowledgebase Log
+status: active
+sources: []
+open_questions:
+  - "First state-change entry pending initial ingest workflow."
+confidence: 1
+sensitivity: internal
+updated_at: "1970-01-01T00:00:00Z"
+tags:
+  - audit
+  - chronology
+---
+
+# Knowledgebase Log
+
+Append-only chronology for knowledgebase state changes.
+
+## Policy notes
+
+- Record changes only when repository state changes.
+- No-op runs should not append entries.
+"""
+
+_INDEX_STUB = """\
+---
+type: process
+title: Knowledgebase Index
+status: active
+sources: []
+open_questions: []
+confidence: 1
+sensitivity: internal
+updated_at: "1970-01-01T00:00:00Z"
+tags:
+  - index
+  - catalog
+---
+
+# Knowledgebase Index
+
+Catalog generated deterministically from wiki content.
+
+## Sources
+_None_
+
+## Entities
+_None_
+
+## Concepts
+_None_
+"""
+
+_SPEC_STUB = """\
+# Domain Specification
+
+<!-- TODO: Replace this file with your domain's assumptions and policy decisions.
+     This file governs how ingest.py and synthesis workflows interpret your sources. -->
+
+## Assumptions and Defaults
+
+<!-- TODO: List your domain's core assumptions. Example:
+1. This repository implements a persistent wiki pattern (not query-time-only RAG).
+2. Raw source truth remains immutable once moved to raw/processed/.
+3. Confidence rubric is numeric 1..5 for synthesized wiki content.
+-->
+
+## Terminology
+
+<!-- TODO: Define canonical terms for your domain. Example:
+- **Policy**: ...
+- **Authority source**: ...
+-->
+
+## Sensitivity Levels
+
+<!-- TODO: Define sensitivity tiers used in frontmatter. Example:
+- internal: organization-internal only
+- public: safe for public release
+-->
+
+## Authority Sources
+
+<!-- TODO: List the authoritative sources for your domain. -->
+"""
+
+_SAMPLE_INBOX = """\
+# Example Policy Document
+
+**Source type:** policy-document
+**Authority:** Example Authority Organization
+**Date:** 2026-01-01
+**Sensitivity:** internal
+
+## Overview
+
+This is a sample source document that ships with the knowledgebase template. It
+demonstrates the expected format for inbox source files and lets you verify the
+ingest pipeline end-to-end before replacing it with your domain's real sources.
+
+Replace this file (`raw/inbox/example-policy.md`) with your own source material
+and update `raw/processed/SPEC.md` with your domain assumptions before running
+your first real ingest.
+
+## Section 1 — Purpose
+
+This policy establishes example procedures for managing example resources within
+the example organization.
+
+## Section 2 — Scope
+
+These procedures apply to all example stakeholders operating within the example
+jurisdiction.
+
+## Section 3 — Procedures
+
+1. Stakeholders submit requests using the standard request form.
+2. Reviewers evaluate requests against the criteria in Section 4.
+3. Approved requests are logged and actioned within 5 business days.
+
+## Section 4 — Criteria
+
+A request is approved when all of the following conditions are met:
+
+- The request is complete and correctly formatted.
+- The requested resource is within scope.
+- No conflicting prior decision exists.
+
+## References
+
+- Example Standard v1.0 (2025)
+- Example Authority Guidelines (2024)
+"""
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _confirm(prompt: str) -> bool:
+    try:
+        answer = input(f"{prompt} [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return answer in ("y", "yes")
+
+
+def _wipe_dir(path: Path) -> None:
+    """Remove all contents of *path* without removing the directory itself."""
+    if not path.exists():
+        path.mkdir(parents=True)
+        return
+    for child in path.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
+def _write(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Initialize a fresh knowledgebase instance from the template.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "See TEMPLATE.md for the full setup guide.\n"
+            "After running this script, edit raw/processed/SPEC.md, AGENTS.md,\n"
+            "CONTEXT.md, wiki/CONTEXT.md, and README.md with your domain."
+        ),
+    )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        required=True,
+        help="Wipe the content layer and scaffold a clean instance.",
+    )
+    parser.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="Skip the confirmation prompt.",
+    )
+    args = parser.parse_args(argv)
+
+    print("=" * 60)
+    print("  Knowledgebase template initializer")
+    print("=" * 60)
+    print()
+    print("This will PERMANENTLY DELETE all content-layer files:")
+    for d in CONTENT_DIRS:
+        print(f"  {d}/")
+    print()
+    print("Framework-layer files (scripts/, tests/, .github/, schema/,")
+    print("docs/decisions/, pyproject.toml, etc.) will NOT be touched.")
+    print()
+
+    if not args.yes and not _confirm("Proceed?"):
+        print("Aborted.")
+        return 1
+
+    # 1. Wipe content directories
+    print("\n[1/5] Wiping content directories...")
+    for rel in CONTENT_DIRS:
+        p = REPO_ROOT / rel
+        _wipe_dir(p)
+        print(f"  ✓  {rel}/")
+
+    # 2. Remove stale lock files
+    for rel in LOCK_FILES:
+        p = REPO_ROOT / rel
+        if p.exists():
+            p.unlink()
+            print(f"  ✓  removed lock file {rel}")
+
+    # 3. Write framework stubs
+    print("\n[2/5] Writing framework stubs...")
+    _write(REPO_ROOT / "wiki" / "log.md", _LOG_STUB)
+    print("  ✓  wiki/log.md")
+    _write(REPO_ROOT / "wiki" / "index.md", _INDEX_STUB)
+    print("  ✓  wiki/index.md")
+
+    # 4. Write domain scaffolding
+    print("\n[3/5] Writing domain scaffolding...")
+    _write(REPO_ROOT / "raw" / "processed" / "SPEC.md", _SPEC_STUB)
+    print("  ✓  raw/processed/SPEC.md  (TODO: fill in your domain assumptions)")
+    _write(REPO_ROOT / "raw" / "inbox" / "example-policy.md", _SAMPLE_INBOX)
+    print("  ✓  raw/inbox/example-policy.md  (sample source to test the pipeline)")
+
+    # 5. Install pip dependencies
+    print("\n[4/5] Installing pip dependencies...")
+    pip_result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-e", ".[dev]", "-q"],
+        cwd=REPO_ROOT,
+    )
+    if pip_result.returncode != 0:
+        print("  ✗  pip install failed — check output above", file=sys.stderr)
+        return pip_result.returncode
+    print("  ✓  pip install -e .[dev]")
+
+    # 6. Run test suite
+    print("\n[5/5] Running test suite...")
+    pytest_result = subprocess.run(
+        [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=short"],
+        cwd=REPO_ROOT,
+    )
+    if pytest_result.returncode != 0:
+        print(
+            "\n  ✗  Tests failed — your framework may have environment issues.",
+            file=sys.stderr,
+        )
+        print(
+            "     Fix the failures before starting your domain configuration.",
+            file=sys.stderr,
+        )
+        return pytest_result.returncode
+
+    print()
+    print("=" * 60)
+    print("  ✓  Fresh instance ready.")
+    print("=" * 60)
+    print()
+    print("Next steps:")
+    print("  1. Edit raw/processed/SPEC.md   — domain assumptions")
+    print("  2. Edit AGENTS.md               — agent guardrails")
+    print("  3. Edit CONTEXT.md              — repo-level context")
+    print("  4. Edit wiki/CONTEXT.md         — wiki taxonomy")
+    print("  5. Edit README.md               — project overview")
+    print()
+    print("Then run your first ingest:")
+    print(
+        "  python3 scripts/kb/ingest.py "
+        "--source raw/inbox/example-policy.md "
+        "--wiki-root wiki --schema AGENTS.md"
+    )
+    print()
+    print("See TEMPLATE.md for the full setup guide.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
