@@ -749,6 +749,22 @@ class OptionalSurfaceScriptTests(RuntimeWorkspaceTestCase):
         self.assertEqual(payload["reason_code"], "invalid_input")
         self.assertIn("items", payload["message"])
 
+    def test_write_report_artifact_rejects_report_type_with_path_separator(self) -> None:
+        """write_report_artifact must raise ValueError for report_type values that
+        contain path traversal characters ('..', '/', '\\')."""
+        from scripts._optional_surface_common import write_report_artifact
+
+        (self.workspace / "schema" / "report-artifact-contract.md").parent.mkdir(
+            parents=True, exist_ok=True
+        )
+
+        # A minimal schema-conformant artifact body (report_type validated in schema first)
+        # We bypass schema to test the sanitization gate directly via ValueError.
+        for bad_type in ("../evil", "foo/bar", "back\\slash", "a..b"):
+            with self.subTest(report_type=bad_type):
+                with self.assertRaises(ValueError, msg=f"report_type {bad_type!r} must be rejected"):
+                    write_report_artifact(self.workspace, bad_type, {})
+
     def test_missing_repo_root_fails_closed_for_optional_surfaces(self) -> None:
         empty_workspace = self.runtime_root / "missing-repo-root"
         if empty_workspace.exists():

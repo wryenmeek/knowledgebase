@@ -149,6 +149,27 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("schema/page-template.md", "ADR-014"),
         "Hard-fail behavior": ("path outside", "missing input file", "write attempt", "fail closed"),
     },
+    "scripts/validation/snapshot_knowledgebase.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("scripts/_optional_surface_common.py", "scripts/kb/contracts.py"),
+        "Hard-fail behavior": ("ALLOWED_SNAPSHOT_ROOTS", "fail closed"),
+    },
+    "scripts/validation/classify_stale.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("ADR-014",),
+        "Hard-fail behavior": ("freshness report json", "fail closed"),
+    },
+    "scripts/validation/check_doc_freshness.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("scripts/kb/page_template_utils.py", "scripts/_optional_surface_common.py"),
+        "Hard-fail behavior": ("SCOPE_ROOTS", "fail closed"),
+    },
     "scripts/reporting/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "narrower contract"),

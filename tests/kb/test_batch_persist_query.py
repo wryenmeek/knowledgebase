@@ -566,6 +566,22 @@ class BatchPersistQueryCliTests(RuntimeWorkspaceTestCase):
         self.assertIn("batch_persist_query: 6 written", log_text)
         self.assertIn("... (1 more)", log_text)
 
+    def test_analysis_path_boundary_assertion_prevents_escaped_write(self) -> None:
+        """The is_relative_to(wiki/analyses) boundary check must raise OSError
+        (fail-closed) when _analysis_relative_path returns a path outside wiki/analyses/."""
+        from unittest.mock import patch as _patch
+
+        entry = self._valid_entry("What does Part A cover?")
+        batch_path = self._write_batch_file([entry])
+
+        # Inject an escaped path: wiki/sources/ is outside wiki/analyses/
+        with _patch(
+            "scripts.kb.batch_persist_query._analysis_relative_path",
+            return_value=Path("wiki/sources/escaped.md"),
+        ):
+            with self.assertRaises(OSError, msg="boundary violation must raise OSError"):
+                self._run_cli(batch_path)
+
     def test_missing_schema_file_all_entries_fail_pre_validation(self) -> None:
         """When the --schema file does not exist, all entries fail pre-validation."""
         entry = self._valid_entry("What does Part A cover?")
