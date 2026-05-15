@@ -377,7 +377,7 @@ When the user sends "Fleet deployed" (or similar), it means they have pushed com
 
 ### Cross-functional review as default post-implementation step
 
-After non-trivial implementation work, proactively suggest a cross-functional review using parallel custom agent dispatch. The standard pattern:
+After non-trivial implementation work, **proactively run** a cross-functional review using parallel custom agent dispatch — do not wait for the user to ask. The standard pattern:
 1. Dispatch `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` in parallel
 2. Each agent reviews the recent commits against best practices, ADRs, and repo documentation
 3. Consolidate findings and present as a unified report
@@ -385,9 +385,20 @@ After non-trivial implementation work, proactively suggest a cross-functional re
 
 This parallels the quality-pass-chain skill but uses custom agents for richer, domain-specific review.
 
+**Hard rule: `task_complete` is blocked on implementation tasks** until `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` have all been dispatched and any P0–P2 findings remediated. Do not call `task_complete` for any session that created or modified `scripts/**`, `tests/**`, or `.github/skills/**/logic/**` without having run this review first.
+
 ### Auto-remediate P0–P2 findings after cross-functional review
 
 After completing a cross-functional review, automatically proceed to remediate all P0–P2 findings without waiting for user approval — the review itself is the approval gate. Present the findings report, then immediately start fixing them. Only pause for user input on P3+ (suggestions/style) or findings where the correct fix is genuinely ambiguous.
+
+### "What skills should have been used?" is an execution directive
+
+When a user asks **"what skills should have been used to validate these changes?"** (or any close variant), treat this as a directive to execute — not just an informational question. Immediately:
+1. Identify the applicable skills for the change types in scope
+2. Dispatch the corresponding custom agents in parallel (use `@code-reviewer`, `@test-engineer`, `@security-auditor`, `@documentation-engineer` as appropriate)
+3. Collect results, present consolidated findings, and remediate P0–P2 findings
+
+Do not answer with a list and stop. The question means "run them now."
 
 ### Grill-me decision logs are sufficient specs
 
