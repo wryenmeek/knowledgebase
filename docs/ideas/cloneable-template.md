@@ -5,9 +5,6 @@
 > Archived to `raw/inbox/cloneable-template.md` for wiki source intake.
 > Full design proposal and implementation notes are in the archived copy.
 
-How might we make the knowledgebase framework instantly forkable as a clean slate, with zero
-ambiguity about what is template-layer vs. domain content?
-
 ## Recommended Direction
 
 Documentation-first, script-next. Ship a `TEMPLATE.md` at the repo root immediately — this

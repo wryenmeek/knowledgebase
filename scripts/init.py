@@ -4,17 +4,33 @@ Usage:
     python3 scripts/init.py --fresh [--yes]
 
 --fresh   Required flag. Wipes the content layer and scaffolds a clean
-          domain-ready instance.
---yes     Skip the confirmation prompt (for CI / scripted use).
+          domain-ready instance. Performs these steps in order:
+            1. Wipe all content-layer directories (wiki/analyses/, wiki/concepts/,
+               wiki/entities/, wiki/sources/, raw/inbox/, raw/processed/,
+               raw/assets/, raw/rejected/, raw/github-sources/, raw/drive-sources/)
+            2. Remove stale lock files
+            3. Write framework stubs: wiki/log.md, wiki/index.md
+            4. Write domain scaffolding: raw/processed/SPEC.md (TODO skeleton),
+               raw/inbox/example-policy.md (sample source for first ingest run)
+            5. Run pip install -e .[dev] to ensure dependencies are current
+            6. Run pytest tests/ to confirm the framework is clean
+--yes     Skip the confirmation prompt. Requires the INIT_ALLOW_WIPE=1
+          environment variable to prevent accidental CI invocation.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from scripts.kb.write_utils import (
+    check_no_symlink_path,
+    write_text_capturing_previous_safe,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -36,12 +52,13 @@ CONTENT_DIRS = [
     "raw/drive-sources",
 ]
 
-# Stale lock files produced during normal operation; removed on fresh init.
+# Stale lock files under raw/ that are auto-removed on fresh init.
+# wiki/.kb_write.lock is intentionally excluded — its presence means another
+# process may be actively writing and must be investigated before wiping.
 LOCK_FILES = [
     "raw/.rejection-registry.lock",
     "raw/.github-sources.lock",
     "raw/.drive-sources.lock",
-    "wiki/.kb_write.lock",
 ]
 
 _LOG_STUB = """\
@@ -180,10 +197,22 @@ A request is approved when all of the following conditions are met:
 - Example Authority Guidelines (2024)
 """
 
+# Sentinels that must exist at REPO_ROOT to confirm correct location.
+_REPO_SENTINELS = ["pyproject.toml", ".git", "AGENTS.md", "schema"]
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+
+def _assert_repo_root(root: Path) -> None:
+    """Exit with an error if *root* does not look like the repo root."""
+    missing = [s for s in _REPO_SENTINELS if not (root / s).exists()]
+    if missing:
+        sys.exit(
+            f"ERROR: {root} does not look like the repo root "
+            f"(missing: {', '.join(missing)}). "
+            "Do not run this script from an installed or copied location."
+        )
+
+
+
 
 
 def _confirm(prompt: str) -> bool:
@@ -195,20 +224,30 @@ def _confirm(prompt: str) -> bool:
 
 
 def _wipe_dir(path: Path) -> None:
-    """Remove all contents of *path* without removing the directory itself."""
+    """Remove all contents of *path* without removing the directory itself.
+
+    Raises OSError if any component of *path* is a symlink (via
+    check_no_symlink_path from write_utils) to prevent traversal-to-delete
+    outside the repository.
+    """
+    check_no_symlink_path(path)
     if not path.exists():
         path.mkdir(parents=True)
         return
     for child in path.iterdir():
-        if child.is_dir():
+        if child.is_symlink():
+            # Remove the symlink itself — never follow it into an external dir.
+            child.unlink()
+        elif child.is_dir():
             shutil.rmtree(child)
         else:
             child.unlink()
 
 
 def _write(path: Path, content: str) -> None:
+    """Write *content* to *path* using an atomic, symlink-safe write."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    write_text_capturing_previous_safe(path, content)
 
 
 # ---------------------------------------------------------------------------
@@ -236,9 +275,22 @@ def main(argv: list[str] | None = None) -> int:
         "--yes",
         "-y",
         action="store_true",
-        help="Skip the confirmation prompt.",
+        help="Skip the confirmation prompt. Requires INIT_ALLOW_WIPE=1 env var.",
     )
     args = parser.parse_args(argv)
+
+    # Guard: --yes in CI requires explicit opt-in env var to prevent accidental wipe.
+    if args.yes and not os.environ.get("INIT_ALLOW_WIPE"):
+        print(
+            "ERROR: --yes requires INIT_ALLOW_WIPE=1 to be set in the environment.\n"
+            "This prevents accidental content-layer wipes in CI pipelines.\n"
+            "For interactive use, omit --yes and answer the prompt instead.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Guard: verify REPO_ROOT is actually the repo root before touching anything.
+    _assert_repo_root(REPO_ROOT)
 
     print("=" * 60)
     print("  Knowledgebase template initializer")
@@ -254,6 +306,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.yes and not _confirm("Proceed?"):
         print("Aborted.")
+        return 1
+
+    # Guard: check no concurrent process holds the wiki write lock.
+    wiki_lock = REPO_ROOT / "wiki" / ".kb_write.lock"
+    if wiki_lock.exists():
+        print(
+            f"  ✗  {wiki_lock.relative_to(REPO_ROOT)} exists — another process may be "
+            "writing to the wiki. Remove the lock file and retry.",
+            file=sys.stderr,
+        )
         return 1
 
     # 1. Wipe content directories
@@ -272,6 +334,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # 3. Write framework stubs
     print("\n[2/5] Writing framework stubs...")
+    # Intentional full-overwrite exception to the append-only guardrail
+    # (AGENTS.md §Guardrails #3): fresh-init is the sole operation permitted
+    # to overwrite wiki/log.md with a clean stub.
     _write(REPO_ROOT / "wiki" / "log.md", _LOG_STUB)
     print("  ✓  wiki/log.md")
     _write(REPO_ROOT / "wiki" / "index.md", _INDEX_STUB)
@@ -289,6 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     pip_result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "-e", ".[dev]", "-q"],
         cwd=REPO_ROOT,
+        timeout=300,
     )
     if pip_result.returncode != 0:
         print("  ✗  pip install failed — check output above", file=sys.stderr)
@@ -300,6 +366,7 @@ def main(argv: list[str] | None = None) -> int:
     pytest_result = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=short"],
         cwd=REPO_ROOT,
+        timeout=600,
     )
     if pytest_result.returncode != 0:
         print(

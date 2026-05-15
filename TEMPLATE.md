@@ -69,7 +69,20 @@ cd YOUR-REPO
 
 ### 2. Install dependencies
 
-Core scripts require Python 3.11+. `qmd` is used for local search.
+Core scripts require Python 3.11+. `qmd` is used for local search and is
+**not** a pip package — it must be installed separately.
+
+Install `qmd` (required for the query surface):
+
+```bash
+# macOS (Homebrew)
+brew install qmd
+
+# Or download the binary from https://github.com/simonw/qmd/releases
+# and place it on your PATH.
+```
+
+Install Python dependencies:
 
 ```bash
 pip install -e ".[dev]"
@@ -100,10 +113,12 @@ This will:
 - Ask for confirmation before deleting anything
 - Wipe all content-layer directories (see table above)
 - Reset `wiki/log.md` and `wiki/index.md` to empty stubs
+- Write a `raw/processed/SPEC.md` skeleton with TODO sections
 - Create a sample source document at `raw/inbox/example-policy.md`
+- Run `pip install -e .[dev]` to ensure all dependencies are current
 - Run `pytest` to confirm the framework is clean
 
-### 4. Edit the four files you must update
+### 4. Edit the five files you must update
 
 Before your first ingest, update these files with your domain:
 

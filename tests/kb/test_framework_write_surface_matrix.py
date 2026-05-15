@@ -338,6 +338,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
         "Hard-fail behavior": ("lock unavailable", "alias with pipeline errors", "fail closed"),
     },
+    "scripts/init.py` — `--fresh` mode only": {
+        "Runtime mode": ("blocking-only", "destructive"),
+        "Writable paths": ("wiki/log.md", "wiki/index.md", "raw/processed/SPEC.md"),
+        "Lock requirements": ("wiki/.kb_write.lock", "INIT_ALLOW_WIPE", "--fresh"),
+        "Artifact / schema owners": ("scripts/kb/write_utils.py",),
+        "Hard-fail behavior": ("symlink", "sentinel", "fail closed"),
+    },
 }
 
 

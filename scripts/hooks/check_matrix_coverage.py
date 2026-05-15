@@ -29,7 +29,8 @@ _AGENTS_MD = _REPO_ROOT / "AGENTS.md"
 
 # Patterns of files that must be covered by the write-surface matrix.
 _COVERED_PATTERNS = [
-    "scripts/**/*.py",
+    "scripts/*.py",       # root-level scripts (e.g. scripts/init.py)
+    "scripts/**/*.py",    # subdirectory scripts (e.g. scripts/kb/*.py)
     ".github/skills/**/logic/**",
 ]
 

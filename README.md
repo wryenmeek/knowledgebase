@@ -3,6 +3,9 @@
 Self-contained, self-organizing knowledgebase with deterministic ingest, indexing,
 linting, query, and policy-gated persistence workflows.
 
+> **Setting up a new instance from the template?** See [`TEMPLATE.md`](TEMPLATE.md)
+> for the step-by-step setup guide (wipe content layer, configure your domain, first ingest).
+
 ## Quick start
 
 > **New here?** Read the [User Guide](docs/user-guide.md) for a complete
