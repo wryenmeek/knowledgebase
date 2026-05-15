@@ -489,11 +489,17 @@ def write_report_artifact(repo_root: Path, report_type: str, artifact: dict) -> 
     the lock window, and writes the artifact.
 
     Returns the absolute path written.
-    Raises ``ValueError`` on schema validation failure.
+    Raises ``ValueError`` on schema validation failure or if ``report_type`` contains
+    path-separator characters.
     Raises ``LockUnavailableError`` if the lock cannot be acquired.
-    Raises ``OSError`` on write failure.
+    Raises ``OSError`` on write failure or if the constructed path escapes ``wiki/reports/``.
     """
     validate_report_artifact(artifact, report_type)
+    # Sanitize report_type: prevent path traversal via filename construction.
+    if any(sep in report_type for sep in ("..", "/", "\\")):
+        raise ValueError(
+            f"report_type must not contain path separators or '..': {report_type!r}"
+        )
     reports_dir = repo_root / REPORT_ARTIFACT_WRITE_ROOT
     content = json.dumps(artifact, indent=2, ensure_ascii=False) + "\n"
     with write_utils.exclusive_write_lock(repo_root):
@@ -513,6 +519,11 @@ def write_report_artifact(repo_root: Path, report_type: str, artifact: dict) -> 
                     f"too many {report_type} report files for {date_str}; "
                     f"manual cleanup required under {REPORT_ARTIFACT_WRITE_ROOT}"
                 )
+        # Defense-in-depth: verify the constructed path stays inside wiki/reports/.
+        if not output_path.resolve().is_relative_to(reports_dir.resolve()):
+            raise OSError(
+                f"report artifact path escapes {REPORT_ARTIFACT_WRITE_ROOT}: {output_path}"
+            )
         write_utils.write_text_capturing_previous_safe(output_path, content)
     return output_path
 

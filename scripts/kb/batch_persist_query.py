@@ -52,8 +52,8 @@ from scripts.kb.persist_query import (
 )
 from scripts.kb.write_utils import (
     append_log_only_state_changes,
-    read_optional_text,
     rollback_file_state,
+    write_text_capturing_previous_safe,
 )
 
 SURFACE = "scripts/kb/batch_persist_query.py"
@@ -334,14 +334,16 @@ def _execute_batch(
     if validated:
         wiki_root_path = validated[0][1].wiki_root
     else:
-        # All entries failed pre-validation; no lock needed.
-        # Emit final envelope as "pass" (batch ran; per-entry failures are not hard failures).
-        _finalize_envelope(
+        # All entries failed pre-validation — equivalent to an invalid batch (no work can
+        # proceed). This is distinct from per-entry policy rejection (which is a skip, not a
+        # hard failure). Emit fail so callers/CI don't silently treat total failure as success.
+        _emit_fail(
             output_stream=output_stream,
+            reason_code=contracts.ReasonCode.INVALID_INPUT.value,
             total=total,
-            entry_results=entry_results,
+            entries=[e for e in entry_results if e is not None],
         )
-        return 0
+        return 1
 
     written_paths: list[str] = []
 
@@ -369,10 +371,18 @@ def _execute_batch(
                 analysis_markdown = _render_analysis_markdown(
                     request, analysis_relative.as_posix()
                 )
-                snapshot = read_optional_text(analysis_absolute)
+                # Verify the analysis path stays inside wiki/analyses/ before writing.
+                analyses_root = (repo_root / "wiki" / "analyses").resolve()
+                if not analysis_absolute.resolve().is_relative_to(analyses_root):
+                    raise OSError(
+                        f"analysis path escapes wiki/analyses/: {analysis_absolute}"
+                    )
 
+                snapshot: str | None = None
                 try:
-                    changed = write_utils.write_text_if_changed(analysis_absolute, analysis_markdown)
+                    changed, snapshot = write_text_capturing_previous_safe(
+                        analysis_absolute, analysis_markdown
+                    )
                     rel_str = analysis_relative.as_posix()
                     entry_results[idx] = _entry_result(
                         query_text,

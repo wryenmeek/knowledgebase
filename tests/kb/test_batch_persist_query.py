@@ -411,7 +411,9 @@ class BatchPersistQueryCliTests(RuntimeWorkspaceTestCase):
 
         exit_code, payload = self._run_cli(batch_path)
 
-        self.assertEqual(exit_code, 0)
+        # All entries failed pre-validation → hard fail (not a partial-skip; no work ran).
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["status"], "fail")
         self.assertEqual(payload["total"], 1)
         self.assertEqual(payload["written"], 0)
         self.assertEqual(payload["failed"], 1)
@@ -466,7 +468,7 @@ class BatchPersistQueryCliTests(RuntimeWorkspaceTestCase):
         batch_path = self._write_batch_file([entry_0, entry_1, entry_2])
 
         call_count = [0]
-        real_write = write_utils.write_text_if_changed
+        real_write = write_utils.write_text_capturing_previous_safe
 
         def _fail_on_second_call(path, content, **kw):
             call_count[0] += 1
@@ -474,7 +476,10 @@ class BatchPersistQueryCliTests(RuntimeWorkspaceTestCase):
                 raise OSError("simulated disk error on entry 1")
             return real_write(path, content, **kw)
 
-        with _patch("scripts.kb.write_utils.write_text_if_changed", side_effect=_fail_on_second_call):
+        with _patch(
+            "scripts.kb.batch_persist_query.write_text_capturing_previous_safe",
+            side_effect=_fail_on_second_call,
+        ):
             exit_code, payload = self._run_cli(batch_path)
 
         self.assertEqual(exit_code, 0)
@@ -514,8 +519,8 @@ class BatchPersistQueryCliTests(RuntimeWorkspaceTestCase):
         )
         payload = json.loads(output.getvalue())
 
-        self.assertEqual(exit_code, 0)
-        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["status"], "fail")
         self.assertEqual(payload["total"], 2)
         self.assertEqual(payload["written"], 0)
         self.assertEqual(payload["failed"], 2)
@@ -580,7 +585,7 @@ class BatchPersistQueryCliTests(RuntimeWorkspaceTestCase):
         )
         payload = json.loads(output.getvalue())
 
-        self.assertEqual(exit_code, 0)
+        self.assertEqual(exit_code, 1)
         self.assertEqual(payload["total"], 1)
         self.assertEqual(payload["written"], 0)
         self.assertEqual(payload["failed"], 1)

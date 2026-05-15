@@ -1,5 +1,4 @@
 # Spec: Post-MVP Rollout and Packaging
-
 **Status:** Implemented — all phases complete (2026-05-14)
 
 > Archived to `raw/inbox/spec.md` for wiki source intake.
@@ -92,6 +91,8 @@ python3 scripts/reporting/coverage_report.py --mode persist --approval approved
 | `scripts/context/**` | Approval-gated repo-level logic | Shared context assembly or deterministic read models used by multiple skills/personas. |
 | `scripts/maintenance/**` | Approval-gated repo-level logic | Reusable maintenance operations that remain bounded by approved write surfaces. |
 | `scripts/ingest/**` | Approval-gated repo-level logic | New reusable ingest helpers promoted from wrapper-local orchestration. |
+| `scripts/github_monitor/**` | Approval-gated repo-level logic | GitHub repository monitoring: drift detection, content fetch, diff synthesis, issue creation. Authorized by ADR-012. |
+| `scripts/drive_monitor/**` | Approval-gated repo-level logic | Google Drive monitoring: drift detection, content fetch, diff synthesis, cursor advance, issue creation. Authorized by ADR-021. |
 | `tests/kb/**` | Required verification surface | Unit, integration, and regression checks for docs, wrappers, and repo-level scripts. |
 
 ## Code style / contract style
@@ -194,8 +195,9 @@ introduced, promoted, and eventually consolidated.
 ### Approval-gated work
 
 1. Open any new repo-level package family under `scripts/validation/**`,
-   `scripts/reporting/**`, `scripts/context/**`, `scripts/maintenance/**`, or
-   `scripts/ingest/**`.
+   `scripts/reporting/**`, `scripts/context/**`, `scripts/maintenance/**`,
+   `scripts/ingest/**`, `scripts/github_monitor/**` (ADR-012), or
+   `scripts/drive_monitor/**` (ADR-021).
 2. Promote wrapper-local checks into reusable validators or shared context
    builders.
 3. Add downstream write-capable workflow slices for synthesis, topology, query
@@ -270,12 +272,14 @@ new write-capable runtime surfaces.
 - Explicit package-placement and gate criteria.
 - No replacement of `scripts/kb/**`.
 
-### Phase 2 — Promote shared validation/context/reporting/maintenance/ingest surfaces (**approval-gated**)
+### Phase 2 — Promote shared validation/context/reporting/maintenance/ingest/monitor surfaces (**approval-gated**)
 
 Open new repo-level packages only when a wrapper-local behavior has proven to be
 shared, reusable, and better owned by the repository than by one skill. This is
 the phase that can open `scripts/validation/**`, `scripts/reporting/**`,
-`scripts/context/**`, `scripts/maintenance/**`, and `scripts/ingest/**`, but
+`scripts/context/**`, `scripts/maintenance/**`, `scripts/ingest/**`,
+`scripts/github_monitor/**` (authorized by ADR-012), and
+`scripts/drive_monitor/**` (authorized by ADR-021), but
 only for explicitly approved contract surfaces.
 
 **Includes only after approval**
@@ -284,6 +288,10 @@ only for explicitly approved contract surfaces.
 - Reusable maintenance or ingest helpers promoted into approved repo-level
   packages without weakening current allowlists or fail-closed behavior.
 - Promotion of wrapper-local logic into tested repo-level entrypoints.
+- GitHub repository monitoring in `scripts/github_monitor/**` (ADR-012): drift
+  detection, content fetch, diff synthesis, issue creation.
+- Google Drive source monitoring in `scripts/drive_monitor/**` (ADR-021): drift
+  detection, content fetch, diff synthesis, cursor advance, issue creation.
 
 **Does not include yet**
 - Downstream write expansion for synthesis/topology automation.

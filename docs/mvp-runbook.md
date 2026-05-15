@@ -143,7 +143,19 @@ python3 scripts/kb/persist_query.py \
   --schema AGENTS.md \
   --result-json
 
-# 7) regression/unit/integration workflow checks
+# 6b) batch query persistence (Phase 3) — acquires wiki/.kb_write.lock once for all entries
+python3 scripts/kb/batch_persist_query.py \
+  --batch-file <batch.json> \
+  --wiki-root wiki \
+  --schema AGENTS.md
+
+# 7) wiki coverage analytics (Phase 4)
+# summary mode (read-only):
+python3 scripts/reporting/coverage_report.py --mode summary
+# persist mode (approval-gated; writes wiki/reports/coverage-report-*.json):
+python3 scripts/reporting/coverage_report.py --mode persist --approval approved
+
+# 8) regression/unit/integration workflow checks
 python3 -m pytest tests/ -q
 ```
 

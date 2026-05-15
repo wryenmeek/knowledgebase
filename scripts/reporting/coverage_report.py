@@ -153,7 +153,8 @@ def _collect_pages(wiki_root: Path) -> list[Path]:
         current = stack.pop()
         try:
             entries = list(os.scandir(current))
-        except OSError:
+        except OSError as exc:
+            sys.stderr.write(f"warning: scandir failed for {current}: {exc}\n")
             continue
         for entry in entries:
             if entry.is_symlink():

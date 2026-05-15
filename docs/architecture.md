@@ -79,7 +79,7 @@ write behavior.
 | Global policy and trust boundaries | `AGENTS.md` + ADRs | Keep fail-closed, provenance, append-only log, and write-scope rules always on. |
 | Agent personas | `.github/agents/**` | Define router/worker missions, handoffs, and stop conditions. |
 | Skill workflows and thin wrappers | `.github/skills/**` | Hold procedural workflow docs plus narrow wrappers that invoke deterministic tooling. |
-| Deterministic execution surface | `scripts/kb/**` | Remains the authoritative Python implementation for ingest, index, lint, qmd preflight, query persistence, and batch query persistence. |
+| Deterministic execution surface | `scripts/kb/**` | Remains the authoritative Python implementation for ingest, index, lint, qmd preflight, query persistence, and batch query persistence. `scripts/kb/batch_persist_query.py` (Phase 3) adds batch write capability: single `wiki/.kb_write.lock` acquisition for the entire batch, per-entry policy evaluation, and writes bounded to `wiki/analyses/**`, `wiki/index.md`, and `wiki/log.md`. |
 | Verification surface | `tests/kb/**` | Validates the deterministic execution layer and any framework references to it. |
 
 ### In scope for the framework MVP
