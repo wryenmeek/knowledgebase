@@ -495,11 +495,10 @@ jobs:
               exit 1
             fi
 
-            # Collect written source page path for synthesis stage
-            written_page="$(printf '%s' "${ingest_json}" | python3 -c $'import json,sys\nd=json.load(sys.stdin)\nfor s in d.get("per_source",[]):\n    if s.get("status")=="written" and s.get("source_page"):\n        print(s["source_page"])\n        break' 2>/dev/null || true)"
-            if [[ -n "${written_page}" ]]; then
-              written_source_pages+=("${written_page}")
-            fi
+            # Collect ALL written source page paths for synthesis stage (no break)
+            while IFS= read -r written_page; do
+              [[ -n "${written_page}" ]] && written_source_pages+=("${written_page}")
+            done < <(printf '%s' "${ingest_json}" | python3 -c $'import json,sys\nd=json.load(sys.stdin)\nfor s in d.get("per_source",[]):\n    if s.get("status")=="written" and s.get("source_page"):\n        print(s["source_page"])' 2>/dev/null || true)
           done <<< "${SOURCE_LIST}"
 
           # --- Synthesis Curator stage ---
@@ -508,19 +507,19 @@ jobs:
             echo "[CI-3] synthesis: processing ${#written_source_pages[@]} source page(s)"
             for source_page in "${written_source_pages[@]}"; do
               echo "[CI-3] synthesis: extract from ${source_page}"
-              bundle_path="/tmp/ci3-bundle-$(basename "${source_page}" .md).json"
+              bundle_path="$(mktemp /tmp/ci3-bundle-XXXXXXXX.json)"
 
               set +e
               python3 .github/skills/extract-entities-and-claims/logic/extract_entities.py \
                 --source-page "${source_page}" \
                 --wiki-root wiki \
-                --github-token "${SYNTHESIS_GITHUB_TOKEN}" \
                 --output "${bundle_path}"
               extract_exit=$?
               set -e
 
               if [[ "${extract_exit}" -ne 0 ]]; then
                 echo "::warning::Synthesis extraction failed for ${source_page}; skipping." >&2
+                rm -f "${bundle_path}" || true
                 continue
               fi
 
@@ -543,6 +542,8 @@ jobs:
               if [[ "${concept_exit}" -ne 0 ]]; then
                 echo "::warning::Concept synthesis had errors for ${source_page}; continuing." >&2
               fi
+
+              rm -f "${bundle_path}" || true
             done
           fi
 

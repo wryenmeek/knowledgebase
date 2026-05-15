@@ -7,18 +7,19 @@ description: Extracts candidate entities, concepts, claims, and chronology from 
 
 ## Overview
 
-Use this skill to turn a policy-cleared package into a compact extraction bundle
-that downstream synthesis can review deterministically. In MVP it is a doc-only
-workflow: inventory candidate entities, concepts, claims, and temporal context,
-then route the result through governed handoff artifacts instead of writing
-pages.
+Use this skill to turn a policy-cleared evidence package into a compact extraction bundle
+that downstream synthesis scripts consume deterministically. The skill has an executable
+logic directory (`logic/extract_entities.py`) that is invoked by the CI-3 PR Producer
+workflow. It calls GitHub Models API to extract named entities and concepts, writes the
+bundle to a caller-specified temp path, and returns control to the caller without any
+wiki write.
 
 ## Classification
 
-- **Mode:** Blocking-only with read-only extraction
+- **Mode:** read-only only
 - **MVP status:** Active
-- **Execution boundary:** Extraction, packaging, and handoff only. Do not create
-  pages, mutate `wiki/`, or invent claim-verification runtime here.
+- **Execution boundary:** Extraction and bundling only. Output bundle is written to a
+  caller-supplied temp path; no governed wiki write is opened by this skill.
 
 ## When to Use
 

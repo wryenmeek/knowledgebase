@@ -47,7 +47,7 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     "sync-knowledgebase-state": {"logic": True},
     "review-wiki-plan": {"logic": False, "classification": "Doc-only workflow"},
     "audit-knowledgebase-workspace": {"logic": False, "classification": "Doc-only workflow"},
-    "extract-entities-and-claims": {"logic": True, "classification": "Blocking-only with read-only extraction"},
+    "extract-entities-and-claims": {"logic": True, "classification": "read-only only"},
     "retrieve-from-index": {"logic": False, "classification": "Doc-only workflow"},
     "synthesize-cited-answer": {"logic": False, "classification": "Doc-only workflow"},
     "prepare-high-value-synthesis-handoff": {"logic": False, "classification": "Doc-only workflow"},

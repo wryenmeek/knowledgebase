@@ -387,6 +387,22 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertNotIn('sources<<\'EOF\'', self.workflow_text)
         self.assertNotIn('changed_paths<<\'EOF\'', self.workflow_text)
 
+    def test_synthesis_token_env_var_is_wired(self) -> None:
+        self.assertIn("SYNTHESIS_GITHUB_TOKEN", self.workflow_text)
+        # Token must come from secrets, not as a CLI argument
+        self.assertNotIn("--github-token", self.workflow_text)
+
+    def test_synthesis_stage_precedes_update_index(self) -> None:
+        synthesis_marker = "Synthesis Curator stage"
+        update_index_marker = "update_index --write"
+        self.assertIn(synthesis_marker, self.workflow_text)
+        self.assertIn(update_index_marker, self.workflow_text)
+        self.assertLess(
+            self.workflow_text.index(synthesis_marker),
+            self.workflow_text.index(update_index_marker),
+            "Synthesis Curator stage must appear before update_index in the workflow",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

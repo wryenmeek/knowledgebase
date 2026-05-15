@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
 from scripts.kb.write_utils import (
     LockUnavailableError,
     exclusive_write_lock,
+    write_text_capturing_previous_safe,
 )
 
 # _synthesis_utils is co-located in the synthesize-entity-page skill logic dir
@@ -33,6 +34,7 @@ sys.path.insert(
     str(Path(__file__).resolve().parents[1].parent / "synthesize-entity-page" / "logic"),
 )
 from _synthesis_utils import (
+    _sanitize_llm_str,
     append_to_existing_page,
     find_duplicate,
     render_draft_page,
@@ -124,13 +126,13 @@ def _write_concept_drafts(
 
         draft = render_draft_page(
             page_type="concept",
-            title=title,
-            aliases=aliases,
+            title=_sanitize_llm_str(title),
+            aliases=[_sanitize_llm_str(a) for a in aliases],
             source_ref=source_ref,
-            summary=concept.get("summary") or "",
-            evidence=concept.get("evidence") or "",
-            tags=concept.get("tags") or [],
-            open_questions=open_questions,
+            summary=_sanitize_llm_str(concept.get("summary") or "", max_len=1000),
+            evidence=_sanitize_llm_str(concept.get("evidence") or "", max_len=1000),
+            tags=[_sanitize_llm_str(t) for t in (concept.get("tags") or [])],
+            open_questions=[_sanitize_llm_str(q) for q in open_questions],
         )
 
         missing = validate_draft_frontmatter(draft)
@@ -145,7 +147,7 @@ def _write_concept_drafts(
             continue
 
         try:
-            page_path.write_text(draft, encoding="utf-8")
+            write_text_capturing_previous_safe(page_path, draft)
             results["created"].append(f"{title} ({page_path.name})")
             existing.append({"title": title, "aliases": aliases, "path": str(page_path)})
         except OSError as exc:

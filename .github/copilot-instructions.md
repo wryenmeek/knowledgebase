@@ -90,6 +90,9 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - Prose restructuring / AI-tell cleanup → `edit-article`
 - Source intake rejection → `log-intake-rejection`
 - Reconsidering prior rejection → `reconsider-rejected-source`
+- Entity/concept extraction from source → `extract-entities-and-claims`
+- KB entity page drafting → `synthesize-entity-page`
+- KB concept page drafting → `synthesize-concept-page`
 - Agent-to-agent context compression → `caveman`
 - New skill creation → `write-a-skill`
 - Refactoring proposal / request → `request-refactor-plan`

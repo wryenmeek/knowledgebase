@@ -378,7 +378,7 @@ class TestSynthesizeEntityPageRun(unittest.TestCase):
             bp = self._bundle_path(root, _VALID_BUNDLE)
             rc = _entity_mod.run(str(bp), "wiki", repo_root=root)
             # Should succeed (skipped, not errored) — no new pages
-            # rc == 0 because skip != error
+            self.assertEqual(rc, 0)
             self.assertEqual(len(list((root / "wiki" / "entities").glob("*.md"))), 2)
 
     def test_missing_bundle_returns_error(self) -> None:
@@ -609,6 +609,248 @@ class TestExtractEntitiesRun(unittest.TestCase):
             )
             self.assertEqual(rc, 1)
 
+    def test_schema_self_correction_succeeds_on_second_attempt(self) -> None:
+        """Schema validation failure (valid JSON that fails validate_extraction_bundle) triggers correction."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            self._make_source(root)
+            out = root / "bundle.json"
 
-if __name__ == "__main__":
+            # First response: valid JSON but missing required item keys
+            bad_bundle = {"entities": [{"title": "X"}], "concepts": []}
+            response_bad = json.dumps(
+                {"choices": [{"message": {"content": json.dumps(bad_bundle)}}]}
+            ).encode("utf-8")
+            response_good = json.dumps(_MOCK_API_RESPONSE).encode("utf-8")
+
+            class _ToggleResponse:
+                def __init__(self, data):
+                    self._data = data
+                def read(self):
+                    return self._data
+                def __enter__(self):
+                    return self
+                def __exit__(self, *a):
+                    pass
+
+            responses = [response_bad, response_good]
+            call_idx = 0
+
+            def _fake_urlopen(req, timeout=None):
+                nonlocal call_idx
+                r = _ToggleResponse(responses[min(call_idx, len(responses) - 1)])
+                call_idx += 1
+                return r
+
+            with patch.object(_extract_mod.request, "urlopen", side_effect=_fake_urlopen):  # type: ignore[attr-defined]
+                rc = _extract_mod.run(
+                    source_page_path="wiki/sources/test-source.md",
+                    wiki_root="wiki",
+                    github_token="tok",
+                    output_path=str(out),
+                    repo_root=root,
+                )
+            self.assertEqual(rc, 0)
+            bundle = json.loads(out.read_text(encoding="utf-8"))
+            self.assertFalse(bundle["soft_skipped"])
+            self.assertEqual(call_idx, 2)
+
+    def test_urlerror_on_all_attempts_produces_soft_skip(self) -> None:
+        import tempfile
+        from urllib import error as urllib_error
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            self._make_source(root)
+            out = root / "bundle.json"
+
+            def _raise_urlerror(*a, **kw):
+                raise urllib_error.URLError("connection refused")
+
+            with patch.object(_extract_mod.request, "urlopen", side_effect=_raise_urlerror):  # type: ignore[attr-defined]
+                rc = _extract_mod.run(
+                    source_page_path="wiki/sources/test-source.md",
+                    wiki_root="wiki",
+                    github_token="tok",
+                    output_path=str(out),
+                    repo_root=root,
+                )
+            self.assertEqual(rc, 0)
+            bundle = json.loads(out.read_text(encoding="utf-8"))
+            self.assertTrue(bundle["soft_skipped"])
+
+    def test_disallowed_endpoint_returns_error(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            self._make_source(root)
+            out = root / "bundle.json"
+            rc = _extract_mod.run(
+                source_page_path="wiki/sources/test-source.md",
+                wiki_root="wiki",
+                github_token="tok",
+                output_path=str(out),
+                endpoint="https://attacker.example.com",
+                repo_root=root,
+            )
+            self.assertEqual(rc, 1)
+
+    def test_path_traversal_returns_error(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            self._make_source(root)
+            out = root / "bundle.json"
+            rc = _extract_mod.run(
+                source_page_path="../../etc/passwd",
+                wiki_root="wiki",
+                github_token="tok",
+                output_path=str(out),
+                repo_root=root,
+            )
+            self.assertEqual(rc, 1)
+
+
+# ---------------------------------------------------------------------------
+# Additional entity/concept tests (slug collision, missing concepts key, etc.)
+# ---------------------------------------------------------------------------
+
+
+class TestEntitySlugCollision(unittest.TestCase):
+    def test_slug_collision_skips_gracefully(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            _make_workspace(root)
+            slug = _su.title_to_slug("Centers for Medicare & Medicaid Services")
+            existing_file = root / "wiki" / "entities" / f"{slug}.md"
+            existing_file.write_text("---\ntype: entity\ntitle: \"Other Entity\"\nstatus: active\nsources: []\nopen_questions: []\nconfidence: 2\nsensitivity: internal\nupdated_at: \"2024-01-01T00:00:00Z\"\ntags:\n  - test\n---\n\n# Other Entity\n", encoding="utf-8")
+            bundle_path = root / "bundle.json"
+            bundle_path.write_text(json.dumps(_VALID_BUNDLE), encoding="utf-8")
+            rc = _entity_mod.run(str(bundle_path), "wiki", repo_root=root)
+            self.assertEqual(rc, 0)
+            # File exists but was not overwritten
+            self.assertEqual(existing_file.read_text(encoding="utf-8").count("Other Entity"), 2)
+
+
+class TestConceptSlugCollision(unittest.TestCase):
+    def test_slug_collision_skips_gracefully(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            _make_workspace(root)
+            slug = _su.title_to_slug("Medicare Advantage")
+            existing_file = root / "wiki" / "concepts" / f"{slug}.md"
+            existing_file.write_text("---\ntype: concept\ntitle: \"Other Concept\"\nstatus: active\nsources: []\nopen_questions: []\nconfidence: 2\nsensitivity: internal\nupdated_at: \"2024-01-01T00:00:00Z\"\ntags:\n  - test\n---\n\n# Other Concept\n", encoding="utf-8")
+            bundle_path = root / "bundle.json"
+            bundle_path.write_text(json.dumps(_VALID_BUNDLE), encoding="utf-8")
+            rc = _concept_mod.run(str(bundle_path), "wiki", repo_root=root)
+            self.assertEqual(rc, 0)
+            self.assertEqual(existing_file.read_text(encoding="utf-8").count("Other Concept"), 2)
+
+
+class TestSynthesizeConceptPageRunParity(unittest.TestCase):
+    """Concept parity tests mirroring entity test coverage."""
+
+    def _bundle_path(self, tmp_path: Path, bundle: dict) -> Path:
+        p = tmp_path / "bundle.json"
+        p.write_text(json.dumps(bundle), encoding="utf-8")
+        return p
+
+    def test_empty_concepts_list_produces_no_writes(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            _make_workspace(root)
+            bundle = dict(_VALID_BUNDLE, concepts=[])
+            bp = self._bundle_path(root, bundle)
+            rc = _concept_mod.run(str(bp), "wiki", repo_root=root)
+            self.assertEqual(rc, 0)
+            self.assertEqual(list((root / "wiki" / "concepts").glob("*.md")), [])
+
+    def test_ambiguous_concept_match_skips(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            _make_workspace(root)
+            for slug, title in [("ma1", "Medicare Advantage"), ("ma2", "MA")]:
+                page_content = (
+                    f'---\ntype: concept\ntitle: "{title}"\nstatus: active\n'
+                    f'sources:\n  - "repo://o/r/old.md@abc"\n'
+                    f'open_questions: []\nconfidence: 2\nsensitivity: internal\n'
+                    f'updated_at: "2024-01-01T00:00:00Z"\ntags:\n  - test\n---\n\n# {title}\n'
+                )
+                (root / "wiki" / "concepts" / f"{slug}.md").write_text(page_content, encoding="utf-8")
+            bp = self._bundle_path(root, _VALID_BUNDLE)
+            rc = _concept_mod.run(str(bp), "wiki", repo_root=root)
+            self.assertEqual(rc, 0)
+            self.assertEqual(len(list((root / "wiki" / "concepts").glob("*.md"))), 2)
+
+    def test_concept_missing_bundle_returns_error(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            _make_workspace(root)
+            rc = _concept_mod.run("/nonexistent/bundle.json", "wiki", repo_root=root)
+            self.assertEqual(rc, 1)
+
+    def test_missing_concepts_key_treated_as_empty(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            _make_workspace(root)
+            bundle = {k: v for k, v in _VALID_BUNDLE.items() if k != "concepts"}
+            bp = self._bundle_path(root, bundle)
+            rc = _concept_mod.run(str(bp), "wiki", repo_root=root)
+            self.assertEqual(rc, 0)
+            self.assertEqual(list((root / "wiki" / "concepts").glob("*.md")), [])
+
+
+class TestSanitizeLlmStr(unittest.TestCase):
+    def test_strips_newlines(self) -> None:
+        self.assertEqual(_su._sanitize_llm_str("foo\nbar"), "foo bar")
+
+    def test_strips_carriage_return(self) -> None:
+        self.assertEqual(_su._sanitize_llm_str("foo\rbar"), "foo bar")
+
+    def test_strips_null_byte(self) -> None:
+        self.assertEqual(_su._sanitize_llm_str("foo\x00bar"), "foo bar")
+
+    def test_max_len_truncates(self) -> None:
+        self.assertEqual(len(_su._sanitize_llm_str("x" * 600, max_len=500)), 500)
+
+    def test_non_string_returns_empty(self) -> None:
+        self.assertEqual(_su._sanitize_llm_str(None), "")
+
+
+class TestTitleToSlugEdgeCases(unittest.TestCase):
+    def test_slug_max_200_chars(self) -> None:
+        long_title = "word " * 60  # 300 chars
+        slug = _su.title_to_slug(long_title)
+        self.assertLessEqual(len(slug), 200)
+
+    def test_unicode_title_produces_slug(self) -> None:
+        slug = _su.title_to_slug("Résumé Health Plan")
+        self.assertIsInstance(slug, str)
+        self.assertGreater(len(slug), 0)
+
+
+class TestAppendToExistingPageBothNew(unittest.TestCase):
+    def test_both_new_source_ref_and_open_question(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            page = Path(td).resolve() / "entity.md"
+            page.write_text(
+                '---\ntype: entity\ntitle: "X"\nstatus: active\nsources:\n  - "repo://o/r/old.md@abc"\n'
+                'open_questions: []\nconfidence: 2\nsensitivity: internal\nupdated_at: "2024-01-01T00:00:00Z"\n'
+                'tags:\n  - test\n---\n\n# X\n',
+                encoding="utf-8",
+            )
+            modified = _su.append_to_existing_page(page, "repo://o/r/new.md@xyz", ["What is X?"])
+            self.assertTrue(modified)
+            content = page.read_text(encoding="utf-8")
+            self.assertIn("new.md@xyz", content)
+            self.assertIn("What is X?", content)
+
+if __name__ == '__main__':
     unittest.main()

@@ -67,7 +67,10 @@ Task arrives
         ├── Source conversion preview? ────→ convert-sources-to-md
         ├── Index sync/check? ─────────────→ sync-knowledgebase-state
         ├── Review a wiki plan? ───────────→ review-wiki-plan
-        └── Route query for durable follow-up? → prepare-high-value-synthesis-handoff
+        ├── Route query for durable follow-up? → prepare-high-value-synthesis-handoff
+        ├── Extract entities/concepts from source? → extract-entities-and-claims
+        ├── Draft entity page from bundle? ───────→ synthesize-entity-page
+        └── Draft concept page from bundle? ──────→ synthesize-concept-page
 ```
 
 ## Wiki Agent Workflow
@@ -127,7 +130,7 @@ Each agent invokes a governed set of skills. Representative skills per agent:
 | **Source Intake Steward** | validate-inbox-source, checksum-asset, create-intake-manifest, register-source-provenance |
 | **Evidence Verifier** | verify-citations, claim-inventory, semi-formal-reasoning, detect-ai-tells |
 | **Policy Arbiter** | validate-wiki-governance, enforce-npov, detect-original-research, compare-against-existing-pages |
-| **Synthesis Curator** | extract-entities-and-claims, enforce-page-template, entity-resolution-and-canonicalization, edit-article |
+| **Synthesis Curator** | extract-entities-and-claims, synthesize-entity-page, synthesize-concept-page, enforce-page-template, entity-resolution-and-canonicalization, edit-article |
 | **Query Synthesist** | retrieve-from-index, synthesize-cited-answer, persist-query-result |
 | **Topology Librarian** | check-link-topology, suggest-backlinks, update-index, manage-redirects-and-anchors |
 | **Maintenance Auditor** | scan-content-freshness, cross-reference-symmetry-check, propose-supersede-or-archive, semantic-wiki-lint |

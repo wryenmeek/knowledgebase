@@ -3,6 +3,22 @@ Shared utilities for synthesis-curator page-writing logic.
 
 Used by synthesize_entity_page.py and synthesize_concept_page.py.
 Not a CLI entry point — import only.
+
+Public API
+----------
+- ``_sanitize_llm_str(value, max_len)`` — strip newlines/nulls from LLM output; apply before
+  passing any field to ``render_draft_page`` or ``append_to_existing_page``.
+- ``title_to_slug(title)`` — kebab-case slug, max 200 chars.
+- ``find_duplicate(candidates, title, aliases)`` — case-insensitive dedup scan.
+  **Callers must fail-closed when > 1 match is returned** (skip, not error).
+- ``scan_existing_pages(wiki_root, namespace)`` — lists ``{title, aliases, path}`` dicts;
+  logs parse errors and continues (partial results are better than crashing).
+- ``render_draft_page(...)`` — renders a full wiki page markdown string.
+- ``validate_draft_frontmatter(content)`` — returns list of missing required keys.
+- ``append_to_existing_page(page_path, new_source_ref, new_open_questions)`` — appends new
+  SourceRef and/or open_questions to an existing page.  Returns ``True`` if the page was
+  modified, ``False`` if there was nothing new to add (not an error).
+- ``_replace_yaml_list_block(frontmatter_str, key, new_items)`` — frontmatter surgery helper.
 """
 
 from __future__ import annotations
@@ -12,6 +28,24 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# LLM output sanitisation
+# ---------------------------------------------------------------------------
+
+
+def _sanitize_llm_str(value: object, *, max_len: int = 500) -> str:
+    """Strip newlines, carriage returns, and null bytes from LLM-returned strings.
+
+    These characters can terminate YAML string literals prematurely and inject
+    arbitrary YAML keys into frontmatter.  Apply to every field read from the
+    extraction bundle before passing to ``render_draft_page`` or
+    ``append_to_existing_page``.
+    """
+    if not isinstance(value, str):
+        return ""
+    value = re.sub(r"[\r\n\x00]", " ", value)
+    return value[:max_len].strip()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
 
@@ -29,12 +63,12 @@ from scripts.kb.write_utils import write_text_capturing_previous_safe
 
 
 def title_to_slug(title: str) -> str:
-    """Convert a canonical title to a URL-safe kebab-case slug."""
+    """Convert a canonical title to a URL-safe kebab-case slug (max 200 chars)."""
     slug = title.lower()
     slug = re.sub(r"[^a-z0-9\s-]", "", slug)
     slug = re.sub(r"[\s]+", "-", slug.strip())
     slug = re.sub(r"-{2,}", "-", slug)
-    return slug.strip("-") or "untitled"
+    return (slug.strip("-") or "untitled")[:200]
 
 
 # ---------------------------------------------------------------------------
@@ -110,8 +144,11 @@ def scan_existing_pages(wiki_root: Path, namespace: str) -> list[dict]:
             title = fm.get("title", "").strip().strip('"').strip("'")
             aliases = _extract_yaml_list_from_str(fm_str, "aliases") if fm_str else []
             results.append({"title": title, "aliases": aliases, "path": str(page_path)})
-        except Exception:
-            pass
+        except Exception as exc:
+            print(
+                f"warning: scan_existing_pages: failed to parse {page_path}: {exc}",
+                file=sys.stderr,
+            )
     return results
 
 
@@ -179,6 +216,11 @@ _REQUIRED_FRONTMATTER_KEYS = (
 )
 
 
+def _yaml_dq_escape(s: str) -> str:
+    """Escape a string for use inside a YAML double-quoted scalar."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def render_draft_page(
     *,
     page_type: str,
@@ -194,34 +236,24 @@ def render_draft_page(
 ) -> str:
     """Render a full wiki page draft as a markdown string."""
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    escaped_title = title.replace("\\", "\\\\").replace('"', '\\"')
+    escaped_title = _yaml_dq_escape(title)
     sources_block = f'  - "{source_ref}"' if source_ref else "  []"
-    oq_block = (
-        "\n".join(f'  - "{q.replace(chr(34), chr(92)+chr(34))}"' for q in open_questions)
-        if open_questions
-        else "  []"
-    ).replace("  []", "[]")
-    tag_lines = "\n".join(f"  - {t}" for t in tags) if tags else "  - draft"
-    aliases_section = (
-        "\naliases:\n" + "\n".join(f'  - "{a}"' for a in aliases)
-        if aliases
-        else ""
+    tag_lines = (
+        "\n".join(f'  - "{_yaml_dq_escape(t)}"' for t in tags) if tags else '  - "draft"'
     )
-
-    oq_inline = "[]" if not open_questions else ""
     oq_multiline = (
-        "\n" + "\n".join(f'  - "{q}"' for q in open_questions)
+        "\n" + "\n".join(f'  - "{_yaml_dq_escape(q)}"' for q in open_questions)
         if open_questions
         else ""
     )
     oq_yaml = f"open_questions:{oq_multiline if open_questions else ' []'}"
-
     body_oq = "\n".join(f"- {q}" for q in open_questions) if open_questions else "*(none)*"
     evidence_clean = evidence.strip() or "*(see source page)*"
-
-    aliases_fm = ""
-    if aliases:
-        aliases_fm = "\naliases:\n" + "\n".join(f'  - "{a}"' for a in aliases)
+    aliases_fm = (
+        "\naliases:\n" + "\n".join(f'  - "{_yaml_dq_escape(a)}"' for a in aliases)
+        if aliases
+        else ""
+    )
 
     page = (
         f"---\n"
@@ -229,7 +261,7 @@ def render_draft_page(
         f'title: "{escaped_title}"\n'
         f"status: active\n"
         f"sources:\n"
-        f"  - \"{source_ref}\"\n"
+        f"{sources_block}\n"
         f"{oq_yaml}\n"
         f"confidence: {confidence}\n"
         f"sensitivity: {sensitivity}\n"

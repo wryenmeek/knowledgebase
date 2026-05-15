@@ -25,9 +25,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
 from scripts.kb.write_utils import (
     LockUnavailableError,
     exclusive_write_lock,
+    write_text_capturing_previous_safe,
 )
 
 from _synthesis_utils import (
+    _sanitize_llm_str,
     append_to_existing_page,
     find_duplicate,
     render_draft_page,
@@ -122,13 +124,13 @@ def _write_entity_drafts(
 
         draft = render_draft_page(
             page_type="entity",
-            title=title,
-            aliases=aliases,
+            title=_sanitize_llm_str(title),
+            aliases=[_sanitize_llm_str(a) for a in aliases],
             source_ref=source_ref,
-            summary=entity.get("summary") or "",
-            evidence=entity.get("evidence") or "",
-            tags=entity.get("tags") or [],
-            open_questions=open_questions,
+            summary=_sanitize_llm_str(entity.get("summary") or "", max_len=1000),
+            evidence=_sanitize_llm_str(entity.get("evidence") or "", max_len=1000),
+            tags=[_sanitize_llm_str(t) for t in (entity.get("tags") or [])],
+            open_questions=[_sanitize_llm_str(q) for q in open_questions],
         )
 
         missing = validate_draft_frontmatter(draft)
@@ -143,7 +145,7 @@ def _write_entity_drafts(
             continue
 
         try:
-            page_path.write_text(draft, encoding="utf-8")
+            write_text_capturing_previous_safe(page_path, draft)
             results["created"].append(f"{title} ({page_path.name})")
             # Refresh existing list so subsequent entities see this page
             existing.append({"title": title, "aliases": aliases, "path": str(page_path)})

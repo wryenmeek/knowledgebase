@@ -5,11 +5,13 @@ Read-only — no wiki writes. Outputs a JSON extraction bundle for downstream sy
 Self-correcting: feeds schema validation errors back to the LLM for up to 3 total attempts.
 On persistent failure writes an empty bundle with `soft_skipped: true`.
 
+GitHub token is read from the ``SYNTHESIS_GITHUB_TOKEN`` environment variable
+(fallback: ``GITHUB_TOKEN``).  Do not pass it as a CLI argument.
+
 CLI usage:
     python3 extract_entities.py \\
         --source-page wiki/sources/my-source.md \\
         --wiki-root wiki \\
-        --github-token <TOKEN> \\
         --output /tmp/extraction-bundle.json
 """
 
@@ -17,12 +19,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
 from typing import Any
 from urllib import error as urllib_error
 from urllib import request
+from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
 
@@ -38,6 +42,16 @@ _MODEL_ID = "gpt-4o-mini"
 _REQUIRED_ITEM_KEYS = frozenset(
     {"title", "aliases", "summary", "evidence", "tags", "open_questions"}
 )
+_ALLOWED_ENDPOINT_HOSTS = frozenset({"models.inference.ai.azure.com"})
+
+
+def _validate_endpoint(endpoint: str) -> bool:
+    """Return True only if endpoint uses HTTPS and an allowed hostname."""
+    try:
+        parsed = urlparse(endpoint)
+        return parsed.scheme == "https" and parsed.hostname in _ALLOWED_ENDPOINT_HOSTS
+    except Exception:
+        return False
 
 
 def _parse_args() -> argparse.Namespace:
@@ -50,14 +64,11 @@ def _parse_args() -> argparse.Namespace:
         help="Repo-relative path to wiki/sources/<slug>.md",
     )
     parser.add_argument("--wiki-root", default="wiki", help="Wiki root directory")
-    parser.add_argument(
-        "--github-token", required=True, help="GitHub token for Models API auth"
-    )
     parser.add_argument("--output", required=True, help="Output JSON bundle path")
     parser.add_argument(
         "--endpoint",
         default=_GITHUB_MODELS_ENDPOINT,
-        help="GitHub Models API base URL",
+        help="GitHub Models API base URL (must be an allowed hostname)",
     )
     return parser.parse_args()
 
@@ -113,8 +124,11 @@ def scan_existing_pages(wiki_root: Path, namespace: str) -> list[dict[str, Any]]
             title = fm.get("title", "").strip().strip('"').strip("'")
             aliases = _extract_yaml_list(fm_str, "aliases")
             results.append({"title": title, "aliases": aliases, "path": str(page_path)})
-        except Exception:
-            pass
+        except Exception as exc:
+            print(
+                f"warning: scan_existing_pages: failed to parse {page_path}: {exc}",
+                file=sys.stderr,
+            )
     return results
 
 
@@ -293,8 +307,32 @@ def run(
     if repo_root is None:
         repo_root = Path(__file__).resolve().parents[4]
 
+    # Use env fallback when token not supplied directly (callers may pass "").
+    if not github_token:
+        github_token = (
+            os.environ.get("SYNTHESIS_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
+        )
+
+    # Endpoint hostname must be in the allowlist — prevent token exfiltration.
+    if not _validate_endpoint(endpoint):
+        print(
+            f"error: endpoint hostname not allowed: {endpoint!r}",
+            file=sys.stderr,
+        )
+        return 1
+
     wiki_root_path = repo_root / wiki_root
-    source_path = repo_root / source_page_path
+    source_path = (repo_root / source_page_path).resolve()
+
+    # Boundary check — source page must be inside repo root.
+    try:
+        source_path.relative_to(repo_root.resolve())
+    except ValueError:
+        print(
+            f"error: source page path escapes repo root: {source_page_path}",
+            file=sys.stderr,
+        )
+        return 1
 
     if not source_path.exists():
         print(
@@ -370,7 +408,7 @@ def main() -> int:
     return run(
         source_page_path=args.source_page,
         wiki_root=args.wiki_root,
-        github_token=args.github_token,
+        github_token="",
         output_path=args.output,
         endpoint=args.endpoint,
     )
