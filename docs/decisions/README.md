@@ -29,3 +29,4 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-020](ADR-020-post-mvp-package-family-criteria.md) | Criteria for approving post-MVP script package families | Accepted |
 | [ADR-021](ADR-021-google-drive-source-monitoring.md) | Google Drive source monitoring pipeline | Accepted |
 | [ADR-022](ADR-022-afk-uses-scripts-hitl-uses-copilot-cli.md) | AFK automation uses deterministic scripts; Copilot CLI reserved for HITL | Accepted — amended in-place |
+| [ADR-023](ADR-023-batch-query-persistence-design.md) | Batch query persistence — single-lock, partial-failure, and size-limit design | Accepted — extends ADR-003 |
