@@ -179,10 +179,15 @@ jobs:
         run: bun install
 
       - name: Merge all fleet PRs with passing CI
+        env:
+          # Pass workflow inputs through env vars to avoid shell injection
+          # (never interpolate ${{ inputs.* }} directly into run: blocks).
+          INPUT_BASE_BRANCH: ${{ inputs.base_branch }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          BASE_BRANCH="${{ inputs.base_branch || 'main' }}"
+          BASE_BRANCH="${INPUT_BASE_BRANCH:-main}"
           echo "🔍 Finding open Jules-authored PRs targeting ${BASE_BRANCH}..."
 
           PRS=$(gh pr list \
@@ -233,11 +238,11 @@ jobs:
 
               gh pr close "$PR_NUM" \
                 --comment "⚠️ Closed by fleet-merge (manual sweep): conflict. Task re-dispatched."
-              JULES_REPO="${{ github.repository }}" TASK_PROMPT="${TASK_PROMPT}" bun -e "
+              JULES_REPO="${REPO}" TASK_PROMPT="${TASK_PROMPT}" JULES_BASE_BRANCH="${BASE_BRANCH}" bun -e "
                 import { jules } from '@google/jules-sdk';
                 const run = await jules.run({
                   prompt: process.env.TASK_PROMPT,
-                  source: { github: process.env.JULES_REPO, baseBranch: '${BASE_BRANCH}' },
+                  source: { github: process.env.JULES_REPO, baseBranch: process.env.JULES_BASE_BRANCH },
                 });
                 console.log('Re-dispatched:', run.id);
               "
