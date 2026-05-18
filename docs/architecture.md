@@ -55,7 +55,7 @@ Before implementing any new helper, check these five canonical modules. See ADR-
 |---|---|---|
 | **CI-1** | Trusted-trigger gatekeeper/handoff | No |
 | **CI-2** | Read-only diagnostics and analysis | No |
-| **CI-3** | PR-producing write path with allowlists and preflight | Yes (allowlisted paths only) |
+| **CI-3** | PR-producing write path with allowlists, preflight, and LLM-based synthesis of entity/concept draft pages (`models: read`) | Yes (allowlisted paths only, including `wiki/entities/**` and `wiki/concepts/**`) |
 | **CI-4** | Framework writer: staged agent-generated content for `docs/**` and `.github/skills/**` | Yes (`docs/**`, `.github/skills/**`; workflow_dispatch only; approval-gated) |
 | **CI-5** | GitHub source monitor: scheduled drift detection (read-only) + PR-producing fetch/synthesize path | Drift job: No. Write jobs: Yes (`raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**`) |
 | **CI-6** | Google Drive source monitor: scheduled drift detection (read-only) + approval-gated fetch/synthesize path | Drift job: No. Write jobs: Yes (`raw/assets/**`, `raw/drive-sources/**`, bounded `wiki/**`) |
