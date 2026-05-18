@@ -2,7 +2,7 @@
 name: synthesis-curator
 description: Drafts policy-cleared knowledge updates by applying explicit identity, taxonomy, and metadata contracts before any governed wiki publication step. Use when a verified package is ready for schema-aligned page synthesis or update planning.
 category: kb-workflow
-updated_at: "2026-04-26"
+updated_at: "2026-05-15"
 ---
 
 # Synthesis Curator
@@ -78,3 +78,23 @@ Turn a policy-cleared, evidence-backed package into a proposed wiki create/updat
 - Blocked or ambiguous cases: return to `knowledgebase-orchestrator` with the escalation record
 - After the draft package is complete, NPOV-enforced, and AI-tells checked, invoke `edit-article` to tighten prose and improve readability. The `edit-article` pass must not alter citations, frontmatter, or factual claims — it is a prose restructuring step, not a validation step
 - No direct write, redirect, or out-of-band persistence is permitted from this persona
+
+## AFK automated lane (CI-3)
+
+This persona describes the **HITL** workflow in which a human operator or agent reviews draft
+pages before any wiki write opens. In the **AFK automated lane**, CI-3
+(`ci-3-pr-producer.yml`) runs the same underlying skills directly without a persona
+handoff:
+
+1. After ingest, `extract-entities-and-claims/logic/extract_entities.py` calls the GitHub
+   Models API to produce an extraction bundle.
+2. `synthesize-entity-page/logic/synthesize_entity_page.py` and
+   `synthesize-concept-page/logic/synthesize_concept_page.py` write draft pages to
+   `wiki/entities/` and `wiki/concepts/` while holding `wiki/.kb_write.lock`.
+3. All synthesis steps soft-fail (exit 0, emit `::warning`) — the ingest PR is never
+   blocked by LLM errors.
+4. The staged entity/concept pages appear in the ingest PR diff for HITL review before merge.
+
+The AFK lane does not route through this persona. The persona is invoked only when an
+operator or agent needs to perform synthesis interactively. See ADR-024 for the design
+rationale behind the two-lane approach.

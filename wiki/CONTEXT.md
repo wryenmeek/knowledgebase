@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2026-04-29
+last_updated: 2026-05-15
 ---
 
 # CONTEXT — wiki/
@@ -37,6 +37,6 @@ Vocabulary for the curated wiki content layer. `AGENTS.md` takes precedence on a
 | `index.md` | Auto-generated catalog of all wiki pages. Deterministic output of `update_index.py`. |
 | `log.md` | Append-only provenance log recording every governed state change. |
 | `sources/` | Namespace for source-material summary pages (e.g., `sources/SPEC.md`). |
-| `entities/` | Namespace for entity pages (people, organizations, systems). |
-| `concepts/` | Namespace for concept and topic pages. |
+| `entities/` | Namespace for entity pages (people, organizations, systems). Auto-populated by the CI-3 synthesis stage (`synthesize-entity-page/logic/synthesize_entity_page.py`) after each ingest; also writable via HITL `synthesize-entity-page` skill invocation. |
+| `concepts/` | Namespace for concept and topic pages. Auto-populated by the CI-3 synthesis stage (`synthesize-concept-page/logic/synthesize_concept_page.py`) after each ingest; also writable via HITL `synthesize-concept-page` skill invocation. |
 | `analyses/` | Namespace for analytical and synthesis pages. |
