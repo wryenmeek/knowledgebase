@@ -38,6 +38,12 @@ concurrency:
 
 jobs:
   dispatch:
+    # Pre-filter: only allocate a runner if the PR was opened by Jules or a branch
+    # containing "jules". This avoids a full checkout + git fetch for every human PR.
+    if: |
+      github.event.pull_request.user.login == 'google-labs-jules' ||
+      contains(github.event.pull_request.head.ref, 'jules') ||
+      contains(github.event.pull_request.head.ref, 'fleet')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
