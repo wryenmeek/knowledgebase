@@ -34,11 +34,11 @@ jobs:
       drift_detected: ${{ steps.detect.outputs.drift_detected }}
       artifact_name: ${{ steps.detect.outputs.artifact_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
@@ -46,7 +46,7 @@ jobs:
       - name: Mask GitHub App token
         run: echo "::add-mask::${{ steps.app-token.outputs.token }}"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -113,7 +113,7 @@ jobs:
     env:
       WRITE_ALLOWLIST: raw/assets/**,raw/github-sources/**
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           persist-credentials: true
           fetch-depth: 0
@@ -121,7 +121,7 @@ jobs:
       # Regenerate token close to use to avoid 55-minute expiry on long jobs.
       - name: Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
@@ -129,7 +129,7 @@ jobs:
       - name: Mask GitHub App token
         run: echo "::add-mask::${{ steps.app-token.outputs.token }}"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -175,9 +175,9 @@ jobs:
       has_afk: ${{ steps.classify.outputs.has_afk }}
       has_hitl: ${{ steps.classify.outputs.has_hitl }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -242,12 +242,12 @@ jobs:
     env:
       WRITE_ALLOWLIST: raw/assets/**,raw/github-sources/**,wiki/**
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           persist-credentials: true
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.12'
           cache: 'pip'
