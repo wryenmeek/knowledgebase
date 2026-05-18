@@ -2,8 +2,13 @@ name: CI-5 GitHub Source Monitor
 
 on:
   schedule:
-    # Run daily at 06:00 UTC.
-    - cron: '0 6 * * *'
+    # Run daily at 06:30 UTC (offset from fleet-plan at 06:00 to avoid runner contention).
+    - cron: '30 6 * * *'
+  # Event-driven trigger: fired by a GitHub App webhook relay when a monitored
+  # upstream repo is pushed. Allows immediate drift detection without waiting
+  # for the daily cron. Keep cron as safety-net fallback.
+  repository_dispatch:
+    types: [upstream-source-updated]
   workflow_dispatch:
     inputs:
       registry_path:

@@ -2,11 +2,13 @@ name: CI-2 Analyst Read-Only Diagnostics
 
 on:
   pull_request:
-  workflow_dispatch:
+  # Run full diagnostics on pushes to main (post-merge gate).
+  # Feature branches are covered by the pull_request trigger above — running
+  # the full 15-minute suite on every feature branch push is redundant.
   push:
-    branches-ignore:
-      - "ci3/**"
-      - "ci4/**"
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   actions: read

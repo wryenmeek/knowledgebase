@@ -2,8 +2,15 @@ name: CI-6 Google Drive Source Monitor
 
 on:
   schedule:
-    # Run daily at 08:00 UTC (2h offset from CI-5 at 06:00 to avoid lock contention).
-    - cron: '0 8 * * *'
+    # Run weekly on Monday at 08:00 UTC. Drive documents change less frequently
+    # than GitHub sources; daily polling is wasteful. Offset from CI-5 (06:30)
+    # to avoid lock contention on shared wiki write paths.
+    - cron: '0 8 * * 1'
+  # Event-driven trigger: fired by a webhook relay (e.g. Cloud Run) when Google
+  # Drive change notifications arrive via the Changes API push channel.
+  # Allows immediate drift detection without waiting for the weekly cron.
+  repository_dispatch:
+    types: [drive-source-updated]
   workflow_dispatch:
     inputs:
       registry_path:

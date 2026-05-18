@@ -14,12 +14,25 @@
 
 # .github/workflows/fleet-merge.yml
 #
-# Sequentially merges Jules-authored PRs: update branch → wait for CI → squash merge.
-# On merge conflict, re-dispatches the task as a new Jules session against current base.
+# Event-driven fleet merge: fires on check_suite completion rather than polling.
+#
+# ┌─ check_suite: completed ──────────────────────────────────────────────────┐
+# │  Conclusion != success → exit immediately (< 5s, no runner setup)         │
+# │  No open fleet PR for this SHA → exit immediately                         │
+# │  Fleet PR found + CI passed → update branch → squash merge                │
+# │  Conflict → close PR, re-dispatch Jules session (new PR will re-trigger)  │
+# └───────────────────────────────────────────────────────────────────────────┘
+#
+# workflow_dispatch (manual sweep) is also available to process any open fleet
+# PRs that currently have passing CI — useful after extended outages.
 name: Fleet Sequential Merge
 
 on:
-  # Allow manual trigger (recommended: review PRs first, then trigger)
+  # Event-driven: fires when any check suite completes. The job pre-filters to
+  # only process fleet PRs — exits in < 5 seconds for every other suite.
+  check_suite:
+    types: [completed]
+  # Manual sweep: process all open fleet PRs that currently have passing CI.
   workflow_dispatch:
     inputs:
       base_branch:
@@ -36,9 +49,119 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  sequential-merge:
+  # ── Event-driven path ───────────────────────────────────────────────────────
+  # Exits immediately for non-fleet suites. For fleet PRs: merge on first pass.
+  merge-on-ci-pass:
+    if: |
+      github.event_name == 'check_suite' &&
+      github.event.check_suite.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+    steps:
+      - name: Find open fleet PR for this commit
+        id: find-pr
+        env:
+          HEAD_SHA: ${{ github.event.check_suite.head_sha }}
+        run: |
+          set -euo pipefail
+          # Cheap API call — exits fast for non-fleet suites (the common case).
+          PR_NUM=$(gh pr list \
+            --state open \
+            --repo "${{ github.repository }}" \
+            --json number,headRefOid,author \
+            --jq "[.[] | select(
+                    .headRefOid == \"${HEAD_SHA}\" and
+                    (.author.login == \"google-labs-jules\" or
+                     (.author.login | endswith(\"[bot]\")))
+                  )] | .[0].number // empty")
+          if [ -z "$PR_NUM" ]; then
+            echo "No open fleet PR for SHA ${HEAD_SHA}. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Fleet PR #${PR_NUM} found."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "pr_num=${PR_NUM}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout (needed for fleet re-dispatch on conflict)
+        if: steps.find-pr.outputs.skip == 'false'
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup Bun
+        if: steps.find-pr.outputs.skip == 'false'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.1"
+
+      - name: Install fleet dependencies
+        if: steps.find-pr.outputs.skip == 'false'
+        working-directory: scripts/fleet
+        run: bun install
+
+      - name: Update branch and merge
+        if: steps.find-pr.outputs.skip == 'false'
+        env:
+          PR_NUM: ${{ steps.find-pr.outputs.pr_num }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          echo "🔄 Updating branch for PR #${PR_NUM}..."
+          UPDATE_OUTPUT=$(gh pr update-branch "$PR_NUM" --rebase 2>&1) || true
+
+          if echo "$UPDATE_OUTPUT" | grep -qi "conflict\|cannot be rebased"; then
+            echo "⚠️ Conflict on PR #${PR_NUM}. Closing and re-dispatching..."
+
+            # Recover original task prompt from fleet data; fall back to PR body.
+            SESSION_ID=$(gh pr view "$PR_NUM" --json body -q '.body' \
+              | grep -oE 'https://jules\.google\.com/task/[A-Za-z0-9_-]+' \
+              | sed 's|.*/||' || true)
+            FLEET_DIR=$(find .fleet -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -1 || true)
+            TASK_PROMPT=""
+            if [ -n "$SESSION_ID" ] && [ -n "$FLEET_DIR" ]; then
+              TASK_ID=$(jq -r --arg sid "$SESSION_ID" \
+                '.[] | select(.sessionId == $sid) | .taskId // empty' \
+                "${FLEET_DIR%/}/sessions.json" 2>/dev/null || true)
+              [ -n "$TASK_ID" ] && TASK_PROMPT=$(jq -r --arg tid "$TASK_ID" \
+                '.tasks[] | select(.id == $tid) | .prompt // empty' \
+                "${FLEET_DIR%/}/issue_tasks.json" 2>/dev/null || true)
+            fi
+            [ -z "$TASK_PROMPT" ] && TASK_PROMPT=$(gh pr view "$PR_NUM" --json body -q '.body')
+
+            gh pr close "$PR_NUM" \
+              --comment "⚠️ Closed by fleet-merge: conflict after rebase. Task re-dispatched — new PR will auto-merge when its CI passes."
+
+            JULES_REPO="${REPO}" TASK_PROMPT="${TASK_PROMPT}" bun -e "
+              import { jules } from '@google/jules-sdk';
+              const run = await jules.run({
+                prompt: process.env.TASK_PROMPT,
+                source: { github: process.env.JULES_REPO, baseBranch: 'main' },
+              });
+              console.log('Re-dispatched session:', run.id);
+            "
+            echo "✅ Re-dispatched. New PR will trigger this workflow when its CI passes."
+            exit 0
+          fi
+
+          # CI already passed — that is what triggered this workflow.
+          # Merge immediately without any polling.
+          if gh pr merge "$PR_NUM" --squash; then
+            echo "🎉 PR #${PR_NUM} merged."
+          else
+            echo "❌ Merge failed for PR #${PR_NUM}."
+            exit 1
+          fi
+
+  # ── Manual sweep path ───────────────────────────────────────────────────────
+  # Triggered by workflow_dispatch. Merges all fleet PRs whose CI currently
+  # passes. PRs with pending CI are skipped (event-driven path handles them).
+  manual-sweep:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
@@ -52,21 +175,16 @@ jobs:
           bun-version: "1.3.1"
 
       - name: Install fleet dependencies
-        run: cd scripts/fleet && bun install
+        working-directory: scripts/fleet
+        run: bun install
 
-      - name: Find and merge fleet PRs sequentially
+      - name: Merge all fleet PRs with passing CI
         run: |
           set -euo pipefail
 
           BASE_BRANCH="${{ inputs.base_branch || 'main' }}"
-          MAX_CI_WAIT=600           # 10 minutes per PR
-          MAX_RETRIES=2             # max re-dispatch attempts per PR
-          PR_POLL_TIMEOUT=900       # 15 minutes to wait for re-dispatched PR
-          POLL_INTERVAL=30          # seconds between re-dispatch PR polls
-
           echo "🔍 Finding open Jules-authored PRs targeting ${BASE_BRANCH}..."
 
-          # Get all open PRs authored by Jules, sorted by creation date (oldest first)
           PRS=$(gh pr list \
             --state open \
             --base "$BASE_BRANCH" \
@@ -74,139 +192,66 @@ jobs:
             --jq '[.[] | select(.author.login == "google-labs-jules" or (.author.login | endswith("[bot]")))] | sort_by(.number) | .[].number')
 
           if [ -z "$PRS" ]; then
-            echo "ℹ️  No Jules-authored PRs found. Nothing to merge."
+            echo "ℹ️  No Jules-authored PRs found."
             exit 0
           fi
 
           PR_COUNT=$(echo "$PRS" | wc -l | tr -d ' ')
-          echo "Found ${PR_COUNT} Jules PR(s) to merge."
+          echo "Found ${PR_COUNT} Jules PR(s)."
 
           for PR_NUM in $PRS; do
             echo ""
-            echo "📦 Processing PR #${PR_NUM}..."
-            RETRY_COUNT=0
+            echo "📦 PR #${PR_NUM}..."
 
-            while true; do
-              # Update branch from base
-              echo "  🔄 Updating branch from ${BASE_BRANCH}..."
-              UPDATE_OUTPUT=$(gh pr update-branch "$PR_NUM" --rebase 2>&1) || true
+            # Check current merge state — skip PRs with pending or failing CI.
+            # The event-driven path will handle them when their CI passes.
+            MERGE_STATE=$(gh pr view "$PR_NUM" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
+            echo "  Merge state: ${MERGE_STATE}"
+            if [ "$MERGE_STATE" != "CLEAN" ] && [ "$MERGE_STATE" != "HAS_HOOKS" ]; then
+              echo "  ⏭️  Skipping — not ready (${MERGE_STATE}). Event-driven path will pick it up."
+              continue
+            fi
 
-              # Check for merge conflict
-              if echo "$UPDATE_OUTPUT" | grep -qi "conflict\|cannot be rebased"; then
-                if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-                  echo "  ❌ Conflict persists after ${MAX_RETRIES} retries. Human intervention required."
-                  echo "  PR: $(gh pr view "$PR_NUM" --json url --jq '.url')"
-                  exit 1
-                fi
+            UPDATE_OUTPUT=$(gh pr update-branch "$PR_NUM" --rebase 2>&1) || true
+            if echo "$UPDATE_OUTPUT" | grep -qi "conflict\|cannot be rebased"; then
+              echo "  ⚠️ Conflict on PR #${PR_NUM}. Re-dispatching..."
 
-                echo "  ⚠️ Merge conflict detected. Re-dispatching task..."
-
-                # Load the original task prompt from fleet data (not the PR body,
-                # which may omit file boundaries and test constraints from the original task).
-                SESSION_ID=$(gh pr view "$PR_NUM" --json body -q '.body' \
-                  | grep -oE 'https://jules\.google\.com/task/[A-Za-z0-9_-]+' \
-                  | sed 's|.*/||' || true)
-                FLEET_DIR=$(find .fleet -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -1 || true)
-                TASK_PROMPT=""
-                if [ -n "$SESSION_ID" ] && [ -n "$FLEET_DIR" ]; then
-                  TASK_ID=$(jq -r --arg sid "$SESSION_ID" \
-                    '.[] | select(.sessionId == $sid) | .taskId // empty' \
-                    "${FLEET_DIR%/}/sessions.json" 2>/dev/null || true)
-                  [ -n "$TASK_ID" ] && TASK_PROMPT=$(jq -r --arg tid "$TASK_ID" \
-                    '.tasks[] | select(.id == $tid) | .prompt // empty' \
-                    "${FLEET_DIR%/}/issue_tasks.json" 2>/dev/null || true)
-                fi
-                # Fall back to PR body if original prompt not found
-                if [ -z "$TASK_PROMPT" ]; then
-                  echo "  ⚠️ Could not locate original task prompt in fleet data; using PR body."
-                  TASK_PROMPT=$(gh pr view "$PR_NUM" --json body -q '.body')
-                fi
-
-                # Close the conflicting PR
-                echo "  🔒 Closing conflicting PR #${PR_NUM}..."
-                gh pr close "$PR_NUM" --comment "⚠️ Closed by fleet-merge: merge conflict detected. Task re-dispatched as a new session."
-
-                # Re-dispatch via Jules SDK
-                echo "  🚀 Re-dispatching against current ${BASE_BRANCH}..."
-                JULES_REPO="${{ github.repository }}"
-                NEW_SESSION_ID=$(TASK_PROMPT="${TASK_PROMPT}" JULES_REPO="${JULES_REPO}" JULES_BASE_BRANCH="${BASE_BRANCH}" bun -e "
-                  import { jules } from '@google/jules-sdk';
-                  const run = await jules.run({
-                    prompt: process.env.TASK_PROMPT,
-                    source: { github: process.env.JULES_REPO, baseBranch: process.env.JULES_BASE_BRANCH },
-                  });
-                  console.log(run.id);
-                ")
-                echo "  📝 New session: ${NEW_SESSION_ID}"
-
-                # Poll for new PR
-                echo "  ⏳ Waiting for new PR from session ${NEW_SESSION_ID}..."
-                POLL_ELAPSED=0
-                NEW_PR_NUM=""
-                while [ $POLL_ELAPSED -lt $PR_POLL_TIMEOUT ]; do
-                  sleep "$POLL_INTERVAL"
-                  POLL_ELAPSED=$((POLL_ELAPSED + POLL_INTERVAL))
-                  NEW_PR_NUM=$(gh pr list --state open --base "$BASE_BRANCH" --json number,headRefName,body \
-                    --jq "[.[] | select(.headRefName | contains(\"${NEW_SESSION_ID}\")) // select(.body | contains(\"${NEW_SESSION_ID}\"))] | .[0].number // empty")
-                  if [ -n "$NEW_PR_NUM" ]; then
-                    echo "  ✅ New PR #${NEW_PR_NUM} found."
-                    break
-                  fi
-                  echo "  ⏳ No PR yet... (${POLL_ELAPSED}s/${PR_POLL_TIMEOUT}s)"
-                done
-
-                if [ -z "$NEW_PR_NUM" ]; then
-                  echo "  ❌ Timed out waiting for re-dispatched PR. Human intervention required."
-                  exit 1
-                fi
-
-                PR_NUM="$NEW_PR_NUM"
-                RETRY_COUNT=$((RETRY_COUNT + 1))
-                continue
+              SESSION_ID=$(gh pr view "$PR_NUM" --json body -q '.body' \
+                | grep -oE 'https://jules\.google\.com/task/[A-Za-z0-9_-]+' \
+                | sed 's|.*/||' || true)
+              FLEET_DIR=$(find .fleet -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -1 || true)
+              TASK_PROMPT=""
+              if [ -n "$SESSION_ID" ] && [ -n "$FLEET_DIR" ]; then
+                TASK_ID=$(jq -r --arg sid "$SESSION_ID" \
+                  '.[] | select(.sessionId == $sid) | .taskId // empty' \
+                  "${FLEET_DIR%/}/sessions.json" 2>/dev/null || true)
+                [ -n "$TASK_ID" ] && TASK_PROMPT=$(jq -r --arg tid "$TASK_ID" \
+                  '.tasks[] | select(.id == $tid) | .prompt // empty' \
+                  "${FLEET_DIR%/}/issue_tasks.json" 2>/dev/null || true)
               fi
+              [ -z "$TASK_PROMPT" ] && TASK_PROMPT=$(gh pr view "$PR_NUM" --json body -q '.body')
 
-              # Wait for CI checks to pass using gh pr checks --watch.
-              # Sleep briefly first to give the runner time to register checks.
-              echo "  🧪 Waiting for CI checks (up to ${MAX_CI_WAIT}s)..."
-              CI_PASSED=false
-              sleep 15
-              CHECK_COUNT=$(gh pr checks "$PR_NUM" --json name --jq 'length' 2>/dev/null || echo 0)
-              if [ "$CHECK_COUNT" -eq 0 ]; then
-                echo "  ℹ️  No CI checks registered. Proceeding."
-                CI_PASSED=true
-              else
-                echo "  ⏳ Watching $CHECK_COUNT check(s)..."
-                set +e
-                timeout "$MAX_CI_WAIT" gh pr checks "$PR_NUM" --watch --interval 10
-                CHECK_EXIT=$?
-                set -e
-                case $CHECK_EXIT in
-                  0)   CI_PASSED=true ;;
-                  124) echo "  ⏰ CI timed out after ${MAX_CI_WAIT}s for PR #${PR_NUM}." ;;
-                  *)   echo "  ❌ CI checks failed for PR #${PR_NUM}." ;;
-                esac
-              fi
+              gh pr close "$PR_NUM" \
+                --comment "⚠️ Closed by fleet-merge (manual sweep): conflict. Task re-dispatched."
+              JULES_REPO="${{ github.repository }}" TASK_PROMPT="${TASK_PROMPT}" bun -e "
+                import { jules } from '@google/jules-sdk';
+                const run = await jules.run({
+                  prompt: process.env.TASK_PROMPT,
+                  source: { github: process.env.JULES_REPO, baseBranch: '${BASE_BRANCH}' },
+                });
+                console.log('Re-dispatched:', run.id);
+              "
+              continue
+            fi
 
-              if [ "$CI_PASSED" = false ]; then
-                echo "  ⏭️  Skipping PR #${PR_NUM} (CI did not pass)"
-              else
-                # Squash merge
-                echo "  ✅ CI passed. Merging PR #${PR_NUM}..."
-                if gh pr merge "$PR_NUM" --squash; then
-                  echo "  🎉 PR #${PR_NUM} merged successfully."
-                else
-                  echo "  ❌ Failed to merge PR #${PR_NUM}. Stopping sequential merge."
-                  exit 1
-                fi
-              fi
-
-              # Exit the retry loop for this PR
-              break
-            done
-
-            # Brief pause for merge to propagate before next PR
-            sleep 5
+            if gh pr merge "$PR_NUM" --squash; then
+              echo "  🎉 PR #${PR_NUM} merged."
+              sleep 3
+            else
+              echo "  ❌ Merge failed for PR #${PR_NUM}."
+              exit 1
+            fi
           done
 
           echo ""
-          echo "✅ Sequential merge complete."
+          echo "✅ Manual sweep complete."
