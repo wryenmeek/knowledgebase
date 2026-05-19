@@ -39,12 +39,10 @@ concurrency:
 jobs:
   dispatch:
     # Pre-filter: only allocate a runner for Jules-authored PRs.
-    # Use startsWith to avoid matching arbitrary human branches that happen to
-    # contain the substring "jules" or "fleet" (e.g. "my-jules-fix", "refuels").
-    if: |
-      github.event.pull_request.user.login == 'google-labs-jules' ||
-      startsWith(github.event.pull_request.head.ref, 'jules/') ||
-      startsWith(github.event.pull_request.head.ref, 'fleet/')
+    # Branch-prefix conditions (startsWith 'jules/', 'fleet/') were removed
+    # because they allow any collaborator to trigger dispatch by naming their
+    # branch accordingly — the user.login equality check is sufficient.
+    if: github.event.pull_request.user.login == 'google-labs-jules'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -140,11 +138,17 @@ jobs:
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # SECURITY: pending_base (→ FLEET_BASE_BRANCH) originates from the
+          # unprotected fleet-state branch. Use env-var indirection (same as
+          # FLEET_PENDING_DATE) so GitHub Actions does not expand it before the
+          # shell runs. The git pull uses -- to prevent flag injection.
           FLEET_BASE_BRANCH: ${{ steps.check.outputs.pending_base }}
           # SECURITY: pending_date is read from the unprotected fleet-state branch;
           # pass through env var to prevent shell injection via expression expansion.
           FLEET_PENDING_DATE: ${{ steps.check.outputs.pending_date }}
         run: |
           set -euo pipefail
-          git pull --ff-only origin "$FLEET_BASE_BRANCH"
+          # SECURITY: -- terminates git option parsing so a crafted FLEET_BASE_BRANCH
+          # (from unprotected fleet-state) cannot inject git flags like --upload-pack.
+          git pull --ff-only origin -- "$FLEET_BASE_BRANCH"
           bun fleet-dispatch.ts "$FLEET_PENDING_DATE"

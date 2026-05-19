@@ -59,7 +59,8 @@ jobs:
   merge-on-ci-pass:
     if: |
       github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success'
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -137,10 +138,10 @@ jobs:
             fi
             [ -z "$TASK_PROMPT" ] && TASK_PROMPT=$(gh pr view "$PR_NUM" --json body -q '.body')
 
-            gh pr close "$PR_NUM" \
-              --comment "⚠️ Closed by fleet-merge: conflict after rebase. Task re-dispatched — new PR will auto-merge when its CI passes."
-
+            # Recover base branch before closing — gh pr view works on open PRs.
             PR_BASE=$(gh pr view "$PR_NUM" --json baseRefName -q '.baseRefName')
+            # Re-dispatch BEFORE closing: if bun fails, set -e stops here and the
+            # original PR remains open rather than being permanently lost.
             JULES_REPO="${REPO}" TASK_PROMPT="${TASK_PROMPT}" JULES_BASE_BRANCH="${PR_BASE}" bun -e "
               import { jules } from '@google/jules-sdk';
               const run = await jules.run({
@@ -149,6 +150,9 @@ jobs:
               });
               console.log('Re-dispatched session:', run.id);
             "
+            # Only close after the re-dispatch succeeds (no task loss on bun failure).
+            gh pr close "$PR_NUM" \
+              --comment "⚠️ Closed by fleet-merge: conflict after rebase. Task re-dispatched — new PR will auto-merge when its CI passes."
             echo "✅ Re-dispatched. New PR will trigger this workflow when its CI passes."
             exit 0
           fi
@@ -171,7 +175,7 @@ jobs:
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+      # JULES_API_KEY is scoped to the merge/re-dispatch step only — see below.
     steps:
       - name: Checkout code
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -191,6 +195,8 @@ jobs:
           # (never interpolate ${{ inputs.* }} directly into run: blocks).
           INPUT_BASE_BRANCH: ${{ inputs.base_branch }}
           REPO: ${{ github.repository }}
+          # JULES_API_KEY scoped to this step only — not needed for checkout/install.
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -243,8 +249,8 @@ jobs:
               fi
               [ -z "$TASK_PROMPT" ] && TASK_PROMPT=$(gh pr view "$PR_NUM" --json body -q '.body')
 
-              gh pr close "$PR_NUM" \
-                --comment "⚠️ Closed by fleet-merge (manual sweep): conflict. Task re-dispatched."
+              # Re-dispatch BEFORE closing (same durability reason as merge-on-ci-pass:
+              # if bun fails, set -e stops here and the PR stays open, no task loss).
               JULES_REPO="${REPO}" TASK_PROMPT="${TASK_PROMPT}" JULES_BASE_BRANCH="${BASE_BRANCH}" bun -e "
                 import { jules } from '@google/jules-sdk';
                 const run = await jules.run({
@@ -253,6 +259,9 @@ jobs:
                 });
                 console.log('Re-dispatched:', run.id);
               "
+              # Only close after re-dispatch succeeds.
+              gh pr close "$PR_NUM" \
+                --comment "⚠️ Closed by fleet-merge (manual sweep): conflict. Task re-dispatched."
               continue
             fi
 
