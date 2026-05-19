@@ -907,5 +907,72 @@ class LintWikiMainTests(KnowledgebaseWorkspaceTestCase):
         self.assertEqual(result, 0)
 
 
+class LintWikiOptimizationRegressionTests(KnowledgebaseWorkspaceTestCase):
+    """Regression tests for #18: stat reduction and valid_page_paths optimization.
+
+    These tests guard against regressions introduced when changing how
+    _collect_valid_pages and _validate_page_content resolve link targets.
+    """
+
+    RUNTIME_ROOT_NAME = ".runtime_lint_wiki_opt"
+
+    def test_output_is_deterministic_across_multiple_runs(self) -> None:
+        """lint_wiki output ordering must be stable regardless of filesystem order."""
+        from scripts.kb.lint_wiki import lint_wiki
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)\n- [Z Page](sources/z.md)\n- [A Page](sources/a.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        self.write_wiki_page("sources/a.md", self.build_process_page("A Page", ""))
+        self.write_wiki_page("sources/z.md", self.build_process_page("Z Page", ""))
+
+        run1 = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        run2 = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        self.assertEqual(
+            [(v.code, str(v.page)) for v in run1],
+            [(v.code, str(v.page)) for v in run2],
+        )
+
+    def test_broken_link_detected_with_valid_page_paths_optimization(self) -> None:
+        """Broken links must be caught even when valid_page_paths frozenset is used."""
+        from scripts.kb.lint_wiki import lint_wiki
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)\n- [Ghost](sources/ghost.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        codes = [v.code for v in violations]
+        self.assertIn("missing-link-target", codes)
+
+    def test_valid_links_not_flagged_with_valid_page_paths_optimization(self) -> None:
+        """Valid internal links must not be flagged as broken."""
+        from scripts.kb.lint_wiki import lint_wiki
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)\n- [Concept](concepts/c.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        self.write_wiki_page("concepts/c.md", self.build_process_page("C", ""))
+
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        self.assertFalse(
+            any(v.code == "missing-link-target" for v in violations),
+            f"Unexpected broken-link violations: {[v for v in violations if v.code == 'missing-link-target']}",
+        )
+
+    def test_symlinked_pages_still_detected_after_lstat_optimization(self) -> None:
+        """Symlinked pages must still produce symlinked-page violations after lstat change."""
+        import os
+        from scripts.kb.lint_wiki import lint_wiki
+
+        real = self.wiki_root / "concepts" / "real.md"
+        real.parent.mkdir(parents=True, exist_ok=True)
+        real.write_text(self.build_process_page("Real", ""), encoding="utf-8")
+
+        link = self.wiki_root / "concepts" / "linked.md"
+        os.symlink(real, link)
+
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        codes = [v.code for v in violations]
+        self.assertIn("symlinked-page", codes)
+
+
 if __name__ == "__main__":
     unittest.main()

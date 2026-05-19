@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+import os
+import stat as _stat
 from pathlib import Path
 import re
 import sys
@@ -131,13 +133,15 @@ def _collect_valid_pages(wiki_root: Path) -> tuple[list[Path], list[Violation]]:
     pages: list[Path] = []
     violations: list[Violation] = []
     for path in sorted(wiki_root.rglob("*.md")):
-        if not path.is_file():
-            continue
         # CONTEXT.md files use a different schema (scope/last_updated)
         # and are not wiki content pages.
         if path.name == "CONTEXT.md":
             continue
-        if path.is_symlink():
+        try:
+            st = os.lstat(path)
+        except OSError:
+            continue
+        if _stat.S_ISLNK(st.st_mode):
             violations.append(
                 Violation(
                     page=path,
@@ -145,6 +149,8 @@ def _collect_valid_pages(wiki_root: Path) -> tuple[list[Path], list[Violation]]:
                     message="symlinked markdown pages are not allowed",
                 )
             )
+            continue
+        if not _stat.S_ISREG(st.st_mode):
             continue
         resolved_path = path.resolve()
         if not _is_within(resolved_path, wiki_root):
@@ -169,6 +175,7 @@ def _validate_page_content(
     authoritative_sourcerefs: bool,
     repo_owner: str | None,
     repo_name: str | None,
+    valid_page_paths: frozenset[Path] | None = None,
 ) -> list[Violation]:
     violations: list[Violation] = []
 
@@ -236,7 +243,15 @@ def _validate_page_content(
             )
             continue
 
-        if not target_path.exists() or not target_path.is_file():
+        # Use frozenset membership for O(1) lookup when available; fall back to
+        # a single is_file() call (is_file returns False for non-existent paths,
+        # so exists() is redundant and was removed).
+        link_broken = (
+            resolved_target_path not in valid_page_paths
+            if valid_page_paths is not None
+            else not target_path.is_file()
+        )
+        if link_broken:
             violations.append(
                 Violation(
                     page=page,
@@ -277,6 +292,10 @@ def lint_wiki(
     pages, violations = _collect_valid_pages(wiki_root)
     referenced_by: dict[Path, set[Path]] = {page: set() for page in pages}
 
+    # Build a frozenset of resolved page paths once for O(1) link-target lookup
+    # across all pages, avoiding repeated is_file() calls per link per page.
+    valid_page_paths: frozenset[Path] = frozenset(p.resolve() for p in pages)
+
     with ThreadPoolExecutor() as executor:
         # Avoid buffering all contents into a list; map returns an iterator.
         # This keeps peak memory low by only having one file's text loaded at a time per thread,
@@ -288,6 +307,7 @@ def lint_wiki(
                     authoritative_sourcerefs=authoritative_sourcerefs,
                     repo_owner=repo_owner,
                     repo_name=repo_name,
+                    valid_page_paths=valid_page_paths,
                 )
             )
 

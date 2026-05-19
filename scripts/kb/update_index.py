@@ -7,6 +7,7 @@ import contextlib
 import concurrent.futures
 from dataclasses import dataclass
 import os
+import stat as _stat
 from pathlib import Path
 import re
 import sys
@@ -122,11 +123,11 @@ def _collect_section_entries(
     if not section_root.exists():
         return []
 
-    page_paths = [
-        _validate_section_page_path(page_path, wiki_root)
-        for page_path in section_root.rglob("*.md")
-        if page_path.is_file()
-    ]
+    page_paths = []
+    for page_path in section_root.rglob("*.md"):
+        validated = _validate_section_page_path(page_path, wiki_root)
+        if validated is not None:
+            page_paths.append(validated)
 
     if executor:
         # We process files efficiently by passing chunksize
@@ -147,16 +148,27 @@ def _collect_section_entries(
     return entries
 
 
-def _validate_section_page_path(page_path: Path, wiki_root: Path) -> Path:
+def _validate_section_page_path(page_path: Path, wiki_root: Path) -> Path | None:
+    """Validate page_path and return it on success, None to skip, or raise on error.
+
+    Uses a single os.lstat() call to detect both symlinks and non-regular-files,
+    avoiding the two separate is_file() + is_symlink() calls in the hot path.
+    """
+    try:
+        st = os.lstat(page_path)
+    except OSError:
+        return None
+    if _stat.S_ISLNK(st.st_mode):
+        raise IndexGenerationError(
+            f"{page_path.relative_to(wiki_root).as_posix()}: symlinked markdown pages are not allowed"
+        )
+    if not _stat.S_ISREG(st.st_mode):
+        return None
     relative_parts = page_path.relative_to(wiki_root).parts
     if len(relative_parts) > 2 and relative_parts[0] in page_template_utils.TOPICAL_NAMESPACES:
         raise IndexGenerationError(
             f"{page_path.relative_to(wiki_root).as_posix()}: "
             "nested topical markdown pages are not allowed in MVP flat namespaces"
-        )
-    if page_path.is_symlink():
-        raise IndexGenerationError(
-            f"{page_path.relative_to(wiki_root).as_posix()}: symlinked markdown pages are not allowed"
         )
     resolved_path = page_path.resolve()
     if not resolved_path.is_relative_to(wiki_root):

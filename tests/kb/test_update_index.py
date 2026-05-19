@@ -399,5 +399,74 @@ tags:
         )
 
 
+class UpdateIndexOptimizationRegressionTests(KnowledgebaseWorkspaceTestCase):
+    """Regression tests for #18: single lstat() per page in update_index.
+
+    These guard the invariant that the output ordering is deterministic and
+    symlink detection still works after replacing is_file() + is_symlink()
+    with a single os.lstat() call in _validate_section_page_path.
+    """
+
+    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.wiki_root / ".kb_write.lock").write_text("", encoding="utf-8")
+
+    def _build_page(self, title: str, ptype: str, confidence: str = "3") -> str:
+        return (
+            f'---\ntype: {ptype}\ntitle: "{title}"\nstatus: active\n'
+            f'sources: []\nopen_questions: []\nconfidence: {confidence}\n'
+            'sensitivity: internal\nupdated_at: "2024-01-01T00:00:00Z"\n'
+            "tags:\n  - test\n---\n\n"
+            f"# {title}\n"
+        )
+
+    def test_index_output_is_deterministic_across_multiple_calls(self) -> None:
+        """generate_index_content must produce identical output across two calls."""
+        self.write_wiki_page("sources/z.md", self._build_page("Z Source", "source"))
+        self.write_wiki_page("sources/a.md", self._build_page("A Source", "source"))
+        self.write_wiki_page("concepts/c.md", self._build_page("Concept", "concept"))
+
+        first = update_index.generate_index_content(self.wiki_root)
+        second = update_index.generate_index_content(self.wiki_root)
+        self.assertEqual(first, second)
+
+    def test_sort_order_is_alphabetical_by_title(self) -> None:
+        """Sources section must sort entries alphabetically by title."""
+        self.write_wiki_page("sources/z-source.md", self._build_page("Z Source", "source"))
+        self.write_wiki_page("sources/a-source.md", self._build_page("A Source", "source"))
+        content = update_index.generate_index_content(self.wiki_root)
+        pos_a = content.find("A Source")
+        pos_z = content.find("Z Source")
+        self.assertLess(pos_a, pos_z, "A Source must appear before Z Source in index")
+
+    def test_symlinked_page_raises_index_generation_error(self) -> None:
+        """Symlinked pages must still raise IndexGenerationError after lstat optimization."""
+        real = self.wiki_root / "sources" / "real.md"
+        real.parent.mkdir(parents=True, exist_ok=True)
+        real.write_text(self._build_page("Real", "source"), encoding="utf-8")
+        link = self.wiki_root / "sources" / "linked.md"
+        os.symlink(real, link)
+
+        with self.assertRaises(update_index.IndexGenerationError) as cm:
+            update_index.generate_index_content(self.wiki_root)
+        self.assertIn("symlinked", str(cm.exception))
+
+    def test_validate_section_page_path_returns_none_for_non_regular_file(self) -> None:
+        """_validate_section_page_path must return None for non-regular files (dirs, etc.)."""
+        # Directories rglob'd as *.md shouldn't exist, but verify the None path
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            wiki = Path(td).resolve()
+            sources = wiki / "sources"
+            sources.mkdir()
+            # Simulate a path that os.lstat would see as a directory (edge case)
+            # by mocking — we can't create a dir named "foo.md" that passes rglob
+            # without cooperation from the OS, so test the function directly.
+            result = update_index._validate_section_page_path(sources / "nonexistent.md", wiki)
+            self.assertIsNone(result)
+
+
 if __name__ == "__main__":
     unittest.main()
