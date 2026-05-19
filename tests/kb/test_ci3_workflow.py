@@ -303,7 +303,7 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             self.workflow_text,
         )
         self.assertIn(
-            "find raw/inbox -type f ! -name '.gitkeep' | sort",
+            "find raw/inbox -type f ! -name '.gitkeep' ! -name '.ci3-ingest-manifest' | sort",
             self.workflow_text,
         )
         self.assertIn("python3 -m scripts.kb.ingest", self.workflow_text)
@@ -382,10 +382,28 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         )
 
     def test_github_output_multiline_delimiters_are_unquoted(self) -> None:
-        self.assertIn('echo "sources<<EOF"', self.workflow_text)
+        # sources list is now passed via workspace file (.ci3-ingest-manifest), not GITHUB_OUTPUT
+        # (#14, #15 — batch ingest + file-based handoff to avoid GITHUB_OUTPUT size limits).
+        self.assertNotIn('echo "sources<<EOF"', self.workflow_text)
         self.assertIn('echo "changed_paths<<EOF"', self.workflow_text)
-        self.assertNotIn('sources<<\'EOF\'', self.workflow_text)
         self.assertNotIn('changed_paths<<\'EOF\'', self.workflow_text)
+
+    def test_source_list_uses_file_based_handoff(self) -> None:
+        # #15: source list must be written to a workspace manifest file instead of
+        # GITHUB_OUTPUT multiline output to avoid size limits for large inboxes.
+        self.assertIn(".ci3-ingest-manifest", self.workflow_text)
+        self.assertIn("--sources-manifest raw/inbox/.ci3-ingest-manifest", self.workflow_text)
+        # The SOURCE_LIST env var (piped via GITHUB_OUTPUT) must no longer be used.
+        self.assertNotIn("SOURCE_LIST", self.workflow_text)
+
+    def test_ingest_runs_in_batch_mode(self) -> None:
+        # #14: single batch ingest invocation via --sources-manifest instead of
+        # per-source loop to avoid repeated process startup and index rebuild costs.
+        self.assertIn("--sources-manifest raw/inbox/.ci3-ingest-manifest", self.workflow_text)
+        # Per-source --source flag should no longer appear in the ingest invocation.
+        self.assertNotIn("--source \"${source_path}\"", self.workflow_text)
+        # Manifest is cleaned up after use.
+        self.assertIn("rm -f raw/inbox/.ci3-ingest-manifest", self.workflow_text)
 
     def test_synthesis_token_env_var_is_wired(self) -> None:
         self.assertIn("SYNTHESIS_GITHUB_TOKEN", self.workflow_text)

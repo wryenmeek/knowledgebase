@@ -421,7 +421,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t source_paths < <(find raw/inbox -type f ! -name '.gitkeep' | sort)
+          mapfile -t source_paths < <(find raw/inbox -type f ! -name '.gitkeep' ! -name '.ci3-ingest-manifest' | sort)
 
           if [[ -n "${MANUAL_SOURCE_PATH}" ]]; then
             if [[ "${MANUAL_SOURCE_PATH}" != raw/inbox/* ]]; then
@@ -448,18 +448,15 @@ jobs:
             fi
           done
 
+          # Write source list to a workspace manifest file instead of GITHUB_OUTPUT
+          # to avoid multiline output size limits (#15) and enable batch ingest (#14).
+          printf '%s\n' "${source_paths[@]}" > raw/inbox/.ci3-ingest-manifest
           echo "has_sources=true" >> "${GITHUB_OUTPUT}"
-          {
-            echo "sources<<EOF"
-            printf '%s\n' "${source_paths[@]}"
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
 
       - name: Run CI-3 required checks and write path
         id: write-path
         if: steps.sources.outputs.has_sources == 'true'
         env:
-          SOURCE_LIST: ${{ steps.sources.outputs.sources }}
           SYNTHESIS_GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -469,37 +466,37 @@ jobs:
             python3 -c $'import json, sys\nfield = sys.argv[1]\npayload = sys.stdin.read().strip()\ntry:\n    value = json.loads(payload).get(field, "")\nexcept Exception:\n    value = ""\nprint("" if value is None else value)' "${field_name}"
           }
 
-          written_source_pages=()
-          while IFS= read -r source_path; do
-            [[ -z "${source_path}" ]] && continue
+          # Batch ingest: single process invocation for all sources in the manifest
+          # instead of one per source, eliminating repeated process startup and index
+          # rebuild costs (#14). Manifest written by the previous step (#15).
+          echo "[CI-3] ingest --sources-manifest raw/inbox/.ci3-ingest-manifest"
+          set +e
+          ingest_json="$(python3 -m scripts.kb.ingest \
+            --sources-manifest raw/inbox/.ci3-ingest-manifest \
+            --batch-policy continue_and_report_per_source \
+            --wiki-root wiki \
+            --schema AGENTS.md \
+            --report-json)"
+          ingest_exit=$?
+          set -e
+          rm -f raw/inbox/.ci3-ingest-manifest || true
 
-            echo "[CI-3] ingest source=${source_path}"
-            set +e
-            ingest_json="$(python3 -m scripts.kb.ingest \
-              --source "${source_path}" \
-              --batch-policy continue_and_report_per_source \
-              --wiki-root wiki \
-              --schema AGENTS.md \
-              --report-json)"
-            ingest_exit=$?
-            set -e
-
-            echo "${ingest_json}"
-            if [[ "${ingest_exit}" -ne 0 ]]; then
-              ingest_reason="$(printf '%s' "${ingest_json}" | extract_json_field reason_code)"
-              if [[ "${ingest_reason}" == "lock_unavailable" ]]; then
-                echo "::error::CI-3 ingest failed closed (reason_code=lock_unavailable)." >&2
-              else
-                echo "::error::CI-3 ingest failed closed (exit=${ingest_exit}, reason_code=${ingest_reason:-unknown})." >&2
-              fi
-              exit 1
+          echo "${ingest_json}"
+          if [[ "${ingest_exit}" -ne 0 ]]; then
+            ingest_reason="$(printf '%s' "${ingest_json}" | extract_json_field reason_code)"
+            if [[ "${ingest_reason}" == "lock_unavailable" ]]; then
+              echo "::error::CI-3 ingest failed closed (reason_code=lock_unavailable)." >&2
+            else
+              echo "::error::CI-3 ingest failed closed (exit=${ingest_exit}, reason_code=${ingest_reason:-unknown})." >&2
             fi
+            exit 1
+          fi
 
-            # Collect ALL written source page paths for synthesis stage (no break)
-            while IFS= read -r written_page; do
-              [[ -n "${written_page}" ]] && written_source_pages+=("${written_page}")
-            done < <(printf '%s' "${ingest_json}" | python3 -c $'import json,sys\nd=json.load(sys.stdin)\nfor s in d.get("per_source",[]):\n    if s.get("status")=="written" and s.get("source_page"):\n        print(s["source_page"])' 2>/dev/null || true)
-          done <<< "${SOURCE_LIST}"
+          # Collect ALL written source page paths for synthesis stage (no break)
+          written_source_pages=()
+          while IFS= read -r written_page; do
+            [[ -n "${written_page}" ]] && written_source_pages+=("${written_page}")
+          done < <(printf '%s' "${ingest_json}" | python3 -c $'import json,sys\nd=json.load(sys.stdin)\nfor s in d.get("per_source",[]):\n    if s.get("status")=="written" and s.get("source_page"):\n        print(s["source_page"])' 2>/dev/null || true)
 
           # --- Synthesis Curator stage ---
           # Runs before update_index so entity/concept drafts are included in the index.
