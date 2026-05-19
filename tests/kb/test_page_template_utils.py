@@ -6,6 +6,7 @@ import unittest
 
 from scripts.kb.page_template_utils import (
     extract_sources_from_frontmatter,
+    extract_yaml_list,
     parse_page_frontmatter,
 )
 
@@ -33,6 +34,28 @@ class ParsePageFrontmatterTests(unittest.TestCase):
         result = parse_page_frontmatter(text)
         self.assertNotIn("body", result)
         self.assertIn("title", result)
+
+
+class ExtractYamlListTests(unittest.TestCase):
+    def test_returns_empty_for_missing_key(self) -> None:
+        self.assertEqual(extract_yaml_list("title: CMS\n", "aliases"), [])
+
+    def test_inline_empty_list(self) -> None:
+        self.assertEqual(extract_yaml_list("aliases: []\n", "aliases"), [])
+
+    def test_inline_single_value(self) -> None:
+        self.assertEqual(extract_yaml_list("aliases: CMS\n", "aliases"), ["CMS"])
+
+    def test_inline_quoted_single_value(self) -> None:
+        self.assertEqual(extract_yaml_list('aliases: "CMS"\n', "aliases"), ["CMS"])
+
+    def test_multiline_list(self) -> None:
+        frontmatter = 'aliases:\n  - CMS\n  - "C.M.S."\n'
+        self.assertEqual(extract_yaml_list(frontmatter, "aliases"), ["CMS", "C.M.S."])
+
+    def test_multiline_stops_at_non_indented_line(self) -> None:
+        frontmatter = "aliases:\n  - CMS\ntags:\n  - test\n"
+        self.assertEqual(extract_yaml_list(frontmatter, "aliases"), ["CMS"])
 
 
 class ExtractSourcesFromFrontmatterTests(unittest.TestCase):

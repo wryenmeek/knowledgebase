@@ -152,6 +152,10 @@ def _write_concept_drafts(
             results["errors"].append(
                 f"{title}: draft structural validation failed: {structural_errors}"
             )
+            print(
+                f"warning: concept '{title}' draft invalid (structural errors: {structural_errors})",
+                file=sys.stderr,
+            )
             continue
 
         try:

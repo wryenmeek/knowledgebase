@@ -30,8 +30,8 @@ from scripts._optional_surface_common import (
     repo_relative,
     repo_root_failure,
     run_surface_cli,
-    write_report_artifact,
 )
+from scripts.reporting._artifact import write_report_artifact
 from scripts.kb import page_template_utils
 from scripts.kb.write_utils import LockUnavailableError
 

@@ -211,6 +211,20 @@ class TestRenderDraftPage(unittest.TestCase):
         errors = _su.validate_draft_structure(page)
         self.assertEqual(errors, [], f"Draft page had structural errors: {errors}")
 
+    def test_validate_draft_structure_missing_frontmatter(self) -> None:
+        errors = _su.validate_draft_structure("# Missing frontmatter\n")
+        self.assertEqual(errors, ["frontmatter missing or undetected"])
+
+    def test_validate_draft_structure_malformed_closing_delimiter(self) -> None:
+        draft = '---\ntitle: "Test Entity"\n  ---\n# Test Entity\n'
+        errors = _su.validate_draft_structure(draft)
+        self.assertEqual(errors, ["frontmatter closing delimiter missing or malformed"])
+
+    def test_validate_draft_structure_detects_extra_frontmatter_delimiter(self) -> None:
+        draft = '---\ntitle: "Test Entity"\n---\n---\n# Test Entity\n'
+        errors = _su.validate_draft_structure(draft)
+        self.assertEqual(errors, ["body starts with an unexpected frontmatter delimiter"])
+
 
 # ---------------------------------------------------------------------------
 # validate_extraction_bundle (extract_entities.py)
@@ -570,6 +584,8 @@ class TestExtractEntitiesRun(unittest.TestCase):
             self.assertEqual(rc, 0)
             bundle = json.loads(out.read_text(encoding="utf-8"))
             self.assertTrue(bundle["soft_skipped"])
+            self.assertEqual(bundle["entities"], [])
+            self.assertEqual(bundle["concepts"], [])
 
     def test_self_correction_succeeds_on_second_attempt(self) -> None:
         import tempfile

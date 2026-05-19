@@ -80,7 +80,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
-    """Backward-compatible wrapper around scripts.kb.page_template_utils.extract_yaml_list."""
+    """Delegate to the shared extract_yaml_list helper."""
     return extract_yaml_list(frontmatter_str, key)
 
 
@@ -139,7 +139,11 @@ def _build_prompt(
             + "\n".join(f"  - {e}" for e in validation_errors)
         )
 
-    body_excerpt = source_body[:3500]
+    MAX_BODY_LEN = 3500
+    if len(source_body) > MAX_BODY_LEN:
+        body_excerpt = source_body[:MAX_BODY_LEN] + "\n\n[... content truncated at 3500 chars ...]\n"
+    else:
+        body_excerpt = source_body
 
     return f"""You are a knowledge extraction assistant. Extract named entities and concepts from the following wiki source page.
 

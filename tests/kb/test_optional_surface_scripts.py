@@ -752,7 +752,7 @@ class OptionalSurfaceScriptTests(RuntimeWorkspaceTestCase):
     def test_write_report_artifact_rejects_report_type_with_path_separator(self) -> None:
         """write_report_artifact must raise ValueError for report_type values that
         contain path traversal characters ('..', '/', '\\')."""
-        from scripts._optional_surface_common import write_report_artifact
+        from scripts.reporting._artifact import write_report_artifact
 
         (self.workspace / "schema" / "report-artifact-contract.md").parent.mkdir(
             parents=True, exist_ok=True

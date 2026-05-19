@@ -63,6 +63,40 @@ Before implementing any new helper, check these five canonical modules. See ADR-
 This split is intentional: it isolates trust checks, diagnostics, and write operations
 so permission scope can stay minimal for each path.
 
+## Fleet orchestration
+
+`scripts/fleet/` is a **separate TypeScript/Bun runtime** that integrates with the
+[Jules SDK](https://www.npmjs.com/package/@google/jules-sdk) to automate issue-to-PR
+dispatch and merge. It is independent of the Python `scripts/kb/` layer and is
+**not covered by `pytest`**.
+
+### Entry points
+
+| Script | Purpose |
+|---|---|
+| `fleet-plan.ts` | Plans a batch of Jules tasks from open GitHub issues |
+| `fleet-dispatch.ts` | Dispatches planned tasks to Jules for parallel execution |
+| `fleet-merge.ts` | Merges completed Jules PRs that pass CI |
+| `fleet-analyze.ts` | Analyzes dispatch/merge results for reporting |
+
+### CI workflows
+
+- **`fleet-dispatch.yml`** — triggered by schedule or `workflow_dispatch`; runs `fleet-dispatch.ts`
+- **`fleet-merge.yml`** — triggered after CI passes on fleet PRs; runs `fleet-merge.ts`
+
+### Build verification
+
+After any edit to `scripts/fleet/`, verify TypeScript compiles cleanly:
+
+```bash
+cd scripts/fleet && bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts fleet-analyze.ts
+```
+
+**Important:** `pytest` passing does **not** imply TypeScript is clean. Always run
+`bun build` after editing fleet files. Fleet-produced PRs enter normal CI review
+(CI-1..CI-3) and do not bypass write allowlists or the `wiki/.kb_write.lock`
+concurrency model.
+
 ## Wiki-curation framework MVP boundary
 
 The wiki-curation agent framework was originally ratified as an **MVP control

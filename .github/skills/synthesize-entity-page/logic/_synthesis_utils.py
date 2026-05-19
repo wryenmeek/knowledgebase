@@ -102,7 +102,7 @@ def find_duplicate(
 
 
 def _extract_yaml_list_from_str(frontmatter_str: str, key: str) -> list[str]:
-    """Backward-compatible wrapper around scripts.kb.page_template_utils.extract_yaml_list."""
+    """Delegate to the shared extract_yaml_list helper."""
     return extract_yaml_list(frontmatter_str, key)
 
 
@@ -272,12 +272,22 @@ def validate_draft_frontmatter(content: str) -> list[str]:
 
 
 def validate_draft_structure(draft: str) -> list[str]:
-    """Return a list of structural draft violations (empty = valid)."""
-    fm_str, _ = extract_frontmatter(draft)
+    """Return a list of structural draft violations (empty = valid).
+
+    Checks performed:
+    - frontmatter block is present and detectable
+    - a canonical closing ``---`` delimiter separates frontmatter from body
+    - body does not begin with a spurious ``---`` delimiter
+    """
+    normalized_draft = draft.replace("\r\n", "\n").replace("\r", "\n")
+    fm_str, _ = extract_frontmatter(normalized_draft)
     if fm_str is None:
         return ["frontmatter missing or undetected"]
 
-    parts = draft.split("\n---\n", 1)
+    if normalized_draft.endswith("\n---"):
+        normalized_draft += "\n"
+
+    parts = normalized_draft.split("\n---\n", 1)
     if len(parts) != 2:
         return ["frontmatter closing delimiter missing or malformed"]
 
