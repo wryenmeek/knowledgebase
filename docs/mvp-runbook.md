@@ -155,8 +155,8 @@ python3 scripts/reporting/coverage_report.py --mode summary
 # persist mode (approval-gated; writes wiki/reports/coverage-report-*.json):
 python3 scripts/reporting/coverage_report.py --mode persist --approval approved
 
-# 8) regression/unit/integration workflow checks
-python3 -m pytest tests/ -q
+# 8) regression/unit/integration workflow checks (≥90% coverage gate enforced in CI-2)
+python3 -m pytest tests/ -q --cov=scripts/kb --cov-fail-under=90
 ```
 
 ## Framework verification entrypoints

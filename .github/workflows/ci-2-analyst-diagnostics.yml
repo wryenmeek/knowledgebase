@@ -107,7 +107,7 @@ jobs:
           } | tee diagnostics/context.log
 
       - name: Install test dependencies
-        run: pip install --quiet pytest
+        run: pip install --quiet pytest pytest-cov
 
       - name: Run analyst diagnostics (lint + unit tests)
         id: diagnostics
@@ -134,7 +134,7 @@ jobs:
           lint_exit="${PIPESTATUS[0]}"
 
           echo "[CI-2] pytest" | tee -a diagnostics/diagnostics.log
-          python3 -m pytest tests/ -q 2>&1 | tee -a diagnostics/diagnostics.log
+          python3 -m pytest tests/ -q --cov=scripts/kb --cov-fail-under=90 2>&1 | tee -a diagnostics/diagnostics.log
           tests_exit="${PIPESTATUS[0]}"
 
           diagnostics_exit=0

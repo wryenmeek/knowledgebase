@@ -481,5 +481,431 @@ class LintWikiCliTests(KnowledgebaseWorkspaceTestCase):
         self.assertEqual(after_snapshot, before_snapshot)
 
 
+class LintWikiNormalizationTests(unittest.TestCase):
+    """Unit tests for internal normalization helpers (no subprocess)."""
+
+    def test_normalize_link_target_empty_string_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        self.assertIsNone(_normalize_link_target(""))
+
+    def test_normalize_link_target_whitespace_only_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        self.assertIsNone(_normalize_link_target("   "))
+
+    def test_normalize_link_target_strips_angle_brackets(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        result = _normalize_link_target("<wiki/sources/foo.md>")
+        self.assertEqual(result, "wiki/sources/foo.md")
+
+    def test_normalize_link_target_strips_link_title(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        result = _normalize_link_target('wiki/foo.md "Some Title"')
+        self.assertEqual(result, "wiki/foo.md")
+
+    def test_normalize_link_target_strips_link_title_single_quotes(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        result = _normalize_link_target("wiki/foo.md 'Some Title'")
+        self.assertEqual(result, "wiki/foo.md")
+
+    def test_normalize_link_target_strips_link_title_parens(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        result = _normalize_link_target("wiki/foo.md (Some Title)")
+        self.assertEqual(result, "wiki/foo.md")
+
+    def test_normalize_link_target_external_https_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        self.assertIsNone(_normalize_link_target("https://example.com/page"))
+
+    def test_normalize_link_target_external_http_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        self.assertIsNone(_normalize_link_target("http://example.com/page"))
+
+    def test_normalize_link_target_custom_scheme_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        self.assertIsNone(_normalize_link_target("ftp://files.example.com/file"))
+
+    def test_normalize_link_target_generic_scheme_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        self.assertIsNone(_normalize_link_target("repo://owner/repo/path@sha"))
+
+    def test_normalize_link_target_javascript_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        self.assertIsNone(_normalize_link_target("javascript:void(0)"))
+
+    def test_normalize_link_target_anchor_only_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        # After stripping the fragment, the path part is empty
+        self.assertIsNone(_normalize_link_target("#section-anchor"))
+
+    def test_normalize_link_target_strips_fragment(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        result = _normalize_link_target("wiki/foo.md#section")
+        self.assertEqual(result, "wiki/foo.md")
+
+    def test_normalize_link_target_strips_query(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        result = _normalize_link_target("wiki/foo.md?version=2")
+        self.assertEqual(result, "wiki/foo.md")
+
+    def test_normalize_link_target_non_md_extension_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        self.assertIsNone(_normalize_link_target("image.png"))
+
+    def test_normalize_link_target_pdf_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        self.assertIsNone(_normalize_link_target("doc.pdf"))
+
+    def test_normalize_link_target_md_extension_preserved(self) -> None:
+        from scripts.kb.lint_wiki import _normalize_link_target
+        result = _normalize_link_target("wiki/sources/foo.md")
+        self.assertEqual(result, "wiki/sources/foo.md")
+
+
+class LintWikiResolveTests(unittest.TestCase):
+    """Unit tests for _resolve_internal_markdown_target."""
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmpdir = tempfile.mkdtemp()
+        self.wiki_root = Path(self._tmpdir) / "wiki"
+        self.wiki_root.mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_none_target_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _resolve_internal_markdown_target
+        source_page = self.wiki_root / "index.md"
+        result = _resolve_internal_markdown_target(source_page, "", self.wiki_root)
+        self.assertIsNone(result)
+
+    def test_target_with_wiki_prefix_resolves_from_parent(self) -> None:
+        from scripts.kb.lint_wiki import _resolve_internal_markdown_target
+        source_page = self.wiki_root / "index.md"
+        result = _resolve_internal_markdown_target(source_page, "wiki/sources/foo.md", self.wiki_root)
+        expected = self.wiki_root.parent / "wiki" / "sources" / "foo.md"
+        self.assertEqual(result, expected)
+
+    def test_target_with_slash_prefix_resolves_from_wiki_root(self) -> None:
+        from scripts.kb.lint_wiki import _resolve_internal_markdown_target
+        source_page = self.wiki_root / "index.md"
+        result = _resolve_internal_markdown_target(source_page, "/sources/bar.md", self.wiki_root)
+        expected = self.wiki_root / "sources" / "bar.md"
+        self.assertEqual(result, expected)
+
+    def test_relative_target_resolves_from_source_parent(self) -> None:
+        from scripts.kb.lint_wiki import _resolve_internal_markdown_target
+        source_page = self.wiki_root / "sources" / "page.md"
+        result = _resolve_internal_markdown_target(source_page, "../index.md", self.wiki_root)
+        expected = self.wiki_root / "sources" / ".." / "index.md"
+        self.assertEqual(result, expected)
+
+    def test_no_suffix_candidate_adds_md_if_not_file(self) -> None:
+        from scripts.kb.lint_wiki import _resolve_internal_markdown_target
+        source_page = self.wiki_root / "index.md"
+        # 'concepts/coverage' - no suffix, not an existing file
+        result = _resolve_internal_markdown_target(source_page, "concepts/coverage", self.wiki_root)
+        self.assertIsNotNone(result)
+        self.assertTrue(str(result).endswith(".md"))
+
+    def test_no_suffix_candidate_returns_as_is_if_file_exists(self) -> None:
+        from scripts.kb.lint_wiki import _resolve_internal_markdown_target
+        # Create a file with no extension
+        no_ext_file = self.wiki_root / "mypage"
+        no_ext_file.write_text("content")
+        source_page = self.wiki_root / "index.md"
+        result = _resolve_internal_markdown_target(source_page, "mypage", self.wiki_root)
+        self.assertEqual(result, no_ext_file)
+
+    def test_external_link_returns_none(self) -> None:
+        from scripts.kb.lint_wiki import _resolve_internal_markdown_target
+        source_page = self.wiki_root / "index.md"
+        result = _resolve_internal_markdown_target(source_page, "https://example.com", self.wiki_root)
+        self.assertIsNone(result)
+
+
+class LintWikiDisplayPathTests(unittest.TestCase):
+    """Unit tests for _display_path."""
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmpdir = tempfile.mkdtemp()
+        self.wiki_root = Path(self._tmpdir) / "wiki"
+        self.wiki_root.mkdir()
+
+    def tearDown(self) -> None:
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_path_within_wiki_root_returns_relative(self) -> None:
+        from scripts.kb.lint_wiki import _display_path
+        page = self.wiki_root / "sources" / "foo.md"
+        result = _display_path(page, self.wiki_root)
+        self.assertEqual(result, "sources/foo.md")
+
+    def test_path_outside_wiki_root_returns_absolute_str(self) -> None:
+        from scripts.kb.lint_wiki import _display_path
+        page = Path(self._tmpdir) / "outside" / "bar.md"
+        result = _display_path(page, self.wiki_root)
+        self.assertIn("outside", result)
+        self.assertNotIn("sources", result)
+
+
+class LintWikiDirectTests(KnowledgebaseWorkspaceTestCase):
+    """Tests that call lint_wiki() directly (not via subprocess) for coverage."""
+
+    RUNTIME_ROOT_NAME = ".runtime_lint_wiki_direct"
+
+    def _write_valid_wiki(self) -> None:
+        self.write_wiki_page(
+            "index.md",
+            self.build_process_page(
+                "Index",
+                "- [Log](log.md)\n- [Source A](sources/source-a.md)",
+            ),
+        )
+        self.write_wiki_page(
+            "log.md",
+            self.build_process_page("Log", "- entries"),
+        )
+        self.write_wiki_page(
+            "sources/source-a.md",
+            self.build_process_page("Source A", "- [Index](../index.md)"),
+        )
+
+    def test_direct_lint_clean_wiki_returns_no_violations(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        self._write_valid_wiki()
+        violations = lint_wiki(self.wiki_root)
+        self.assertEqual(violations, [])
+
+    def test_direct_lint_detects_orphan_page(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        self._write_valid_wiki()
+        self.write_wiki_page(
+            "sources/orphan.md",
+            self.build_process_page("Orphan", "No links to me."),
+        )
+        violations = lint_wiki(self.wiki_root)
+        codes = [v.code for v in violations]
+        self.assertIn("orphan-page", codes)
+
+    def test_direct_lint_skip_orphan_check(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        self._write_valid_wiki()
+        self.write_wiki_page(
+            "sources/orphan.md",
+            self.build_process_page("Orphan", "No links to me."),
+        )
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        codes = [v.code for v in violations]
+        self.assertNotIn("orphan-page", codes)
+
+    def test_direct_lint_detects_missing_frontmatter(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        self.write_wiki_page("sources/nofm.md", "# No Frontmatter\n\nJust body text.\n")
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        codes = [v.code for v in violations]
+        self.assertIn("missing-frontmatter", codes)
+
+    def test_direct_lint_detects_missing_frontmatter_key(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        # Page missing the 'updated_at' key
+        content = "---\ntype: process\ntitle: \"Test\"\nsources: []\n---\n\n# Test\n"
+        self.write_wiki_page("sources/missingkey.md", content)
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        codes = [v.code for v in violations]
+        self.assertIn("missing-frontmatter-key", codes)
+
+    def test_direct_lint_detects_contradiction_marker(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        self.write_wiki_page(
+            "sources/conflict.md",
+            self.build_process_page(
+                "Conflict", "Evidence says A but also B. [CONTRADICTION]"
+            ),
+        )
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        codes = [v.code for v in violations]
+        self.assertIn("unresolved-contradiction-marker", codes)
+
+    def test_direct_lint_detects_broken_internal_link(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        self.write_wiki_page(
+            "index.md",
+            self.build_process_page(
+                "Index",
+                "- [Log](log.md)\n- [Missing](sources/does-not-exist.md)",
+            ),
+        )
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        codes = [v.code for v in violations]
+        self.assertIn("missing-link-target", codes)
+
+    def test_direct_lint_context_md_skipped(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        # CONTEXT.md should be silently skipped; no violations from it
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        (self.wiki_root / "CONTEXT.md").write_text(
+            "scope: wiki\nlast_updated: 2024-01-01\n\n## Terms\nfoo bar\n",
+            encoding="utf-8",
+        )
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        # Violations should not reference CONTEXT.md
+        for v in violations:
+            self.assertNotEqual(v.page.name, "CONTEXT.md")
+
+    def test_direct_lint_symlinked_page_detected(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        import os
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        # Create a real page and symlink it
+        real_page = self.wiki_root / "sources" / "real.md"
+        real_page.parent.mkdir(parents=True, exist_ok=True)
+        real_page.write_text(self.build_process_page("Real"), encoding="utf-8")
+        sym_page = self.wiki_root / "sources" / "symlink.md"
+        os.symlink(real_page, sym_page)
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        codes = [v.code for v in violations]
+        self.assertIn("symlinked-page", codes)
+
+    def test_direct_lint_out_of_bounds_link_detected(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        # A link with relative path traversal that escapes the wiki root
+        # e.g., page in wiki/ links to ../../outside.md → resolves outside wiki/
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        # Link traverses up two levels from wiki/sources/ to escape wiki/
+        self.write_wiki_page(
+            "sources/escape.md",
+            self.build_process_page("Escape", "- [OutOfBounds](../../README.md)"),
+        )
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        codes = [v.code for v in violations]
+        self.assertIn("out-of-bounds-link", codes)
+
+    def test_direct_lint_authoritative_sourceref_invalid(self) -> None:
+        from scripts.kb.lint_wiki import lint_wiki
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        # Page with a placeholder (non-authoritative) SourceRef triggers invalid-sourceref
+        placeholder_ref = "repo://owner/repo/path@" + "0" * 40 + "#anchor?sha256=" + "a" * 64
+        content = "\n".join([
+            "---",
+            "type: source",
+            'title: "Test Source"',
+            "status: active",
+            f"sources:\n  - {placeholder_ref}",
+            "open_questions: []",
+            "confidence: 3",
+            "sensitivity: internal",
+            'updated_at: "2024-01-01T00:00:00Z"',
+            "tags:",
+            "  - test",
+            "---",
+            "",
+            "# Test Source",
+            "",
+        ])
+        self.write_wiki_page("sources/test-source.md", content)
+        violations = lint_wiki(
+            self.wiki_root,
+            skip_orphan_check=True,
+            authoritative_sourcerefs=True,
+            repo_owner="owner",
+            repo_name="repo",
+        )
+        codes = [v.code for v in violations]
+        self.assertIn("invalid-sourceref", codes)
+
+
+        from scripts.kb.lint_wiki import lint_wiki
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        self.write_wiki_page(
+            "concepts/subdir/deep-concept.md",
+            self.build_process_page("Deep Concept", ""),
+        )
+        violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+        codes = [v.code for v in violations]
+        self.assertIn("nested-topical-page", codes)
+
+
+class LintWikiMainTests(KnowledgebaseWorkspaceTestCase):
+    """Tests for lint_wiki.main() error paths (no subprocess)."""
+
+    RUNTIME_ROOT_NAME = ".runtime_lint_wiki_main"
+
+    def test_main_nonexistent_wiki_root_returns_2(self) -> None:
+        from scripts.kb.lint_wiki import main
+        result = main(["--wiki-root", str(self.wiki_root / "does-not-exist"), "--strict"])
+        self.assertEqual(result, 2)
+
+    def test_main_authoritative_without_owner_returns_2(self) -> None:
+        from scripts.kb.lint_wiki import main
+        self.wiki_root.mkdir(parents=True, exist_ok=True)
+        result = main(["--wiki-root", str(self.wiki_root), "--authoritative-sourcerefs", "--repo-name", "myrepo"])
+        self.assertEqual(result, 2)
+
+    def test_main_authoritative_without_name_returns_2(self) -> None:
+        from scripts.kb.lint_wiki import main
+        self.wiki_root.mkdir(parents=True, exist_ok=True)
+        result = main(["--wiki-root", str(self.wiki_root), "--authoritative-sourcerefs", "--repo-owner", "myowner"])
+        self.assertEqual(result, 2)
+
+    def test_main_strict_with_violations_returns_1(self) -> None:
+        from scripts.kb.lint_wiki import main
+        self.write_wiki_page(
+            "index.md",
+            self.build_process_page("Index", "- [Log](log.md)\n- [Missing](sources/ghost.md)"),
+        )
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        result = main(["--wiki-root", str(self.wiki_root), "--strict"])
+        self.assertEqual(result, 1)
+
+    def test_main_non_strict_with_violations_returns_0(self) -> None:
+        from scripts.kb.lint_wiki import main
+        self.write_wiki_page(
+            "index.md",
+            self.build_process_page("Index", "- [Log](log.md)\n- [Missing](sources/ghost.md)"),
+        )
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        result = main(["--wiki-root", str(self.wiki_root)])
+        self.assertEqual(result, 0)
+
+    def test_main_prints_remediation_hint_for_known_violation_code(self) -> None:
+        """main() prints a remediation hint for violations with known codes."""
+        import io
+        from contextlib import redirect_stdout
+        from scripts.kb.lint_wiki import main
+        # Create a page with no frontmatter - produces "missing-frontmatter" which has a hint
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        self.write_wiki_page("sources/nofm.md", "# No Frontmatter\n\nJust body text.\n")
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            main(["--wiki-root", str(self.wiki_root), "--skip-orphan-check"])
+        output = buf.getvalue()
+        # Should include the remediation hint (indented line) for missing-frontmatter
+        self.assertIn("FIX:", output)
+
+    def test_main_clean_wiki_strict_returns_0(self) -> None:
+        from scripts.kb.lint_wiki import main
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        result = main(["--wiki-root", str(self.wiki_root), "--strict", "--skip-orphan-check"])
+        self.assertEqual(result, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
