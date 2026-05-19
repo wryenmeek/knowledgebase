@@ -382,6 +382,20 @@ def run_cli(
     *,
     output_stream: Any = sys.stdout,
 ) -> int:
+    """Parse CLI arguments and run ``fetch_content``.
+
+    Parameters
+    ----------
+    argv:
+        Argument list to parse; defaults to ``sys.argv[1:]`` when ``None``.
+    output_stream:
+        Stream for JSON surface output; defaults to ``sys.stdout``.
+
+    Returns
+    -------
+    int
+        Process exit code (0 on success, non-zero on failure).
+    """
     return run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,
