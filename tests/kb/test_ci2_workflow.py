@@ -46,17 +46,12 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             "Workflow must not request write token scopes",
         )
 
-    def test_workflow_yaml_syntax_validation_is_explicit(self) -> None:
-        required_controls = (
-            "Validate workflow YAML syntax",
-            'require "psych"',
-            'Dir.glob(".github/workflows/*.yml").sort.each do |workflow_path|',
-            "Psych.parse_file(workflow_path)",
-            "rescue Psych::SyntaxError => err",
-            'warn "::error file=#{workflow_path}::#{err.message}"',
-        )
-        for control in required_controls:
-            self.assertIn(control, self.workflow_text)
+    def test_workflow_yaml_syntax_validated_by_python_test_suite(self) -> None:
+        # YAML syntax validation moved to WorkflowYamlSyntaxTests in the Python
+        # test suite (issue #16: eliminate duplicate YAML parse in CI-2).
+        # The Ruby Psych step was removed; CI-2 no longer parses workflow YAML directly.
+        self.assertNotIn('require "psych"', self.workflow_text)
+        self.assertNotIn("Psych.parse_file", self.workflow_text)
 
     def test_workflow_is_diagnostics_only_with_explicit_failures(self) -> None:
         self.assertIn("Bootstrap repo-local qmd preflight shim", self.workflow_text)
@@ -132,6 +127,31 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             self.workflow_text,
         )
         self.assertIn('echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"', self.workflow_text)
+
+
+
+class WorkflowYamlSyntaxTests(unittest.TestCase):
+    """Validate that all CI workflow YAML files parse cleanly (#16).
+
+    This single Python-level check replaces the Ruby Psych step that previously
+    ran in CI-2 as a separate workflow step. One canonical parse path is cheaper
+    than two and keeps validation inside the pytest suite.
+    """
+
+    def test_all_workflow_yaml_files_parse_without_error(self) -> None:
+        import yaml  # pyyaml — available in dev extras
+
+        workflows_dir = Path(".github/workflows")
+        self.assertTrue(workflows_dir.is_dir(), f"Missing workflows dir: {workflows_dir}")
+        yaml_files = sorted(workflows_dir.glob("*.yml"))
+        self.assertGreater(len(yaml_files), 0, "No workflow YAML files found")
+        errors: list[str] = []
+        for yf in yaml_files:
+            try:
+                yaml.safe_load(yf.read_text(encoding="utf-8"))
+            except yaml.YAMLError as exc:
+                errors.append(f"{yf}: {exc}")
+        self.assertEqual(errors, [], "Workflow YAML syntax errors found:\n" + "\n".join(errors))
 
 
 if __name__ == "__main__":
