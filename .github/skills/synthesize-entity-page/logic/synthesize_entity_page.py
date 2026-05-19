@@ -36,6 +36,7 @@ from _synthesis_utils import (
     scan_existing_pages,
     title_to_slug,
     validate_draft_frontmatter,
+    validate_draft_structure,
 )
 
 
@@ -141,6 +142,13 @@ def _write_entity_drafts(
             print(
                 f"warning: entity '{title}' draft invalid (missing keys: {missing})",
                 file=sys.stderr,
+            )
+            continue
+
+        structural_errors = validate_draft_structure(draft)
+        if structural_errors:
+            results["errors"].append(
+                f"{title}: draft structural validation failed: {structural_errors}"
             )
             continue
 

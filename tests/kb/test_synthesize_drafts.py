@@ -3,7 +3,7 @@
 Covers:
 - validate_extraction_bundle (extract_entities.py)
 - title_to_slug, find_duplicate, render_draft_page, validate_draft_frontmatter,
-  append_to_existing_page (_synthesis_utils.py)
+  validate_draft_structure, append_to_existing_page (_synthesis_utils.py)
 - run() for synthesize_entity_page.py: create, update, soft-skip, ambiguous match
 - run() for synthesize_concept_page.py: create, soft-skip
 - run() for extract_entities.py: mocked HTTP, self-correction, soft-skip
@@ -205,6 +205,11 @@ class TestRenderDraftPage(unittest.TestCase):
         page = self._rendered()
         errors = _su.validate_draft_frontmatter(page)
         self.assertEqual(errors, [], f"Draft page had missing keys: {errors}")
+
+    def test_validates_draft_structure(self) -> None:
+        page = self._rendered()
+        errors = _su.validate_draft_structure(page)
+        self.assertEqual(errors, [], f"Draft page had structural errors: {errors}")
 
 
 # ---------------------------------------------------------------------------
@@ -548,6 +553,24 @@ class TestExtractEntitiesRun(unittest.TestCase):
             self.assertEqual(bundle["entities"], [])
             self.assertEqual(bundle["concepts"], [])
 
+    def test_empty_choices_list_produces_soft_skip(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            self._make_source(root)
+            out = root / "bundle.json"
+            with self._mock_urlopen({"choices": []}):
+                rc = _extract_mod.run(
+                    source_page_path="wiki/sources/test-source.md",
+                    wiki_root="wiki",
+                    github_token="tok",
+                    output_path=str(out),
+                    repo_root=root,
+                )
+            self.assertEqual(rc, 0)
+            bundle = json.loads(out.read_text(encoding="utf-8"))
+            self.assertTrue(bundle["soft_skipped"])
+
     def test_self_correction_succeeds_on_second_attempt(self) -> None:
         import tempfile
         with tempfile.TemporaryDirectory() as td:
@@ -731,6 +754,42 @@ class TestEntitySlugCollision(unittest.TestCase):
             self.assertEqual(rc, 0)
             # File exists but was not overwritten
             self.assertEqual(existing_file.read_text(encoding="utf-8").count("Other Entity"), 2)
+
+
+class TestInBatchSlugCollision(unittest.TestCase):
+    def test_in_batch_slug_collision_skips_second_entity(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            _make_workspace(root)
+            bundle = dict(
+                _VALID_BUNDLE,
+                entities=[
+                    {
+                        "title": "CMS",
+                        "aliases": [],
+                        "summary": "First.",
+                        "evidence": "Ev A.",
+                        "tags": ["test"],
+                        "open_questions": [],
+                    },
+                    {
+                        "title": "C.M.S.",
+                        "aliases": [],
+                        "summary": "Second (same slug).",
+                        "evidence": "Ev B.",
+                        "tags": ["test"],
+                        "open_questions": [],
+                    },
+                ],
+            )
+            bundle_path = root / "bundle.json"
+            bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+            rc = _entity_mod.run(str(bundle_path), "wiki", repo_root=root)
+            self.assertEqual(rc, 0)
+            entity_files = list((root / "wiki" / "entities").glob("*.md"))
+            self.assertEqual(len(entity_files), 1)
+            self.assertIn("CMS", entity_files[0].read_text(encoding="utf-8"))
 
 
 class TestConceptSlugCollision(unittest.TestCase):

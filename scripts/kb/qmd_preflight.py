@@ -15,11 +15,11 @@ from typing import Callable, Sequence, TextIO
 # rather than imported from scripts._optional_surface_common. qmd_preflight.py is a
 # core scripts/kb/ module; optional surface scripts copy only scripts/kb/ to fixture
 # repos and cannot depend on the broader scripts/ package.
-STATUS_PASS = "pass"
-STATUS_FAIL = "fail"
+STATUS_PASS = "pass"   # keep in sync with scripts/_optional_surface_common.STATUS_PASS
+STATUS_FAIL = "fail"   # keep in sync with scripts/_optional_surface_common.STATUS_FAIL
 
-REASON_CODE_OK = "ok"
-REASON_CODE_INVALID_INPUT = "invalid_input"
+REASON_CODE_OK = "ok"  # keep in sync with scripts/_optional_surface_common.REASON_CODE_OK
+REASON_CODE_INVALID_INPUT = "invalid_input"  # keep in sync with scripts/_optional_surface_common.REASON_CODE_INVALID_INPUT
 REASON_CODE_PREREQ_MISSING_QMD_RUNTIME = "prereq_missing:qmd_runtime"
 REASON_CODE_PREREQ_MISSING_QMD_INDEX_RESOURCE = "prereq_missing:qmd_index_resource"
 

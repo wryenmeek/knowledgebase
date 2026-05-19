@@ -15,6 +15,7 @@ Public API
   logs parse errors and continues (partial results are better than crashing).
 - ``render_draft_page(...)`` — renders a full wiki page markdown string.
 - ``validate_draft_frontmatter(content)`` — returns list of missing required keys.
+- ``validate_draft_structure(draft)`` — returns list of structural violations.
 - ``append_to_existing_page(page_path, new_source_ref, new_open_questions)`` — appends new
   SourceRef and/or open_questions to an existing page.  Returns ``True`` if the page was
   modified, ``False`` if there was nothing new to add (not an error).
@@ -52,6 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
 from scripts.kb.page_template_utils import (
     extract_frontmatter,
     extract_sources_from_frontmatter,
+    extract_yaml_list,
     parse_frontmatter,
 )
 from scripts.kb.write_utils import write_text_capturing_previous_safe
@@ -100,27 +102,8 @@ def find_duplicate(
 
 
 def _extract_yaml_list_from_str(frontmatter_str: str, key: str) -> list[str]:
-    """Extract a YAML list value for `key` from a frontmatter string (no YAML parser)."""
-    lines = frontmatter_str.splitlines()
-    key_prefix = f"{key}:"
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped.startswith(key_prefix):
-            continue
-        inline = stripped[len(key_prefix) :].strip()
-        if inline == "[]":
-            return []
-        if inline:
-            return [inline.strip('"').strip("'")]
-        items: list[str] = []
-        for raw in lines[index + 1 :]:
-            if not raw.startswith("  "):
-                break
-            item = raw.strip()
-            if item.startswith("- "):
-                items.append(item[2:].strip().strip('"').strip("'"))
-        return items
-    return []
+    """Backward-compatible wrapper around scripts.kb.page_template_utils.extract_yaml_list."""
+    return extract_yaml_list(frontmatter_str, key)
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +269,23 @@ def validate_draft_frontmatter(content: str) -> list[str]:
     fm = parse_frontmatter(fm_str)
     missing = [k for k in _REQUIRED_FRONTMATTER_KEYS if k not in fm]
     return missing
+
+
+def validate_draft_structure(draft: str) -> list[str]:
+    """Return a list of structural draft violations (empty = valid)."""
+    fm_str, _ = extract_frontmatter(draft)
+    if fm_str is None:
+        return ["frontmatter missing or undetected"]
+
+    parts = draft.split("\n---\n", 1)
+    if len(parts) != 2:
+        return ["frontmatter closing delimiter missing or malformed"]
+
+    body = parts[1]
+    violations: list[str] = []
+    if body.startswith("---"):
+        violations.append("body starts with an unexpected frontmatter delimiter")
+    return violations
 
 
 # ---------------------------------------------------------------------------

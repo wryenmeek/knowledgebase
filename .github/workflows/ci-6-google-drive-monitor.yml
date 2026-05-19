@@ -26,6 +26,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-6-drive-monitor-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   PYTHONDONTWRITEBYTECODE: "1"
   # CI permission policy markers (machine-checked by test_ci_permission_asserts.py)

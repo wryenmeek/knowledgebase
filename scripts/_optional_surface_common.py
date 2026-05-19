@@ -12,6 +12,7 @@ import sys
 from typing import Any, Callable, Sequence, TextIO, TypedDict
 
 from scripts.kb import write_utils
+from scripts.kb.contracts import WRITE_LOCK_PATH as LOCK_PATH  # single source of truth (ADR-011)
 
 STATUS_PASS = "pass"
 STATUS_FAIL = "fail"
@@ -22,6 +23,7 @@ REASON_CODE_INVALID_INPUT = "invalid_input"
 # and REASON_CODE_OK / REASON_CODE_INVALID_INPUT constants. This is intentional: qmd_preflight
 # is a core scripts/kb/ module deployed in isolation (fixture repos copy only scripts/kb/) and
 # cannot import from the broader scripts/ package. Do not "unify" across that boundary.
+# See ADR-011 §keep-in-sync pattern for the rationale.
 REASON_CODE_PREREQ_MISSING_REPO_ROOT = "prereq_missing:repo_root"
 REASON_CODE_APPROVAL_REQUIRED = "approval_required"
 REASON_CODE_WRITE_SURFACE_NOT_DECLARED = "write_surface_not_declared"
@@ -30,7 +32,6 @@ REASON_CODE_MISSING_SNAPSHOT = "missing_snapshot"
 
 APPROVAL_NONE = "none"
 APPROVAL_APPROVED = "approved"
-LOCK_PATH = "wiki/.kb_write.lock"
 PLACEHOLDER_MARKERS: tuple[str, ...] = (
     "{{fill}}",
     "TODO",

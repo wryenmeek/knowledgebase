@@ -13,11 +13,11 @@ from typing import Sequence, TextIO
 from scripts.kb import contracts, page_template_utils, update_index
 from scripts.kb.ingest_render import (
     SourceProvenance,
-    _PROVISIONAL_GIT_SHA,
-    _build_provisional_source_provenance,
-    _build_source_ref,
-    _escape_quotes,
-    _render_source_page,
+    PROVISIONAL_GIT_SHA,
+    build_provisional_source_provenance,
+    build_source_ref,
+    escape_quotes,
+    render_source_page,
 )
 from scripts.kb.path_utils import RepoRelativePathError, resolve_within_repo
 from scripts.kb.sourceref import SourceRefValidationError
@@ -501,7 +501,7 @@ def _ingest_source(repo_root: Path, source_input: str) -> _SourceIngestAttempt:
     checksum = hashlib.sha256(source_bytes).hexdigest()
 
     try:
-        source_ref = _build_source_ref(repo_root, processed_relative, checksum)
+        source_ref = build_source_ref(repo_root, processed_relative, checksum)
     except SourceRefValidationError as exc:
         return _SourceIngestAttempt(
             outcome=SourceOutcome(
@@ -513,10 +513,10 @@ def _ingest_source(repo_root: Path, source_input: str) -> _SourceIngestAttempt:
                 processed_path=processed_relative,
             )
         )
-    provenance = _build_provisional_source_provenance()
+    provenance = build_provisional_source_provenance()
 
     # --- Phase 3: Write source page and move file to processed ---
-    source_page_content = _render_source_page(
+    source_page_content = render_source_page(
         source_relative=source_relative,
         processed_relative=processed_relative,
         source_ref=source_ref,

@@ -8,8 +8,16 @@ import re
 
 from scripts.kb.sourceref import validate_sourceref
 
+__all__ = [
+    "PROVISIONAL_GIT_SHA",
+    "SourceProvenance",
+    "build_source_ref",
+    "build_provisional_source_provenance",
+    "render_source_page",
+    "escape_quotes",
+]
 
-_PROVISIONAL_GIT_SHA = "0" * 40
+PROVISIONAL_GIT_SHA = "0" * 40
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,30 +42,30 @@ class SourceProvenance:
         }
 
 
-def _build_source_ref(repo_root: Path, processed_relative: str, checksum: str) -> str:
+def build_source_ref(repo_root: Path, processed_relative: str, checksum: str) -> str:
     """Build and validate a provisional SourceRef for an ingested artifact."""
     repo_name = re.sub(r"[^A-Za-z0-9_.-]", "-", repo_root.name) or "repo"
     source_ref = (
-        f"repo://local/{repo_name}/{processed_relative}@{_PROVISIONAL_GIT_SHA}"
+        f"repo://local/{repo_name}/{processed_relative}@{PROVISIONAL_GIT_SHA}"
         f"#asset?sha256={checksum}"
     )
     validate_sourceref(source_ref)
     return source_ref
 
 
-def _build_provisional_source_provenance() -> SourceProvenance:
+def build_provisional_source_provenance() -> SourceProvenance:
     """Return a ``SourceProvenance`` with placeholder (provisional) values."""
     return SourceProvenance(
         status="provisional",
         authoritative=False,
         review_mode="authoritative_review_required",
         reconciliation="commit_bound_pending",
-        git_sha=_PROVISIONAL_GIT_SHA,
+        git_sha=PROVISIONAL_GIT_SHA,
         git_sha_kind="placeholder",
     )
 
 
-def _render_source_page(
+def render_source_page(
     *,
     source_relative: str,
     processed_relative: str,
@@ -74,10 +82,10 @@ def _render_source_page(
     lines = [
         "---",
         "type: source",
-        f'title: "{_escape_quotes(page_title)}"',
+        f'title: "{escape_quotes(page_title)}"',
         "status: active",
         "sources:",
-        f'  - "{_escape_quotes(source_ref)}"',
+        f'  - "{escape_quotes(source_ref)}"',
         "open_questions: []",
         "confidence: 5",
         "sensitivity: internal",
@@ -103,6 +111,6 @@ def _render_source_page(
     return "\n".join(lines)
 
 
-def _escape_quotes(value: str) -> str:
+def escape_quotes(value: str) -> str:
     """Escape backslashes and double-quotes for embedding in YAML string values."""
     return value.replace("\\", "\\\\").replace('"', '\\"')

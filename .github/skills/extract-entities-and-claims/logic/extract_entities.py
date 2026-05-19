@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
 from scripts.kb.page_template_utils import (
     extract_frontmatter,
     extract_sources_from_frontmatter,
+    extract_yaml_list,
     parse_frontmatter,
 )
 
@@ -79,33 +80,8 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
-    """Extract a YAML list value for `key` from a frontmatter string.
-
-    Handles inline ``key: []``, inline single value ``key: val``,
-    and multi-line list form.
-    """
-    lines = frontmatter_str.splitlines()
-    key_prefix = f"{key}:"
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped == f"{key_prefix} []" or stripped == key_prefix + " []":
-            return []
-        if not stripped.startswith(key_prefix):
-            continue
-        inline_value = stripped[len(key_prefix) :].strip()
-        if inline_value == "[]":
-            return []
-        if inline_value:
-            return [inline_value.strip('"').strip("'")]
-        items: list[str] = []
-        for raw in lines[index + 1 :]:
-            if not raw.startswith("  "):
-                break
-            item = raw.strip()
-            if item.startswith("- "):
-                items.append(item[2:].strip().strip('"').strip("'"))
-        return items
-    return []
+    """Backward-compatible wrapper around scripts.kb.page_template_utils.extract_yaml_list."""
+    return extract_yaml_list(frontmatter_str, key)
 
 
 def scan_existing_pages(wiki_root: Path, namespace: str) -> list[dict[str, Any]]:

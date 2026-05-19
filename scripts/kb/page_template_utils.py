@@ -156,6 +156,34 @@ def strip_quotes(value: str) -> str:
     return value
 
 
+def extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
+    """Extract a YAML list value for *key* from a frontmatter string (no YAML parser).
+
+    Handles inline ``key: []``, inline single value ``key: val``,
+    and multi-line list form (``key:\n  - item``).
+    """
+    lines = frontmatter_str.splitlines()
+    key_prefix = f"{key}:"
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith(key_prefix):
+            continue
+        inline = stripped[len(key_prefix):].strip()
+        if inline == "[]":
+            return []
+        if inline:
+            return [inline.strip('"').strip("'")]
+        items: list[str] = []
+        for raw in lines[index + 1:]:
+            if not raw.startswith("  "):
+                break
+            item = raw.strip()
+            if item.startswith("- "):
+                items.append(item[2:].strip().strip('"').strip("'"))
+        return items
+    return []
+
+
 def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
     """Return the list of source values from a YAML frontmatter block.
 
@@ -230,6 +258,7 @@ __all__ = [
     "extract_frontmatter_keys",
     "extract_headings",
     "extract_sources_from_frontmatter",
+    "extract_yaml_list",
     "is_nested_topical_page",
     "normalize_page_path",
     "parse_frontmatter",

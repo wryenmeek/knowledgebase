@@ -66,7 +66,7 @@ class IngestCliTests(RuntimeWorkspaceTestCase):
             [
                 {
                     "authoritative": False,
-                    "git_sha": ingest._PROVISIONAL_GIT_SHA,
+                    "git_sha": ingest.PROVISIONAL_GIT_SHA,
                     "git_sha_kind": "placeholder",
                     "reconciliation": "commit_bound_pending",
                     "review_mode": "authoritative_review_required",
@@ -351,19 +351,19 @@ class IngestSourceRefBuilderTests(unittest.TestCase):
         checksum = "a" * 64
 
         with patch.object(ingest_render, "validate_sourceref") as validate_mock:
-            source_ref = ingest._build_source_ref(repo_root, "raw/processed/source.md", checksum)
+            source_ref = ingest.build_source_ref(repo_root, "raw/processed/source.md", checksum)
 
-        self.assertIn(f"@{ingest_render._PROVISIONAL_GIT_SHA}#", source_ref)
+        self.assertIn(f"@{ingest_render.PROVISIONAL_GIT_SHA}#", source_ref)
         validate_mock.assert_called_once_with(source_ref)
 
     def test_build_provisional_source_provenance_marks_placeholder_sha_structurally(self) -> None:
-        provenance = ingest._build_provisional_source_provenance()
+        provenance = ingest.build_provisional_source_provenance()
 
         self.assertEqual(
             provenance.to_dict(),
             {
                 "authoritative": False,
-                "git_sha": ingest_render._PROVISIONAL_GIT_SHA,
+                "git_sha": ingest_render.PROVISIONAL_GIT_SHA,
                 "git_sha_kind": "placeholder",
                 "reconciliation": "commit_bound_pending",
                 "review_mode": "authoritative_review_required",

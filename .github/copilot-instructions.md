@@ -76,6 +76,7 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - **Ship** → `shipping-and-launch`
 - **Self-audit** → `audit-knowledgebase-workspace`
 - **Operate** → `caveman`, `log-intake-rejection`, `reconsider-rejected-source`
+- **Synthesize** → `extract-entities-and-claims` → `synthesize-entity-page`, `synthesize-concept-page`
 
 ### Intent to skill mapping
 
@@ -93,6 +94,7 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - Entity/concept extraction from source → `extract-entities-and-claims`
 - KB entity page drafting → `synthesize-entity-page`
 - KB concept page drafting → `synthesize-concept-page`
+- KB entity/concept synthesis (full lane) → `extract-entities-and-claims` → `synthesize-entity-page` → `synthesize-concept-page`
 - Agent-to-agent context compression → `caveman`
 - New skill creation → `write-a-skill`
 - Refactoring proposal / request → `request-refactor-plan`
