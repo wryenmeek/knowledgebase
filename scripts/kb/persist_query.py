@@ -51,7 +51,6 @@ class PersistRequest:
     unresolved_contradiction: bool
     min_confidence: int
     min_sources: int
-    require_no_contradiction: bool
     updated_at: str
     sensitivity: str
     wiki_root: Path
@@ -109,15 +108,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"Minimum source count threshold (default: {DEFAULT_MIN_SOURCES}).",
     )
     parser.add_argument(
-        "--require-no-contradiction",
-        action="store_true",
-        default=True,
-        help="Require unresolved_contradiction == false for persistence (default policy).",
-    )
-    parser.add_argument(
         "--result-json",
         action="store_true",
-        help="Compatibility flag for automation; JSON envelope is emitted for all runs.",
+        help="Compatibility flag for automation; JSON envelope is emitted for all runs. "
+             "(No-op: JSON output is always produced. This flag is retained for backward "
+             "compatibility only.)",
     )
     parser.add_argument(
         "--updated-at",
@@ -208,7 +203,6 @@ def _validate_request(args: argparse.Namespace, repo_root: Path) -> PersistReque
         unresolved_contradiction=bool(args.unresolved_contradiction),
         min_confidence=args.min_confidence,
         min_sources=args.min_sources,
-        require_no_contradiction=bool(args.require_no_contradiction),
         updated_at=args.updated_at,
         sensitivity=args.sensitivity,
         wiki_root=wiki_root,
@@ -220,7 +214,7 @@ def _evaluate_policy(request: PersistRequest) -> tuple[bool, str]:
         return False, contracts.ReasonCode.POLICY_CONFIDENCE_BELOW_MIN.value
     if len(request.sources) < request.min_sources:
         return False, contracts.ReasonCode.POLICY_SOURCES_BELOW_MIN.value
-    if request.require_no_contradiction and request.unresolved_contradiction:
+    if request.unresolved_contradiction:
         return False, contracts.ReasonCode.POLICY_UNRESOLVED_CONTRADICTION.value
     return True, contracts.ReasonCode.OK.value
 

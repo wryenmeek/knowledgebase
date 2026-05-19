@@ -248,8 +248,21 @@ class DriveDriftReport(TypedDict, total=False):
 def validate_drive_registry_file(data: Any) -> DriveRegistryFile:
     """Validate the parsed JSON of a Drive ``*.source-registry.json`` file.
 
-    Raises ``ValueError`` on any schema violation.  Callers should map this
-    exception to an appropriate reason code and fail closed.
+    Parameters
+    ----------
+    data:
+        Parsed JSON value (expected to be a ``dict``).
+
+    Returns
+    -------
+    DriveRegistryFile
+        The validated registry dict, typed as ``DriveRegistryFile``.
+
+    Raises
+    ------
+    ValueError
+        On any schema violation: missing required fields, wrong types,
+        unrecognised ``tracking_status`` values, or invalid ID formats.
     """
     if not isinstance(data, dict):
         raise ValueError(
@@ -376,8 +389,24 @@ def _validate_file_entry(entry: Any, idx: int) -> None:
 def validate_drive_drift_report(data: Any) -> DriveDriftReport:
     """Validate a parsed drive drift report JSON object.
 
-    Raises ``ValueError`` on any schema violation.  Used by downstream
-    scripts that consume the drift report produced by ``check_drift.py``.
+    Used by downstream scripts that consume the drift report produced by
+    ``check_drift.py``.
+
+    Parameters
+    ----------
+    data:
+        Parsed JSON value (expected to be a ``dict``).
+
+    Returns
+    -------
+    DriveDriftReport
+        The validated report dict, typed as ``DriveDriftReport``.
+
+    Raises
+    ------
+    ValueError
+        On any schema violation: missing required fields, wrong types,
+        unrecognised version string, or invalid ``cursors`` mapping.
     """
     if not isinstance(data, dict):
         raise ValueError(

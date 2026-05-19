@@ -33,6 +33,16 @@ def find_registry_files(repo_root: Path) -> list[Path]:
     """Return all ``*.source-registry.json`` paths under ``raw/drive-sources/``.
 
     Returns an empty list if the directory does not exist.
+
+    Parameters
+    ----------
+    repo_root:
+        Absolute path to the knowledgebase repository root.
+
+    Returns
+    -------
+    list[Path]
+        Sorted list of matching registry file paths; empty if none are found.
     """
     pattern = str(repo_root / "raw" / "drive-sources" / "*.source-registry.json")
     return sorted(Path(p) for p in glob_module.glob(pattern))
@@ -43,6 +53,18 @@ def find_registry_by_alias(repo_root: Path, alias: str) -> Path | None:
 
     Scans all ``*.source-registry.json`` files under ``raw/drive-sources/``
     and returns the one whose top-level ``alias`` field matches.
+
+    Parameters
+    ----------
+    repo_root:
+        Absolute path to the knowledgebase repository root.
+    alias:
+        The registry alias slug to search for.
+
+    Returns
+    -------
+    Path or None
+        Path to the matching registry file, or ``None`` if not found.
     """
     for p in find_registry_files(repo_root):
         try:
@@ -92,8 +114,32 @@ def update_last_fetched(
     file_entry matching *file_id*, updates the relevant ``last_fetched_*``
     fields, then atomically replaces the registry file.
 
-    Returns ``True`` if the entry was found and updated, ``False`` otherwise.
     Does NOT modify ``last_applied_*`` fields.
+
+    Parameters
+    ----------
+    repo_root:
+        Absolute path to the knowledgebase repository root.
+    registry_path:
+        Path to the registry JSON file to update.
+    file_id:
+        Drive file ID of the entry to update.
+    drive_version:
+        New Drive version integer, or ``None`` to leave unchanged.
+    md5_checksum:
+        New MD5 checksum hex string, or ``None`` to leave unchanged.
+    sha256:
+        New SHA-256 hex string, or ``None`` to leave unchanged.
+
+    Returns
+    -------
+    bool
+        ``True`` if the entry was found and updated, ``False`` otherwise.
+
+    Raises
+    ------
+    OSError
+        If the registry file cannot be read, parsed, or written.
     """
     fetched_at = datetime.now(timezone.utc).isoformat()
 
@@ -144,8 +190,34 @@ def update_last_applied(
     file_entry matching *file_id*, updates ``last_applied_*`` fields, and
     resets ``last_fetched_*`` to ``None``.
 
-    Returns ``True`` if the entry was found and updated, ``False`` otherwise.
-    Resets ``last_fetched_*`` fields to ``None`` to reflect the consumed fetch state.
+    Parameters
+    ----------
+    repo_root:
+        Absolute path to the knowledgebase repository root.
+    registry_path:
+        Path to the registry JSON file to update.
+    file_id:
+        Drive file ID of the entry to update.
+    drive_version:
+        New applied Drive version integer, or ``None`` to leave unchanged.
+    md5_checksum:
+        New applied MD5 checksum hex string, or ``None`` to leave unchanged.
+    sha256:
+        New applied SHA-256 hex string, or ``None`` to leave unchanged.
+    applied_at:
+        ISO 8601 timestamp string; defaults to now (UTC) if ``None``.
+
+    Returns
+    -------
+    bool
+        ``True`` if the entry was found and updated, ``False`` otherwise.
+        Resets ``last_fetched_*`` fields to ``None`` to reflect the consumed
+        fetch state.
+
+    Raises
+    ------
+    OSError
+        If the registry file cannot be read, parsed, or written.
     """
     if applied_at is None:
         applied_at = datetime.now(timezone.utc).isoformat()
@@ -196,6 +268,24 @@ def update_changes_cursor(
     Must be called by ``advance_cursor.py`` after all entries for the alias
     are durably handled, to advance the cursor and avoid re-processing the
     same changes on the next run.
+
+    Parameters
+    ----------
+    repo_root:
+        Absolute path to the knowledgebase repository root.
+    registry_path:
+        Path to the registry JSON file to update.
+    new_page_token:
+        New Changes API page token to persist in the registry.
+
+    Raises
+    ------
+    OSError
+        If the registry file cannot be read, parsed, or written.
+
+    Returns
+    -------
+    None
     """
     with write_utils.exclusive_write_lock(
         repo_root, lock_path=contracts.DRIVE_SOURCES_LOCK_PATH
@@ -226,7 +316,35 @@ def add_file_entry(
 
     The entry is added with ``tracking_status: "uninitialized"`` and all
     version/hash fields set to ``None``.  The wiki_page is auto-assigned from
-    ``wiki_namespace`` + slugified ``display_name``.
+    ``wiki_namespace`` + slugified ``display_name``.  If the *file_id* already
+    exists in the registry the call is a no-op (deduplication).
+
+    Parameters
+    ----------
+    repo_root:
+        Absolute path to the knowledgebase repository root.
+    registry_path:
+        Path to the registry JSON file to update.
+    file_id:
+        Drive file ID of the new entry.
+    display_name:
+        Human-readable filename (used to build the wiki page slug).
+    display_path:
+        Folder-relative display path (informational; may become stale).
+    mime_type:
+        MIME type of the Drive file.
+    wiki_namespace:
+        Relative namespace prefix (e.g. ``"cms/"``); used to derive the
+        target wiki page path.
+
+    Raises
+    ------
+    OSError
+        If the registry file cannot be read, parsed, or written.
+
+    Returns
+    -------
+    None
     """
     slug = re.sub(r"[^a-z0-9]+", "-", display_name.lower()).strip("-")
     wiki_page = f"wiki/{wiki_namespace.rstrip('/')}/{slug}.md"

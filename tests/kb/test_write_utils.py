@@ -279,6 +279,48 @@ class CheckNoSymlinkPathTests(unittest.TestCase):
         self.assertIn("check_no_symlink_path", write_utils.__all__)
 
 
+class WriteTextCapturingPreviousSafeSymlinkTests(unittest.TestCase):
+    """Regression tests: write_text_capturing_previous_safe must reject symlinked paths."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self._tmp.name).resolve()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_rejects_symlink_at_target_path(self) -> None:
+        """write_text_capturing_previous_safe must raise OSError when the target is a symlink."""
+        real_file = self.tmp_path / "real.md"
+        real_file.write_text("original\n", encoding="utf-8")
+        link = self.tmp_path / "link.md"
+        link.symlink_to(real_file)
+
+        with self.assertRaises(OSError):
+            write_utils.write_text_capturing_previous_safe(link, "updated\n")
+
+        # Original file must be untouched.
+        self.assertEqual(real_file.read_text(encoding="utf-8"), "original\n")
+
+    def test_rejects_symlinked_parent_directory(self) -> None:
+        """write_text_capturing_previous_safe must raise OSError when a parent dir is a symlink."""
+        real_dir = self.tmp_path / "real_dir"
+        real_dir.mkdir()
+        link_dir = self.tmp_path / "link_dir"
+        link_dir.symlink_to(real_dir)
+        target = link_dir / "file.md"
+
+        with self.assertRaises(OSError):
+            write_utils.write_text_capturing_previous_safe(target, "data\n")
+
+    def test_plain_path_succeeds(self) -> None:
+        """write_text_capturing_previous_safe must write normally when no symlinks are present."""
+        target = self.tmp_path / "subdir" / "page.md"
+        target.parent.mkdir()
+        write_utils.write_text_capturing_previous_safe(target, "content\n")
+        self.assertEqual(target.read_text(encoding="utf-8"), "content\n")
+
+
 class ExclusiveCreateWriteOnceTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()

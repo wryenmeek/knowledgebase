@@ -598,8 +598,6 @@ jobs:
             exit 1
           fi
 
-          rm -f wiki/.kb_write.lock
-
           mapfile -t status_lines < <(git -c core.quotepath=false status --porcelain=v1 --untracked-files=all)
           if [[ "${#status_lines[@]}" -eq 0 ]]; then
             echo "has_changes=false" >> "${GITHUB_OUTPUT}"

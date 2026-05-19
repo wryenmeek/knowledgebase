@@ -24,11 +24,25 @@ _MAX_BASENAME_LEN: int = 200
 def validate_alias(alias: str) -> str:
     """Validate a registry alias slug.
 
-    Aliases must be lowercase, alphanumeric, hyphen-separated slugs.  Raises
-    ``ValueError`` on any violation.
+    Aliases must be lowercase, alphanumeric, hyphen-separated slugs.
 
     Example valid aliases: ``cms-guidelines``, ``policy-docs``, ``myalias``
     Example invalid: ``CMS_Guidelines``, ``../evil``, ``my/alias``
+
+    Parameters
+    ----------
+    alias:
+        The alias string to validate.
+
+    Returns
+    -------
+    str
+        The validated alias, returned unchanged.
+
+    Raises
+    ------
+    ValueError
+        If the alias is not a non-empty lowercase alphanumeric/hyphen slug.
     """
     if not isinstance(alias, str) or not alias:
         raise ValueError(f"Alias must be a non-empty string, got {alias!r}")
@@ -44,7 +58,21 @@ def validate_file_id(file_id: str) -> str:
     """Validate an untrusted Google Drive file/folder ID.
 
     Drive file IDs contain alphanumeric characters, underscores, and hyphens.
-    Raises ``ValueError`` on any violation.
+
+    Parameters
+    ----------
+    file_id:
+        The Drive file or folder ID to validate.
+
+    Returns
+    -------
+    str
+        The validated file ID, returned unchanged.
+
+    Raises
+    ------
+    ValueError
+        If the ID is empty, not a string, or contains unsafe characters.
     """
     if not isinstance(file_id, str) or not file_id:
         raise ValueError(f"Drive file_id must be a non-empty string, got {file_id!r}")
@@ -58,9 +86,24 @@ def validate_file_id(file_id: str) -> str:
 def validate_display_name(name: str) -> str:
     """Validate an untrusted Drive file display name for use in asset paths.
 
-    Strips or rejects characters that could cause path traversal.  Raises
-    ``ValueError`` if the name contains null bytes, path separators, or
-    traversal sequences.
+    Strips or rejects characters that could cause path traversal.
+
+    Parameters
+    ----------
+    name:
+        The Drive file display name to validate.
+
+    Returns
+    -------
+    str
+        The validated display name, returned unchanged.
+
+    Raises
+    ------
+    ValueError
+        If the name is empty, contains null bytes or control characters,
+        path separators (``/`` or ``\\``), or is a traversal component
+        (``..`` or ``.``).
     """
     if not isinstance(name, str) or not name:
         raise ValueError(f"Display name must be a non-empty string, got {name!r}")
@@ -114,10 +157,14 @@ def build_drive_asset_path(
         raise ValueError(
             f"version_segment must be a non-empty string, got {version_segment!r}"
         )
-    # Must be alphanumeric-only (either an integer string or an MD5 hex).
-    if not re.match(r"^[0-9a-f]+$", version_segment):
+    # Accept either a decimal integer string (native Drive version) or a
+    # 32-character lowercase hex string (MD5 checksum for non-native files).
+    # Reject anything else to prevent unexpected directory segment shapes.
+    _INTEGER_RE = re.compile(r"^[0-9]+$")
+    _MD5_RE = re.compile(r"^[0-9a-f]{32}$")
+    if not (_INTEGER_RE.match(version_segment) or _MD5_RE.match(version_segment)):
         raise ValueError(
-            f"version_segment must be an integer string or a lowercase hex string, "
+            f"version_segment must be a decimal integer string or a 32-char MD5 hex, "
             f"got {version_segment!r}"
         )
 
@@ -143,6 +190,18 @@ def safe_filename(display_name: str, mime_type: str) -> str:
     prevent hidden files), limits length to 200 chars, and appends the
     canonical extension for the MIME type.  Returns ``"untitled"`` (plus
     extension) when the sanitised base is empty.
+
+    Parameters
+    ----------
+    display_name:
+        The Drive file display name to sanitize.
+    mime_type:
+        MIME type used to look up the canonical file extension.
+
+    Returns
+    -------
+    str
+        A safe filename with the appropriate extension appended.
     """
     base = _UNSAFE_CHARS_RE.sub("_", display_name).strip().rstrip(".")
     base = _LEADING_DOTS_RE.sub("", base)
@@ -158,7 +217,22 @@ def safe_filename(display_name: str, mime_type: str) -> str:
 def build_wiki_page_path(repo_root: Path, wiki_page: str) -> Path:
     """Construct and bounds-check a wiki page path.
 
-    Raises ``ValueError`` if the resolved path escapes ``wiki/``.
+    Parameters
+    ----------
+    repo_root:
+        Absolute path to the knowledgebase repository root.
+    wiki_page:
+        Repo-relative path to the wiki page (e.g. ``"wiki/cms/my-page.md"``).
+
+    Returns
+    -------
+    Path
+        Resolved absolute path to the wiki page.
+
+    Raises
+    ------
+    ValueError
+        If *wiki_page* is empty, not a string, or resolves outside ``wiki/``.
     """
     if not isinstance(wiki_page, str) or not wiki_page:
         raise ValueError(f"wiki_page must be a non-empty string, got {wiki_page!r}")

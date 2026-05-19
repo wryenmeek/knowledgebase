@@ -248,6 +248,12 @@ def synthesize_diff(
         Path to the AFK drift entries JSON (output of classify_drift.py).
     approval:
         Must be ``"approved"`` for any writes to occur.
+
+    Returns
+    -------
+    SurfaceResult
+        STATUS_PASS when all entries synthesize without error;
+        STATUS_FAIL if any entry fails to write or update the registry.
     """
     if approval != APPROVAL_APPROVED:
         return approval_required_result(surface=SURFACE, mode=MODE, path_rules=_path_rules(), lock_required=True)
@@ -503,6 +509,20 @@ def run_cli(
     *,
     output_stream: Any = sys.stdout,
 ) -> int:
+    """Parse CLI arguments and run ``synthesize_diff``.
+
+    Parameters
+    ----------
+    argv:
+        Argument list to parse; defaults to ``sys.argv[1:]`` when ``None``.
+    output_stream:
+        Stream for JSON surface output; defaults to ``sys.stdout``.
+
+    Returns
+    -------
+    int
+        Process exit code (0 on success, non-zero on failure).
+    """
     return run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,

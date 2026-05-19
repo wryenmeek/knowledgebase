@@ -13,8 +13,8 @@ dev = [
     "pre-commit>=3.5",
 ]
 drive-monitor = [
-    "google-api-python-client>=2.100",
-    "google-auth>=2.23",
+    "google-api-python-client>=2.100,<3",
+    "google-auth>=2.23,<3",
 ]
 
 [tool.setuptools.packages.find]
