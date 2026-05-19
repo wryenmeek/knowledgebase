@@ -973,6 +973,31 @@ class LintWikiOptimizationRegressionTests(KnowledgebaseWorkspaceTestCase):
         codes = [v.code for v in violations]
         self.assertIn("symlinked-page", codes)
 
+    def test_collect_valid_pages_continues_on_lstat_oserror(self) -> None:
+        """_collect_valid_pages must skip paths where os.lstat raises OSError and not raise."""
+        from unittest.mock import patch
+        from scripts.kb.lint_wiki import lint_wiki
+
+        self.write_wiki_page("index.md", self.build_process_page("Index", "- [Log](log.md)"))
+        self.write_wiki_page("log.md", self.build_process_page("Log", ""))
+        self.write_wiki_page("sources/ok.md", self.build_process_page("OK", ""))
+
+        real_lstat = __import__("os").lstat
+
+        def lstat_raises_for_sources(path):
+            p = Path(path)
+            if p.name == "ok.md":
+                raise OSError("simulated permission denied")
+            return real_lstat(path)
+
+        # lint_wiki must complete without raising and without including the skipped path
+        with patch("os.lstat", side_effect=lstat_raises_for_sources):
+            violations = lint_wiki(self.wiki_root, skip_orphan_check=True)
+
+        # The ok.md page was skipped — its absence should not produce an error, just silence
+        codes = [v.code for v in violations]
+        self.assertNotIn("symlinked-page", codes)
+
 
 if __name__ == "__main__":
     unittest.main()

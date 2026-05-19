@@ -455,16 +455,35 @@ class UpdateIndexOptimizationRegressionTests(KnowledgebaseWorkspaceTestCase):
 
     def test_validate_section_page_path_returns_none_for_non_regular_file(self) -> None:
         """_validate_section_page_path must return None for non-regular files (dirs, etc.)."""
-        # Directories rglob'd as *.md shouldn't exist, but verify the None path
+        # Patch os.lstat to return a directory-mode stat so we exercise the
+        # 'not S_ISREG(st.st_mode)' branch — the actual new code path added in #18.
+        # (Passing a nonexistent path only exercises the OSError branch.)
         import tempfile
+        import stat
+        from unittest.mock import patch
         with tempfile.TemporaryDirectory() as td:
             wiki = Path(td).resolve()
             sources = wiki / "sources"
             sources.mkdir()
-            # Simulate a path that os.lstat would see as a directory (edge case)
-            # by mocking — we can't create a dir named "foo.md" that passes rglob
-            # without cooperation from the OS, so test the function directly.
-            result = update_index._validate_section_page_path(sources / "nonexistent.md", wiki)
+            real_file = sources / "dir-mode.md"
+            real_file.write_text("", encoding="utf-8")
+            dir_stat = os.stat_result((stat.S_IFDIR | 0o755, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+            with patch("os.lstat", return_value=dir_stat):
+                result = update_index._validate_section_page_path(real_file, wiki)
+            self.assertIsNone(result)
+
+    def test_validate_section_page_path_returns_none_on_lstat_oserror(self) -> None:
+        """_validate_section_page_path must return None and not raise when os.lstat raises OSError."""
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as td:
+            wiki = Path(td).resolve()
+            sources = wiki / "sources"
+            sources.mkdir()
+            real_file = sources / "disappears.md"
+            real_file.write_text("", encoding="utf-8")
+            with patch("os.lstat", side_effect=OSError("permission denied")):
+                result = update_index._validate_section_page_path(real_file, wiki)
             self.assertIsNone(result)
 
 

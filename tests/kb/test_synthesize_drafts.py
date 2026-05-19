@@ -964,6 +964,40 @@ class TestAppendToExistingPageStructuralValidation(unittest.TestCase):
                     _su.append_to_existing_page(page, "repo://o/r/new.md@xyz", [])
                 self.assertIn("structural validation failed", str(cm.exception))
 
+    def test_body_starting_with_delimiter_triggers_real_structural_error(self) -> None:
+        """A page whose body starts with '---' must trigger RuntimeError without any mocking.
+
+        This validates the #116 guard exercises real validate_draft_structure logic,
+        not just the mock path. When YAML surgery reassembles the content, the body
+        starting with '---' is caught as a structural violation.
+        """
+        import tempfile
+        # Craft a page where the body (after closing ---) begins with '---'
+        content = (
+            '---\n'
+            'type: entity\ntitle: "X"\nstatus: active\n'
+            'sources:\n  - "repo://o/r/old.md@abc"\n'
+            'open_questions: []\nconfidence: 2\nsensitivity: internal\n'
+            'updated_at: "2024-01-01T00:00:00Z"\ntags:\n  - test\n'
+            '---\n'
+            '---\n'  # body starts immediately with --- (malformed but extractable)
+            '# X\n'
+        )
+        with tempfile.TemporaryDirectory() as td:
+            page = self._make_page(td, content)
+            with self.assertRaises(RuntimeError) as cm:
+                _su.append_to_existing_page(page, "repo://o/r/new.md@xyz", [])
+            self.assertIn("structural validation failed", str(cm.exception))
+
+    def test_no_frontmatter_returns_false(self) -> None:
+        """append_to_existing_page must return False (not raise) when the page has no frontmatter."""
+        import tempfile
+        content = "# Just a Heading\n\nNo frontmatter at all.\n"
+        with tempfile.TemporaryDirectory() as td:
+            page = self._make_page(td, content)
+            result = _su.append_to_existing_page(page, "repo://o/r/new.md@xyz", [])
+            self.assertFalse(result)
+
 
 class TestCombinedSynthesisRun(unittest.TestCase):
     """Tests for synthesize_combined.py (#115): single-lock entity+concept synthesis."""
@@ -1029,10 +1063,15 @@ class TestCombinedSynthesisRun(unittest.TestCase):
             bundle = self._make_bundle(tdp)
             rc = self._combined_mod.run(str(bundle), str(wiki.relative_to(tdp)), repo_root=tdp)
             self.assertEqual(rc, 0)
-            entity_files = list((wiki / "entities").iterdir())
-            concept_files = list((wiki / "concepts").iterdir())
-            self.assertGreaterEqual(len(entity_files), 1, "Expected entity page created")
-            self.assertGreaterEqual(len(concept_files), 1, "Expected concept page created")
+            entity_files = list((wiki / "entities").glob("*.md"))
+            concept_files = list((wiki / "concepts").glob("*.md"))
+            self.assertGreaterEqual(len(entity_files), 1, "Expected entity .md page created")
+            self.assertGreaterEqual(len(concept_files), 1, "Expected concept .md page created")
+            # Verify the created entity page has correct frontmatter title
+            entity_content = entity_files[0].read_text(encoding="utf-8")
+            self.assertIn("Combined Entity", entity_content)
+            concept_content = concept_files[0].read_text(encoding="utf-8")
+            self.assertIn("Combined Concept", concept_content)
 
     def test_lock_unavailable_returns_one(self) -> None:
         import tempfile
@@ -1049,6 +1088,110 @@ class TestCombinedSynthesisRun(unittest.TestCase):
             ):
                 rc = self._combined_mod.run(str(bundle), "wiki", repo_root=tdp)
             self.assertEqual(rc, 1)
+
+    def test_combined_empty_bundle_returns_zero(self) -> None:
+        """An empty bundle (no entities, no concepts, not soft-skipped) returns 0."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td).resolve()
+            self._make_wiki(tdp)
+            empty_bundle = tdp / "empty.json"
+            empty_bundle.write_text(
+                json.dumps({"source_ref": "repo://o/r/s.md@abc", "entities": [], "concepts": []}),
+                encoding="utf-8",
+            )
+            rc = self._combined_mod.run(str(empty_bundle), "wiki", repo_root=tdp)
+            self.assertEqual(rc, 0)
+
+    def test_combined_write_errors_returns_one(self) -> None:
+        """When an inner write function returns errors, run() must return 1."""
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td).resolve()
+            self._make_wiki(tdp)
+            bundle = self._make_bundle(tdp)
+            error_result = {"created": [], "updated": [], "skipped": [], "errors": ["write failed"]}
+            with patch.object(self._combined_mod, "_write_entity_drafts", return_value=error_result):
+                with patch.object(
+                    self._combined_mod, "_write_concept_drafts",
+                    return_value={"created": [], "updated": [], "skipped": [], "errors": []},
+                ):
+                    rc = self._combined_mod.run(str(bundle), "wiki", repo_root=tdp)
+            self.assertEqual(rc, 1)
+
+    def test_combined_lock_acquired_exactly_once(self) -> None:
+        """The core #115 invariant: a single lock acquisition covers both entity and concept writes."""
+        import tempfile
+        from unittest.mock import patch, MagicMock
+        import contextlib
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td).resolve()
+            self._make_wiki(tdp)
+            bundle = self._make_bundle(tdp)
+            lock_call_count = []
+
+            @contextlib.contextmanager
+            def counting_lock(_repo_root):
+                lock_call_count.append(1)
+                yield
+
+            with patch.object(self._combined_mod, "exclusive_write_lock", counting_lock):
+                with patch.object(
+                    self._combined_mod, "_write_entity_drafts",
+                    return_value={"created": [], "updated": [], "skipped": [], "errors": []},
+                ):
+                    with patch.object(
+                        self._combined_mod, "_write_concept_drafts",
+                        return_value={"created": [], "updated": [], "skipped": [], "errors": []},
+                    ):
+                        self._combined_mod.run(str(bundle), "wiki", repo_root=tdp)
+
+            self.assertEqual(len(lock_call_count), 1, "exclusive_write_lock must be acquired exactly once")
+
+    def test_combined_entity_only_bundle(self) -> None:
+        """A bundle with entities but no concepts must succeed and create entity pages."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td).resolve()
+            wiki = self._make_wiki(tdp)
+            entity_only = tdp / "entity_only.json"
+            entity_only.write_text(
+                json.dumps({
+                    "source_ref": "repo://o/r/s.md@abc",
+                    "entities": [{"title": "Only Entity", "type": "organization",
+                                   "description": "desc", "aliases": [], "open_questions": []}],
+                    "concepts": [],
+                }),
+                encoding="utf-8",
+            )
+            rc = self._combined_mod.run(str(entity_only), str(wiki.relative_to(tdp)), repo_root=tdp)
+            self.assertEqual(rc, 0)
+            entity_files = list((wiki / "entities").iterdir())
+            self.assertGreaterEqual(len(entity_files), 1, "Expected entity page created")
+            self.assertEqual(list((wiki / "concepts").iterdir()), [], "No concept pages expected")
+
+    def test_combined_concept_only_bundle(self) -> None:
+        """A bundle with concepts but no entities must succeed and create concept pages."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td).resolve()
+            wiki = self._make_wiki(tdp)
+            concept_only = tdp / "concept_only.json"
+            concept_only.write_text(
+                json.dumps({
+                    "source_ref": "repo://o/r/s.md@abc",
+                    "entities": [],
+                    "concepts": [{"title": "Only Concept",
+                                   "description": "desc", "aliases": [], "open_questions": []}],
+                }),
+                encoding="utf-8",
+            )
+            rc = self._combined_mod.run(str(concept_only), str(wiki.relative_to(tdp)), repo_root=tdp)
+            self.assertEqual(rc, 0)
+            self.assertEqual(list((wiki / "entities").iterdir()), [], "No entity pages expected")
+            concept_files = list((wiki / "concepts").iterdir())
+            self.assertGreaterEqual(len(concept_files), 1, "Expected concept page created")
 
 
 if __name__ == '__main__':

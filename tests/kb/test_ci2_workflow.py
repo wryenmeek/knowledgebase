@@ -153,6 +153,21 @@ class WorkflowYamlSyntaxTests(unittest.TestCase):
                 errors.append(f"{yf}: {exc}")
         self.assertEqual(errors, [], "Workflow YAML syntax errors found:\n" + "\n".join(errors))
 
+    def test_ci2_workflow_file_is_included_in_scanned_yaml_files(self) -> None:
+        """CI-2's own workflow file must be in the YAML scan list.
+
+        Guards against the file being accidentally deleted or moved, which would
+        allow test_all_workflow_yaml_files_parse_without_error to still pass
+        trivially while the CI-2 file went unvalidated.
+        """
+        workflows_dir = Path(".github/workflows")
+        yaml_files = [f.name for f in sorted(workflows_dir.glob("*.yml"))]
+        self.assertIn(
+            "ci-2-analyst-diagnostics.yml",
+            yaml_files,
+            "ci-2-analyst-diagnostics.yml must be present and scanned by WorkflowYamlSyntaxTests",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
