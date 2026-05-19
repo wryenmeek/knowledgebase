@@ -357,7 +357,15 @@ class FrameworkContractAlignmentTests(unittest.TestCase):
             architecture_text,
         )
         self.assertIn(
-            "`validate-inbox-source`, `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace`",
+            "`verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace`",
+            architecture_text,
+        )
+        self.assertIn(
+            "Active, wrapper-backed",
+            architecture_text,
+        )
+        self.assertIn(
+            "`validate-inbox-source`",
             architecture_text,
         )
         self.assertNotIn("Deferred scaffolding", architecture_text)
@@ -366,7 +374,15 @@ class FrameworkContractAlignmentTests(unittest.TestCase):
             framework_idea,
         )
         self.assertIn(
-            "| **Active doc-only workflow skills** | `validate-inbox-source`, `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace` |",
+            "| **Active doc-only workflow skills** | `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace` |",
+            framework_idea,
+        )
+        self.assertIn(
+            "| **Skills with Python logic wrappers** |",
+            framework_idea,
+        )
+        self.assertIn(
+            "`validate-inbox-source`",
             framework_idea,
         )
         self.assertNotIn("| **Deferred scaffolding** |", framework_idea)
