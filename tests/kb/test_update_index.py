@@ -367,6 +367,37 @@ tags:
         index_path = wiki_root / "index.md"
         self.assertFalse(index_path.exists())
 
+    def test_write_rejects_symlinked_index_destination(self) -> None:
+        """write mode must fail closed when wiki/index.md itself is a symlink."""
+        external_target = self.workspace / "external-index.md"
+        external_target.write_text("external\n", encoding="utf-8")
+        index_path = self.wiki_root / "index.md"
+        index_path.unlink()
+        index_path.symlink_to(external_target)
+
+        completed = self._run_cli_command("--wiki-root", "wiki", "--write")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("symlinked path component is not allowed", completed.stderr)
+        self.assertEqual(external_target.read_text(encoding="utf-8"), "external\n")
+
+    def test_write_rejects_symlinked_wiki_directory(self) -> None:
+        """write mode must fail closed when the wiki/ dir itself is a symlink."""
+        external_wiki = self.workspace / "external-wiki"
+        external_wiki.mkdir()
+        (external_wiki / "index.md").write_text("external-wiki-index\n", encoding="utf-8")
+        symlinked_wiki = self.workspace / "wiki-link"
+        symlinked_wiki.symlink_to(external_wiki)
+
+        completed = self._run_cli_command("--wiki-root", str(symlinked_wiki), "--write")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("symlinked path component is not allowed", completed.stderr)
+        self.assertEqual(
+            (external_wiki / "index.md").read_text(encoding="utf-8"),
+            "external-wiki-index\n",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

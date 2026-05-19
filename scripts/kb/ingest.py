@@ -18,6 +18,7 @@ from scripts.kb.ingest_render import (
     build_source_ref,
     escape_quotes,
     render_source_page,
+    resolve_ingest_git_sha,
 )
 from scripts.kb.path_utils import RepoRelativePathError, resolve_within_repo
 from scripts.kb.sourceref import SourceRefValidationError
@@ -218,6 +219,7 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
         )
 
     source_inputs = _resolve_source_inputs(args, repo_root)
+    git_sha, git_sha_kind = resolve_ingest_git_sha(repo_root)
 
     # --- Phase 2: Execute per-source ingests ---
     with exclusive_write_lock(repo_root):
@@ -227,7 +229,7 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
         successful_outcomes: list[SourceOutcome] = []
         source_mutations: list[_SourceMutation] = []
         for source_input in source_inputs:
-            attempt = _ingest_source(repo_root, source_input)
+            attempt = _ingest_source(repo_root, source_input, git_sha=git_sha, git_sha_kind=git_sha_kind)
             outcome = attempt.outcome
             outcomes.append(outcome)
             if outcome.status == contracts.ResultStatus.WRITTEN.value:
@@ -453,7 +455,13 @@ def _load_source_bytes(
     return source_path, source_relative, source_bytes
 
 
-def _ingest_source(repo_root: Path, source_input: str) -> _SourceIngestAttempt:
+def _ingest_source(
+    repo_root: Path,
+    source_input: str,
+    *,
+    git_sha: str = PROVISIONAL_GIT_SHA,
+    git_sha_kind: str = "placeholder",
+) -> _SourceIngestAttempt:
     # --- Phase 1: Resolve path and read source file ---
     try:
         source_path, source_relative, source_bytes = _load_source_bytes(repo_root, source_input)
@@ -501,7 +509,7 @@ def _ingest_source(repo_root: Path, source_input: str) -> _SourceIngestAttempt:
     checksum = hashlib.sha256(source_bytes).hexdigest()
 
     try:
-        source_ref = build_source_ref(repo_root, processed_relative, checksum)
+        source_ref = build_source_ref(repo_root, processed_relative, checksum, git_sha=git_sha)
     except SourceRefValidationError as exc:
         return _SourceIngestAttempt(
             outcome=SourceOutcome(
@@ -513,7 +521,7 @@ def _ingest_source(repo_root: Path, source_input: str) -> _SourceIngestAttempt:
                 processed_path=processed_relative,
             )
         )
-    provenance = build_provisional_source_provenance()
+    provenance = build_provisional_source_provenance(git_sha=git_sha, git_sha_kind=git_sha_kind)
 
     # --- Phase 3: Write source page and move file to processed ---
     source_page_content = render_source_page(

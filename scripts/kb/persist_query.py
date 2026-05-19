@@ -13,6 +13,7 @@ from typing import Sequence, TextIO
 from scripts.kb import contracts, sourceref, update_index, write_utils
 from scripts.kb.path_utils import RepoRelativePathError, resolve_within_repo
 from scripts.kb.write_utils import read_optional_text, rollback_file_state, write_text_if_changed
+from scripts.kb.write_utils import check_no_symlink_path
 
 
 DEFAULT_MIN_CONFIDENCE = 4
@@ -342,6 +343,7 @@ def _execute(args: argparse.Namespace, repo_root: Path) -> tuple[contracts.Resul
 
     try:
         with write_utils.exclusive_write_lock(repo_root):
+            check_no_symlink_path(analysis_absolute)
             snapshots: tuple[tuple[Path, str | None], ...] = (
                 (analysis_absolute, read_optional_text(analysis_absolute)),
                 (index_path, read_optional_text(index_path)),
@@ -349,7 +351,7 @@ def _execute(args: argparse.Namespace, repo_root: Path) -> tuple[contracts.Resul
             )
             try:
                 analysis_changed = write_text_if_changed(analysis_absolute, analysis_markdown)
-                index_updated = _update_index_if_changed(request.wiki_root)
+                index_updated = _update_index_if_changed(request.wiki_root) if analysis_changed else False
                 state_changed = analysis_changed or index_updated
                 log_appended = write_utils.append_log_only_state_changes(
                     repo_root,

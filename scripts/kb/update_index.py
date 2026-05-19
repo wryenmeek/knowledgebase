@@ -20,6 +20,7 @@ from scripts.kb.page_template_utils import REQUIRED_FRONTMATTER_KEYS
 from scripts.kb.write_utils import (
     LockUnavailableError,
     atomic_replace_governed_artifact,
+    check_no_symlink_path,
     exclusive_write_lock,
     open_atomic_temp_file,
 )
@@ -225,6 +226,14 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint for deterministic index generation."""
     args = _build_parser().parse_args(argv)
+
+    if args.write:
+        try:
+            check_no_symlink_path(args.wiki_root)
+        except OSError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+
     wiki_root = args.wiki_root.resolve()
 
     try:
@@ -271,6 +280,11 @@ def _check_index_drift(wiki_root: Path, generated_content: str) -> int:
 
 def _write_index_if_changed(wiki_root: Path, generated_content: str) -> int:
     index_path = wiki_root / "index.md"
+    try:
+        check_no_symlink_path(index_path)
+    except OSError as exc:
+        print(f"error: {index_path}: {exc}", file=sys.stderr)
+        return 1
     try:
         existing_content = (
             index_path.read_text(encoding="utf-8") if index_path.exists() else ""

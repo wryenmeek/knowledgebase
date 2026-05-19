@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import os
+import subprocess
 
 from scripts.kb.sourceref import validate_sourceref
 
@@ -15,9 +17,42 @@ __all__ = [
     "build_provisional_source_provenance",
     "render_source_page",
     "escape_quotes",
+    "resolve_ingest_git_sha",
 ]
 
 PROVISIONAL_GIT_SHA = "0" * 40
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def resolve_ingest_git_sha(repo_root: Path) -> tuple[str, str]:
+    """Return ``(sha, kind)`` for the current ingest context.
+
+    Resolution order:
+    1. ``GITHUB_SHA`` environment variable (CI commits) → ``ci_commit_sha``
+    2. ``git rev-parse HEAD`` in *repo_root* → ``head_sha``
+    3. Fallback: ``PROVISIONAL_GIT_SHA`` → ``placeholder``
+
+    Always returns a valid 40-hex SHA string.
+    """
+    env_sha = os.environ.get("GITHUB_SHA", "").strip().lower()
+    if _SHA_RE.match(env_sha):
+        return env_sha, "ci_commit_sha"
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            head_sha = result.stdout.strip().lower()
+            if _SHA_RE.match(head_sha):
+                return head_sha, "head_sha"
+    except OSError:
+        pass
+
+    return PROVISIONAL_GIT_SHA, "placeholder"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,18 +77,35 @@ class SourceProvenance:
         }
 
 
-def build_source_ref(repo_root: Path, processed_relative: str, checksum: str) -> str:
+def build_source_ref(
+    repo_root: Path,
+    processed_relative: str,
+    checksum: str,
+    git_sha: str = PROVISIONAL_GIT_SHA,
+) -> str:
     """Build and validate a provisional SourceRef for an ingested artifact."""
     repo_name = re.sub(r"[^A-Za-z0-9_.-]", "-", repo_root.name) or "repo"
     source_ref = (
-        f"repo://local/{repo_name}/{processed_relative}@{PROVISIONAL_GIT_SHA}"
+        f"repo://local/{repo_name}/{processed_relative}@{git_sha}"
         f"#asset?sha256={checksum}"
     )
     validate_sourceref(source_ref)
     return source_ref
 
 
-def build_provisional_source_provenance() -> SourceProvenance:
+def build_provisional_source_provenance(
+    git_sha: str = PROVISIONAL_GIT_SHA,
+    git_sha_kind: str = "placeholder",
+) -> SourceProvenance:
+    """Return a ``SourceProvenance`` with the given (or placeholder) git SHA."""
+    return SourceProvenance(
+        status="provisional",
+        authoritative=False,
+        review_mode="authoritative_review_required",
+        reconciliation="commit_bound_pending",
+        git_sha=git_sha,
+        git_sha_kind=git_sha_kind,
+    )
     """Return a ``SourceProvenance`` with placeholder (provisional) values."""
     return SourceProvenance(
         status="provisional",

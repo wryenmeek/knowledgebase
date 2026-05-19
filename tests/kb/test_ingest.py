@@ -61,19 +61,14 @@ class IngestCliTests(RuntimeWorkspaceTestCase):
         self.assertTrue(first_payload["index_updated"])
         self.assertTrue(first_payload["log_appended"])
         self.assertEqual(len(first_payload["per_source"]), 1)
-        self.assertEqual(
-            first_payload["source_provenance"],
-            [
-                {
-                    "authoritative": False,
-                    "git_sha": ingest.PROVISIONAL_GIT_SHA,
-                    "git_sha_kind": "placeholder",
-                    "reconciliation": "commit_bound_pending",
-                    "review_mode": "authoritative_review_required",
-                    "status": "provisional",
-                }
-            ],
-        )
+        # Provenance SHA kind depends on environment; accept any valid resolved kind
+        prov = first_payload["source_provenance"][0]
+        self.assertEqual(prov["status"], "provisional")
+        self.assertEqual(prov["authoritative"], False)
+        self.assertEqual(prov["review_mode"], "authoritative_review_required")
+        self.assertEqual(prov["reconciliation"], "commit_bound_pending")
+        self.assertIn(prov["git_sha_kind"], {"placeholder", "head_sha", "ci_commit_sha"})
+        self.assertRegex(prov["git_sha"], r"^[0-9a-f]{40}$")
         self.assertEqual(
             first_payload["per_source"][0]["provenance"],
             first_payload["source_provenance"][0],
@@ -370,6 +365,33 @@ class IngestSourceRefBuilderTests(unittest.TestCase):
                 "status": "provisional",
             },
         )
+
+    def test_resolve_ingest_git_sha_uses_github_sha_env(self) -> None:
+        valid_sha = "a" * 40
+        with patch.dict("os.environ", {"GITHUB_SHA": valid_sha}):
+            sha, kind = ingest_render.resolve_ingest_git_sha(Path("/any"))
+        self.assertEqual(sha, valid_sha)
+        self.assertEqual(kind, "ci_commit_sha")
+
+    def test_resolve_ingest_git_sha_falls_back_to_placeholder_when_env_invalid(self) -> None:
+        import subprocess
+        with patch.dict("os.environ", {"GITHUB_SHA": "not-a-sha"}):
+            with patch.object(subprocess, "run", side_effect=OSError("no git")):
+                sha, kind = ingest_render.resolve_ingest_git_sha(Path("/any"))
+        self.assertEqual(sha, ingest_render.PROVISIONAL_GIT_SHA)
+        self.assertEqual(kind, "placeholder")
+
+    def test_resolve_ingest_git_sha_uses_head_sha_when_env_missing(self) -> None:
+        import subprocess
+        fake_sha = "b" * 40
+        fake_result = subprocess.CompletedProcess(args=[], returncode=0, stdout=fake_sha + "\n")
+        with patch.dict("os.environ", {}, clear=False):
+            env_without = {k: v for k, v in __import__("os").environ.items() if k != "GITHUB_SHA"}
+            with patch.dict("os.environ", env_without, clear=True):
+                with patch.object(subprocess, "run", return_value=fake_result):
+                    sha, kind = ingest_render.resolve_ingest_git_sha(Path("/repo"))
+        self.assertEqual(sha, fake_sha)
+        self.assertEqual(kind, "head_sha")
 
 
 class IngestWriteSafetyTests(unittest.TestCase):

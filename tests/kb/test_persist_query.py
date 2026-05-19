@@ -355,6 +355,64 @@ class PersistQueryCliTests(RuntimeWorkspaceTestCase):
             sources=[],
         )
 
+    def test_write_fails_closed_when_analysis_path_is_symlink(self) -> None:
+        """Analysis write must fail closed when the analyses dir contains a symlink."""
+        source_a = self._source("src-x", "a")
+        source_b = self._source("src-y", "d")
+        query = "which plans cover dialysis?"
+        summary = "Plans that cover dialysis services."
+        analyses_dir = self.wiki_root / "analyses"
+        analyses_dir.mkdir(parents=True, exist_ok=True)
+        # Replace analyses dir with a symlink to an external directory
+        import shutil
+        shutil.rmtree(analyses_dir)
+        analyses_dir.symlink_to(self.workspace)
+
+        exit_code, payload = self._run_cli(
+            "--query", query,
+            "--result-summary", summary,
+            "--confidence", "4",
+            "--source", source_a,
+            "--source", source_b,
+            "--wiki-root", str(self.wiki_root),
+            "--schema", str(self.workspace / "AGENTS.md"),
+            "--result-json",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self._assert_envelope_values(
+            payload,
+            status="failed",
+            reason_code="write_failed",
+            analysis_path=None,
+            index_updated=False,
+            log_appended=False,
+        )
+
+    def test_index_not_rebuilt_when_analysis_unchanged(self) -> None:
+        """Index must not be rebuilt when analysis content is identical to existing."""
+        source_a = self._source("src-a", "b")
+        source_b = self._source("src-b", "c")
+        query = "which plans cover oxygen?"
+        summary = "Plans covering oxygen equipment."
+        common_args = [
+            "--query", query,
+            "--result-summary", summary,
+            "--confidence", "4",
+            "--source", source_a,
+            "--source", source_b,
+            "--wiki-root", str(self.wiki_root),
+            "--schema", str(self.workspace / "AGENTS.md"),
+            "--result-json",
+        ]
+        first_exit, first_payload = self._run_cli(*common_args)
+        self.assertEqual(first_exit, 0)
+        self.assertTrue(first_payload["index_updated"])
+
+        second_exit, second_payload = self._run_cli(*common_args)
+        self.assertEqual(second_exit, 0)
+        self.assertFalse(second_payload["index_updated"], "Index must not rebuild on no-op rerun")
+
 
 if __name__ == "__main__":
     unittest.main()
