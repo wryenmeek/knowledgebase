@@ -335,6 +335,54 @@ When dispatching research or explore subagents, instruct them to verify every st
 
 GitHub forbids repository secrets with the `GITHUB_` prefix (HTTP 422). Use `GH_APP_ID` / `GH_APP_PRIVATE_KEY` for GitHub App credentials. Workflow YAML must reference `secrets.GH_APP_*`, not `secrets.GITHUB_APP_*`. This also applies to environment secrets.
 
+### GitHub Actions shell injection guard
+
+`${{ inputs.* }}`, `${{ steps.*.outputs.* }}`, and `${{ github.event.* }}` are substituted by the Actions runner **before** the shell executes — double-quoting does not protect against injection. Fix: route through an `env:` block and reference the env var in the `run:` block:
+
+```yaml
+env:
+  VAR: ${{ inputs.untrusted_value }}
+run: |
+  echo "$VAR"   # safe — runner expansion already finished; shell sees a literal string
+```
+
+Never interpolate `${{ expr }}` directly into a `run:` block when the source can be caller-controlled (workflow inputs, PR branch names, event payloads).
+
+### Git flag injection via branch names
+
+`git pull origin "$BRANCH"` with a crafted branch value like `--upload-pack=/tmp/evil` passes git option flags even when the shell variable is double-quoted (quoting blocks shell word-splitting but not git option parsing). Fix: always use `--` to terminate git option parsing before the refspec:
+
+```bash
+git pull origin -- "$BRANCH"
+```
+
+Apply this pattern to every git command that accepts a branch name sourced from workflow inputs, PR metadata, or external state.
+
+### Step-scoped secret binding for high-value tokens
+
+Secrets like `JULES_API_KEY` that are only needed for one step must be declared at the **step level**, not the job level. Job-level `env:` makes the secret available to all steps in the job (including `actions/checkout`, third-party actions, and error-handler steps) unnecessarily widening the attack surface:
+
+```yaml
+# Wrong — job-level secret leaks to all steps
+jobs:
+  example:
+    env:
+      JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+
+# Correct — step-scoped secret
+jobs:
+  example:
+    steps:
+      - name: Run Jules SDK
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+        run: bun run scripts/fleet/fleet-merge.ts
+```
+
+### `workflow_run` vs `check_suite` for event-driven triggers
+
+Use `workflow_run` (trigger on a named workflow completing) not `check_suite: completed` for event-driven fan-out. `check_suite` fires for **every** CI suite on **every** branch — with 4+ suites per PR, GitHub's concurrency group silently drops the third trigger. `workflow_run` targeting a single named workflow produces exactly one trigger per CI cycle.
+
 ## Interactive-only skills (autopilot guard)
 
 The following skills require real-time interactive dialogue with the user. They **must not** run autonomously in autopilot mode:
