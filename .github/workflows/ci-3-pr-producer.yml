@@ -524,23 +524,13 @@ jobs:
               fi
 
               set +e
-              python3 .github/skills/synthesize-entity-page/logic/synthesize_entity_page.py \
+              python3 .github/skills/synthesize-entity-page/logic/synthesize_combined.py \
                 --extraction-bundle "${bundle_path}" \
                 --wiki-root wiki
-              entity_exit=$?
+              synthesis_exit=$?
               set -e
-              if [[ "${entity_exit}" -ne 0 ]]; then
-                echo "::warning::Entity synthesis had errors for ${source_page}; continuing." >&2
-              fi
-
-              set +e
-              python3 .github/skills/synthesize-concept-page/logic/synthesize_concept_page.py \
-                --extraction-bundle "${bundle_path}" \
-                --wiki-root wiki
-              concept_exit=$?
-              set -e
-              if [[ "${concept_exit}" -ne 0 ]]; then
-                echo "::warning::Concept synthesis had errors for ${source_page}; continuing." >&2
+              if [[ "${synthesis_exit}" -ne 0 ]]; then
+                echo "::warning::Combined synthesis had errors for ${source_page}; continuing." >&2
               fi
 
               rm -f "${bundle_path}" || true

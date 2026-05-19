@@ -927,5 +927,129 @@ class TestAppendToExistingPageBothNew(unittest.TestCase):
             self.assertIn("new.md@xyz", content)
             self.assertIn("What is X?", content)
 
+class TestAppendToExistingPageStructuralValidation(unittest.TestCase):
+    """Structural validation added to append_to_existing_page (#116)."""
+
+    def _make_page(self, tmp: str, content: str) -> Path:
+        page = Path(tmp).resolve() / "entity.md"
+        page.write_text(content, encoding="utf-8")
+        return page
+
+    def _valid_page_content(self) -> str:
+        return (
+            '---\ntype: entity\ntitle: "X"\nstatus: active\n'
+            'sources:\n  - "repo://o/r/old.md@abc"\n'
+            'open_questions: []\nconfidence: 2\nsensitivity: internal\n'
+            'updated_at: "2024-01-01T00:00:00Z"\ntags:\n  - test\n---\n\n# X\n'
+        )
+
+    def test_valid_append_does_not_raise(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            page = self._make_page(td, self._valid_page_content())
+            # Should not raise
+            modified = _su.append_to_existing_page(page, "repo://o/r/new.md@xyz", [])
+            self.assertTrue(modified)
+
+    def test_structural_error_raises_runtime_error(self) -> None:
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as td:
+            page = self._make_page(td, self._valid_page_content())
+            # Patch validate_draft_structure to simulate a structural violation
+            with patch.object(
+                _su, "validate_draft_structure", return_value=["injected delimiter"]
+            ):
+                with self.assertRaises(RuntimeError) as cm:
+                    _su.append_to_existing_page(page, "repo://o/r/new.md@xyz", [])
+                self.assertIn("structural validation failed", str(cm.exception))
+
+
+class TestCombinedSynthesisRun(unittest.TestCase):
+    """Tests for synthesize_combined.py (#115): single-lock entity+concept synthesis."""
+
+    def setUp(self) -> None:
+        self._combined_mod = _load_module(
+            ENTITY_LOGIC / "synthesize_combined.py", "synthesize_combined"
+        )
+
+    def _make_bundle(self, tmp: Path, *, soft_skipped: bool = False) -> Path:
+        bundle: dict = {
+            "source_ref": "repo://o/r/src.md@abc123",
+            "entities": [
+                {
+                    "title": "Combined Entity",
+                    "type": "organization",
+                    "description": "An entity synthesized by the combined script.",
+                    "aliases": [],
+                    "open_questions": [],
+                }
+            ],
+            "concepts": [
+                {
+                    "title": "Combined Concept",
+                    "description": "A concept synthesized by the combined script.",
+                    "aliases": [],
+                    "open_questions": [],
+                }
+            ],
+        }
+        if soft_skipped:
+            bundle = {"soft_skipped": True, "source_ref": ""}
+        path = tmp / "bundle.json"
+        path.write_text(json.dumps(bundle), encoding="utf-8")
+        return path
+
+    def _make_wiki(self, tmp: Path) -> Path:
+        wiki = tmp / "wiki"
+        (wiki / "entities").mkdir(parents=True)
+        (wiki / "concepts").mkdir(parents=True)
+        return wiki
+
+    def test_soft_skipped_bundle_returns_zero(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td).resolve()
+            bundle = self._make_bundle(tdp, soft_skipped=True)
+            rc = self._combined_mod.run(str(bundle), "wiki", repo_root=tdp)
+            self.assertEqual(rc, 0)
+
+    def test_missing_bundle_returns_one(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td).resolve()
+            rc = self._combined_mod.run(str(tdp / "noexist.json"), "wiki", repo_root=tdp)
+            self.assertEqual(rc, 1)
+
+    def test_combined_creates_entity_and_concept(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td).resolve()
+            wiki = self._make_wiki(tdp)
+            bundle = self._make_bundle(tdp)
+            rc = self._combined_mod.run(str(bundle), str(wiki.relative_to(tdp)), repo_root=tdp)
+            self.assertEqual(rc, 0)
+            entity_files = list((wiki / "entities").iterdir())
+            concept_files = list((wiki / "concepts").iterdir())
+            self.assertGreaterEqual(len(entity_files), 1, "Expected entity page created")
+            self.assertGreaterEqual(len(concept_files), 1, "Expected concept page created")
+
+    def test_lock_unavailable_returns_one(self) -> None:
+        import tempfile
+        from unittest.mock import patch
+        from scripts.kb.write_utils import LockUnavailableError
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td).resolve()
+            bundle = self._make_bundle(tdp)
+            self._make_wiki(tdp)
+            with patch.object(
+                self._combined_mod,
+                "exclusive_write_lock",
+                side_effect=LockUnavailableError("busy"),
+            ):
+                rc = self._combined_mod.run(str(bundle), "wiki", repo_root=tdp)
+            self.assertEqual(rc, 1)
+
+
 if __name__ == '__main__':
     unittest.main()

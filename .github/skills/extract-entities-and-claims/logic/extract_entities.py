@@ -79,11 +79,6 @@ def _parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 
-def _extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
-    """Delegate to the shared extract_yaml_list helper."""
-    return extract_yaml_list(frontmatter_str, key)
-
-
 def scan_existing_pages(wiki_root: Path, namespace: str) -> list[dict[str, Any]]:
     """Return a list of ``{title, aliases, path}`` for all pages in a namespace."""
     ns_dir = wiki_root / namespace
@@ -98,7 +93,7 @@ def scan_existing_pages(wiki_root: Path, namespace: str) -> list[dict[str, Any]]
                 continue
             fm = parse_frontmatter(fm_str)
             title = fm.get("title", "").strip().strip('"').strip("'")
-            aliases = _extract_yaml_list(fm_str, "aliases")
+            aliases = extract_yaml_list(fm_str, "aliases")
             results.append({"title": title, "aliases": aliases, "path": str(page_path)})
         except Exception as exc:
             print(

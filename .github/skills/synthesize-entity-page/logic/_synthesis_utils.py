@@ -101,11 +101,6 @@ def find_duplicate(
 # ---------------------------------------------------------------------------
 
 
-def _extract_yaml_list_from_str(frontmatter_str: str, key: str) -> list[str]:
-    """Delegate to the shared extract_yaml_list helper."""
-    return extract_yaml_list(frontmatter_str, key)
-
-
 # ---------------------------------------------------------------------------
 # Existing-page scanning
 # ---------------------------------------------------------------------------
@@ -125,7 +120,7 @@ def scan_existing_pages(wiki_root: Path, namespace: str) -> list[dict]:
                 continue
             fm = parse_frontmatter(fm_str)
             title = fm.get("title", "").strip().strip('"').strip("'")
-            aliases = _extract_yaml_list_from_str(fm_str, "aliases") if fm_str else []
+            aliases = extract_yaml_list(fm_str, "aliases") if fm_str else []
             results.append({"title": title, "aliases": aliases, "path": str(page_path)})
         except Exception as exc:
             print(
@@ -323,7 +318,7 @@ def append_to_existing_page(
         current_sources.append(new_source_ref)
         changed = True
 
-    current_oqs = _extract_yaml_list_from_str(fm_str, "open_questions")
+    current_oqs = extract_yaml_list(fm_str, "open_questions")
     for oq in new_open_questions:
         if oq and oq not in current_oqs:
             current_oqs.append(oq)
@@ -335,5 +330,11 @@ def append_to_existing_page(
     new_fm = _replace_yaml_list_block(fm_str, "sources", current_sources)
     new_fm = _replace_yaml_list_block(new_fm, "open_questions", current_oqs)
     new_content = f"---\n{new_fm}\n---\n{body}"
+    structural_errors = validate_draft_structure(new_content)
+    if structural_errors:
+        raise RuntimeError(
+            f"append_to_existing_page: structural validation failed for {page_path}: "
+            f"{structural_errors}"
+        )
     write_text_capturing_previous_safe(page_path, new_content)
     return True
