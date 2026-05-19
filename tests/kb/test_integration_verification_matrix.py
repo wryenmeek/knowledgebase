@@ -255,11 +255,18 @@ class IntegrationVerificationMatrixTests(KnowledgebaseWorkspaceTestCase):
                 stripped = candidate.strip()
                 if not stripped:
                     continue
-                if not candidate.startswith("  ") or candidate.startswith("    "):
+                # A line with no leading whitespace is a new root-level YAML key
+                # (e.g. "jobs:") — we have exited the on: block entirely.
+                if not candidate[0].isspace():
                     break
-                if stripped.startswith("#") or not stripped.endswith(":"):
+                # Lines with ≥4 leading spaces are nested sub-keys of an event
+                # (e.g. "    branches: [main]" under "  push:") — skip them but
+                # remain inside the on: block so later events are still parsed.
+                if candidate.startswith("    "):
                     continue
-                events.add(stripped[:-1])
+                # Exactly 2-space-indented: this is a top-level event key.
+                if not stripped.startswith("#") and stripped.endswith(":"):
+                    events.add(stripped[:-1])
             return events
 
         raise AssertionError(f"Top-level 'on' block missing from {WORKFLOW_PATH}")

@@ -50,9 +50,11 @@ jobs:
         run: npx --yes pagefind --site site
 
       - name: Deploy to gh-pages
-        run: |
-          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-          python3 -m ghp_import -n -p -f site
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # SECURITY: pass token via env var rather than inlining ${{ secrets.* }}
+          # in the shell command (prevents token exposure in argv / git config list).
+          git remote set-url origin "https://x-access-token:${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          python3 -m ghp_import -n -p -f site
 

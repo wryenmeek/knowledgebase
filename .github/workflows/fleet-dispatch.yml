@@ -38,12 +38,13 @@ concurrency:
 
 jobs:
   dispatch:
-    # Pre-filter: only allocate a runner if the PR was opened by Jules or a branch
-    # containing "jules". This avoids a full checkout + git fetch for every human PR.
+    # Pre-filter: only allocate a runner for Jules-authored PRs.
+    # Use startsWith to avoid matching arbitrary human branches that happen to
+    # contain the substring "jules" or "fleet" (e.g. "my-jules-fix", "refuels").
     if: |
       github.event.pull_request.user.login == 'google-labs-jules' ||
-      contains(github.event.pull_request.head.ref, 'jules') ||
-      contains(github.event.pull_request.head.ref, 'fleet')
+      startsWith(github.event.pull_request.head.ref, 'jules/') ||
+      startsWith(github.event.pull_request.head.ref, 'fleet/')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -140,7 +141,10 @@ jobs:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FLEET_BASE_BRANCH: ${{ steps.check.outputs.pending_base }}
+          # SECURITY: pending_date is read from the unprotected fleet-state branch;
+          # pass through env var to prevent shell injection via expression expansion.
+          FLEET_PENDING_DATE: ${{ steps.check.outputs.pending_date }}
         run: |
           set -euo pipefail
           git pull --ff-only origin "$FLEET_BASE_BRANCH"
-          bun fleet-dispatch.ts "${{ steps.check.outputs.pending_date }}"
+          bun fleet-dispatch.ts "$FLEET_PENDING_DATE"

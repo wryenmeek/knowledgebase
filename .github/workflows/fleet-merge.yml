@@ -14,23 +14,28 @@
 
 # .github/workflows/fleet-merge.yml
 #
-# Event-driven fleet merge: fires on check_suite completion rather than polling.
+# Event-driven fleet merge: fires when CI-2 completes rather than polling.
 #
-# ┌─ check_suite: completed ──────────────────────────────────────────────────┐
-# │  Conclusion != success → exit immediately (< 5s, no runner setup)         │
-# │  No open fleet PR for this SHA → exit immediately                         │
-# │  Fleet PR found + CI passed → update branch → squash merge                │
-# │  Conflict → close PR, re-dispatch Jules session (new PR will re-trigger)  │
-# └───────────────────────────────────────────────────────────────────────────┘
+# ┌─ workflow_run: CI-2 completed ─────────────────────────────────────────────┐
+# │  Conclusion != success → exit immediately (< 5s, no runner setup)          │
+# │  No open fleet PR for this SHA → exit immediately                          │
+# │  Fleet PR found + CI passed → update branch → squash merge                 │
+# │  Conflict → close PR, re-dispatch Jules session (new PR will re-trigger)   │
+# └────────────────────────────────────────────────────────────────────────────┘
+#
+# Using workflow_run instead of check_suite: completed ensures exactly one
+# trigger fires per CI cycle (only CI-2, not every check suite), preventing
+# the concurrency queue from overflowing and silently dropping the merge event.
 #
 # workflow_dispatch (manual sweep) is also available to process any open fleet
 # PRs that currently have passing CI — useful after extended outages.
 name: Fleet Sequential Merge
 
 on:
-  # Event-driven: fires when any check suite completes. The job pre-filters to
-  # only process fleet PRs — exits in < 5 seconds for every other suite.
-  check_suite:
+  # Event-driven: fires only when CI-2 (the required check) completes.
+  # Exactly one trigger per PR CI cycle — no queue overflow risk.
+  workflow_run:
+    workflows: ["CI-2 Analyst Read-Only Diagnostics"]
     types: [completed]
   # Manual sweep: process all open fleet PRs that currently have passing CI.
   workflow_dispatch:
@@ -53,29 +58,29 @@ jobs:
   # Exits immediately for non-fleet suites. For fleet PRs: merge on first pass.
   merge-on-ci-pass:
     if: |
-      github.event_name == 'check_suite' &&
-      github.event.check_suite.conclusion == 'success'
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+      # JULES_API_KEY is scoped to the merge/re-dispatch step only — see below.
     steps:
       - name: Find open fleet PR for this commit
         id: find-pr
         env:
-          HEAD_SHA: ${{ github.event.check_suite.head_sha }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           # Cheap API call — exits fast for non-fleet suites (the common case).
           PR_NUM=$(gh pr list \
             --state open \
-            --repo "${{ github.repository }}" \
+            --repo "$REPO" \
             --json number,headRefOid,author \
             --jq "[.[] | select(
                     .headRefOid == \"${HEAD_SHA}\" and
-                    (.author.login == \"google-labs-jules\" or
-                     (.author.login | endswith(\"[bot]\")))
+                    (.author.login == \"google-labs-jules\")
                   )] | .[0].number // empty")
           if [ -z "$PR_NUM" ]; then
             echo "No open fleet PR for SHA ${HEAD_SHA}. Skipping."
@@ -106,6 +111,7 @@ jobs:
         env:
           PR_NUM: ${{ steps.find-pr.outputs.pr_num }}
           REPO: ${{ github.repository }}
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -134,11 +140,12 @@ jobs:
             gh pr close "$PR_NUM" \
               --comment "⚠️ Closed by fleet-merge: conflict after rebase. Task re-dispatched — new PR will auto-merge when its CI passes."
 
-            JULES_REPO="${REPO}" TASK_PROMPT="${TASK_PROMPT}" bun -e "
+            PR_BASE=$(gh pr view "$PR_NUM" --json baseRefName -q '.baseRefName')
+            JULES_REPO="${REPO}" TASK_PROMPT="${TASK_PROMPT}" JULES_BASE_BRANCH="${PR_BASE}" bun -e "
               import { jules } from '@google/jules-sdk';
               const run = await jules.run({
                 prompt: process.env.TASK_PROMPT,
-                source: { github: process.env.JULES_REPO, baseBranch: 'main' },
+                source: { github: process.env.JULES_REPO, baseBranch: process.env.JULES_BASE_BRANCH },
               });
               console.log('Re-dispatched session:', run.id);
             "
@@ -194,7 +201,7 @@ jobs:
             --state open \
             --base "$BASE_BRANCH" \
             --json number,headRefName,author \
-            --jq '[.[] | select(.author.login == "google-labs-jules" or (.author.login | endswith("[bot]")))] | sort_by(.number) | .[].number')
+            --jq '[.[] | select(.author.login == "google-labs-jules")] | sort_by(.number) | .[].number')
 
           if [ -z "$PRS" ]; then
             echo "ℹ️  No Jules-authored PRs found."
