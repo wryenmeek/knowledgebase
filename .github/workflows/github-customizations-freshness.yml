@@ -5,7 +5,7 @@ on:
     paths:
       - ".github/**"
   schedule:
-    - cron: "30 3 * * 1" # Monday 03:30 UTC, same as wiki-freshness
+    - cron: "0 4 * * 1" # Monday 04:00 UTC (staggered 30 min after wiki-freshness at 03:30)
   workflow_dispatch: {}
 
 permissions:

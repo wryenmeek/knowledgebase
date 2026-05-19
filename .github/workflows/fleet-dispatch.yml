@@ -151,4 +151,4 @@ jobs:
           # SECURITY: -- terminates git option parsing so a crafted FLEET_BASE_BRANCH
           # (from unprotected fleet-state) cannot inject git flags like --upload-pack.
           git pull --ff-only origin -- "$FLEET_BASE_BRANCH"
-          bun fleet-dispatch.ts "$FLEET_PENDING_DATE"
+          bun fleet-dispatch.ts

@@ -119,8 +119,9 @@ class WorkflowShaPinTests(unittest.TestCase):
         """pages.yml must not inline ${{ secrets.* }} in run: shell blocks.
 
         Passing a token inline in a shell command exposes it in argv
-        (visible in /proc/<pid>/cmdline) and git diagnostics. The fix routes
-        it via DEPLOY_TOKEN env var, expanded by the shell as ${DEPLOY_TOKEN}.
+        (visible in /proc/<pid>/cmdline) and git diagnostics. The modernised
+        deployment uses actions/deploy-pages with OIDC — no token is needed
+        in a run: block at all.
 
         Uses YAML parse to accurately scope the check to run: values only
         (avoids false-matches on env: blocks or step metadata).
@@ -134,18 +135,25 @@ class WorkflowShaPinTests(unittest.TestCase):
                     self.assertNotIn(
                         "${{ secrets.GITHUB_TOKEN }}",
                         str(run_val),
-                        "pages.yml must not inline ${{ secrets.GITHUB_TOKEN }} in a run: block — use DEPLOY_TOKEN env var",
+                        "pages.yml must not inline ${{ secrets.GITHUB_TOKEN }} in a run: block",
                     )
-        # Positive assertions: the safe pattern must be present.
+        # Positive assertion: deployment must use the OIDC-based actions/deploy-pages
+        # (no DEPLOY_TOKEN needed — token exposure in argv/git config is eliminated).
         self.assertIn(
-            "DEPLOY_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+            "actions/deploy-pages",
             text,
-            "pages.yml must declare DEPLOY_TOKEN in an env: block",
+            "pages.yml must use actions/deploy-pages for OIDC-based deployment (no PAT needed)",
         )
         self.assertIn(
-            "${DEPLOY_TOKEN}",
+            "actions/upload-pages-artifact",
             text,
-            "pages.yml must reference DEPLOY_TOKEN as a shell variable (not an expression)",
+            "pages.yml must upload site/ via actions/upload-pages-artifact before deploying",
+        )
+        # DEPLOY_TOKEN (ghp_import pattern) must be absent — replaced by OIDC deploy.
+        self.assertNotIn(
+            "ghp_import",
+            text,
+            "pages.yml must not use ghp_import — replaced by actions/deploy-pages",
         )
 
 

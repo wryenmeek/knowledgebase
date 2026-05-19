@@ -2,6 +2,7 @@ name: CI-2 Analyst Read-Only Diagnostics
 
 on:
   pull_request:
+    branches: [main]
   # Run full diagnostics on pushes to main (post-merge gate).
   # Feature branches are covered by the pull_request trigger above — running
   # the full 15-minute suite on every feature branch push is redundant.
@@ -163,13 +164,19 @@ jobs:
 
       - name: Fail explicitly when diagnostics fail
         if: steps.diagnostics.outputs.exit_code != '0'
+        env:
+          WRAPPER_EXIT: ${{ steps.diagnostics.outputs.wrapper_exit }}
+          FRESHNESS_EXIT: ${{ steps.diagnostics.outputs.freshness_exit }}
+          QUALITY_EXIT: ${{ steps.diagnostics.outputs.quality_exit }}
+          LINT_EXIT: ${{ steps.diagnostics.outputs.lint_exit }}
+          TESTS_EXIT: ${{ steps.diagnostics.outputs.tests_exit }}
         run: |
           set -euo pipefail
-          [ "${{ steps.diagnostics.outputs.wrapper_exit }}" = "0" ] || echo "::error::validate_wiki_governance failed. FIX: run python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --quiet locally to see failures."
-          [ "${{ steps.diagnostics.outputs.freshness_exit }}" = "0" ] || echo "::error::check_doc_freshness failed. FIX: update the updated_at frontmatter field on stale pages. See diagnostics artifacts for which files."
-          [ "${{ steps.diagnostics.outputs.quality_exit }}" = "0" ] || echo "::error::content_quality_report failed. FIX: add missing sources/updated_at fields or resolve placeholder markers in affected wiki pages."
-          [ "${{ steps.diagnostics.outputs.lint_exit }}" = "0" ] || echo "::error::lint_wiki failed. FIX: run python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict locally to see violations with remediation hints."
-          [ "${{ steps.diagnostics.outputs.tests_exit }}" = "0" ] || echo "::error::pytest failed. FIX: run python3 -m pytest tests/ -q locally to see failures."
+          [ "${WRAPPER_EXIT}" = "0" ] || echo "::error::validate_wiki_governance failed. FIX: run python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --quiet locally to see failures."
+          [ "${FRESHNESS_EXIT}" = "0" ] || echo "::error::check_doc_freshness failed. FIX: update the updated_at frontmatter field on stale pages. See diagnostics artifacts for which files."
+          [ "${QUALITY_EXIT}" = "0" ] || echo "::error::content_quality_report failed. FIX: add missing sources/updated_at fields or resolve placeholder markers in affected wiki pages."
+          [ "${LINT_EXIT}" = "0" ] || echo "::error::lint_wiki failed. FIX: run python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict locally to see violations with remediation hints."
+          [ "${TESTS_EXIT}" = "0" ] || echo "::error::pytest failed. FIX: run python3 -m pytest tests/ -q locally to see failures."
           exit 1
 
   lint-workflows:

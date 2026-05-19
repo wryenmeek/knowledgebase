@@ -6,8 +6,11 @@ Covers:
 - Job structure (both jobs have timeouts, correct conditions)
 - Concurrency serialisation contract
 - Secret scoping (JULES_API_KEY must not appear at job level in either job)
-- Shell injection guards (inputs.* must not be inline in run: blocks)
+- Shell injection guards (inputs.* must not be inline in run: blocks; both spaced
+  and no-space expression forms are checked)
+- Bun version pin (must be 1.3.1, not latest, in all bun workflow files)
 - Re-dispatch ordering (bun re-dispatch must precede gh pr close)
+- PR_BASE recovery (gh pr view --json baseRefName must appear in conflict path)
 """
 
 from __future__ import annotations
@@ -20,6 +23,9 @@ import yaml
 
 WORKFLOW_PATH = Path(".github/workflows/fleet-merge.yml")
 DISPATCH_PATH = Path(".github/workflows/fleet-dispatch.yml")
+COPILOT_SETUP_PATH = Path(".github/workflows/copilot-setup-steps.yml")
+
+BUN_PINNED_VERSION = "1.3.1"
 
 
 def _collect_run_blocks(workflow: dict) -> list[str]:
@@ -188,12 +194,20 @@ class FleetMergeWorkflowContractTests(unittest.TestCase):
 
         Uses YAML parse to walk all run: values accurately (avoids regex
         false-matches on `workflow_run:` YAML keys and single-line run: steps).
+
+        Both the spaced form (${{ inputs.base_branch }}) and the no-space form
+        (${{inputs.base_branch}}) are checked — GitHub Actions accepts both.
         """
         for block in _collect_run_blocks(self.workflow):
             self.assertNotIn(
                 "${{ inputs.base_branch }}",
                 block,
                 "inputs.base_branch must not be interpolated directly in a run: block",
+            )
+            self.assertNotIn(
+                "${{inputs.base_branch}}",
+                block,
+                "inputs.base_branch (no-space form) must not be interpolated directly in a run: block",
             )
 
     def test_base_branch_env_var_pattern_present(self) -> None:
@@ -266,6 +280,9 @@ class FleetDispatchInjectionGuardTests(unittest.TestCase):
         Direct interpolation into a run: block allows a collaborator to push a
         crafted .pending_session file that executes arbitrary shell commands.
         Must be routed through an env: var instead.
+
+        Both the spaced form and the no-space form are checked — GitHub Actions
+        accepts both syntaxes (${{ expr }} and ${{expr}}).
         """
         for block in self._run_blocks():
             self.assertNotIn(
@@ -273,15 +290,30 @@ class FleetDispatchInjectionGuardTests(unittest.TestCase):
                 block,
                 "pending_date from fleet-state (unprotected) must not be inline in run: blocks",
             )
+            self.assertNotIn(
+                "${{steps.check.outputs.pending_date}}",
+                block,
+                "pending_date (no-space form) from fleet-state must not be inline in run: blocks",
+            )
 
     def test_pending_date_routed_through_env_var(self) -> None:
-        """FLEET_PENDING_DATE env var must carry pending_date to the shell safely."""
+        """FLEET_PENDING_DATE env var must carry pending_date to the shell safely.
+
+        The env var must be declared in an env: block (not inlined in the run: block),
+        and the bun call must NOT pass it as a positional argument — the script reads
+        it exclusively from process.env.FLEET_PENDING_DATE (issue #134 fix).
+        """
         self.assertIn(
             "FLEET_PENDING_DATE: ${{ steps.check.outputs.pending_date }}",
             self.workflow_text,
         )
-        # Shell must reference the env var, not the expression
-        self.assertIn('"$FLEET_PENDING_DATE"', self.workflow_text)
+        # The env var must NOT be passed as a positional arg to the bun script.
+        # Positional arg exposure was eliminated in issue #134.
+        self.assertNotIn(
+            'bun fleet-dispatch.ts "$FLEET_PENDING_DATE"',
+            self.workflow_text,
+            "FLEET_PENDING_DATE must not be passed as positional argv — script reads from process.env",
+        )
 
     def test_git_pull_uses_refspec_terminator(self) -> None:
         """git pull with a fleet-state-derived branch must use -- to stop flag parsing.
@@ -311,6 +343,126 @@ class FleetDispatchInjectionGuardTests(unittest.TestCase):
         self.assertNotIn("startsWith(github.event.pull_request.head.ref, 'fleet/')", self.workflow_text)
         # Must use exact login equality
         self.assertIn("'google-labs-jules'", self.workflow_text)
+
+
+class BunVersionPinTests(unittest.TestCase):
+    """Assert bun-version is pinned to a specific version (not 'latest') across
+    all workflow files that install bun. Issue #130.
+
+    'latest' was replaced with a pinned version in afb1035 — this test prevents
+    silent regression to an unpinned version.
+    """
+
+    BUN_WORKFLOW_PATHS = [
+        Path(".github/workflows/fleet-merge.yml"),
+        Path(".github/workflows/fleet-dispatch.yml"),
+        Path(".github/workflows/copilot-setup-steps.yml"),
+    ]
+
+    def _load(self, path: Path) -> tuple[str, dict]:
+        self.assertTrue(path.exists(), f"Missing: {path}")
+        text = path.read_text(encoding="utf-8")
+        return text, yaml.safe_load(text)
+
+    def _bun_setup_steps(self, workflow: dict) -> list[dict]:
+        """Collect all oven-sh/setup-bun steps from any job."""
+        steps = []
+        for job in workflow.get("jobs", {}).values():
+            for step in job.get("steps", []):
+                uses = step.get("uses", "")
+                if "setup-bun" in uses:
+                    steps.append(step)
+        return steps
+
+    def test_bun_version_pinned_not_latest_in_fleet_merge(self) -> None:
+        """fleet-merge.yml must pin bun-version to a specific version, not 'latest'."""
+        _, wf = self._load(Path(".github/workflows/fleet-merge.yml"))
+        for step in self._bun_setup_steps(wf):
+            bun_ver = step.get("with", {}).get("bun-version", "")
+            self.assertEqual(
+                bun_ver,
+                BUN_PINNED_VERSION,
+                f"fleet-merge.yml: bun-version must be '{BUN_PINNED_VERSION}', got '{bun_ver}'",
+            )
+
+    def test_bun_version_pinned_not_latest_in_fleet_dispatch(self) -> None:
+        """fleet-dispatch.yml must pin bun-version to a specific version, not 'latest'."""
+        _, wf = self._load(Path(".github/workflows/fleet-dispatch.yml"))
+        for step in self._bun_setup_steps(wf):
+            bun_ver = step.get("with", {}).get("bun-version", "")
+            self.assertEqual(
+                bun_ver,
+                BUN_PINNED_VERSION,
+                f"fleet-dispatch.yml: bun-version must be '{BUN_PINNED_VERSION}', got '{bun_ver}'",
+            )
+
+    def test_bun_version_pinned_not_latest_in_copilot_setup(self) -> None:
+        """copilot-setup-steps.yml must pin bun-version to a specific version, not 'latest'."""
+        _, wf = self._load(COPILOT_SETUP_PATH)
+        for step in self._bun_setup_steps(wf):
+            bun_ver = step.get("with", {}).get("bun-version", "")
+            self.assertEqual(
+                bun_ver,
+                BUN_PINNED_VERSION,
+                f"copilot-setup-steps.yml: bun-version must be '{BUN_PINNED_VERSION}', got '{bun_ver}'",
+            )
+
+
+class FleetMergePRBaseRecoveryTests(unittest.TestCase):
+    """Assert PR_BASE recovery uses gh pr view (not a hardcoded fallback). Issue #131.
+
+    Regressing to PR_BASE="main" or any hardcoded branch would silently break
+    re-dispatch for PRs targeting non-main branches.
+    """
+
+    def setUp(self) -> None:
+        self.assertTrue(WORKFLOW_PATH.exists(), f"Missing: {WORKFLOW_PATH}")
+        self.workflow = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    def _conflict_run_blocks(self) -> list[str]:
+        """Return run: blocks from steps that contain both bun -e and gh pr close."""
+        blocks = []
+        for job in self.workflow.get("jobs", {}).values():
+            for step in job.get("steps", []):
+                run_val = step.get("run", "")
+                if "bun -e" in run_val and "gh pr close" in run_val:
+                    blocks.append(run_val)
+        return blocks
+
+    def _merge_on_ci_pass_conflict_blocks(self) -> list[str]:
+        """Return conflict run: blocks from the merge-on-ci-pass job only."""
+        blocks = []
+        job = self.workflow.get("jobs", {}).get("merge-on-ci-pass", {})
+        for step in job.get("steps", []):
+            run_val = step.get("run", "")
+            if "bun -e" in run_val and "gh pr close" in run_val:
+                blocks.append(run_val)
+        return blocks
+
+    def test_pr_base_recovered_via_gh_pr_view(self) -> None:
+        """PR_BASE must be recovered from gh pr view --json baseRefName in merge-on-ci-pass.
+
+        The merge-on-ci-pass conflict path has no workflow input for base_branch,
+        so it must recover the branch dynamically from the PR. Regressing to a
+        hardcoded 'main' fallback would silently break re-dispatch for non-main PRs.
+        The manual-sweep job legitimately uses INPUT_BASE_BRANCH from its input.
+        """
+        conflict_blocks = self._merge_on_ci_pass_conflict_blocks()
+        self.assertTrue(
+            conflict_blocks,
+            "Expected at least one conflict-path step (containing bun -e and gh pr close) in merge-on-ci-pass",
+        )
+        for block in conflict_blocks:
+            self.assertIn(
+                "baseRefName",
+                block,
+                "merge-on-ci-pass conflict step must recover PR_BASE via gh pr view --json baseRefName",
+            )
+            self.assertIn(
+                "gh pr view",
+                block,
+                "merge-on-ci-pass conflict step must use gh pr view to recover PR_BASE dynamically",
+            )
 
 
 if __name__ == "__main__":

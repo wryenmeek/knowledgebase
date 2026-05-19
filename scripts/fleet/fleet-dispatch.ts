@@ -34,8 +34,9 @@ if (!GITHUB_TOKEN) {
 
 const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
-const dateArg = process.argv[2];
-const date = dateArg || new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" })
+// SECURITY: read date from env var only — argv exposure eliminated so a crafted
+// value cannot be injected via shell word-splitting if this script ever shells out.
+const date = process.env.FLEET_PENDING_DATE || new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" })
   .format(new Date())
   .replaceAll("-", "_");
 
