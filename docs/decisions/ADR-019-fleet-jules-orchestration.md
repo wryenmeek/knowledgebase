@@ -1,7 +1,7 @@
 # ADR-019: Jules-based fleet orchestration for parallel issue-to-PR dispatch
 
 ## Status
-Accepted
+Accepted — amended in-place: Phase 3 merge trigger changed to event-driven and security hardened (see § Amendment)
 
 ## Date
 2026-04-27
@@ -53,12 +53,20 @@ After the planning PR is merged:
 3. **Concurrency limit** — a maximum of N sessions run at once (configurable
    via `FLEET_MAX_PARALLEL`) to stay within Jules API rate limits.
 
-### Phase 3 — Merge (`fleet-merge.ts`, triggered after dispatch completes)
+### Phase 3 — Merge (`fleet-merge.yml`, event-driven via `workflow_run`)
 
-PRs are merged sequentially in dependency order. If a merge fails (conflict
-with a previously merged PR), the task is re-dispatched as a new Jules session
-with the updated base branch. This re-dispatch loop runs up to a configurable
-limit before the task is flagged for human review.
+~~*Original: triggered after dispatch completes, polling loop up to configurable retry limit.*~~
+*See § Amendment for the current implementation.*
+
+PRs are merged sequentially in arrival order. `fleet-merge.yml` fires when
+**CI-2 completes** (`workflow_run` trigger, `conclusion == success`) on a head
+SHA that belongs to a Jules-authored fleet PR. This ensures exactly one trigger
+fires per PR CI cycle — no concurrency queue overflow. A `workflow_dispatch`
+manual sweep is also available to process all currently-passing open fleet PRs.
+
+If branch update produces a conflict, the PR is closed and the task is
+re-dispatched as a new `jules.run()` session (single retry, not a loop). The
+new PR re-triggers this workflow when its own CI passes.
 
 ### Technology choice: TypeScript + Bun
 
@@ -130,6 +138,73 @@ import { jules } from '@google/jules-sdk';
 - Fleet orchestration is orthogonal to the knowledgebase write-surface matrix —
   Jules sessions produce PRs that go through normal CI gates (CI-1 → CI-2 →
   CI-3 or CI-4) like any human-authored PR.
+
+## Amendment
+
+**Date:** 2026-05-18
+**Commits:** `614cc6f`, `f7ecf96`, `afb1035`, `d515efb`
+
+### What changed
+
+**Phase 3 trigger — polling → event-driven (`workflow_run`)**
+
+The original design described Phase 3 as "triggered after dispatch completes"
+with a polling/loop model and a "configurable retry limit". The implementation
+diverged significantly: `fleet-merge.yml` now uses `workflow_run` on
+**CI-2 completion** rather than polling. Key consequences:
+- Exactly one trigger fires per PR CI cycle (CI-2, not every check suite),
+  eliminating the concurrency queue overflow that silently dropped merge events
+  when `check_suite: completed` fired multiple times per PR.
+- The retry loop is replaced by a single re-dispatch via `jules.run()`. The new
+  PR re-triggers the workflow when its own CI passes — naturally bounded.
+- A `workflow_dispatch` manual-sweep path merges all currently-passing open
+  fleet PRs, useful after outages.
+
+**Security hardening of fleet-merge.yml and fleet-dispatch.yml**
+
+Several security decisions were made that are not reflected in the original ADR:
+
+1. **Expression injection guard** — GitHub Actions expressions (`${{ inputs.* }}`,
+   `${{ steps.*.outputs.* }}`) are never interpolated directly into `run:` shell
+   blocks. All external values route through an `env:` block and are referenced
+   as shell variables (`$VAR`). This prevents command injection when values
+   originate from unprotected branches or user-controlled inputs.
+
+2. **Git flag injection guard** — Branch values sourced from the unprotected
+   `fleet-state` branch (e.g., `FLEET_BASE_BRANCH`) are passed to git commands
+   with a `--` refspec terminator (`git pull --ff-only origin -- "$BRANCH"`).
+   Without `--`, a crafted branch name like `--upload-pack=/tmp/evil` would be
+   parsed by git as an option, executing arbitrary code on the runner.
+
+3. **Step-scoped secrets** — `JULES_API_KEY` is declared only in the `env:` block
+   of the specific step that calls the Jules SDK, not at job level. Job-level
+   placement exposes the secret to checkout, bun install, and every other step
+   unnecessarily.
+
+4. **Author filter — exact login equality** — The fleet-dispatch job-level `if:`
+   condition uses `user.login == 'google-labs-jules'` exclusively. Branch-prefix
+   conditions (`startsWith('jules/')`, `startsWith('fleet/')`) were removed because
+   any collaborator with push access could name a branch `jules/anything` to
+   trigger dispatch. The `user.login` check is sufficient and not bypassable.
+
+5. **Re-dispatch before close** — In conflict paths, the Jules SDK re-dispatch
+   call executes *before* `gh pr close`. If `bun` or the SDK fails, `set -euo
+   pipefail` stops the script and the original PR remains open (no task loss).
+   Inverting this order (close first, then re-dispatch) would permanently lose
+   the task if the re-dispatch step fails.
+
+6. **Fork-PR runner guard** — The `merge-on-ci-pass` job `if:` condition checks
+   `github.event.workflow_run.repository.full_name == github.repository` to
+   prevent runner allocation for CI-2 runs originating from fork PRs.
+
+### What did not change
+
+- Phases 1 and 2 (plan, dispatch) are unchanged.
+- The TypeScript/Bun technology choice for fleet scripts is unchanged.
+- The Jules SDK usage contract (`jules.run()` for automation, `jules.session()`
+  for interactive planning) is unchanged.
+- Fleet PRs continue to enter the normal CI review gate (CI-2 → fleet-merge)
+  like any other PR.
 
 ## References
 
