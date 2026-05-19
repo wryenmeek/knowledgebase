@@ -385,8 +385,12 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         # sources list is now passed via workspace file (.ci3-ingest-manifest), not GITHUB_OUTPUT
         # (#14, #15 — batch ingest + file-based handoff to avoid GITHUB_OUTPUT size limits).
         self.assertNotIn('echo "sources<<EOF"', self.workflow_text)
-        self.assertIn('echo "changed_paths<<EOF"', self.workflow_text)
-        self.assertNotIn('changed_paths<<\'EOF\'', self.workflow_text)
+        # changed_paths uses a random delimiter (openssl rand -hex 16) to prevent premature
+        # block termination if a path exactly equals the delimiter string (#SEC-P2-1).
+        self.assertNotIn('echo "changed_paths<<EOF"', self.workflow_text)
+        self.assertIn('openssl rand -hex 16', self.workflow_text)
+        self.assertIn('changed_paths<<${_delim}', self.workflow_text)
+        self.assertNotIn("changed_paths<<'EOF'", self.workflow_text)
 
     def test_source_list_uses_file_based_handoff(self) -> None:
         # #15: source list must be written to a workspace manifest file instead of
@@ -409,6 +413,15 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertIn("SYNTHESIS_GITHUB_TOKEN", self.workflow_text)
         # Token must come from secrets, not as a CLI argument
         self.assertNotIn("--github-token", self.workflow_text)
+
+    def test_base_branch_validated_before_gh_cli_use(self) -> None:
+        # SEC-P2-2: base_branch must be validated as a safe format before being passed
+        # to gh CLI to prevent flag injection via a maliciously-renamed default branch.
+        self.assertIn(
+            '[[ ! "${base_branch}" =~ ^[A-Za-z0-9._/-]+$ ]]',
+            self.workflow_text,
+        )
+        self.assertIn("Unexpected default_branch format", self.workflow_text)
 
     def test_synthesis_stage_precedes_update_index(self) -> None:
         synthesis_marker = "Synthesis Curator stage"

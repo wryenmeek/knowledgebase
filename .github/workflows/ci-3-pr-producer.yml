@@ -630,10 +630,11 @@ jobs:
 
           mapfile -t changed_paths < <(printf '%s\n' "${changed_paths[@]}" | sed '/^$/d' | sort -u)
           echo "has_changes=true" >> "${GITHUB_OUTPUT}"
+          _delim="$(openssl rand -hex 16)"
           {
-            echo "changed_paths<<EOF"
+            echo "changed_paths<<${_delim}"
             printf '%s\n' "${changed_paths[@]}"
-            echo "EOF"
+            echo "${_delim}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Create or update CI-3 PR
@@ -649,6 +650,12 @@ jobs:
           safe_branch="$(printf '%s' "${base_branch}" | sed 's#[^A-Za-z0-9._-]#-#g')"
           if [[ -z "${safe_branch}" ]]; then
             safe_branch="default"
+          fi
+          # Validate base_branch is a safe format before passing to gh CLI to prevent
+          # flag injection via a maliciously-renamed default branch.
+          if [[ ! "${base_branch}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::Unexpected default_branch format: ${base_branch}" >&2
+            exit 1
           fi
           pr_branch="ci3/pr-producer-${safe_branch}"
 

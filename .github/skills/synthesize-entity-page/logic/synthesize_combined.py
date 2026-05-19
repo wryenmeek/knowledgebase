@@ -32,6 +32,8 @@ _HERE = Path(__file__).resolve().parent
 _CONCEPT_LOGIC = (
     _HERE.parents[1] / "synthesize-concept-page" / "logic"
 )
+# Both paths must be explicit so the imports resolve outside of CI-3 / test harness contexts.
+sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_CONCEPT_LOGIC))
 
 from synthesize_concept_page import _write_concept_drafts  # type: ignore[import]
@@ -91,6 +93,9 @@ def run(
             concept_results = _write_concept_drafts(concepts, wiki_root_path, source_ref)
     except LockUnavailableError as exc:
         print(f"error: lock unavailable: {exc}", file=sys.stderr)
+        return 1
+    except RuntimeError as exc:
+        print(f"error: synthesis structural violation: {exc}", file=sys.stderr)
         return 1
 
     rc = 0
