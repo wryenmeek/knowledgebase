@@ -120,6 +120,10 @@ When the user reports pushing content, triggering CI, or says "Fleet deployed," 
 
 SQL tracking tables (`todos`, `review_findings`, etc.) must be updated in the **same step** as the code change that resolves them — not as a separate cleanup pass. A finding that is fixed in code but still shows `open` in SQL is stale and misleading. Update status atomically with the fix.
 
+### Deferred-status answers must reconcile tracker vs GitHub
+
+Before answering questions like "what was deferred?" or "is there a GH issue for this drift?", reconcile local SQL tracking rows with live GitHub state. For every referenced issue/todo, verify current issue status with `gh issue view` (or equivalent) and update stale local tracker status before reporting.
+
 ### Mermaid diagram syntax (GitHub renderer)
 
 When writing Mermaid diagrams in markdown research reports or docs:
@@ -287,6 +291,7 @@ Unlike contract test cascades above, these documentation updates were historical
 | An ADR `## Status` changed to include "amended" or "extended" | `docs/decisions/README.md` status cell updated in same commit | `scripts/hooks/check_adr_cross_ref.py` (pre-commit), `tests/kb/test_adr_readme_status_sync.py` |
 | A cron schedule added or changed in any `.github/workflows/*.yml` | Runbook trigger column/description updated with raw cron string | `tests/kb/test_workflow_schedule_docs_sync.py` |
 | A new TOKEN_PROFILE value used in a workflow | `scripts/kb/contracts.py` `TokenProfileId` enum + `tests/kb/test_contracts.py` expected tuple | `tests/kb/test_token_profile_registry_completeness.py` |
+| CI-3 synthesis entrypoint/script names change (for example, switching to `synthesize_combined.py`) | `docs/mvp-runbook.md` CI-3 fallback troubleshooting references (`If synthesis fails locally...`) | *(not yet enforced)* |
 
 ### Workflow schedule documentation rule
 
@@ -428,6 +433,10 @@ When the user requests review of "all changes", "all N files", or specifies a co
 
 When the user sends "Fleet deployed" (or similar), it means they have pushed commits and are ready for the next planned phase to proceed. Treat it as a continuation signal: check the current plan state, identify the next pending task, and execute it.
 
+### "Pickup where you left off" resume protocol
+
+When the user says "pickup where you left off" (or equivalent), immediately resume from durable state instead of re-discovery. In order: read the latest checkpoint, confirm repo/remote state, and continue with the first unfinished actionable item (not a fresh broad audit).
+
 ### Cross-functional review as default post-implementation step
 
 After non-trivial implementation work, **proactively run** a cross-functional review using parallel custom agent dispatch — do not wait for the user to ask. The standard pattern:
@@ -440,9 +449,17 @@ This parallels the quality-pass-chain skill but uses custom agents for richer, d
 
 **Hard rule: `task_complete` is blocked on implementation tasks** until `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` have all been dispatched and any P0–P2 findings remediated. Do not call `task_complete` for any session that created or modified `scripts/**`, `tests/**`, or `.github/skills/**/logic/**` without having run this review first.
 
+### Post-remediation docs/customizations audit pair
+
+After landing cross-functional remediation commits, proactively run `documentation-and-adrs` and `audit-knowledgebase-workspace` to identify documentation/customization cascades by commit. Do this before declaring the work complete rather than waiting for a user prompt.
+
 ### Auto-remediate P0–P2 findings after cross-functional review
 
 After completing a cross-functional review, automatically proceed to remediate all P0–P2 findings without waiting for user approval — the review itself is the approval gate. Present the findings report, then immediately start fixing them. Only pause for user input on P3+ (suggestions/style) or findings where the correct fix is genuinely ambiguous.
+
+### Deferred findings issue ledger
+
+When P3+ findings are intentionally deferred, create (or verify) a GitHub issue for each deferred item in the same session, then report a ledger: issue number, deferred item, and owner. If an item is intentionally not filed, state that explicitly with rationale.
 
 ### "What skills should have been used?" is an execution directive
 
@@ -520,4 +537,3 @@ for await (const s of jules.sessions()) {
 ```
 
 **Session deduplication:** Jules frequently re-dispatches the same task, producing duplicate PRs (observed: 10 PRs for frontmatter optimization, 8 for command injection — 30 PRs total, 1 merged). Before dispatching a new Jules task, check for existing open PRs addressing the same issue. When reviewing Jules PRs, always verify the diff matches the title/description claims — hallucinated fixes have been observed (PR title says "fix X" but diff changes unrelated files).
-
