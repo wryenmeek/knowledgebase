@@ -177,6 +177,12 @@ def _validate_page_content(
     repo_name: str | None,
     valid_page_paths: frozenset[Path] | None = None,
 ) -> list[Violation]:
+    """Validate one wiki page and return all violations discovered.
+
+    `valid_page_paths` should be a pre-resolved frozenset of canonical wiki page
+    paths for O(1) internal-link checks. When None, link validation falls back
+    to per-target `is_file()` checks (higher I/O cost per link).
+    """
     violations: list[Violation] = []
 
     if page_template_utils.is_nested_topical_page(page, wiki_root):

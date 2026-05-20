@@ -1,7 +1,7 @@
 # ADR-024: Synthesis Curator Stage Design — LLM Entity/Concept Extraction in CI-3
 
 ## Status
-Accepted
+Accepted — amended in-place: single-lock synthesis implemented (#115, 2026-05-19)
 
 ## Date
 2026-05-15
@@ -106,12 +106,13 @@ extraction bundle schema (missing required keys, wrong list types). Re-injecting
 schema errors as feedback produces a corrected response on the next attempt without
 requiring a hard failure. Three attempts balances correction opportunity against API cost.
 
-### Lock acquisition: two independent critical sections
+### Lock acquisition: single critical section (implemented)
 
-`synthesize_entity_page.py` and `synthesize_concept_page.py` each acquire
-`wiki/.kb_write.lock` independently. This is a known limitation (see ADR-024 §Consequences)
-— the window between acquisitions is milliseconds and the concurrency group serializes
-same-ref runs. A future refactor may merge both into a single critical section.
+CI-3 invokes `synthesize_combined.py`, which acquires `wiki/.kb_write.lock` once,
+then runs entity and concept draft writes inside the same critical section.
+The standalone scripts (`synthesize_entity_page.py` and
+`synthesize_concept_page.py`) remain available for manual/operator invocation,
+but CI-3 no longer uses two independent lock acquisitions.
 
 ### Synthesis runs before `update_index`
 
@@ -129,10 +130,24 @@ index until the next CI-3 invocation.
 - LLM extraction quality depends on `gpt-4o-mini` and the quality of the source page body
   (currently capped at 3,500 characters; entities mentioned only in later sections may be
   omitted — see GitHub issue #112).
-- Two sequential lock acquisitions (entity then concept) create a narrow inter-lock window.
-  A future single-lock refactor is tracked in GitHub issue #115.
+- Single-lock synthesis in `synthesize_combined.py` removes the prior inter-lock
+  window between entity and concept writes (implemented in issue #115).
 - Synthesis soft-fail semantics mean entity/concept coverage can silently degrade during
   Models API outages. Operators should monitor `::warning` annotations in CI-3 runs.
+
+## Amendment
+
+**Date:** 2026-05-19
+
+**What changed:** Issue [#115](https://github.com/wryenmeek/knowledgebase/issues/115)
+implemented `synthesize_combined.py` as the CI-3 synthesis entry point. Entity
+and concept writes now run under one `wiki/.kb_write.lock` acquisition,
+replacing the prior two-lock design described in the ADR's original lock
+section.
+
+**What didn't change:** Soft-fail behavior, endpoint allowlist enforcement,
+three-attempt extraction retry semantics, and synthesis placement before
+`update_index` remain unchanged.
 
 ## References
 
@@ -142,4 +157,4 @@ index until the next CI-3 invocation.
 - [ADR-015](ADR-015-extended-ci-trust-model.md) — Extended CI trust model
 - Issue [#5](https://github.com/wryenmeek/knowledgebase/issues/5) — root cause triage
 - Issue [#112](https://github.com/wryenmeek/knowledgebase/issues/112) — body truncation notice
-- Issue [#115](https://github.com/wryenmeek/knowledgebase/issues/115) — single-lock refactor
+- Issue [#115](https://github.com/wryenmeek/knowledgebase/issues/115) — single-lock implementation

@@ -8,10 +8,12 @@ description: Drafts a policy-cleared entity wiki page from a verified evidence p
 ## Overview
 
 This skill documents the entity-page synthesis step for the `synthesis-curator` persona.
-It has an executable logic directory (`logic/synthesize_entity_page.py`) that is invoked
-by the CI-3 PR Producer workflow. The script acquires `wiki/.kb_write.lock`, then either
-creates new `wiki/entities/<slug>.md` draft pages or appends to existing ones
-(append-only: new SourceRef + open_questions; existing prose is never overwritten).
+Its executable logic directory includes both `logic/synthesize_entity_page.py`
+(standalone entity-only entry point) and `logic/synthesize_combined.py`
+(CI-3 entry point). CI-3 uses `synthesize_combined.py` to acquire
+`wiki/.kb_write.lock` once, then synthesize entity and concept drafts inside
+the same critical section. Entity page behavior remains append-only on updates
+(new SourceRef + open_questions; existing prose is never overwritten).
 
 **Blocking-only with narrow write capability.** Has `logic/` dir for CI-3 synthesis stage.
 
@@ -19,9 +21,10 @@ creates new `wiki/entities/<slug>.md` draft pages or appends to existing ones
 
 - **Mode:** Blocking-only with narrow write capability
 - **MVP status:** Active
-- **Execution boundary:** Direct write to `wiki/entities/**` while holding
-  `wiki/.kb_write.lock`. New pages are created from the extraction bundle;
-  existing pages receive append-only updates only.
+- **Execution boundary:** Standalone `synthesize_entity_page.py` writes
+  `wiki/entities/**` while holding `wiki/.kb_write.lock`. CI-3's
+  `synthesize_combined.py` (same logic directory) writes `wiki/entities/**` and
+  `wiki/concepts/**` under one lock acquisition.
 
 ## When to Use
 
@@ -33,8 +36,10 @@ creates new `wiki/entities/<slug>.md` draft pages or appends to existing ones
 ## Contract
 
 - Input: extraction bundle JSON produced by `extract_entities.py`
-- Output: `wiki/entities/<slug>.md` pages (created or updated)
-- Lock: acquires `wiki/.kb_write.lock` before any wiki write; releases on completion
+- Output: `wiki/entities/<slug>.md` pages (created or updated); CI-3 combined
+  flow also writes `wiki/concepts/<slug>.md`
+- Lock: standalone acquires `wiki/.kb_write.lock` before entity writes; CI-3
+  combined flow acquires once and reuses it for entity + concept writes
 - Skip: soft-skipped bundles produce no writes; ambiguous matches and slug collisions
   are skipped (logged to stderr) and counted in the results dict
 
@@ -52,9 +57,12 @@ creates new `wiki/entities/<slug>.md` draft pages or appends to existing ones
 
 Load the JSON bundle from `extract_entities.py`. If `soft_skipped: true`, exit cleanly.
 
-### Step 2: Acquire wiki write lock
+### Step 2: Acquire wiki write lock (single lock in CI-3)
 
-Call `exclusive_write_lock` under `wiki/.kb_write.lock`. Fail closed if lock unavailable.
+CI-3's `synthesize_combined.py` acquires `wiki/.kb_write.lock` once, then calls
+`_write_entity_drafts` followed by `_write_concept_drafts` before releasing.
+When `synthesize_entity_page.py` is invoked standalone, it acquires/releases the
+lock around entity writes only.
 
 ### Step 3: Scan existing entity pages
 
@@ -67,21 +75,28 @@ Scan `wiki/entities/*.md` for dedup candidates using `scan_existing_pages`.
 - If 0 matches: check for slug collision; skip if slug file exists; otherwise create
   with `write_text_capturing_previous_safe`.
 
-### Step 5: Release lock
+### Step 5: Write concepts in combined flow
 
-Lock is released when the `with exclusive_write_lock(...)` block exits.
+`synthesize_combined.py` invokes concept synthesis while the same lock is still held.
+
+### Step 6: Release lock
+
+Lock is released when the enclosing `with exclusive_write_lock(...)` block exits.
 
 ## Boundaries
 
 - Write path is limited to `wiki/entities/**` while holding `wiki/.kb_write.lock`
 - Do not read source files directly — use the extraction bundle only
 - Do not merge or edit existing entity prose
-- Do not open any secondary write path for concepts, index, or log inside this script
+- Standalone `synthesize_entity_page.py` must not open secondary write paths
+  (concepts/index/log); the approved CI-3 exception is `synthesize_combined.py`
+  orchestrating both entity and concept writes under one lock
 
 ## Verification
 
 - [ ] Extraction bundle loaded and parsed successfully
 - [ ] `wiki/.kb_write.lock` was acquired before any write
+- [ ] CI-3 combined flow keeps entity + concept writes inside the same lock scope
 - [ ] All created pages pass `validate_draft_frontmatter`
 - [ ] Ambiguous and slug-collision cases are skipped with stderr log
 - [ ] Lock released after batch completes

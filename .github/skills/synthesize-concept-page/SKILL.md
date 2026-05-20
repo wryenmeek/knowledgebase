@@ -8,10 +8,14 @@ description: Drafts a policy-cleared concept wiki page from a verified evidence 
 ## Overview
 
 This skill documents the concept-page synthesis step for the `synthesis-curator` persona.
-It has an executable logic directory (`logic/synthesize_concept_page.py`) that is invoked
-by the CI-3 PR Producer workflow. The script acquires `wiki/.kb_write.lock`, then either
-creates new `wiki/concepts/<slug>.md` draft pages or appends to existing ones
-(append-only: new SourceRef + open_questions; existing prose is never overwritten).
+Its executable logic directory (`logic/synthesize_concept_page.py`) supports two
+execution paths: standalone concept-only synthesis and library-style invocation
+from `../synthesize-entity-page/logic/synthesize_combined.py` (the CI-3 entry
+point). In CI-3, the combined script holds `wiki/.kb_write.lock` once while
+calling `_write_concept_drafts` after entity synthesis.
+
+When invoked directly, `synthesize_concept_page.py` still acquires the lock and
+handles concept synthesis as a standalone operation.
 
 Concepts describe recurring ideas, policies, or patterns — not unique real-world entities.
 
@@ -36,7 +40,9 @@ Concepts describe recurring ideas, policies, or patterns — not unique real-wor
 
 - Input: extraction bundle JSON produced by `extract_entities.py`
 - Output: `wiki/concepts/<slug>.md` pages (created or updated)
-- Lock: acquires `wiki/.kb_write.lock` before any wiki write; releases on completion
+- Lock: standalone entry acquires `wiki/.kb_write.lock`; CI-3 combined flow
+  acquires once in `synthesize_combined.py` and calls `_write_concept_drafts`
+  while that lock is still held
 - Skip: soft-skipped bundles produce no writes; ambiguous matches and slug collisions
   are skipped (logged to stderr) and counted in the results dict
 
@@ -56,7 +62,9 @@ Load the JSON bundle from `extract_entities.py`. If `soft_skipped: true`, exit c
 
 ### Step 2: Acquire wiki write lock
 
-Call `exclusive_write_lock` under `wiki/.kb_write.lock`. Fail closed if lock unavailable.
+Standalone path: call `exclusive_write_lock` under `wiki/.kb_write.lock` and
+fail closed if lock unavailable. CI-3 combined path: lock is acquired by
+`synthesize_combined.py` before `_write_concept_drafts` is invoked.
 
 ### Step 3: Scan existing concept pages
 
@@ -78,7 +86,9 @@ Lock is released when the `with exclusive_write_lock(...)` block exits.
 - Write path is limited to `wiki/concepts/**` while holding `wiki/.kb_write.lock`
 - Do not read source files directly — use the extraction bundle only
 - Do not merge or edit existing concept prose
-- Do not open any secondary write path for entities, index, or log inside this script
+- Standalone `synthesize_concept_page.py` must not open secondary write paths
+  (entities/index/log); CI-3 combined synthesis is the approved dual-namespace
+  orchestrator
 
 ## Verification
 
