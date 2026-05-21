@@ -27,8 +27,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-6-drive-monitor-${{ github.ref }}
-  cancel-in-progress: false
+  group: ci-6-drive-monitor-${{ github.ref }}-${{ github.event.client_payload.channel_id || 'none' }}-${{ github.event.client_payload.resource_id || 'none' }}-${{ github.event.client_payload.message_number || 'none' }}
+  cancel-in-progress: ${{ github.event_name == 'repository_dispatch' }}
 
 env:
   PYTHONDONTWRITEBYTECODE: "1"
@@ -63,19 +63,63 @@ jobs:
           # SECURITY: pass workflow_dispatch input as env var, never interpolate
           # ${{ inputs.* }} directly into a run: shell block (shell injection risk).
           REGISTRY_PATH: ${{ inputs.registry_path }}
+          # SECURITY: pass repository_dispatch payload via env var, never interpolate
+          # ${{ github.event.* }} directly into a run: shell block.
+          DISPATCH_REGISTRY_PATH: ${{ github.event.client_payload.registry_path }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          mkdir -p runtime-metrics
 
           REGISTRY_ARGS=()
-          if [ -n "${REGISTRY_PATH}" ]; then
-            REGISTRY_ARGS=(--registry "${REGISTRY_PATH}")
+          EFFECTIVE_REGISTRY_PATH=""
+          if [ "${GITHUB_EVENT_NAME}" = "repository_dispatch" ] && [ -n "${DISPATCH_REGISTRY_PATH:-}" ]; then
+            # Fail closed on invalid dispatch payload path.
+            if [[ "${DISPATCH_REGISTRY_PATH}" == raw/drive-sources/*.source-registry.json ]] \
+              && [[ "${DISPATCH_REGISTRY_PATH}" != *".."* ]] \
+              && [[ "${DISPATCH_REGISTRY_PATH}" != /* ]]; then
+              EFFECTIVE_REGISTRY_PATH="${DISPATCH_REGISTRY_PATH}"
+            else
+              echo "::error::Invalid repository_dispatch registry_path payload: ${DISPATCH_REGISTRY_PATH}" >&2
+              exit 1
+            fi
+          elif [ -n "${REGISTRY_PATH}" ]; then
+            # Fail closed on invalid workflow_dispatch input path.
+            if [[ "${REGISTRY_PATH}" == raw/drive-sources/*.source-registry.json ]] \
+              && [[ "${REGISTRY_PATH}" != *".."* ]] \
+              && [[ "${REGISTRY_PATH}" != /* ]]; then
+              EFFECTIVE_REGISTRY_PATH="${REGISTRY_PATH}"
+            else
+              echo "::error::Invalid workflow_dispatch registry_path input: ${REGISTRY_PATH}" >&2
+              exit 1
+            fi
+          fi
+
+          if [ -n "${EFFECTIVE_REGISTRY_PATH}" ]; then
+            REGISTRY_ARGS=(--registry "${EFFECTIVE_REGISTRY_PATH}")
           fi
 
           # Run drift detection; exits 0 on success (even when drift is found),
           # exits 1 on API errors or configuration errors.
+          check_drift_start="$(date -u +%s)"
           python -m scripts.drive_monitor.check_drift \
             "${REGISTRY_ARGS[@]}" \
             --output drift-report.json
+          check_drift_end="$(date -u +%s)"
+          check_drift_duration="$((check_drift_end - check_drift_start))"
+
+          CHECK_DRIFT_DURATION="${check_drift_duration}" python3 - <<'PY' > runtime-metrics/check-drift-runtime-metrics.json
+          import json
+          import os
+
+          payload = {
+              "workflow_id": "ci-6-check-drift",
+              "stage_durations_seconds": {
+                  "check_drift": int(os.environ["CHECK_DRIFT_DURATION"]),
+              },
+          }
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
 
           # Parse has_drift from the report to set the job output.
           HAS_DRIFT=$(python -c "
@@ -90,13 +134,60 @@ jobs:
           echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
           echo "Drift detected: ${HAS_DRIFT}"
 
+      - name: Evaluate CI-6 check-drift runtime budgets
+        id: runtime-budget
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from scripts.validation import _runtime_budget
+
+          metrics = json.loads(Path("runtime-metrics/check-drift-runtime-metrics.json").read_text(encoding="utf-8"))
+          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
+          evaluation = _runtime_budget.evaluate_workflow_budgets(
+              config=config,
+              workflow_id=metrics["workflow_id"],
+              stage_durations_seconds=metrics["stage_durations_seconds"],
+          )
+          artifact = _runtime_budget.build_artifact_payload(
+              evaluation=evaluation,
+              config=config,
+              budget_config_path="schema/runtime-budgets.json",
+          )
+          report_path = Path("runtime-metrics/check-drift-runtime-budget-report.json")
+          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
+              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
+              output_handle.write(f"overall_status={artifact['overall_status']}\n")
+          PY
+
+      - name: Warn on CI-6 check-drift runtime budget breaches
+        if: steps.runtime-budget.outputs.overall_status == 'warn'
+        run: |
+          set -euo pipefail
+          echo "::warning::CI-6 check-drift runtime budgets exceeded warn threshold(s). See runtime-metrics/check-drift-runtime-budget-report.json."
+
       - name: Upload drift report artifact
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ${{ steps.detect.outputs.artifact_name || format('drive-drift-report-{0}', github.run_id) }}
-          path: drift-report.json
+          path: |
+            drift-report.json
+            runtime-metrics/check-drift-runtime-metrics.json
+            runtime-metrics/check-drift-runtime-budget-report.json
           retention-days: 7
+
+      - name: Fail on severe CI-6 check-drift runtime budget breach
+        if: steps.runtime-budget.outputs.overall_status == 'fail'
+        run: |
+          set -euo pipefail
+          echo "::error::CI-6 check-drift runtime budgets exceeded fail threshold(s). See runtime-metrics/check-drift-runtime-budget-report.json."
+          exit 1
 
   fetch-and-update:
     name: CI-6 fetch + registry update
@@ -138,9 +229,63 @@ jobs:
           GDRIVE_SA_KEY: ${{ secrets.GDRIVE_SA_KEY }}
         run: |
           set -euo pipefail
+          mkdir -p runtime-metrics
+          fetch_start="$(date -u +%s)"
           python -m scripts.drive_monitor.fetch_content \
             --drift-report drift-report.json \
             --approval approved
+          fetch_end="$(date -u +%s)"
+          fetch_duration="$((fetch_end - fetch_start))"
+
+          FETCH_DURATION="${fetch_duration}" python3 - <<'PY' > runtime-metrics/fetch-runtime-metrics.json
+          import json
+          import os
+
+          payload = {
+              "workflow_id": "ci-6-fetch-and-update",
+              "stage_durations_seconds": {
+                  "fetch_content": int(os.environ["FETCH_DURATION"]),
+              },
+          }
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Evaluate CI-6 fetch-and-update runtime budgets
+        id: runtime-budget
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from scripts.validation import _runtime_budget
+
+          metrics = json.loads(Path("runtime-metrics/fetch-runtime-metrics.json").read_text(encoding="utf-8"))
+          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
+          evaluation = _runtime_budget.evaluate_workflow_budgets(
+              config=config,
+              workflow_id=metrics["workflow_id"],
+              stage_durations_seconds=metrics["stage_durations_seconds"],
+          )
+          artifact = _runtime_budget.build_artifact_payload(
+              evaluation=evaluation,
+              config=config,
+              budget_config_path="schema/runtime-budgets.json",
+          )
+          report_path = Path("runtime-metrics/fetch-runtime-budget-report.json")
+          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
+              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
+              output_handle.write(f"overall_status={artifact['overall_status']}\n")
+          PY
+
+      - name: Warn on CI-6 fetch runtime budget breaches
+        if: steps.runtime-budget.outputs.overall_status == 'warn'
+        run: |
+          set -euo pipefail
+          echo "::warning::CI-6 fetch-and-update runtime budgets exceeded warn threshold(s). See runtime-metrics/fetch-runtime-budget-report.json."
 
       - name: Upload fetched state for downstream jobs
         if: always()
@@ -150,7 +295,16 @@ jobs:
           path: |
             raw/assets/gdrive/
             raw/drive-sources/
+            runtime-metrics/fetch-runtime-metrics.json
+            runtime-metrics/fetch-runtime-budget-report.json
           retention-days: 7
+
+      - name: Fail on severe CI-6 fetch runtime budget breach
+        if: steps.runtime-budget.outputs.overall_status == 'fail'
+        run: |
+          set -euo pipefail
+          echo "::error::CI-6 fetch-and-update runtime budgets exceeded fail threshold(s). See runtime-metrics/fetch-runtime-budget-report.json."
+          exit 1
 
   classify-drift:
     name: CI-6 HITL/AFK classification
@@ -184,9 +338,22 @@ jobs:
       - name: Classify drift entries as HITL or AFK
         id: classify
         run: |
+          set -euo pipefail
+          mkdir -p runtime-metrics
+          : > runtime-metrics/classify-stage-durations.env
+          classify_start="$(date -u +%s)"
+          set +e
           python3 -m scripts.drive_monitor.classify_drift \
             --drift-report drift-report.json \
             --output-dir .
+          classify_exit=$?
+          set -e
+          classify_end="$(date -u +%s)"
+          classify_duration="$((classify_end - classify_start))"
+          echo "classify_drift=${classify_duration}" >> runtime-metrics/classify-stage-durations.env
+          if [ "${classify_exit}" -ne 0 ]; then
+            exit "${classify_exit}"
+          fi
 
       - name: Upload classification artifacts
         if: always()
@@ -203,8 +370,92 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          create_issues_start="$(date -u +%s)"
+          set +e
           python3 -m scripts.drive_monitor.create_issues \
             --hitl-entries hitl-entries.json
+          create_issues_exit=$?
+          set -e
+          create_issues_end="$(date -u +%s)"
+          create_issues_duration="$((create_issues_end - create_issues_start))"
+          echo "create_issues=${create_issues_duration}" >> runtime-metrics/classify-stage-durations.env
+          if [ "${create_issues_exit}" -ne 0 ]; then
+            exit "${create_issues_exit}"
+          fi
+
+      - name: Evaluate CI-6 classify-drift runtime budgets
+        id: runtime-budget
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from scripts.validation import _runtime_budget
+
+          stage_file = Path("runtime-metrics/classify-stage-durations.env")
+          stage_durations: dict[str, int] = {}
+          for raw_line in stage_file.read_text(encoding="utf-8").splitlines():
+              line = raw_line.strip()
+              if not line:
+                  continue
+              stage_id, raw_duration = line.split("=", 1)
+              stage_durations[stage_id] = int(raw_duration)
+
+          metrics = {
+              "workflow_id": "ci-6-classify-drift",
+              "stage_durations_seconds": stage_durations,
+          }
+          Path("runtime-metrics/classify-runtime-metrics.json").write_text(
+              json.dumps(metrics, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
+          evaluation = _runtime_budget.evaluate_workflow_budgets(
+              config=config,
+              workflow_id=metrics["workflow_id"],
+              stage_durations_seconds=metrics["stage_durations_seconds"],
+          )
+          artifact = _runtime_budget.build_artifact_payload(
+              evaluation=evaluation,
+              config=config,
+              budget_config_path="schema/runtime-budgets.json",
+          )
+          report_path = Path("runtime-metrics/classify-runtime-budget-report.json")
+          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
+              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
+              output_handle.write(f"overall_status={artifact['overall_status']}\n")
+          PY
+
+      - name: Warn on CI-6 classify runtime budget breaches
+        if: steps.runtime-budget.outputs.overall_status == 'warn'
+        run: |
+          set -euo pipefail
+          echo "::warning::CI-6 classify-drift runtime budgets exceeded warn threshold(s). See runtime-metrics/classify-runtime-budget-report.json."
+
+      - name: Upload CI-6 classify runtime budget artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ci6-classify-runtime-budget-${{ github.run_id }}
+          path: |
+            runtime-metrics/classify-stage-durations.env
+            runtime-metrics/classify-runtime-metrics.json
+            runtime-metrics/classify-runtime-budget-report.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Fail on severe CI-6 classify runtime budget breach
+        if: steps.runtime-budget.outputs.overall_status == 'fail'
+        run: |
+          set -euo pipefail
+          echo "::error::CI-6 classify-drift runtime budgets exceeded fail threshold(s). See runtime-metrics/classify-runtime-budget-report.json."
+          exit 1
 
   synthesize:
     name: CI-6 synthesize + open PR
@@ -250,11 +501,83 @@ jobs:
       - name: Apply diff-aware wiki updates
         run: |
           set -euo pipefail
+          mkdir -p runtime-metrics
+          synthesize_start="$(date -u +%s)"
           # IMPORTANT: Only process AFK-classified entries, not the full drift report.
           # The full drift-report.json includes HITL entries that must NOT be auto-synthesized.
           python -m scripts.drive_monitor.synthesize_diff \
             --drift-report afk-entries.json \
             --approval approved
+          synthesize_end="$(date -u +%s)"
+          synthesize_duration="$((synthesize_end - synthesize_start))"
+
+          SYNTHESIZE_DURATION="${synthesize_duration}" python3 - <<'PY' > runtime-metrics/synthesize-runtime-metrics.json
+          import json
+          import os
+
+          payload = {
+              "workflow_id": "ci-6-synthesize",
+              "stage_durations_seconds": {
+                  "synthesize_diff": int(os.environ["SYNTHESIZE_DURATION"]),
+              },
+          }
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Evaluate CI-6 synthesize runtime budgets
+        id: runtime-budget
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from scripts.validation import _runtime_budget
+
+          metrics = json.loads(Path("runtime-metrics/synthesize-runtime-metrics.json").read_text(encoding="utf-8"))
+          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
+          evaluation = _runtime_budget.evaluate_workflow_budgets(
+              config=config,
+              workflow_id=metrics["workflow_id"],
+              stage_durations_seconds=metrics["stage_durations_seconds"],
+          )
+          artifact = _runtime_budget.build_artifact_payload(
+              evaluation=evaluation,
+              config=config,
+              budget_config_path="schema/runtime-budgets.json",
+          )
+          report_path = Path("runtime-metrics/synthesize-runtime-budget-report.json")
+          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
+              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
+              output_handle.write(f"overall_status={artifact['overall_status']}\n")
+          PY
+
+      - name: Warn on CI-6 synthesize runtime budget breaches
+        if: steps.runtime-budget.outputs.overall_status == 'warn'
+        run: |
+          set -euo pipefail
+          echo "::warning::CI-6 synthesize runtime budgets exceeded warn threshold(s). See runtime-metrics/synthesize-runtime-budget-report.json."
+
+      - name: Upload CI-6 synthesize runtime budget artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ci6-synthesize-runtime-budget-${{ github.run_id }}
+          path: |
+            runtime-metrics/synthesize-runtime-metrics.json
+            runtime-metrics/synthesize-runtime-budget-report.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Fail on severe CI-6 synthesize runtime budget breach
+        if: steps.runtime-budget.outputs.overall_status == 'fail'
+        run: |
+          set -euo pipefail
+          echo "::error::CI-6 synthesize runtime budgets exceeded fail threshold(s). See runtime-metrics/synthesize-runtime-budget-report.json."
+          exit 1
 
       - name: Commit and open PR
         env:
@@ -322,9 +645,81 @@ jobs:
       - name: Advance cursors for successfully processed aliases
         run: |
           set -euo pipefail
+          mkdir -p runtime-metrics
+          advance_start="$(date -u +%s)"
           python -m scripts.drive_monitor.advance_cursor \
             --drift-report drift-report.json \
             --approval approved
+          advance_end="$(date -u +%s)"
+          advance_duration="$((advance_end - advance_start))"
+
+          ADVANCE_DURATION="${advance_duration}" python3 - <<'PY' > runtime-metrics/advance-cursor-runtime-metrics.json
+          import json
+          import os
+
+          payload = {
+              "workflow_id": "ci-6-advance-cursor",
+              "stage_durations_seconds": {
+                  "advance_cursor": int(os.environ["ADVANCE_DURATION"]),
+              },
+          }
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Evaluate CI-6 advance-cursor runtime budgets
+        id: runtime-budget
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from scripts.validation import _runtime_budget
+
+          metrics = json.loads(Path("runtime-metrics/advance-cursor-runtime-metrics.json").read_text(encoding="utf-8"))
+          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
+          evaluation = _runtime_budget.evaluate_workflow_budgets(
+              config=config,
+              workflow_id=metrics["workflow_id"],
+              stage_durations_seconds=metrics["stage_durations_seconds"],
+          )
+          artifact = _runtime_budget.build_artifact_payload(
+              evaluation=evaluation,
+              config=config,
+              budget_config_path="schema/runtime-budgets.json",
+          )
+          report_path = Path("runtime-metrics/advance-cursor-runtime-budget-report.json")
+          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
+              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
+              output_handle.write(f"overall_status={artifact['overall_status']}\n")
+          PY
+
+      - name: Warn on CI-6 advance-cursor runtime budget breaches
+        if: steps.runtime-budget.outputs.overall_status == 'warn'
+        run: |
+          set -euo pipefail
+          echo "::warning::CI-6 advance-cursor runtime budgets exceeded warn threshold(s). See runtime-metrics/advance-cursor-runtime-budget-report.json."
+
+      - name: Upload CI-6 advance-cursor runtime budget artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ci6-advance-cursor-runtime-budget-${{ github.run_id }}
+          path: |
+            runtime-metrics/advance-cursor-runtime-metrics.json
+            runtime-metrics/advance-cursor-runtime-budget-report.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Fail on severe CI-6 advance-cursor runtime budget breach
+        if: steps.runtime-budget.outputs.overall_status == 'fail'
+        run: |
+          set -euo pipefail
+          echo "::error::CI-6 advance-cursor runtime budgets exceeded fail threshold(s). See runtime-metrics/advance-cursor-runtime-budget-report.json."
+          exit 1
 
       - name: Commit cursor advancement
         run: |
