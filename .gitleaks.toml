@@ -1,0 +1,10 @@
+title = "knowledgebase gitleaks overrides"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore detect-secrets baseline manifest entries"
+paths = [
+  '''(?:^|/)\.secrets\.baseline$''',
+]
