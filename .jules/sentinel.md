@@ -7,3 +7,8 @@
 **Vulnerability:** Shell command injection and option injection via user-controllable input (e.g. `remoteName`) in git commands due to the use of `child_process.exec` allowing shell interpolation.
 **Learning:** Never use `child_process.exec` for shell commands that interpolate external or variable inputs. Even if the variable seems benign, it can contain malicious payload (e.g., `; echo pwned`) or options (`--help`). Wrapping the implementation in an exported object `gitCommands` was required to test this securely while also supporting mockability in Bun test environments.
 **Prevention:** Use `child_process.execFile` (or its promisified version) and separate arguments into an array. Always include the `--` separator before positional variable arguments to prevent them from being parsed as CLI flags.
+
+## 2026-05-10 - [Shell Injection in GitHub Actions via add-mask]
+**Vulnerability:** Shell command injection via string interpolation in GitHub Actions `run:` steps, specifically when masking secrets (`echo "::add-mask::${{ steps.app-token.outputs.token }}"`).
+**Learning:** String interpolation (`${{ ... }}`) in a `run:` block is evaluated by the GitHub Actions runner before the shell script is generated, allowing malicious strings to break out of the shell quotes or syntax.
+**Prevention:** Never interpolate `github.*`, `inputs.*`, or `steps.*` variables directly into `run:` blocks. Pass them to the shell using the step's `env:` block instead (e.g. `env: TOKEN: ${{ steps.token.outputs.token }}` and `run: echo "::add-mask::${TOKEN}"`).
