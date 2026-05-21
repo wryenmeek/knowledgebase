@@ -26,6 +26,10 @@ Do not use `npm install`. This project requires Bun.
 | `GITHUB_TOKEN` | Yes | GitHub token for Octokit calls. |
 | `FLEET_MAX_PARALLEL` | No | Maximum concurrent Jules sessions during dispatch (default: unbounded). |
 | `FLEET_BASE_BRANCH` | No | Base branch for fleet PRs (defaults to current branch). |
+| `FLEET_MUTATION_MAX_ATTEMPTS` | No | Bounded Jules mutation attempts before terminal hard-fail (default: `3`, max: `5`). |
+| `FLEET_MAX_RETRIES` | No | Merge conflict re-dispatch retries in `bun merge` (default: `2`; integer `0`–`10`). |
+| `FLEET_ALLOW_NO_CHECKS` | No | Allow merge to proceed when PR has zero check runs (`false` by default; fail-closed). |
+| `FLEET_PENDING_DATE` | No | Fleet date override (`YYYY_MM_DD`) so dispatch/merge can target a prior planning day. Invalid format fails preflight. |
 
 ## Scripts
 
@@ -45,9 +49,9 @@ No API keys required beyond `GITHUB_TOKEN`. No sessions are created. Safe to run
 bun plan
 ```
 
-Starts a Jules planning session (`jules.session()`, `requirePlanApproval: true`), then creates a PR containing a task manifest at `.fleet/<date>/issue_tasks.json`. The manifest maps issues to Jules tasks and documents file ownership.
+Starts a Jules planning run (`jules.run()`) and creates a PR containing a task manifest at `.fleet/<date>/issue_tasks.json`. The manifest maps issues to Jules tasks and documents file ownership.
 
-**Human review required before proceeding to dispatch.** Review the manifest PR, validate task assignments, then approve and merge before running `bun dispatch`.
+Review the manifest PR, validate task assignments, then merge before running `bun dispatch`.
 
 ### `bun dispatch` — Phase 2: parallel Jules sessions
 
@@ -55,7 +59,7 @@ Starts a Jules planning session (`jules.session()`, `requirePlanApproval: true`)
 bun dispatch
 ```
 
-Reads the merged planning PR manifest. Validates file ownership: tasks that would touch the same files are routed to the same Jules session to prevent conflicts. Dispatches remaining tasks as parallel Jules sessions using `jules.run()` (AutomatedSession — auto-approve, auto-PR).
+Reads the merged planning PR manifest. Validates file ownership and task-id uniqueness. If multiple tasks claim the same file, dispatch fails closed and requires manifest correction before continuing. Dispatches remaining tasks as parallel Jules sessions using `jules.run()` (AutomatedSession — auto-approve, auto-PR).
 
 Concurrency is controlled by `FLEET_MAX_PARALLEL`. Each session produces its own PR.
 
@@ -65,7 +69,39 @@ Concurrency is controlled by `FLEET_MAX_PARALLEL`. Each session produces its own
 bun merge
 ```
 
-Merges dispatch PRs in dependency order. On merge conflict, re-dispatches the affected session (up to a configurable retry limit). Conflict-free PRs are merged in sequence.
+Merges dispatch PRs in manifest order (the planning phase is expected to output risk/dependency-safe ordering). On merge conflict, re-dispatches the affected session (up to a configurable retry limit). Conflict-free PRs are merged in sequence.
+
+By default, merge fails closed when no check runs are reported for a PR. Set `FLEET_ALLOW_NO_CHECKS=true` only for repositories that intentionally run without CI checks.
+
+If merge runs on a later day than plan/dispatch, set `FLEET_PENDING_DATE` to the planning date so it loads the correct `.fleet/<date>/` manifest and sessions mapping.
+Both dispatch and merge validate this date strictly (`YYYY_MM_DD`) and fail closed if it would resolve outside the `.fleet/` root.
+
+## Jules mutation failure diagnostics
+
+Fleet mutation calls (`jules.run`) now use a deterministic contract:
+
+- **first-pass target:** `diagnose_and_unblock`
+- **post-retry behavior:** `retry_then_hard_fail_with_diagnostics`
+- **diagnostic detail:** `sanitized_error_envelope`
+
+Each failed attempt logs a sanitized JSON envelope with:
+
+- `contract` (`first_pass_target`, `post_retry_behavior`, `diagnostic_detail`)
+- `operation`
+- `attempt` / `max_attempts`
+- `classification` (`failed_precondition`, `auth`, `permission`, `rate_limit`, `network`, `unknown`)
+- `retryable`, `retrying`, and `retry_delay_ms`
+- `status_code`, `error_code`
+- `message`, `hint`, and `root_cause_path`
+
+### FAILED_PRECONDITION root-cause path
+
+When Jules returns `FAILED_PRECONDITION` (HTTP 400):
+
+1. Fleet preflight validates local configuration (`JULES_API_KEY`, `GITHUB_TOKEN`, repo format, base-branch format, base-branch visibility in local/origin refs, bounded retry config) before mutation attempts.
+2. Retryable mutation failures run with deterministic bounded backoff (2s, 4s, 6s, capped at 8s) up to `FLEET_MUTATION_MAX_ATTEMPTS`; non-retryable classes fail immediately.
+3. If retries are exhausted, Fleet exits fail-closed with a terminal `sanitized_error_envelope` for operator escalation (without secrets or raw auth payloads).
+4. Use `hint` and `root_cause_path` from the terminal envelope as the canonical troubleshooting checklist before escalation.
 
 ## Three-phase workflow
 
@@ -84,11 +120,11 @@ This project uses the `@google/jules-sdk` singleton. Never use a constructor.
 ```typescript
 import { jules } from '@google/jules-sdk';
 
-// For CI dispatch (auto-approve, auto-PR):
+// For CI dispatch and fleet planning (auto-approve, auto-PR):
 const session = await jules.run({ ... });
 
-// For planning (requirePlanApproval: true by default):
-const session = await jules.session({ ... });
+// For manual human-in-the-loop planning:
+const sessionClient = await jules.session({ ... });
 
 // Iterate all sessions:
 for await (const s of jules.sessions()) { ... }
@@ -98,12 +134,12 @@ for await (const s of jules.sessions()) { ... }
 
 ## CI integration
 
-Fleet is orthogonal to the Python write-surface matrix. Fleet-produced PRs re-enter the repository as normal PRs and go through the standard CI review pipeline (CI-1 through CI-5). The fleet scripts themselves are not covered by `pytest` — run `bun build` separately after any TypeScript changes.
+Fleet is orthogonal to the Python write-surface matrix. Fleet-produced PRs re-enter the repository as normal PRs and are evaluated by the repository's required PR checks (primarily CI-2 diagnostics plus branch-protection gates; other CI lanes are trigger-dependent). The fleet scripts themselves are not covered by `pytest` — run `bun build` separately after any TypeScript changes.
 
 ## Build verification
 
 ```bash
-bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts
+bun build fleet-analyze.ts fleet-plan.ts fleet-dispatch.ts fleet-merge.ts --target bun --outdir dist
 ```
 
 Run this after every TypeScript edit. `pytest` passing does **not** mean TypeScript is clean.
@@ -114,6 +150,7 @@ Run this after every TypeScript edit. `pytest` passing does **not** mean TypeScr
 |---|---|---|
 | `@google/jules-sdk` | `^0.1.0` | Jules session management |
 | `octokit` | `^4.1.0` | GitHub API |
+| `find-up` | `^7.0.0` | Repository root discovery |
 
 ## Files
 
@@ -123,3 +160,11 @@ Run this after every TypeScript edit. `pytest` passing does **not** mean TypeScr
 | `fleet-plan.ts` | `bun plan` | 1 | Planning session, manifest PR |
 | `fleet-dispatch.ts` | `bun dispatch` | 2 | Parallel Jules dispatch |
 | `fleet-merge.ts` | `bun merge` | 3 | Ordered merge with re-dispatch |
+
+### Fleet helper modules (`scripts/fleet/github/`)
+
+- `mutation-diagnostics.ts` — fail-closed preflight, bounded retry classification, sanitized terminal envelopes.
+- `retry-config.ts` — bounded re-dispatch retry parsing/validation.
+- `ci-checks.ts` and `merge-ci.ts` — check-run evaluation plus CI polling behavior used by merge.
+- `session-matching.ts` and `merge-runtime.ts` — deterministic PR/session matching and redispatch state transitions.
+- `fleet-paths.ts` — `.fleet/<date>` path resolver with strict `YYYY_MM_DD` validation and boundary enforcement.

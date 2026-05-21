@@ -17,104 +17,201 @@ import { findUpSync } from "find-up";
 import { Octokit } from "octokit";
 import type { IssueAnalysis } from "./types.js";
 import { jules } from "@google/jules-sdk";
-import { getGitRepoInfo, getCurrentBranch } from "./github/git.js";
+import { branchExists, getGitRepoInfo, getCurrentBranch } from "./github/git.js";
+import {
+  assertMutationPreflight,
+  getSanitizedErrorMessage,
+  MUTATION_EXECUTION_CONTRACT,
+  MutationFailureError,
+  PreflightFailureError,
+  resolveMutationMaxAttempts,
+  runMutationWithDiagnostics,
+} from "./github/mutation-diagnostics.js";
+import { validateTaskOwnership } from "./github/task-manifest-validation.js";
+import { resolveFleetDir } from "./github/fleet-paths.js";
 
-const JULES_API_KEY = process.env.JULES_API_KEY;
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-
-if (!JULES_API_KEY) {
-  console.error("❌ JULES_API_KEY environment variable is required.");
-  process.exit(1);
-}
-
-if (!GITHUB_TOKEN) {
-  console.error("❌ GITHUB_TOKEN environment variable is required.");
-  process.exit(1);
-}
-
-const octokit = new Octokit({ auth: GITHUB_TOKEN });
-
-// SECURITY: read date from env var only — argv exposure eliminated so a crafted
-// value cannot be injected via shell word-splitting if this script ever shells out.
-const date = process.env.FLEET_PENDING_DATE || new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" })
-  .format(new Date())
-  .replaceAll("-", "_");
-
-const root = path.dirname(findUpSync(".git", { type: "directory" })!);
-const fleetDir = path.join(root, ".fleet", date);
-const tasksPath = path.join(fleetDir, "issue_tasks.json");
-
-if (!(await Bun.file(tasksPath).exists())) {
-  console.error("❌ Manifest not found: " + tasksPath);
-  process.exit(1);
-}
-
-const analysis = await Bun.file(tasksPath).json() as IssueAnalysis;
-const { tasks } = analysis;
-
-// Resolve repo info dynamically from git remote
-const repoInfo = await getGitRepoInfo();
-const baseBranch = process.env.FLEET_BASE_BRANCH ?? await getCurrentBranch();
-
-// Pre-dispatch ownership validation
-function validateOwnership(analysis: IssueAnalysis): void {
-  const claimed = new Map<string, string>();
-  for (const task of analysis.tasks) {
-    const allFiles = [...task.files, ...task.new_files, ...(task.test_files ?? [])];
-    for (const file of allFiles) {
-      const existing = claimed.get(file);
-      if (existing) {
-        throw new Error(
-          "Ownership conflict: \"" + file + "\" claimed by both \"" + existing + "\" and \"" + task.id + "\". These tasks must be merged."
-        );
-      }
-      claimed.set(file, task.id);
-    }
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  maxParallel: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  if (!Number.isInteger(maxParallel) || maxParallel < 1) {
+    throw new Error(`FLEET_MAX_PARALLEL must be an integer >= 1; received "${String(maxParallel)}".`);
   }
+
+  if (items.length === 0) {
+    return [];
+  }
+
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(maxParallel, items.length) }, async () => {
+    while (true) {
+      const currentIndex = nextIndex++;
+      if (currentIndex >= items.length) {
+        return;
+      }
+      results[currentIndex] = await mapper(items[currentIndex]!);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
 }
 
-validateOwnership(analysis);
-console.log("✅ Ownership validated: " + analysis.tasks.length + " tasks, no conflicts.");
+export async function main(): Promise<void> {
+  const repoInfo = await getGitRepoInfo();
+  const baseBranch = process.env.FLEET_BASE_BRANCH ?? (await getCurrentBranch());
+  const mutationMaxAttempts = resolveMutationMaxAttempts(
+    process.env.FLEET_MUTATION_MAX_ATTEMPTS
+  );
+  const githubToken = process.env.GITHUB_TOKEN;
 
-console.log("🚀 Dispatching " + tasks.length + " parallel Jules sessions for " + date + "...");
-
-const sessions = await jules.all(tasks, task => ({
-  prompt: task.prompt,
-  source: {
-    github: repoInfo.fullName,
+  assertMutationPreflight({
+    operation: "fleet-dispatch:jules.run",
+    repoFullName: repoInfo.fullName,
     baseBranch,
+    maxAttempts: mutationMaxAttempts,
+    requireGitHubToken: true,
+  });
+  if (!(await branchExists(baseBranch))) {
+    throw new PreflightFailureError({
+      contract: MUTATION_EXECUTION_CONTRACT,
+      operation: "fleet-dispatch:jules.run",
+      classification: "preflight",
+      failures: [
+        `Base branch "${baseBranch}" is not visible in local or origin refs.`,
+      ],
+    });
   }
-}))
 
-const sessionResults: Array<{ taskId: string; sessionId: string }> = [];
-let taskIndex = 0;
+  const octokit = new Octokit({ auth: githubToken });
 
-for await (const session of sessions) {
-  const task = tasks[taskIndex];
-  const taskId = task?.id ?? "unknown";
-  sessionResults.push({ taskId, sessionId: session.id });
-  console.log("Task " + taskId + " → Session " + session.id);
+  // SECURITY: read date from env var only — argv exposure eliminated so a crafted
+  // value cannot be injected via shell word-splitting if this script ever shells out.
+  const date =
+    process.env.FLEET_PENDING_DATE ||
+    new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .format(new Date())
+      .replaceAll("-", "_");
 
-  // Update associated GitHub issues
-  if (task && task.issues.length > 0) {
-    console.log("  💬 Updating " + task.issues.length + " issue(s) for task " + taskId + "...");
-    for (const issueNumber of task.issues) {
-      try {
-        await octokit.rest.issues.createComment({
-          owner: repoInfo.owner,
-          repo: repoInfo.repo,
-          issue_number: issueNumber,
-          body: "🚀 This issue is being handled by parallel fleet task **" + task.title + "**.\n\nTrack progress in Jules session: [" + session.id + "](https://jules.google.com/task/" + session.id + ")",
-        });
-      } catch (error) {
-        console.error("  ❌ Failed to update issue #" + issueNumber + ":", error);
+  const root = path.dirname(findUpSync(".git", { type: "directory" })!);
+  let fleetDir: string;
+  try {
+    fleetDir = resolveFleetDir(root, date);
+  } catch (error) {
+    throw new PreflightFailureError({
+      contract: MUTATION_EXECUTION_CONTRACT,
+      operation: "fleet-dispatch:jules.run",
+      classification: "preflight",
+      failures: [getSanitizedErrorMessage(error)],
+    });
+  }
+  const tasksPath = path.join(fleetDir, "issue_tasks.json");
+
+  if (!(await Bun.file(tasksPath).exists())) {
+    console.error("❌ Manifest not found: " + tasksPath);
+    process.exit(1);
+  }
+
+  const analysis = (await Bun.file(tasksPath).json()) as IssueAnalysis;
+  const { tasks } = analysis;
+  const maxParallel = process.env.FLEET_MAX_PARALLEL
+    ? Number(process.env.FLEET_MAX_PARALLEL)
+    : Math.max(tasks.length, 1);
+
+  validateTaskOwnership(analysis);
+  console.log("✅ Ownership validated: " + analysis.tasks.length + " tasks, no conflicts.");
+
+  console.log(
+    "🚀 Dispatching " +
+      tasks.length +
+      " parallel Jules sessions for " +
+      date +
+      ` (max parallel: ${maxParallel})...`
+  );
+
+  const dispatchedSessions = await mapWithConcurrency(tasks, maxParallel, async (task) => {
+      const session = await runMutationWithDiagnostics({
+        operation: `fleet-dispatch:jules.run:${task.id}`,
+        maxAttempts: mutationMaxAttempts,
+        run: () =>
+          jules.run({
+            prompt: task.prompt,
+            source: {
+              github: repoInfo.fullName,
+              baseBranch,
+            },
+          }),
+        onAttemptFailure: (envelope) => {
+          console.error(`⚠️ Jules dispatch mutation attempt failed for task "${task.id}".`);
+          console.error(JSON.stringify(envelope));
+        },
+      });
+
+      return { task, sessionId: session.id };
+    });
+
+  const sessionResults: Array<{ taskId: string; sessionId: string }> = [];
+
+  for (const { task, sessionId } of dispatchedSessions) {
+    sessionResults.push({ taskId: task.id, sessionId });
+    console.log("Task " + task.id + " → Session " + sessionId);
+
+    // Update associated GitHub issues
+    if (task.issues.length > 0) {
+      console.log("  💬 Updating " + task.issues.length + " issue(s) for task " + task.id + "...");
+      for (const issueNumber of task.issues) {
+        try {
+          await octokit.rest.issues.createComment({
+            owner: repoInfo.owner,
+            repo: repoInfo.repo,
+            issue_number: issueNumber,
+            body:
+              "🚀 This issue is being handled by parallel fleet task **" +
+              task.title +
+              "**.\n\nTrack progress in Jules session: [" +
+              sessionId +
+              "](https://jules.google.com/task/" +
+              sessionId +
+              ")",
+          });
+        } catch (error) {
+          console.error(
+            "  ❌ Failed to update issue #" + issueNumber + ": " + getSanitizedErrorMessage(error)
+          );
+        }
       }
     }
   }
-  taskIndex++;
+
+  // Write session mapping for fleet-merge.ts
+  const sessionsPath = path.join(fleetDir, "sessions.json");
+  await Bun.write(sessionsPath, JSON.stringify(sessionResults, null, 2));
+  console.log("📝 Session mapping written to " + sessionsPath);
 }
 
-// Write session mapping for fleet-merge.ts
-const sessionsPath = path.join(fleetDir, "sessions.json");
-await Bun.write(sessionsPath, JSON.stringify(sessionResults, null, 2));
-console.log("📝 Session mapping written to " + sessionsPath);
+export function handleFatalError(error: unknown): never {
+  if (error instanceof PreflightFailureError) {
+    console.error("❌ Fleet dispatch preflight failed.");
+    console.error(JSON.stringify(error.envelope));
+    process.exit(1);
+  }
+
+  if (error instanceof MutationFailureError) {
+    console.error("❌ Jules dispatch mutation hard-failed after bounded retries.");
+    console.error(JSON.stringify(error.terminalEnvelope));
+    process.exit(1);
+  }
+
+  console.error(`❌ Fleet dispatch failed: ${getSanitizedErrorMessage(error)}`);
+  process.exit(1);
+}
+
+if (import.meta.main) {
+  main().catch(handleFatalError);
+}
