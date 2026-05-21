@@ -92,6 +92,9 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         )
         self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
         self.assertIn("python3 -m pytest tests/ -q", self.workflow_text)
+        self.assertIn("--cov=scripts.validation._runtime_budget", self.workflow_text)
+        self.assertIn("Secret scan (gitleaks)", self.workflow_text)
+        self.assertIn("Dependency vulnerability audit (pip-audit)", self.workflow_text)
         self.assertIn(
             "uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
             self.workflow_text,

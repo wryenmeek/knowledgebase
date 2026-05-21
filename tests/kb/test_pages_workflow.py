@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -87,6 +88,37 @@ class PagesWorkflowContractTests(unittest.TestCase):
         self.assertIn("exit 1", self.workflow_text)
         self.assertIn("run: pagefind --site site", self.workflow_text)
         self.assertNotIn("npx --yes pagefind --site site", self.workflow_text)
+
+    def test_pages_permissions_are_split_by_job(self) -> None:
+        self.assertIn("permissions:\n  contents: read", self.workflow_text)
+        self.assertIn("persist-credentials: false", self.workflow_text)
+        self.assertIsNone(
+            re.search(
+                r"(?ms)^permissions:\n(?:(?!^jobs:).)*\b(pages|id-token)\s*:\s*write\b",
+                self.workflow_text,
+            ),
+            "Top-level permissions must not grant pages/id-token write",
+        )
+        build_block_match = re.search(
+            r"(?ms)^  build:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+            self.workflow_text,
+        )
+        self.assertIsNotNone(build_block_match, "pages workflow missing build job block")
+        self.assertIsNone(
+            re.search(
+                r"(?im)^\s*(pages|id-token)\s*:\s*write\s*$",
+                build_block_match.group("body"),
+            ),
+            "Build job must not request pages/id-token write",
+        )
+        self.assertRegex(
+            self.workflow_text,
+            r"(?ms)jobs:\n  build:\n.*?permissions:\n\s+contents:\s*read",
+        )
+        self.assertRegex(
+            self.workflow_text,
+            r"(?ms)  deploy:\n\s+needs:\s+build\n.*?permissions:\n\s+pages:\s*write\n\s+id-token:\s*write",
+        )
 
 
 if __name__ == "__main__":

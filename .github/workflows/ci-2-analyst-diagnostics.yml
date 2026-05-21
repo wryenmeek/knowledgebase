@@ -142,7 +142,7 @@ jobs:
 
           tests_start="$(date -u +%s)"
           echo "[CI-2] pytest" | tee -a diagnostics/diagnostics.log
-          python3 -m pytest tests/ -q --cov=scripts/kb --cov-fail-under=90 2>&1 | tee -a diagnostics/diagnostics.log
+          python3 -m pytest tests/ -q --cov=scripts/kb --cov=scripts.validation._runtime_budget --cov-fail-under=90 2>&1 | tee -a diagnostics/diagnostics.log
           tests_exit="${PIPESTATUS[0]}"
           tests_end="$(date -u +%s)"
           tests_duration="$((tests_end - tests_start))"

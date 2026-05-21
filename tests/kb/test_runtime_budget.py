@@ -243,11 +243,17 @@ class RuntimeBudgetArtifactSchemaTests(unittest.TestCase):
 
     def test_summary_markdown_includes_status_and_remediation_for_failures(self) -> None:
         config = _runtime_budget.load_runtime_budgets(REPO_ROOT / "schema" / "runtime-budgets.json")
-        workflow_id = "ci-5-check-drift"
+        workflow_id = "ci-2-analyst-diagnostics"
         evaluation = _runtime_budget.evaluate_workflow_budgets(
             config=config,
             workflow_id=workflow_id,
-            stage_durations_seconds={"check_drift": 999_999},
+            stage_durations_seconds={
+                "validate_wiki_governance": 999_999,
+                "check_doc_freshness": 1,
+                "content_quality_summary": 1,
+                "lint_wiki_strict": 1,
+                "pytest_suite": 1,
+            },
         )
         artifact = _runtime_budget.build_artifact_payload(
             evaluation=evaluation,
@@ -258,7 +264,7 @@ class RuntimeBudgetArtifactSchemaTests(unittest.TestCase):
         self.assertIn("Runtime budget report", markdown)
         self.assertIn("Overall status: **FAIL**", markdown)
         self.assertIn("fail-closed threshold breached", markdown)
-        self.assertIn("`check_drift`", markdown)
+        self.assertIn("`validate_wiki_governance`", markdown)
 
     def test_runtime_budget_schema_file_is_valid_json_and_parseable(self) -> None:
         payload = json.loads((REPO_ROOT / "schema" / "runtime-budgets.json").read_text(encoding="utf-8"))

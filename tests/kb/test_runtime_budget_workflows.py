@@ -44,6 +44,18 @@ class RuntimeBudgetWorkflowIntegrationTests(unittest.TestCase):
                         f"{workflow_path} missing runtime budget integration snippet: {snippet}",
                     )
 
+    def test_schema_workflow_scope_matches_runtime_budget_integrations(self) -> None:
+        expected_workflow_ids = {
+            workflow_id
+            for expectation in WORKFLOW_EXPECTATIONS.values()
+            for workflow_id in expectation["workflow_ids"]
+        }
+        self.assertEqual(
+            set(self.runtime_budget_schema["workflows"]),
+            expected_workflow_ids,
+            "schema/runtime-budgets.json must only declare workflow IDs with wired runtime-budget evaluation",
+        )
+
     def test_workflows_emit_expected_runtime_budget_workflow_ids(self) -> None:
         for workflow_path, expectation in WORKFLOW_EXPECTATIONS.items():
             with self.subTest(workflow=workflow_path):
@@ -77,13 +89,13 @@ class RuntimeBudgetWorkflowIntegrationTests(unittest.TestCase):
                 )
                 stage_block = stage_block_match.group("body")
                 for workflow_id in expectation["workflow_ids"]:
-                    stage_ids = sorted(self.runtime_budget_schema["workflows"][workflow_id]["stages"])
-                    for stage_id in stage_ids:
-                        self.assertRegex(
-                            stage_block,
-                            rf'"{re.escape(stage_id)}"\s*:',
-                            f"{workflow_path} missing stage id from runtime budget schema: {workflow_id}.{stage_id}",
-                        )
+                    expected_stage_ids = sorted(self.runtime_budget_schema["workflows"][workflow_id]["stages"])
+                    emitted_stage_ids = sorted(set(re.findall(r'"([^"]+)"\s*:', stage_block)))
+                    self.assertEqual(
+                        emitted_stage_ids,
+                        expected_stage_ids,
+                        f"{workflow_path} stage IDs must match schema/runtime-budgets.json exactly for {workflow_id}",
+                    )
 
     def test_each_budgeted_job_has_warn_and_fail_gates(self) -> None:
         for workflow_path, expectation in WORKFLOW_EXPECTATIONS.items():

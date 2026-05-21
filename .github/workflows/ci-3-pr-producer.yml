@@ -117,8 +117,9 @@ jobs:
                 reason_list+=("prereq_missing:ghaw_readiness:dispatch_merge_base_unavailable")
                 prereq_ghaw_readiness="FAIL"
               else
+                dispatch_diff_file="$(mktemp)"
                 set +e
-                dispatch_diff_output="$(git diff --name-only "${dispatch_merge_base}" "${DISPATCH_SHA}" 2>/dev/null)"
+                git diff --name-only -z "${dispatch_merge_base}" "${DISPATCH_SHA}" > "${dispatch_diff_file}" 2>/dev/null
                 dispatch_diff_exit=$?
                 set -e
               fi
@@ -128,7 +129,11 @@ jobs:
                 reason_list+=("prereq_missing:ghaw_readiness:dispatch_changed_paths_unavailable")
                 prereq_ghaw_readiness="FAIL"
               else
-                mapfile -t dispatch_changed_paths < <(printf '%s\n' "${dispatch_diff_output}" | sed '/^$/d' | sort -u)
+                dispatch_changed_paths=()
+                while IFS= read -r -d '' changed_path || [[ -n "${changed_path:-}" ]]; do
+                  [[ -n "${changed_path}" ]] && dispatch_changed_paths+=("${changed_path}")
+                done < "${dispatch_diff_file}"
+                mapfile -t dispatch_changed_paths < <(printf '%s\n' "${dispatch_changed_paths[@]}" | sed '/^$/d' | sort -u)
                 if [[ "${#dispatch_changed_paths[@]}" -eq 0 ]]; then
                   reason_list+=("reject:path_filter:no_changed_paths_detected")
                   prereq_trusted_trigger_model="FAIL"
@@ -148,6 +153,9 @@ jobs:
                   reason_list+=("reject:trusted_trigger_model:manual_dispatch_sensitive_paths_present")
                   prereq_trusted_trigger_model="FAIL"
                 fi
+              fi
+              if [[ -n "${dispatch_diff_file:-}" ]]; then
+                rm -f "${dispatch_diff_file}" || true
               fi
             fi
           else
@@ -452,6 +460,7 @@ jobs:
       - name: Checkout trusted source revision
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
@@ -713,8 +722,15 @@ jobs:
           print(json.dumps(payload, indent=2, sort_keys=True))
           PY
 
-          mapfile -t status_lines < <(git -c core.quotepath=false status --porcelain=v1 --untracked-files=all)
-          if [[ "${#status_lines[@]}" -eq 0 ]]; then
+          status_entries=()
+          while IFS= read -r -d '' status_record || [[ -n "${status_record:-}" ]]; do
+            [[ -n "${status_record}" ]] && status_entries+=("${status_record}")
+          done < <(git -c core.quotepath=false diff --name-status -z --no-renames -- .)
+          while IFS= read -r -d '' untracked_path || [[ -n "${untracked_path:-}" ]]; do
+            [[ -n "${untracked_path}" ]] && status_entries+=("??"$'\t'"${untracked_path}")
+          done < <(git -c core.quotepath=false ls-files --others --exclude-standard -z -- .)
+
+          if [[ "${#status_entries[@]}" -eq 0 ]]; then
             echo "has_changes=false" >> "${GITHUB_OUTPUT}"
             echo "No repository changes detected after CI-3 write path."
             exit 0
@@ -722,15 +738,9 @@ jobs:
 
           changed_paths=()
           allowlist_failures=()
-          for status_line in "${status_lines[@]}"; do
-            status_code="${status_line:0:2}"
-            changed_path="${status_line:3}"
-            if [[ "${changed_path}" == *" -> "* ]]; then
-              changed_path="${changed_path##* -> }"
-            fi
-            # Strip surrounding double-quotes git adds for paths with spaces or special chars
-            changed_path="${changed_path#\"}"
-            changed_path="${changed_path%\"}"
+          for status_entry in "${status_entries[@]}"; do
+            status_code="${status_entry%%$'\t'*}"
+            changed_path="${status_entry#*$'\t'}"
             [[ -z "${changed_path}" ]] && continue
 
             # Runtime-budget artifacts are CI workspace telemetry and are never
@@ -864,6 +874,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          gh auth setup-git
 
           git checkout -B "${pr_branch}"
           git add -- "${changed_paths[@]}"

@@ -343,7 +343,10 @@ def _run_ci3_preflight_script(
             "    exit \"${MOCK_DISPATCH_DIFF_EXIT}\"\n"
             "  fi\n"
             "  if [[ -n \"${MOCK_DISPATCH_CHANGED_PATHS:-}\" ]]; then\n"
-            "    printf '%s\\n' \"${MOCK_DISPATCH_CHANGED_PATHS}\"\n"
+            "    while IFS= read -r changed_path; do\n"
+            "      [[ -z \"${changed_path}\" ]] && continue\n"
+            "      printf '%s\\0' \"${changed_path}\"\n"
+            "    done <<< \"${MOCK_DISPATCH_CHANGED_PATHS}\"\n"
             "  fi\n"
             "  exit 0\n"
             "fi\n"
@@ -443,6 +446,8 @@ def _run_ci3_source_resolution_script(
 
 def _run_ci3_write_path_script(
     workflow_text: str,
+    *,
+    tracked_changed_path: str = "wiki/index.md",
 ) -> tuple[subprocess.CompletedProcess[str], str, dict[str, object]]:
     script = _with_mapfile_compat(_extract_ci3_write_path_script(workflow_text))
 
@@ -520,8 +525,11 @@ def _run_ci3_write_path_script(
             "while [[ \"${1:-}\" == \"-c\" ]]; do\n"
             "  shift 2\n"
             "done\n"
-            "if [[ \"${1:-}\" == \"status\" ]]; then\n"
-            "  printf ' M wiki/index.md\\n'\n"
+            "if [[ \"${1:-}\" == \"diff\" ]]; then\n"
+            "  printf 'M\\t%s\\0' \"${MOCK_TRACKED_CHANGED_PATH:-wiki/index.md}\"\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \"ls-files\" ]]; then\n"
             "  exit 0\n"
             "fi\n"
             "exit 0\n",
@@ -539,6 +547,7 @@ def _run_ci3_write_path_script(
                 "SYNTHESIS_GITHUB_TOKEN": "stub-token",
                 "WRITE_ALLOWLIST": "wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**",
                 "REAL_PYTHON": real_python,
+                "MOCK_TRACKED_CHANGED_PATH": tracked_changed_path,
                 "PATH": f"{fake_bin}:{env.get('PATH', '')}",
             }
         )
@@ -627,6 +636,7 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "DISPATCH_SHA: ${{ github.sha }}",
             "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}",
             "fetch-depth: 0",
+            "persist-credentials: false",
             "Set up Node.js",
             "uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444",
             "Install pinned qmd runtime",
@@ -654,7 +664,8 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "reject:path_filter:sensitive_control_plane_path:",
             "reject:trusted_trigger_model:manual_dispatch_sensitive_paths_present",
             'dispatch_merge_base="$(git merge-base "origin/${DEFAULT_BRANCH}" "${DISPATCH_SHA}" 2>/dev/null)"',
-            'dispatch_diff_output="$(git diff --name-only "${dispatch_merge_base}" "${DISPATCH_SHA}" 2>/dev/null)"',
+            'git diff --name-only -z "${dispatch_merge_base}" "${DISPATCH_SHA}" > "${dispatch_diff_file}" 2>/dev/null',
+            "while IFS= read -r -d '' changed_path || [[ -n \"${changed_path:-}\" ]]; do",
             ".github/workflows/*|.github/skills/*|.github/agents/*|.github/extensions/*|scripts/*|schema/*|AGENTS.md|pyproject.toml)",
             "reject:permissions_scope:minimum_permissions_mismatch",
             "reject:permissions_scope:permissions_block_missing:top_level",
@@ -672,7 +683,10 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "reject:permissions_scope:out_of_allowlist_write:",
             "manual workflow_dispatch cannot run when commit includes sensitive control-plane paths",
             "split sensitive control-plane changes from manual CI-3 dispatch commits",
+            "git -c core.quotepath=false diff --name-status -z --no-renames -- .",
+            "git -c core.quotepath=false ls-files --others --exclude-standard -z -- .",
             "reason_code=lock_unavailable",
+            "gh auth setup-git",
             'if [[ "${changed_path}" == ci3-metrics/* ]]; then',
             "No allowlisted repository changes detected after CI-3 write path.",
             "exit 1",
@@ -806,6 +820,19 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("CI-3 preflight PASS", combined_output)
 
+    def test_preflight_behavior_rejects_sensitive_paths_with_spaces(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            dispatch_changed_paths=("scripts/kb/path with spaces.py",),
+            manual_approved="true",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:path_filter:sensitive_control_plane_path:scripts/kb/path with spaces.py",
+            combined_output,
+        )
+
     def test_source_resolution_rejects_manual_source_symlink(self) -> None:
         result = _run_ci3_source_resolution_script(
             self.workflow_text,
@@ -846,6 +873,16 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertIsInstance(stage_durations, dict)
         self.assertIn("ingest_write_path", stage_durations)
         self.assertIn("persist_query_gate", stage_durations)
+
+    def test_write_path_behavior_handles_allowlisted_paths_with_spaces(self) -> None:
+        result, github_output, _runtime_metrics = _run_ci3_write_path_script(
+            self.workflow_text,
+            tracked_changed_path="wiki/pages/page with spaces.md",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("has_changes=true", github_output)
+        self.assertIn("wiki/pages/page with spaces.md", github_output)
 
     def test_pr_updates_are_gated_by_preflight_and_required_checks(self) -> None:
         self.assertIn("needs:", self.workflow_text)
