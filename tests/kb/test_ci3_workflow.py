@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import re
@@ -256,6 +257,13 @@ def _extract_ci3_source_resolution_script(workflow_text: str) -> str:
     )
 
 
+def _extract_ci3_write_path_script(workflow_text: str) -> str:
+    return _extract_step_run_script(
+        workflow_text,
+        step_name="Run CI-3 required checks and write path",
+    )
+
+
 def _with_mapfile_compat(script: str) -> str:
     mapfile_compat = textwrap.dedent(
         """\
@@ -431,6 +439,125 @@ def _run_ci3_source_resolution_script(
             check=False,
             env=env,
         )
+
+
+def _run_ci3_write_path_script(
+    workflow_text: str,
+) -> tuple[subprocess.CompletedProcess[str], str, dict[str, object]]:
+    script = _with_mapfile_compat(_extract_ci3_write_path_script(workflow_text))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        (temp_root / "raw/inbox").mkdir(parents=True, exist_ok=True)
+        (temp_root / "raw/inbox/.ci3-ingest-manifest").write_text(
+            "raw/inbox/example-source.md\n",
+            encoding="utf-8",
+        )
+        (temp_root / "wiki/sources").mkdir(parents=True, exist_ok=True)
+        (temp_root / "wiki/sources/example.md").write_text("# Source: Example\n", encoding="utf-8")
+
+        fake_bin = temp_root / "bin"
+        fake_bin.mkdir(parents=True, exist_ok=True)
+
+        real_python = subprocess.run(
+            ["python3", "-c", "import sys; print(sys.executable)"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        fake_python = fake_bin / "python3"
+        fake_python.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "if [[ \"${1:-}\" == \"-m\" && \"${2:-}\" == \"scripts.kb.ingest\" ]]; then\n"
+            "  cat <<'JSON'\n"
+            '{"status":"ok","per_source":[{"status":"written","source_page":"wiki/sources/example.md"}]}\n'
+            "JSON\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \".github/skills/extract-entities-and-claims/logic/extract_entities.py\" ]]; then\n"
+            "  output_path=\"\"\n"
+            "  while [[ \"$#\" -gt 0 ]]; do\n"
+            "    if [[ \"$1\" == \"--output\" ]]; then\n"
+            "      output_path=\"$2\"\n"
+            "      shift 2\n"
+            "      continue\n"
+            "    fi\n"
+            "    shift\n"
+            "  done\n"
+            "  if [[ -n \"${output_path}\" ]]; then\n"
+            "    cat <<'JSON' > \"${output_path}\"\n"
+            '{"entities":[],"concepts":[],"claims":[]}\n'
+            "JSON\n"
+            "  fi\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \".github/skills/synthesize-entity-page/logic/synthesize_combined.py\" ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \"-c\" && \"${2:-}\" == *\"from scripts.kb import update_index\"* ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \"scripts/kb/lint_wiki.py\" ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \"-m\" && \"${2:-}\" == \"scripts.kb.persist_query\" ]]; then\n"
+            "  cat <<'JSON'\n"
+            '{"status":"no_write_policy","reason_code":"policy_enforced"}\n'
+            "JSON\n"
+            "  exit 0\n"
+            "fi\n"
+            "exec \"${REAL_PYTHON}\" \"$@\"\n",
+            encoding="utf-8",
+        )
+        fake_python.chmod(0o755)
+
+        fake_git = fake_bin / "git"
+        fake_git.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "while [[ \"${1:-}\" == \"-c\" ]]; do\n"
+            "  shift 2\n"
+            "done\n"
+            "if [[ \"${1:-}\" == \"status\" ]]; then\n"
+            "  printf ' M wiki/index.md\\n'\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        fake_git.chmod(0o755)
+
+        github_output_path = temp_root / "github-output.txt"
+        github_output_path.write_text("", encoding="utf-8")
+
+        env = os.environ.copy()
+        env.update(
+            {
+                "GITHUB_OUTPUT": str(github_output_path),
+                "SYNTHESIS_GITHUB_TOKEN": "stub-token",
+                "WRITE_ALLOWLIST": "wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**",
+                "REAL_PYTHON": real_python,
+                "PATH": f"{fake_bin}:{env.get('PATH', '')}",
+            }
+        )
+
+        result = subprocess.run(
+            ["bash", "-c", script],
+            cwd=temp_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        runtime_metrics_path = temp_root / "ci3-metrics/runtime-metrics.json"
+        runtime_metrics = (
+            json.loads(runtime_metrics_path.read_text(encoding="utf-8"))
+            if runtime_metrics_path.exists()
+            else {}
+        )
+        return result, github_output_path.read_text(encoding="utf-8"), runtime_metrics
 
 
 class Ci3WorkflowContractTests(unittest.TestCase):
@@ -707,6 +834,18 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "reject:path_filter:outside_raw_inbox:raw/inbox/../../raw/processed/outside.md",
             combined_output,
         )
+
+    def test_write_path_behavior_emits_runtime_metrics_and_allowlisted_changed_paths(self) -> None:
+        result, github_output, runtime_metrics = _run_ci3_write_path_script(self.workflow_text)
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("has_changes=true", github_output)
+        self.assertIn("wiki/index.md", github_output)
+        self.assertEqual(runtime_metrics.get("workflow_id"), "ci-3-pr-producer")
+        stage_durations = runtime_metrics.get("stage_durations_seconds")
+        self.assertIsInstance(stage_durations, dict)
+        self.assertIn("ingest_write_path", stage_durations)
+        self.assertIn("persist_query_gate", stage_durations)
 
     def test_pr_updates_are_gated_by_preflight_and_required_checks(self) -> None:
         self.assertIn("needs:", self.workflow_text)

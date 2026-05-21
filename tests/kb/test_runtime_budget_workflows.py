@@ -66,12 +66,22 @@ class RuntimeBudgetWorkflowIntegrationTests(unittest.TestCase):
         for workflow_path, expectation in WORKFLOW_EXPECTATIONS.items():
             with self.subTest(workflow=workflow_path):
                 text = Path(workflow_path).read_text(encoding="utf-8")
+                stage_block_match = re.search(
+                    r'"stage_durations_seconds"\s*:\s*\{(?P<body>.*?)\n\s*\}',
+                    text,
+                    flags=re.DOTALL,
+                )
+                self.assertIsNotNone(
+                    stage_block_match,
+                    f"{workflow_path} missing runtime metrics stage_durations_seconds block",
+                )
+                stage_block = stage_block_match.group("body")
                 for workflow_id in expectation["workflow_ids"]:
                     stage_ids = sorted(self.runtime_budget_schema["workflows"][workflow_id]["stages"])
                     for stage_id in stage_ids:
-                        self.assertIn(
-                            stage_id,
-                            text,
+                        self.assertRegex(
+                            stage_block,
+                            rf'"{re.escape(stage_id)}"\s*:',
                             f"{workflow_path} missing stage id from runtime budget schema: {workflow_id}.{stage_id}",
                         )
 
