@@ -277,7 +277,7 @@ def _with_mapfile_compat(script: str) -> str:
             local line
             eval "${target_array}=()"
 
-            while IFS= read -r line; do
+            while IFS= read -r line || [[ -n "${line}" ]]; do
               if [[ "${trim_newline}" != "true" ]]; then
                 line="${line}"$'\\n'
               fi

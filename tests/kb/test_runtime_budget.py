@@ -59,6 +59,10 @@ class RuntimeBudgetClassificationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _runtime_budget.classify_stage_result(duration_seconds=1, warn_seconds=10, fail_seconds=False)
 
+    def test_parse_runtime_budgets_rejects_non_mapping_payload(self) -> None:
+        with self.assertRaises(ValueError):
+            _runtime_budget.parse_runtime_budgets([])
+
 
 class RuntimeBudgetWorkflowEvaluationTests(unittest.TestCase):
     def setUp(self) -> None:

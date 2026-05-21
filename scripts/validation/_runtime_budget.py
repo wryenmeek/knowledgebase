@@ -49,6 +49,8 @@ def load_runtime_budgets(path: str | Path) -> RuntimeBudgetConfig:
 
 
 def parse_runtime_budgets(payload: Mapping[str, Any]) -> RuntimeBudgetConfig:
+    if not isinstance(payload, Mapping):
+        raise ValueError("payload must be a mapping")
     schema_version = _parse_positive_int(payload.get("schema_version"), field="schema_version", allow_zero=False)
     severity_model_raw = payload.get("severity_model")
     if not isinstance(severity_model_raw, Mapping):
