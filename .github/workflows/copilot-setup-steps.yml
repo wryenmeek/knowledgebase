@@ -54,4 +54,4 @@ jobs:
 
       - name: Verify Bun setup
         working-directory: scripts/fleet
-        run: bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts --outdir /tmp/fleet-check
+        run: bun build --target bun fleet-plan.ts fleet-dispatch.ts fleet-merge.ts --outdir /tmp/fleet-check
