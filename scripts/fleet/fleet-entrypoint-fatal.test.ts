@@ -1,12 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { handleFatalError as handlePlanFatal } from "./fleet-plan.ts";
-import { handleFatalError as handleDispatchFatal } from "./fleet-dispatch.ts";
-import { handleFatalError as handleMergeFatal } from "./fleet-merge.ts";
 import {
   MutationFailureError,
   MUTATION_EXECUTION_CONTRACT,
   type SanitizedErrorEnvelope,
 } from "./github/mutation-diagnostics.ts";
+
+const fatalHandlersPromise = (async () => {
+  process.env.JULES_API_KEY ??= "test-jules-api-key";
+  process.env.GITHUB_TOKEN ??= "test-github-token";
+  const [planModule, dispatchModule, mergeModule] = await Promise.all([
+    import("./fleet-plan.ts"),
+    import("./fleet-dispatch.ts"),
+    import("./fleet-merge.ts"),
+  ]);
+  return {
+    handlePlanFatal: planModule.handleFatalError,
+    handleDispatchFatal: dispatchModule.handleFatalError,
+    handleMergeFatal: mergeModule.handleFatalError,
+  };
+})();
 
 function withFatalCapture(run: () => void): { output: string } {
   const messages: string[] = [];
@@ -50,7 +62,8 @@ function makeMutationFailure(operation: string): MutationFailureError {
 }
 
 describe("fleet entrypoint mutation fatal handling", () => {
-  test("fleet-plan fatal handler emits mutation envelope and exits non-zero", () => {
+  test("fleet-plan fatal handler emits mutation envelope and exits non-zero", async () => {
+    const { handlePlanFatal } = await fatalHandlersPromise;
     const error = makeMutationFailure("fleet-plan:jules.run");
     const capture = withFatalCapture(() => {
       expect(() => handlePlanFatal(error)).toThrow("EXIT_1");
@@ -61,7 +74,8 @@ describe("fleet entrypoint mutation fatal handling", () => {
     expect(capture.output).toContain("***REDACTED***");
   });
 
-  test("fleet-dispatch fatal handler emits mutation envelope and exits non-zero", () => {
+  test("fleet-dispatch fatal handler emits mutation envelope and exits non-zero", async () => {
+    const { handleDispatchFatal } = await fatalHandlersPromise;
     const error = makeMutationFailure("fleet-dispatch:jules.run");
     const capture = withFatalCapture(() => {
       expect(() => handleDispatchFatal(error)).toThrow("EXIT_1");
@@ -72,7 +86,8 @@ describe("fleet entrypoint mutation fatal handling", () => {
     expect(capture.output).toContain("***REDACTED***");
   });
 
-  test("fleet-merge fatal handler emits mutation envelope and exits non-zero", () => {
+  test("fleet-merge fatal handler emits mutation envelope and exits non-zero", async () => {
+    const { handleMergeFatal } = await fatalHandlersPromise;
     const error = makeMutationFailure("fleet-merge:jules.run:task-1");
     const capture = withFatalCapture(() => {
       expect(() => handleMergeFatal(error)).toThrow("EXIT_1");
