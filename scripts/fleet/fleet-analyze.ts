@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import { getIssuesAsMarkdown } from "./github/markdown.js";
-import "./env.js";
 
 async function main() {
   try {

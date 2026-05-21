@@ -1,5 +1,5 @@
-import { sanitizeErrorText } from "./mutation-diagnostics.js";
+import { redactSecrets } from "./mutation-diagnostics.js";
 
 export function redactToken(str: string): string {
-  return sanitizeErrorText(str);
+  return redactSecrets(str);
 }

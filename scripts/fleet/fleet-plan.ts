@@ -17,7 +17,7 @@ import { jules } from "@google/jules-sdk";
 import { analyzeIssuesPrompt, getFleetDate } from "./prompts/analyze-issues.js";
 import { getIssuesAsMarkdown } from "./github/markdown.js";
 import { branchExists, getGitRepoInfo, getCurrentBranch } from "./github/git.js";
-import "./env.js";
+import { assertFleetEnvironment } from "./env.js";
 import {
   assertMutationPreflight,
   getSanitizedErrorMessage,
@@ -29,6 +29,10 @@ import {
 } from "./github/mutation-diagnostics.js";
 
 export async function main(): Promise<void> {
+  assertFleetEnvironment({
+    requireJulesApiKey: true,
+    requireGitHubToken: true,
+  });
   const repoInfo = await getGitRepoInfo();
   const baseBranch = process.env.FLEET_BASE_BRANCH ?? (await getCurrentBranch());
   const mutationMaxAttempts = resolveMutationMaxAttempts(

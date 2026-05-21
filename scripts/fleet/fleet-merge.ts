@@ -17,7 +17,7 @@ import { findUpSync } from "find-up";
 import type { IssueAnalysis, Task } from "./types.js";
 import { branchExists, getCurrentBranch, getGitRepoInfo } from "./github/git.js";
 import { jules } from "@google/jules-sdk";
-import "./env.js";
+import { assertFleetEnvironment } from "./env.js";
 import {
   assertMutationPreflight,
   getSanitizedErrorMessage,
@@ -56,6 +56,10 @@ interface GitHubPR {
 }
 
 export async function main(): Promise<void> {
+  assertFleetEnvironment({
+    requireJulesApiKey: true,
+    requireGitHubToken: true,
+  });
   const repoInfo = await getGitRepoInfo();
   const OWNER = repoInfo.owner;
   const REPO = repoInfo.repo;

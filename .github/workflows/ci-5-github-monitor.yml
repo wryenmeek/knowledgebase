@@ -86,7 +86,8 @@ jobs:
               && [[ "${DISPATCH_REGISTRY_PATH}" != /* ]]; then
               EFFECTIVE_REGISTRY_PATH="${DISPATCH_REGISTRY_PATH}"
             else
-              echo "::error::Invalid repository_dispatch registry_path payload: ${DISPATCH_REGISTRY_PATH}" >&2
+              echo "::error::Invalid repository_dispatch registry_path payload." >&2
+              printf 'Rejected registry_path=%q\n' "${DISPATCH_REGISTRY_PATH}" >&2
               exit 1
             fi
           elif [ -n "${REGISTRY_PATH}" ]; then
@@ -96,7 +97,8 @@ jobs:
               && [[ "${REGISTRY_PATH}" != /* ]]; then
               EFFECTIVE_REGISTRY_PATH="${REGISTRY_PATH}"
             else
-              echo "::error::Invalid workflow_dispatch registry_path input: ${REGISTRY_PATH}" >&2
+              echo "::error::Invalid workflow_dispatch registry_path input." >&2
+              printf 'Rejected registry_path=%q\n' "${REGISTRY_PATH}" >&2
               exit 1
             fi
           fi

@@ -349,7 +349,7 @@ function envSecretValues(): string[] {
   );
 }
 
-export function sanitizeErrorText(raw: string): string {
+export function redactSecrets(raw: string): string {
   let sanitized = raw;
 
   for (const secret of envSecretValues()) {
@@ -367,7 +367,11 @@ export function sanitizeErrorText(raw: string): string {
     )
     .replace(/\bbearer\s+[a-z0-9._-]{8,}/gi, `Bearer ${SECRET_PLACEHOLDER}`);
 
-  return truncate(sanitized);
+  return sanitized;
+}
+
+export function sanitizeErrorText(raw: string): string {
+  return truncate(redactSecrets(raw));
 }
 
 export function getSanitizedErrorMessage(error: unknown): string {

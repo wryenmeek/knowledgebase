@@ -17,7 +17,7 @@ import { findUpSync } from "find-up";
 import { Octokit } from "octokit";
 import type { IssueAnalysis } from "./types.js";
 import { jules } from "@google/jules-sdk";
-import "./env.js";
+import { assertFleetEnvironment } from "./env.js";
 import { branchExists, getGitRepoInfo, getCurrentBranch } from "./github/git.js";
 import {
   assertMutationPreflight,
@@ -61,6 +61,10 @@ async function mapWithConcurrency<T, R>(
 }
 
 export async function main(): Promise<void> {
+  assertFleetEnvironment({
+    requireJulesApiKey: true,
+    requireGitHubToken: true,
+  });
   const repoInfo = await getGitRepoInfo();
   const baseBranch = process.env.FLEET_BASE_BRANCH ?? (await getCurrentBranch());
   const mutationMaxAttempts = resolveMutationMaxAttempts(

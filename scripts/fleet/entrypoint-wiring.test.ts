@@ -14,6 +14,7 @@ describe("fleet entrypoint wiring", () => {
   for (const entrypoint of ENTRYPOINTS) {
     test(`${entrypoint} keeps fail-closed mutation wiring`, async () => {
       const source = await Bun.file(entrypointPath(entrypoint)).text();
+      expect(source).toContain("assertFleetEnvironment(");
       expect(source).toContain("assertMutationPreflight(");
       expect(source).toContain("branchExists(");
       expect(source).toContain("runMutationWithDiagnostics(");
@@ -50,5 +51,11 @@ describe("fleet entrypoint wiring", () => {
     const mergeSource = await Bun.file(entrypointPath("fleet-merge.ts")).text();
     expect(mergeSource).toContain("allowBodyMatch: false");
     expect(mergeSource).not.toContain("allowBodyMatch: true");
+  });
+
+  test("fleet-analyze remains read-only without mutation env bootstrap", async () => {
+    const analyzeSource = await Bun.file(entrypointPath("fleet-analyze.ts")).text();
+    expect(analyzeSource).not.toContain('./env.js');
+    expect(analyzeSource).not.toContain("assertFleetEnvironment(");
   });
 });

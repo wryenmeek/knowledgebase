@@ -93,6 +93,14 @@ class Ci5WorkflowContractTests(unittest.TestCase):
             )
             return result, github_output_path.read_text(encoding="utf-8")
 
+    def _mask_steps(self) -> list[dict[str, object]]:
+        steps: list[dict[str, object]] = []
+        for job in self.workflow["jobs"].values():
+            for step in job.get("steps", []):
+                if step.get("name") == "Mask GitHub App token":
+                    steps.append(step)
+        return steps
+
     def test_repository_dispatch_registry_payload_validation_fails_closed(self) -> None:
         result, _ = self._run_detect_script(
             event_name="repository_dispatch",
@@ -134,6 +142,32 @@ class Ci5WorkflowContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("drift_detected=false", github_output)
         self.assertIn("artifact_name=drift-report-123456", github_output)
+
+    def test_mask_step_uses_env_indirection_for_token(self) -> None:
+        mask_steps = self._mask_steps()
+        self.assertEqual(len(mask_steps), 2, "Expected one mask step in each CI-5 job.")
+
+        for step in mask_steps:
+            env = step.get("env")
+            self.assertIsInstance(env, dict)
+            self.assertEqual(env.get("APP_TOKEN"), "${{ steps.app-token.outputs.token }}")
+
+            run_script = step.get("run")
+            self.assertIsInstance(run_script, str)
+            self.assertIn("${APP_TOKEN}", run_script)
+            self.assertNotIn("${{ steps.app-token.outputs.token }}", run_script)
+
+    def test_no_run_block_inlines_app_token_expression(self) -> None:
+        inline_expression = "${{ steps.app-token.outputs.token }}"
+        for job in self.workflow["jobs"].values():
+            for step in job.get("steps", []):
+                run_script = step.get("run")
+                if isinstance(run_script, str):
+                    self.assertNotIn(
+                        inline_expression,
+                        run_script,
+                        "run blocks must use env indirection for app token values.",
+                    )
 
 
 if __name__ == "__main__":
