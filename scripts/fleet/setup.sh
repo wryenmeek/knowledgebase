@@ -13,21 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Setup script for the automate-github-issues skill
+# Setup script for fleet orchestration scripts
 set -e
 
-echo "🔧 Setting up automate-github-issues skill..."
+echo "🔧 Setting up fleet orchestration scripts..."
 echo ""
 
 # Check for Bun
 if command -v bun &> /dev/null; then
   echo "✅ Bun found: $(bun --version)"
 else
-  echo "⚠️  Bun not found. Installing..."
-  curl -fsSL https://bun.sh/install | bash
-  export BUN_INSTALL="$HOME/.bun"
-  export PATH="$BUN_INSTALL/bin:$PATH"
-  echo "✅ Bun installed: $(bun --version)"
+  echo "❌ Bun not found."
+  echo "   Install Bun manually from https://bun.sh/docs/installation and re-run this script."
+  exit 1
 fi
 
 echo ""
@@ -41,9 +39,9 @@ echo ""
 
 # Scaffold .env if it doesn't exist
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_DIR="$(dirname "$SCRIPT_DIR")"
-ENV_FILE="$SKILL_DIR/.env"
-ENV_EXAMPLE="$SKILL_DIR/assets/.env.example"
+FLEET_DIR="$SCRIPT_DIR"
+ENV_FILE="$FLEET_DIR/.env"
+ENV_EXAMPLE="$FLEET_DIR/.env.example"
 
 if [ ! -f "$ENV_FILE" ]; then
   if [ -f "$ENV_EXAMPLE" ]; then
@@ -64,9 +62,10 @@ echo "  1. Edit .env with your API keys:"
 echo "     JULES_API_KEY=your-key-here"
 echo "     GITHUB_TOKEN=your-token-here"
 echo ""
-echo "  2. Add GitHub Actions workflows:"
-echo "     cp assets/fleet-dispatch.yml .github/workflows/"
-echo "     cp assets/fleet-merge.yml .github/workflows/"
+echo "  2. Verify fleet workflows exist in .github/workflows/:"
+echo "     - fleet-plan.yml"
+echo "     - fleet-dispatch.yml"
+echo "     - fleet-merge.yml"
 echo ""
 echo "  3. Add secrets to your GitHub repo:"
 echo "     Settings → Secrets → Actions → New repository secret"

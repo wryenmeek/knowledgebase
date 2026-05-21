@@ -91,3 +91,30 @@ export async function getCurrentBranch(): Promise<string> {
   const { stdout } = await gitCommands.execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
   return stdout.trim();
 }
+
+async function hasGitRef(refName: string): Promise<boolean> {
+  try {
+    await gitCommands.execFileAsync("git", ["show-ref", "--verify", "--quiet", "--", refName]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Checks whether a branch is visible in local or origin refs.
+ *
+ * @param branchName - Branch name without refs/ prefix
+ * @returns True when branch exists locally or as origin/<branchName>
+ */
+export async function branchExists(branchName: string): Promise<boolean> {
+  const normalized = branchName.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  if (await hasGitRef(`refs/heads/${normalized}`)) {
+    return true;
+  }
+  return hasGitRef(`refs/remotes/origin/${normalized}`);
+}

@@ -1,0 +1,54 @@
+import { describe, expect, test } from "bun:test";
+import path from "node:path";
+
+const ENTRYPOINTS = [
+  "fleet-plan.ts",
+  "fleet-dispatch.ts",
+  "fleet-merge.ts",
+] as const;
+
+describe("fleet entrypoint wiring", () => {
+  const entrypointPath = (entrypoint: string): string =>
+    path.join(import.meta.dir, entrypoint);
+
+  for (const entrypoint of ENTRYPOINTS) {
+    test(`${entrypoint} keeps fail-closed mutation wiring`, async () => {
+      const source = await Bun.file(entrypointPath(entrypoint)).text();
+      expect(source).toContain("assertMutationPreflight(");
+      expect(source).toContain("branchExists(");
+      expect(source).toContain("runMutationWithDiagnostics(");
+      expect(source).toContain("main().catch(handleFatalError);");
+    });
+  }
+
+  test("dispatch and merge honor FLEET_PENDING_DATE for cross-day runs", async () => {
+    const dispatchSource = await Bun.file(entrypointPath("fleet-dispatch.ts")).text();
+    const mergeSource = await Bun.file(entrypointPath("fleet-merge.ts")).text();
+    expect(dispatchSource).toContain("process.env.FLEET_PENDING_DATE");
+    expect(mergeSource).toContain("process.env.FLEET_PENDING_DATE");
+  });
+
+  test("merge enforces fail-closed no-checks policy with explicit override", async () => {
+    const mergeSource = await Bun.file(entrypointPath("fleet-merge.ts")).text();
+    const mergeCiSource = await Bun.file(path.join(import.meta.dir, "github/merge-ci.ts")).text();
+    expect(mergeSource).toContain(
+      'const ALLOW_NO_CHECKS = process.env.FLEET_ALLOW_NO_CHECKS === "true"'
+    );
+    expect(mergeSource).toContain('from "./github/merge-ci.js"');
+    expect(mergeCiSource).toContain("No check runs found for PR");
+    expect(mergeCiSource).toContain("FLEET_ALLOW_NO_CHECKS=true");
+  });
+
+  test("merge validates redispatch retry bounds", async () => {
+    const mergeSource = await Bun.file(entrypointPath("fleet-merge.ts")).text();
+    expect(mergeSource).toContain('from "./github/retry-config.js"');
+    expect(mergeSource).toContain("resolveMaxRedispatchRetries(process.env.FLEET_MAX_RETRIES)");
+    expect(mergeSource).toContain("validateMaxRedispatchRetries(MAX_RETRIES)");
+  });
+
+  test("merge redispatch PR matching does not trust PR body text", async () => {
+    const mergeSource = await Bun.file(entrypointPath("fleet-merge.ts")).text();
+    expect(mergeSource).toContain("allowBodyMatch: false");
+    expect(mergeSource).not.toContain("allowBodyMatch: true");
+  });
+});

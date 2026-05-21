@@ -12,49 +12,104 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import fs from 'node:fs'
-import { jules } from '@google/jules-sdk'
-import { analyzeIssuesPrompt, getFleetDate } from './prompts/analyze-issues.js'
-import { getIssuesAsMarkdown } from './github/markdown.js'
-import { getGitRepoInfo, getCurrentBranch } from './github/git.js'
+import fs from "node:fs";
+import { jules } from "@google/jules-sdk";
+import { analyzeIssuesPrompt, getFleetDate } from "./prompts/analyze-issues.js";
+import { getIssuesAsMarkdown } from "./github/markdown.js";
+import { branchExists, getGitRepoInfo, getCurrentBranch } from "./github/git.js";
+import {
+  assertMutationPreflight,
+  getSanitizedErrorMessage,
+  MUTATION_EXECUTION_CONTRACT,
+  MutationFailureError,
+  PreflightFailureError,
+  resolveMutationMaxAttempts,
+  runMutationWithDiagnostics,
+} from "./github/mutation-diagnostics.js";
 
-const JULES_API_KEY = process.env.JULES_API_KEY;
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+export async function main(): Promise<void> {
+  const repoInfo = await getGitRepoInfo();
+  const baseBranch = process.env.FLEET_BASE_BRANCH ?? (await getCurrentBranch());
+  const mutationMaxAttempts = resolveMutationMaxAttempts(
+    process.env.FLEET_MUTATION_MAX_ATTEMPTS
+  );
 
-if (!JULES_API_KEY) {
-  console.error("❌ JULES_API_KEY environment variable is required.");
-  process.exit(1);
-}
-
-if (!GITHUB_TOKEN) {
-  console.error("❌ GITHUB_TOKEN environment variable is required.");
-  process.exit(1);
-}
-
-const repoInfo = await getGitRepoInfo()
-const baseBranch = process.env.FLEET_BASE_BRANCH ?? await getCurrentBranch()
-const issuesMarkdown = await getIssuesAsMarkdown()
-// Capture the fleet date at planning time so fleet-dispatch reads the same
-// dated directory even if Jules takes more than a day to post its PR.
-const fleetDate = getFleetDate()
-const prompt = analyzeIssuesPrompt({ issuesMarkdown, repoFullName: repoInfo.fullName })
-
-console.log(`🔍 Planning fleet for ${repoInfo.fullName} (branch: ${baseBranch}, date: ${fleetDate})`)
-
-// jules.run() auto-approves the plan and auto-creates a PR (autoPr defaults to true).
-// jules.session() would pause waiting for manual plan approval — wrong for CI.
-const run = await jules.run({
-  prompt,
-  source: {
-    github: repoInfo.fullName,
+  assertMutationPreflight({
+    operation: "fleet-plan:jules.run",
+    repoFullName: repoInfo.fullName,
     baseBranch,
-  },
-})
+    maxAttempts: mutationMaxAttempts,
+    requireGitHubToken: true,
+  });
+  if (!(await branchExists(baseBranch))) {
+    throw new PreflightFailureError({
+      contract: MUTATION_EXECUTION_CONTRACT,
+      operation: "fleet-plan:jules.run",
+      classification: "preflight",
+      failures: [
+        `Base branch "${baseBranch}" is not visible in local or origin refs.`,
+      ],
+    });
+  }
 
-console.log(`✅ Planning run started: ${run.id}`)
+  const issuesMarkdown = await getIssuesAsMarkdown();
+  // Capture the fleet date at planning time so fleet-dispatch reads the same
+  // dated directory even if Jules takes more than a day to post its PR.
+  const fleetDate = getFleetDate();
+  const prompt = analyzeIssuesPrompt({
+    issuesMarkdown,
+    repoFullName: repoInfo.fullName,
+  });
 
-// Export session ID and fleet date for the downstream Store step.
-if (process.env.GITHUB_OUTPUT) {
-  fs.appendFileSync(process.env.GITHUB_OUTPUT, `plan_session_id=${run.id}\n`)
-  fs.appendFileSync(process.env.GITHUB_OUTPUT, `fleet_date=${fleetDate}\n`)
+  console.log(
+    `🔍 Planning fleet for ${repoInfo.fullName} (branch: ${baseBranch}, date: ${fleetDate})`
+  );
+
+  // jules.run() auto-approves the plan and auto-creates a PR (autoPr defaults to true).
+  // jules.session() would pause waiting for manual plan approval — wrong for CI.
+  const run = await runMutationWithDiagnostics({
+    operation: "fleet-plan:jules.run",
+    maxAttempts: mutationMaxAttempts,
+    run: () =>
+      jules.run({
+        prompt,
+        source: {
+          github: repoInfo.fullName,
+          baseBranch,
+        },
+      }),
+    onAttemptFailure: (envelope) => {
+      console.error("⚠️ Jules planning mutation attempt failed.");
+      console.error(JSON.stringify(envelope));
+    },
+  });
+
+  console.log(`✅ Planning run started: ${run.id}`);
+
+  // Export session ID and fleet date for the downstream Store step.
+  if (process.env.GITHUB_OUTPUT) {
+    fs.appendFileSync(process.env.GITHUB_OUTPUT, `plan_session_id=${run.id}\n`);
+    fs.appendFileSync(process.env.GITHUB_OUTPUT, `fleet_date=${fleetDate}\n`);
+  }
+}
+
+export function handleFatalError(error: unknown): never {
+  if (error instanceof PreflightFailureError) {
+    console.error("❌ Fleet planning preflight failed.");
+    console.error(JSON.stringify(error.envelope));
+    process.exit(1);
+  }
+
+  if (error instanceof MutationFailureError) {
+    console.error("❌ Jules planning mutation hard-failed after bounded retries.");
+    console.error(JSON.stringify(error.terminalEnvelope));
+    process.exit(1);
+  }
+
+  console.error(`❌ Fleet planning failed: ${getSanitizedErrorMessage(error)}`);
+  process.exit(1);
+}
+
+if (import.meta.main) {
+  main().catch(handleFatalError);
 }

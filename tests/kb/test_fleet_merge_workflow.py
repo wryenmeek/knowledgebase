@@ -408,6 +408,38 @@ class BunVersionPinTests(unittest.TestCase):
             )
 
 
+class CopilotSetupFleetValidationTests(unittest.TestCase):
+    """Assert copilot setup runs fleet Bun tests before build checks."""
+
+    def test_copilot_setup_runs_fleet_bun_tests(self) -> None:
+        self.assertTrue(COPILOT_SETUP_PATH.exists(), f"Missing: {COPILOT_SETUP_PATH}")
+        workflow = yaml.safe_load(COPILOT_SETUP_PATH.read_text(encoding="utf-8"))
+        steps = workflow.get("jobs", {}).get("copilot-setup-steps", {}).get("steps", [])
+        matching = [
+            step
+            for step in steps
+            if step.get("working-directory") == "scripts/fleet"
+            and "bun test --bail" in str(step.get("run", ""))
+        ]
+        self.assertTrue(
+            matching,
+            "copilot-setup-steps.yml must run 'bun test --bail' in scripts/fleet",
+        )
+
+    def test_copilot_setup_triggers_on_fleet_script_changes(self) -> None:
+        self.assertTrue(COPILOT_SETUP_PATH.exists(), f"Missing: {COPILOT_SETUP_PATH}")
+        workflow = yaml.safe_load(COPILOT_SETUP_PATH.read_text(encoding="utf-8"))
+        on_block = workflow.get(True, workflow.get("on", {}))
+        for event in ("push", "pull_request"):
+            with self.subTest(event=event):
+                paths = on_block.get(event, {}).get("paths", [])
+                self.assertIn(
+                    "scripts/fleet/**",
+                    paths,
+                    f"copilot-setup-steps.yml must trigger on scripts/fleet/** for {event}",
+                )
+
+
 class FleetMergePRBaseRecoveryTests(unittest.TestCase):
     """Assert PR_BASE recovery uses gh pr view (not a hardcoded fallback). Issue #131.
 

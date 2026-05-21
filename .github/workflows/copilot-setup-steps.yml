@@ -5,9 +5,11 @@ on:
   push:
     paths:
       - .github/workflows/copilot-setup-steps.yml
+      - scripts/fleet/**
   pull_request:
     paths:
       - .github/workflows/copilot-setup-steps.yml
+      - scripts/fleet/**
 
 jobs:
   copilot-setup-steps:
@@ -46,6 +48,10 @@ jobs:
           python3 -c "import scripts.kb.contracts; print('scripts.kb OK')"
           python3 -m pytest --co -q 2>&1 | tail -3
 
+      - name: Run fleet Bun tests
+        working-directory: scripts/fleet
+        run: bun test --bail
+
       - name: Verify Bun setup
         working-directory: scripts/fleet
-        run: bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts --outdir /tmp/fleet-check
+        run: bun build --target bun fleet-plan.ts fleet-dispatch.ts fleet-merge.ts --outdir /tmp/fleet-check
