@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "severity_model": {
+    "ok": "duration_seconds <= warn_seconds",
+    "warn": "warn_seconds < duration_seconds <= fail_seconds",
+    "fail": "duration_seconds > fail_seconds"
+  },
+  "workflows": {
+    "ci-2-analyst-diagnostics": {
+      "stages": {
+        "validate_wiki_governance": {
+          "warn_seconds": 90,
+          "fail_seconds": 240
+        },
+        "check_doc_freshness": {
+          "warn_seconds": 45,
+          "fail_seconds": 120
+        },
+        "content_quality_summary": {
+          "warn_seconds": 45,
+          "fail_seconds": 120
+        },
+        "lint_wiki_strict": {
+          "warn_seconds": 90,
+          "fail_seconds": 240
+        },
+        "pytest_suite": {
+          "warn_seconds": 300,
+          "fail_seconds": 900
+        }
+      }
+    },
+    "ci-3-pr-producer": {
+      "stages": {
+        "ingest_write_path": {
+          "warn_seconds": 120,
+          "fail_seconds": 360
+        },
+        "update_index_write": {
+          "warn_seconds": 90,
+          "fail_seconds": 240
+        },
+        "lint_wiki_strict": {
+          "warn_seconds": 90,
+          "fail_seconds": 240
+        },
+        "persist_query_gate": {
+          "warn_seconds": 30,
+          "fail_seconds": 90
+        }
+      }
+    },
+    "ci-5-check-drift": {
+      "stages": {
+        "check_drift": {
+          "warn_seconds": 120,
+          "fail_seconds": 360
+        }
+      }
+    },
+    "ci-5-fetch-and-update": {
+      "stages": {
+        "fetch_content": {
+          "warn_seconds": 180,
+          "fail_seconds": 480
+        }
+      }
+    },
+    "ci-5-classify-drift": {
+      "stages": {
+        "classify_drift": {
+          "warn_seconds": 30,
+          "fail_seconds": 90
+        },
+        "create_issues": {
+          "warn_seconds": 30,
+          "fail_seconds": 90
+        },
+        "close_resolved_issues": {
+          "warn_seconds": 30,
+          "fail_seconds": 90
+        }
+      }
+    },
+    "ci-5-synthesize": {
+      "stages": {
+        "synthesize_diff": {
+          "warn_seconds": 240,
+          "fail_seconds": 600
+        }
+      }
+    },
+    "ci-6-check-drift": {
+      "stages": {
+        "check_drift": {
+          "warn_seconds": 180,
+          "fail_seconds": 480
+        }
+      }
+    },
+    "ci-6-fetch-and-update": {
+      "stages": {
+        "fetch_content": {
+          "warn_seconds": 240,
+          "fail_seconds": 600
+        }
+      }
+    },
+    "ci-6-classify-drift": {
+      "stages": {
+        "classify_drift": {
+          "warn_seconds": 45,
+          "fail_seconds": 120
+        },
+        "create_issues": {
+          "warn_seconds": 30,
+          "fail_seconds": 90
+        }
+      }
+    },
+    "ci-6-synthesize": {
+      "stages": {
+        "synthesize_diff": {
+          "warn_seconds": 240,
+          "fail_seconds": 600
+        }
+      }
+    },
+    "ci-6-advance-cursor": {
+      "stages": {
+        "advance_cursor": {
+          "warn_seconds": 30,
+          "fail_seconds": 90
+        }
+      }
+    }
+  }
+}

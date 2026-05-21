@@ -245,8 +245,10 @@ class FrameworkContractAlignmentTests(unittest.TestCase):
         self.assertIn("## Phase 0 bootstrap: runtime prerequisites", text)
         self.assertIn("Local wrapper validation", text)
         self.assertIn("CI-2 / CI-3 wrapper validation", text)
-        self.assertIn("mkdir -p .ci-bin .qmd/index", text)
-        self.assertIn("authoritative qmd packaging/version pinning stays in the post-MVP verification story", text)
+        self.assertIn("@tobilu/qmd@2.5.1", text)
+        self.assertIn("sha512-Ep9ccOj1bNRinfTIszp5UZP8xfi5AJNtmzwWDD4ZVm2YdWVS+rFobWJQovj0HD2uIAFrryvbSpZYeGa3flEO7g==", text)
+        self.assertIn("qmd init", text)
+        self.assertIn("cp .qmd/index.sqlite .qmd/index/index.sqlite", text)
         self.assertIn("## High-risk schema/topology baseline gate", text)
         self.assertIn(
             "python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",

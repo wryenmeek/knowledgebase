@@ -72,32 +72,32 @@ in local and CI environments before later phases depend on it more heavily.
 
 | Surface | Required prerequisites | Bootstrap rule |
 |---|---|---|
-| Local wrapper validation (`validate-wiki-governance`, `sync-knowledgebase-state --check-only`) | `python3`, repo checkout, `wiki/`, `qmd` on `PATH`, `.qmd/index` | Prefer the authoritative qmd runtime when available. If only wrapper validation is needed, use a repo-local validation shim plus `mkdir -p .qmd/index` so preflight stays deterministic and fail-closed without introducing non-repo state. |
-| CI-2 / CI-3 wrapper validation | `python3`, checked-out repo, repo-local `qmd` shim, `.qmd/index` directory | Bootstrap a repo-local `qmd` shim inside the workflow workspace and prepend it to `PATH`; never depend on a machine-global install. |
-| Full qmd index/query flow | Authoritative qmd runtime that supports `collection add`, `embed`, and `query` | Remains the operator/manual path below. CI bootstrap only satisfies current wrapper-preflight needs; authoritative qmd packaging/version pinning stays in the post-MVP verification story until a later phase ratifies it. |
+| Local wrapper validation (`validate-wiki-governance`, `sync-knowledgebase-state --check-only`) | `python3`, `npm`, repo checkout, `wiki/`, pinned `qmd` runtime (`@tobilu/qmd@2.5.1`) | Verify `npm view @tobilu/qmd@2.5.1 dist.integrity` equals `sha512-Ep9ccOj1bNRinfTIszp5UZP8xfi5AJNtmzwWDD4ZVm2YdWVS+rFobWJQovj0HD2uIAFrryvbSpZYeGa3flEO7g==`, install the exact package, run `qmd init`, and mirror runtime outputs into `.qmd/index/` for deterministic preflight checks. |
+| CI-2 / CI-3 wrapper validation | `python3`, `npm`, checked-out repo, pinned `qmd` runtime, `.qmd/index` resource | Install `@tobilu/qmd@2.5.1` only after integrity verification, run `qmd init`, and mirror `.qmd/index.sqlite` + `.qmd/index.yml` into `.qmd/index/`; never use a shim binary. |
+| Full qmd index/query flow | Pinned authoritative qmd runtime supporting `collection add`, `embed`, and `query` | Use the same pinned package + integrity gate, then run `qmd collection add wiki --name wiki`, preflight, `qmd embed`, and query/persist flows as needed. |
 
 Validation-only bootstrap example (repo root):
 
 ```bash
-mkdir -p .ci-bin .qmd/index
-cat > .ci-bin/qmd <<'EOF'
-#!/usr/bin/env sh
-set -eu
-exit 0
-EOF
-chmod +x .ci-bin/qmd
+QMD_NPM_PACKAGE="@tobilu/qmd"
+QMD_VERSION="2.5.1"
+QMD_EXPECTED_INTEGRITY="sha512-Ep9ccOj1bNRinfTIszp5UZP8xfi5AJNtmzwWDD4ZVm2YdWVS+rFobWJQovj0HD2uIAFrryvbSpZYeGa3flEO7g==" # pragma: allowlist secret
+QMD_DIST_INTEGRITY="$(npm view "${QMD_NPM_PACKAGE}@${QMD_VERSION}" dist.integrity --registry=https://registry.npmjs.org)"
+test "${QMD_DIST_INTEGRITY}" = "${QMD_EXPECTED_INTEGRITY}"
 
-PATH="$PWD/.ci-bin:$PATH" \
-  python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py
+npm install --global "${QMD_NPM_PACKAGE}@${QMD_VERSION}" --registry=https://registry.npmjs.org
+qmd init
+mkdir -p .qmd/index
+cp .qmd/index.sqlite .qmd/index/index.sqlite
+cp .qmd/index.yml .qmd/index/index.yml
 
-PATH="$PWD/.ci-bin:$PATH" \
-  python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only
+python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py
+python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only
 ```
 
-This shim is intentionally scoped to wrapper validation only. Use the
-authoritative qmd runtime for `qmd collection add`, `qmd embed`, and
-`qmd query`; do not treat the shim as a substitute for real indexing/query
-coverage.
+This bootstrap path is fail-closed by design: integrity mismatch, install
+failure, or missing qmd runtime/index resources must stop execution before
+wrapper validation proceeds.
 
 ## Local execution flow (repo root)
 
@@ -126,10 +126,12 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 
 # 4) qmd index/query bootstrap
 qmd collection add wiki --name wiki
-qmd embed
 
 # 5) qmd preflight
 python3 scripts/kb/qmd_preflight.py --repo-root . --required-resource .qmd/index
+
+# 5b) qmd embed
+qmd embed
 
 # 6) query + policy-gated persist
 qmd query "<query>"
@@ -197,7 +199,7 @@ Framework test entrypoints already present under `tests/kb/`:
 | Wrapper behavior suite | `python3 -m unittest tests.kb.test_skill_wrappers` | Confirms the fixed wrapper order, allowlists, and fail-closed execution envelope. |
 | Helper surface suites | `python3 -m unittest tests.kb.test_context_import_helpers tests.kb.test_documentation_helpers tests.kb.test_validate_source_registry tests.kb.test_validate_wiki_topology tests.kb.test_harnesses` | Covers skill-local helper contracts without widening repo-write authority. |
 | Repo script suites | `python3 -m unittest tests.kb.test_contracts tests.kb.test_sourceref tests.kb.test_ingest tests.kb.test_update_index tests.kb.test_lint_wiki tests.kb.test_qmd_preflight tests.kb.test_persist_query tests.kb.test_write_utils tests.kb.test_batch_persist_query tests.kb.test_coverage_report` | Required when `scripts/kb/**` or approved repo-level helper packages change. |
-| Workflow governance suites | `python3 -m unittest tests.kb.test_workflow_yaml_syntax tests.kb.test_ci1_workflow tests.kb.test_ci2_workflow tests.kb.test_ci3_workflow tests.kb.test_ci_permission_asserts` | Keep CI-1 no-write trusted handoff, CI-2 read-only diagnostics, and CI-3 allowlisted writes aligned with workflow YAML. |
+| Workflow governance suites | `python3 -m unittest tests.kb.test_workflow_yaml_syntax tests.kb.test_ci1_workflow tests.kb.test_ci2_workflow tests.kb.test_ci3_workflow tests.kb.test_ci5_workflow tests.kb.test_ci6_workflow tests.kb.test_ci_permission_asserts tests.kb.test_pages_workflow tests.kb.test_runtime_budget tests.kb.test_runtime_budget_workflows` | Keep CI-1 no-write trusted handoff, CI-2 read-only diagnostics, CI-3 allowlisted writes, CI-5/CI-6 monitor workflows, Pages runtime contract, and runtime-budget gates aligned with workflow YAML. |
 | Verification matrix suites | `python3 -m unittest tests.kb.test_unit_verification_matrix tests.kb.test_integration_verification_matrix tests.kb.test_regression_verification_matrix` | Final verification pass for unit, integration, and regression coverage expectations. |
 | Broad regression suite | `python3 -m pytest tests/ -q` | Final merge gate after the focused lanes above stay green. |
 
@@ -205,7 +207,7 @@ Framework test entrypoints already present under `tests/kb/`:
 |---|---|---|
 | CI-1 no-write trusted handoff | `.github/workflows/ci-1-gatekeeper.yml` on `push` to protected default-branch `raw/inbox/**` changes | Read-only token, inbox-only scope, and handoff-only behavior. |
 | CI-2 read-only diagnostics | `.github/workflows/ci-2-analyst-diagnostics.yml` on `push`, `pull_request`, or `workflow_dispatch` | Read-only permissions plus artifact upload only; no repo mutations. |
-| CI-3 allowlisted writes | `.github/workflows/ci-3-pr-producer.yml` from CI-1 handoff or protected manual dispatch | Allowlisted writes only (`wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`) plus protected-environment approval for manual dispatch. |
+| CI-3 allowlisted writes | `.github/workflows/ci-3-pr-producer.yml` from CI-1 handoff or protected manual dispatch | Allowlisted writes (`wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`, `raw/rejected/**`) plus the ingest cleanup exception for `raw/inbox/**` deletions only; protected-environment approval remains required for manual dispatch; `workflow_dispatch` now hard-blocks when the dispatch commit includes sensitive control-plane paths (`.github/workflows/**`, `.github/skills/**`, `.github/agents/**`, `.github/extensions/**`, `scripts/**`, `schema/**`, `AGENTS.md`, `pyproject.toml`). |
 
 ## Verification planning baseline
 
@@ -223,7 +225,7 @@ approved, keep these existing MVP suites green:
 - Repo script suites:
   `python3 -m unittest tests.kb.test_contracts tests.kb.test_sourceref tests.kb.test_ingest tests.kb.test_update_index tests.kb.test_lint_wiki tests.kb.test_qmd_preflight tests.kb.test_persist_query tests.kb.test_write_utils tests.kb.test_batch_persist_query tests.kb.test_coverage_report`
 - Workflow governance suites:
-  `python3 -m unittest tests.kb.test_workflow_yaml_syntax tests.kb.test_ci1_workflow tests.kb.test_ci2_workflow tests.kb.test_ci3_workflow tests.kb.test_ci_permission_asserts`
+  `python3 -m unittest tests.kb.test_workflow_yaml_syntax tests.kb.test_ci1_workflow tests.kb.test_ci2_workflow tests.kb.test_ci3_workflow tests.kb.test_ci5_workflow tests.kb.test_ci6_workflow tests.kb.test_ci_permission_asserts tests.kb.test_pages_workflow tests.kb.test_runtime_budget tests.kb.test_runtime_budget_workflows`
 - Verification matrix suites:
   `python3 -m unittest tests.kb.test_unit_verification_matrix tests.kb.test_integration_verification_matrix tests.kb.test_regression_verification_matrix`
 - Broad regression suite:
@@ -236,6 +238,29 @@ approved, keep these existing MVP suites green:
 - **Ingest hard failure:** non-zero other than `2` is contract/preflight/write failure (`failed`), including lock contention (`reason_code=lock_unavailable`).
 - **Persist policy envelope:** `persist_query.py` can return exit `0` with `status=no_write_policy` (expected no-write outcome) or `status=written`; both are valid automation outcomes.
 - **No-write envelope contract:** `no_write_policy` must not mutate repo files (`analysis_path=null`, `index_updated=false`, `log_appended=false`).
+
+## Runtime budget baselines and remediation
+
+- **Canonical budget source:** `schema/runtime-budgets.json` is the single in-repo source of truth for CI runtime thresholds.
+- **Deterministic measurement:** CI-2/CI-3/CI-5/CI-6 record stage timings in integer seconds (`date -u +%s` start/end deltas) and evaluate them with `scripts/validation/_runtime_budget.py`.
+- **Severity model:** `ok` when `duration <= warn_seconds`; `warn` when `warn_seconds < duration <= fail_seconds`; `fail` when `duration > fail_seconds`.
+- **Fail-closed rule:** any `fail` runtime budget status hard-fails the job after publishing budget artifacts and step summary output.
+- **Telemetry hygiene:** runtime artifacts include only workflow/stage IDs, durations, and thresholds. Secrets/tokens are never written to budget outputs.
+
+Runtime-budget outputs:
+
+| CI workflow | Machine-readable output | Human-readable output |
+|---|---|---|
+| CI-2 (`ci-2-analyst-diagnostics.yml`) | `diagnostics/runtime-metrics.json`, `diagnostics/runtime-budget-report.json` (artifact: `ci2-analyst-diagnostics-*`) | `$GITHUB_STEP_SUMMARY` runtime-budget table |
+| CI-3 (`ci-3-pr-producer.yml`) | `ci3-metrics/runtime-metrics.json`, `ci3-metrics/runtime-budget-report.json` (artifact: `ci3-runtime-budget-*`) | `$GITHUB_STEP_SUMMARY` runtime-budget table |
+| CI-5 (`ci-5-github-monitor.yml`) | `runtime-metrics/*-runtime-metrics.json`, `runtime-metrics/*-runtime-budget-report.json` across check/fetch/classify/synthesize jobs | `$GITHUB_STEP_SUMMARY` runtime-budget table per job |
+| CI-6 (`ci-6-google-drive-monitor.yml`) | `runtime-metrics/*-runtime-metrics.json`, `runtime-metrics/*-runtime-budget-report.json` across check/fetch/classify/synthesize/advance-cursor jobs | `$GITHUB_STEP_SUMMARY` runtime-budget table per job |
+
+Remediation playbook:
+
+1. **WARN result:** inspect the stage row(s) in step summary and the runtime-budget JSON report, then optimize the slow stage or split work to reduce duration.
+2. **FAIL result:** treat as fail-closed; do not bypass. Resolve stage slowness first, rerun, and confirm status returns to `ok`/`warn`.
+3. **Threshold updates:** change `schema/runtime-budgets.json` in a reviewed PR with rationale tied to measured runtime trends.
 
 ## High-risk schema/topology baseline gate
 
@@ -273,26 +298,126 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 | CI | Normal role | If automation is unavailable/fails |
 |---|---|---|
 | **CI-1** (`.github/workflows/ci-1-gatekeeper.yml`) | trusted-trigger gatekeeper/handoff for `raw/inbox/**` | run local ingest → update_index → lint; open/update PR manually; keep fail-closed behavior and required checks. |
-| **CI-2** (`.github/workflows/ci-2-analyst-diagnostics.yml`) | read-only diagnostics (`lint_wiki --strict` + test suite); triggers on `pull_request`, `push` to `main`, and `workflow_dispatch` | run the same diagnostics locally (`lint_wiki`, `pytest tests/`), attach findings to PR/issue; no repo-write automation needed. |
-| **CI-3** (`.github/workflows/ci-3-pr-producer.yml`) | write-capable PR producer after trusted handoff/manual approval; includes LLM-based synthesis stage that calls GitHub Models API (gpt-4o-mini via `SYNTHESIS_GITHUB_TOKEN: ${{ github.token }}`, `models: read` scope) to extract entities and concepts from each ingested source page and write draft pages to `wiki/entities/**` and `wiki/concepts/**` before `update_index`; synthesis always soft-fails (emits `::warning`, exits 0) — the ingest PR is never blocked by LLM errors | execute the local sequence in this runbook, commit only allowlisted paths (`wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`, `raw/rejected/**`), and open/update PR manually through normal approvals/checks. Manual dispatch runs additionally require protected-environment reviewer approval (`ci3-manual-approval`). If synthesis fails locally: check bundle JSON for `"soft_skipped": true` (all 3 LLM attempts failed) or `::warning` output from `synthesize_combined.py`; synthesis failures do not prevent the PR from opening. |
+| **CI-2** (`.github/workflows/ci-2-analyst-diagnostics.yml`) | read-only diagnostics (`validate_wiki_governance`, `check_doc_freshness`, `content_quality_report`, `lint_wiki --strict`, and test suite); triggers on `pull_request`, `push` to `main`, and `workflow_dispatch` | run the same diagnostics locally (`python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --quiet`, `python3 -m scripts.validation.check_doc_freshness --scope wiki --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 --failures-only`, `python3 scripts/reporting/content_quality_report.py --mode summary --path wiki --failures-only`, `python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict`, `python3 -m pytest tests/ -q`), attach findings to PR/issue; no repo-write automation needed. |
+| **CI-3** (`.github/workflows/ci-3-pr-producer.yml`) | write-capable PR producer after trusted handoff/manual approval; includes LLM-based synthesis stage that calls GitHub Models API (gpt-4o-mini via `SYNTHESIS_GITHUB_TOKEN: ${{ github.token }}`, `models: read` scope) to extract entities and concepts from each ingested source page and write draft pages to `wiki/entities/**` and `wiki/concepts/**` before `update_index`; synthesis always soft-fails (emits `::warning`, exits 0) — the ingest PR is never blocked by LLM errors | execute the local sequence in this runbook, commit only allowlisted paths (`wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`, `raw/rejected/**`) plus the CI-3 exception for `raw/inbox/**` deletions, and open/update PR manually through normal approvals/checks. Manual dispatch runs additionally require protected-environment reviewer approval (`ci3-manual-approval`) and now fail closed with explicit reason codes when the dispatch commit touches sensitive control-plane paths (`reject:path_filter:sensitive_control_plane_path:*`, `reject:trusted_trigger_model:manual_dispatch_sensitive_paths_present`). If synthesis fails locally: check bundle JSON for `"soft_skipped": true` (all 3 LLM attempts failed) or `::warning` output from `synthesize_combined.py`; synthesis failures do not prevent the PR from opening. |
 | **CI-4** (`.github/workflows/ci-4-framework-writer.yml`) | framework-writer: staged agent-generated content for `docs/**` and `.github/skills/**`; `workflow_dispatch` only; approval-gated | trigger `workflow_dispatch` manually after generating staged content; requires `ci4-framework-approval` environment gating; only allowlisted paths (`docs/**`, `.github/skills/**`) may be written. |
-| **CI-5** (`.github/workflows/ci-5-github-monitor.yml`) | GitHub source monitor: daily schedule (cron `30 6 * * *`, 06:30 UTC) + `repository_dispatch` (type `upstream-source-updated`) + drift detection (read-only) + PR-producing fetch/synthesize path; writes `raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**` | run `scripts/github_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; open PR for any changes. See ADR-015 and ADR-012 for governance rules. |
-| **CI-6** (`.github/workflows/ci-6-google-drive-monitor.yml`) | Google Drive source monitor: weekly schedule (cron `0 8 * * 1`, Mon 08:00 UTC) + `repository_dispatch` (type `drive-source-updated`) + drift detection (read-only) + approval-gated fetch/synthesize path; writes `raw/assets/**`, `raw/drive-sources/**`, bounded `wiki/**` | run `scripts/drive_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; advance cursor with `advance_cursor.py --approval approved`. See ADR-021 for governance rules. |
+| **CI-5** (`.github/workflows/ci-5-github-monitor.yml`) | GitHub source monitor: daily schedule (cron `30 6 * * *`, 06:30 UTC) + `repository_dispatch` (type `upstream-source-updated`) + drift detection (read-only) + PR-producing fetch/synthesize path; event-driven runs consume `client_payload.registry_path` when present (fail-closed on invalid hint paths); writes `raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**` | run `scripts/github_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; open PR for any changes. See ADR-015 and ADR-012 for governance rules. |
+| **CI-6** (`.github/workflows/ci-6-google-drive-monitor.yml`) | Google Drive source monitor: weekly schedule (cron `0 8 * * 1`, Mon 08:00 UTC) + `repository_dispatch` (type `drive-source-updated`) + drift detection (read-only) + approval-gated fetch/synthesize path; event-driven runs use payload-keyed concurrency (`channel_id/resource_id/message_number`) to collapse duplicate notifications in-flight and consume `client_payload.registry_path` when present (fail-closed on invalid hint paths); writes `raw/assets/**`, `raw/drive-sources/**`, bounded `wiki/**` | run `scripts/drive_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; advance cursor with `advance_cursor.py --approval approved`. See ADR-021 for governance rules. |
 
-- **CI-3 manual dispatch note:** `maintainer_approved` remains a required attestation input for `workflow_dispatch`, and manual runs are gated by protected-environment reviewer approval (`ci3-manual-approval`) for authoritative control.
+- **CI-3 manual dispatch note:** `maintainer_approved` remains a required attestation input for `workflow_dispatch`, manual runs are gated by protected-environment reviewer approval (`ci3-manual-approval`), and preflight hard-blocks dispatch commits that include sensitive control-plane paths (`.github/workflows/**`, `.github/skills/**`, `.github/agents/**`, `.github/extensions/**`, `scripts/**`, `schema/**`, `AGENTS.md`, `pyproject.toml`).
+
+## Webhook relay operations for CI-5 and CI-6 (manual provisioning)
+
+> **Scope boundary:** This repository now includes relay logic and tests only.
+> Provisioning/deployment (GitHub App registration, Cloud Run service, Drive
+> watch channel lifecycle, DNS/TLS, IAM) remains a maintainer-operated manual
+> step.
+
+### Required secrets and setup prerequisites
+
+| Relay | Required secrets/config | Manual prerequisites |
+|---|---|---|
+| GitHub push relay (`upstream-source-updated`) | `GITHUB_WEBHOOK_SECRET` (used to validate `X-Hub-Signature-256`), `DISPATCH_TARGET_OWNER`, `DISPATCH_TARGET_REPO`, `DISPATCH_TOKEN` (least-privilege token that can call `POST /repos/{owner}/{repo}/dispatches`) | Register/install GitHub App on monitored upstream repos, subscribe to `push` events, configure webhook URL/secret. |
+| Drive relay (`drive-source-updated`) | `DRIVE_CHANNEL_TOKEN_SECRET` (used to validate signed channel token context), `DISPATCH_TARGET_OWNER`, `DISPATCH_TARGET_REPO`, `DISPATCH_TOKEN` | Create/renew Drive watch channels manually, set channel token using `build_drive_channel_token(...)`, and point Google notifications at the relay HTTPS endpoint. |
+
+Additional runtime prerequisite for both relays:
+
+- The relay runtime must have a checkout/snapshot of this repository available at
+  startup so it can read source registries at:
+  `raw/github-sources/*.source-registry.json` and
+  `raw/drive-sources/*.source-registry.json`.
+
+### Stable `repository_dispatch` payload contracts
+
+- `event_type: upstream-source-updated` payload fields:
+  `registry_path`, `owner`, `repo`, `changed_paths`, `delivery_id`, `event_name`
+- `event_type: drive-source-updated` payload fields:
+  `alias`, `registry_path`, `file_ids`, `channel_id`, `resource_id`,
+  `resource_state`, `message_number`
+
+### Relay behavior guarantees
+
+- GitHub relay validates `X-Hub-Signature-256` (HMAC SHA-256) and fails closed
+  on signature mismatch.
+- GitHub relay only dispatches when changed push paths intersect monitored
+  registry entry paths for that upstream `owner/repo`.
+- Drive relay validates signed channel token context and registry alias/path.
+- Drive relay dispatches only for relevant lifecycle states and suppresses
+  replays using dedupe key
+  `X-Goog-Channel-ID + X-Goog-Resource-ID + X-Goog-Message-Number`.
+- Replay suppression is best-effort unless you back relay caches with a shared
+  store; the built-in cache is process-local.
+
+### Minimal handler wiring (example)
+
+```python
+from pathlib import Path
+from scripts.github_monitor._relay import (
+    GitHubApiDispatchClient as GitHubDispatchClient,
+    relay_github_push_event,
+)
+from scripts.drive_monitor._relay import (
+    InMemoryDriveReplayCache,
+    GitHubApiDispatchClient as DriveDispatchClient,
+    relay_drive_notification,
+)
+
+REPO_ROOT = Path(".").resolve()
+drive_replay_cache = InMemoryDriveReplayCache()
+
+# GitHub webhook request:
+# result = relay_github_push_event(
+#   repo_root=REPO_ROOT,
+#   headers=request.headers,
+#   body=request.get_data(),
+#   webhook_secret=os.environ["GITHUB_WEBHOOK_SECRET"],
+#   dispatch_client=GitHubDispatchClient(...),
+# )
+
+# Drive webhook request:
+# result = relay_drive_notification(
+#   repo_root=REPO_ROOT,
+#   headers=request.headers,
+#   token_secret=os.environ["DRIVE_CHANNEL_TOKEN_SECRET"],
+#   dispatch_client=DriveDispatchClient(...),
+#   replay_cache=drive_replay_cache,
+# )
+```
+
+Example service run commands (for the maintainer-owned HTTP wrapper module):
+
+- local/dev: `uvicorn relay_app:app --host 0.0.0.0 --port 8080`
+- container/Cloud Run entrypoint: `gunicorn -b :${PORT:-8080} relay_app:app`
+
+Suggested HTTP response mapping from relay result:
+
+- `status=dispatched` → `202 Accepted`
+- `status=ignored` (non-relevant event/replay) → `204 No Content`
+- `status=rejected` (invalid signature/token/headers) → `401 Unauthorized` or `400 Bad Request`
+- `status=failed` (dispatch transport failure) → `502 Bad Gateway` / retryable `5xx`
 
 ## Support and infrastructure workflows
 
 | Workflow | Trigger | Purpose | Manual equivalent |
 |---|---|---|---|
 | `pre-commit.yml` | `push` (all branches), `pull_request` to main | Runs all pre-commit hooks in CI so governance guardrails are verified even when local hooks are skipped | `pre-commit run --all-files` |
-| `pages.yml` | `push` to main (`wiki/**`, `mkdocs.yml`), `workflow_dispatch` | Builds MkDocs Material site from `wiki/`, runs Pagefind indexing, deploys via `actions/deploy-pages` (OIDC, no PAT required; requires Pages source set to GitHub Actions in repo Settings → Pages) | `mkdocs build --strict && npx pagefind --site site` then `actions/upload-pages-artifact` + `actions/deploy-pages` |
+| `pages.yml` | `push` to main (`wiki/**`, `mkdocs.yml`, `.github/workflows/pages.yml`), `workflow_dispatch` | Builds MkDocs Material site from `wiki/`, installs pinned qmd runtime with integrity verification, runs `qmd collection add wiki --name wiki`, gates on qmd preflight before `qmd embed`, persists `.qmd/index` artifact for downstream query consumers, installs pinned Pagefind runtime with integrity verification, runs Pagefind indexing, and deploys via `actions/deploy-pages` (OIDC, no PAT required; requires Pages source set to GitHub Actions in repo Settings → Pages) | `mkdocs build --strict && qmd collection add wiki --name wiki && python3 scripts/kb/qmd_preflight.py --repo-root . && qmd embed && pagefind --site site` then upload `.qmd/index` (artifact) and `site/` (Pages artifact) |
 | `wiki-freshness.yml` | Weekly schedule (cron `30 3 * * 1`, Mon 03:30 UTC), `workflow_dispatch` | Advisory freshness check on wiki pages; detects content that may be stale | (1) `python3 -m scripts.validation.check_doc_freshness --scope wiki --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 --failures-only > freshness-reports/wiki-freshness.json`<br>(2) annotate stale pages as `::warning` annotations<br>(3) `python3 -m scripts.validation.classify_stale --freshness-report freshness-reports/wiki-freshness.json --output freshness-reports/freshness-routing.json --afk-threshold-days 180`<br>(4) advisory governance signal sweep via `validate_wiki_governance.py --mode signal` |
 | `github-customizations-freshness.yml` | `push` to `.github/**`, weekly schedule (cron `0 4 * * 1`, Mon 04:00 UTC), `workflow_dispatch` | Validates `.github/` customizations (skills, agents, hooks) are fresh and internally consistent; **has write side effects** — opens a repair PR (`contents: write`, `pull-requests: write`) for auto-fixable drift and creates a GitHub Issue (`issues: write`) for ambiguous drift that requires human review | `python3 -m scripts.kb.github_customizations_freshness --output drift-report.json` |
 | `fleet-plan.yml` | Daily schedule (cron `0 6 * * *`, 06:00 UTC), `workflow_dispatch` | Fleet phase 1: creates a Jules planning session for open issues; stores the pending session ID in the `fleet-state` branch | `cd scripts/fleet && bun run fleet-plan.ts` |
-| `fleet-dispatch.yml` | `pull_request` opened/reopened | Fleet phase 2: detects Jules planning PRs via `fleet-state` pending session; merges the planning PR and dispatches per-issue task sessions | `cd scripts/fleet && bun run fleet-dispatch.ts` |
-| `fleet-merge.yml` | `workflow_run` (CI-2 completes), `workflow_dispatch` | Event-driven sequential merge of Jules-authored PRs: fires when CI-2 passes on a fleet PR head SHA → update branch → squash merge; re-dispatches on conflict. Manual `workflow_dispatch` sweeps all open fleet PRs with currently passing CI | `cd scripts/fleet && bun run fleet-merge.ts` |
-| `copilot-setup-steps.yml` | `workflow_dispatch`, `push`/`pull_request` on self | Configures Copilot cloud agent environment with Python 3.12, Bun, and all project dependencies | Push the file to default branch; runs automatically when Copilot cloud agent starts a session |
+| `fleet-dispatch.yml` | `pull_request` opened/reopened | Fleet phase 2: detects Jules planning PRs via `fleet-state` pending session; merges the planning PR and dispatches per-issue task sessions. Fail-closed preflight enforces `FLEET_PENDING_DATE` format (`YYYY_MM_DD`) and rejects path-escaping values. | `cd scripts/fleet && bun run fleet-dispatch.ts` |
+| `fleet-merge.yml` | `workflow_run` (CI-2 completes), `workflow_dispatch` | Event-driven sequential merge of Jules-authored PRs: fires when CI-2 passes on a fleet PR head SHA → update branch → squash merge; re-dispatches on conflict. Manual `workflow_dispatch` sweeps all open fleet PRs with currently passing CI. Fail-closed preflight enforces `FLEET_PENDING_DATE` format (`YYYY_MM_DD`) and merge fails closed when zero check runs exist unless `FLEET_ALLOW_NO_CHECKS=true`. | `cd scripts/fleet && bun run fleet-merge.ts` |
+| `copilot-setup-steps.yml` | `workflow_dispatch`, `push`/`pull_request` on `.github/workflows/copilot-setup-steps.yml` and `scripts/fleet/**` | Configures Copilot cloud agent environment with Python 3.12, Bun, and all project dependencies; enforces fleet Bun tests/build on fleet-script changes | Push workflow or `scripts/fleet/**` changes to default branch; runs automatically when Copilot cloud agent starts a session |
+
+### Fleet mutation troubleshooting (`FAILED_PRECONDITION`)
+
+- Fleet mutation entrypoints (`fleet-plan.ts`, `fleet-dispatch.ts`, `fleet-merge.ts`) now fail closed with bounded retries and a `sanitized_error_envelope` that includes `classification`, `hint`, and `root_cause_path`.
+- Retry policy is deterministic: retryable classes (`failed_precondition`, `rate_limit`, `network`) back off in bounded steps and hard-fail after `FLEET_MUTATION_MAX_ATTEMPTS` (default `3`, max `5`).
+- Non-retryable classes (`auth`, `permission`) fail immediately after preflight diagnostics; there is no permissive fallback path.
+- Preflight checks validate `JULES_API_KEY`, `GITHUB_TOKEN`, repo format (`owner/repo`), base-branch format, base-branch visibility in local/origin refs, retry bounds, and fleet date format (`FLEET_PENDING_DATE` must be `YYYY_MM_DD`) before any Jules mutation call.
+- Local validation commands:
+  - `cd scripts/fleet && bun test`
+  - `cd scripts/fleet && bun build fleet-analyze.ts fleet-plan.ts fleet-dispatch.ts fleet-merge.ts --target bun --outdir dist`
 
 ## Milestone evidence mapping (M0..M4)
 
