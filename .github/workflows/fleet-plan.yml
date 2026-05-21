@@ -83,9 +83,11 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # Push to fleet-state branch (unprotected) — avoids main branch protection rules.
-          git fetch origin fleet-state 2>/dev/null \
-            && git checkout -B fleet-state origin/fleet-state \
-            || git checkout --orphan fleet-state
+          if git fetch origin fleet-state 2>/dev/null; then
+            git checkout -B fleet-state origin/fleet-state
+          else
+            git checkout --orphan fleet-state
+          fi
           mkdir -p .fleet
           # Line 1: session ID, Line 2: base branch, Line 3: fleet date (YYYY_MM_DD).
           # fleet-dispatch reads line 3 so it finds the right dated directory even
