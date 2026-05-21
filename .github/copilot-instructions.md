@@ -435,7 +435,11 @@ When the user sends "Fleet deployed" (or similar), it means they have pushed com
 
 ### "Pickup where you left off" resume protocol
 
-When the user says "pickup where you left off" (or equivalent), immediately resume from durable state instead of re-discovery. In order: read the latest checkpoint, confirm repo/remote state, and continue with the first unfinished actionable item (not a fresh broad audit).
+When the user says "pickup where you left off" (or equivalent), immediately resume from durable state instead of re-discovery. Execute this exact sequence:
+1. Read the latest checkpoint.
+2. Run `git fetch origin` and confirm both local-ahead and remote-ahead state (`git log origin/main..HEAD --oneline` and `git log HEAD..origin/main --oneline`).
+3. Identify the first unfinished actionable item from the existing plan/checkpoint.
+4. Continue from that item directly (not a fresh broad audit).
 
 ### Cross-functional review as default post-implementation step
 
@@ -460,6 +464,32 @@ After completing a cross-functional review, automatically proceed to remediate a
 ### Deferred findings issue ledger
 
 When P3+ findings are intentionally deferred, create (or verify) a GitHub issue for each deferred item in the same session, then report a ledger: issue number, deferred item, and owner. If an item is intentionally not filed, state that explicitly with rationale.
+
+### Session-close deferred remediation ledger
+
+Before closing any implementation/audit session, build a full deferred ledger (not just P3 review findings):
+1. Enumerate acknowledged/deferred items from review outputs, ADR "deferred" sections, and session tracker rows.
+2. Reconcile each item against live GitHub issue state (`gh issue view`).
+3. If an item has no issue, open one in the same session and include it in the ledger.
+4. Report one table: deferred item, issue number, and current issue status.
+
+### `/chronicle improve` deterministic flow
+
+When the user runs `/chronicle improve`, execute this sequence without improvising:
+1. Read `.github/copilot-instructions.md`.
+2. Query `session_store` for recent repo-scoped sessions and friction signals.
+3. Present 3-5 evidence-backed recommendations.
+4. Ask which recommendations to apply.
+5. If no selection arrives and execution continues autonomously, apply all proposed recommendations and state that assumption explicitly.
+6. Update `.github/copilot-instructions.md` with only the selected recommendations.
+
+### Multi-issue commit boundary discipline
+
+In multi-issue orchestration sessions, do not carry a large mixed working tree across issues. After each issue-slice reaches green checks, commit and push that slice before starting the next one. Keep each commit scoped to one issue/remediation bundle (including its required tests/docs).
+
+### GitHub CLI multiline body safety
+
+For `gh issue create/edit` and `gh pr create/edit` with multiline markdown bodies, always use `--body-file` with a single-quoted heredoc. Avoid inline `--body` strings when content contains backticks or shell metacharacters.
 
 ### "What skills should have been used?" is an execution directive
 
