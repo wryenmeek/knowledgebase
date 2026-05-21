@@ -17,6 +17,7 @@ import { findUpSync } from "find-up";
 import { Octokit } from "octokit";
 import type { IssueAnalysis } from "./types.js";
 import { jules } from "@google/jules-sdk";
+import "./env.js";
 import { branchExists, getGitRepoInfo, getCurrentBranch } from "./github/git.js";
 import {
   assertMutationPreflight,
