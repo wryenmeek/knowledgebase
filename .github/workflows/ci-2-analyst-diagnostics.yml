@@ -48,6 +48,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+
       - name: Cache pip dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
@@ -64,17 +69,23 @@ jobs:
           # TODO(2026-12): re-evaluate once upstream releases a fix for CVE-2026-3219.
           pip-audit --desc on --ignore-vuln CVE-2026-3219
 
-      - name: Bootstrap repo-local qmd preflight shim
+      - name: Install pinned qmd runtime
         run: |
           set -euo pipefail
-          mkdir -p .ci-bin .qmd/index
-          cat > .ci-bin/qmd <<'EOF'
-          #!/usr/bin/env sh
-          set -eu
-          exit 0
-          EOF
-          chmod +x .ci-bin/qmd
-          printf '%s\n' "${PWD}/.ci-bin" >> "${GITHUB_PATH}"
+          QMD_NPM_PACKAGE="@tobilu/qmd"
+          QMD_VERSION="2.5.1"
+          QMD_EXPECTED_INTEGRITY="sha512-Ep9ccOj1bNRinfTIszp5UZP8xfi5AJNtmzwWDD4ZVm2YdWVS+rFobWJQovj0HD2uIAFrryvbSpZYeGa3flEO7g==" # pragma: allowlist secret
+          QMD_DIST_INTEGRITY="$(npm view "${QMD_NPM_PACKAGE}@${QMD_VERSION}" dist.integrity --registry=https://registry.npmjs.org)"
+          if [ "${QMD_DIST_INTEGRITY}" != "${QMD_EXPECTED_INTEGRITY}" ]; then
+            echo "::error::qmd dist.integrity mismatch (expected ${QMD_EXPECTED_INTEGRITY}, got ${QMD_DIST_INTEGRITY})" >&2
+            exit 1
+          fi
+          npm install --global "${QMD_NPM_PACKAGE}@${QMD_VERSION}" --registry=https://registry.npmjs.org
+          qmd init
+          mkdir -p .qmd/index
+          cp .qmd/index.sqlite .qmd/index/index.sqlite
+          cp .qmd/index.yml .qmd/index/index.yml
+          python3 scripts/kb/qmd_preflight.py --repo-root .
 
       - name: Assert CI-2 read-only profile context
         run: |
@@ -101,30 +112,67 @@ jobs:
           mkdir -p diagnostics
           : > diagnostics/diagnostics.log
 
+          wrapper_start="$(date -u +%s)"
           echo "[CI-2] validate_wiki_governance wrapper" | tee -a diagnostics/diagnostics.log
           python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --quiet 2>&1 | tee -a diagnostics/diagnostics.log
           wrapper_exit="${PIPESTATUS[0]}"
+          wrapper_end="$(date -u +%s)"
+          wrapper_duration="$((wrapper_end - wrapper_start))"
 
+          freshness_start="$(date -u +%s)"
           echo "[CI-2] check_doc_freshness --scope wiki" | tee -a diagnostics/diagnostics.log
           python3 scripts/validation/check_doc_freshness.py --scope wiki --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 --failures-only 2>&1 | tee -a diagnostics/diagnostics.log
           freshness_exit="${PIPESTATUS[0]}"
+          freshness_end="$(date -u +%s)"
+          freshness_duration="$((freshness_end - freshness_start))"
 
+          quality_start="$(date -u +%s)"
           echo "[CI-2] content_quality_report --mode summary" | tee -a diagnostics/diagnostics.log
           python3 scripts/reporting/content_quality_report.py --mode summary --path wiki --failures-only 2>&1 | tee -a diagnostics/diagnostics.log
           quality_exit="${PIPESTATUS[0]}"
+          quality_end="$(date -u +%s)"
+          quality_duration="$((quality_end - quality_start))"
 
+          lint_start="$(date -u +%s)"
           echo "[CI-2] lint_wiki --strict" | tee -a diagnostics/diagnostics.log
           python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict 2>&1 | tee -a diagnostics/diagnostics.log
           lint_exit="${PIPESTATUS[0]}"
+          lint_end="$(date -u +%s)"
+          lint_duration="$((lint_end - lint_start))"
 
+          tests_start="$(date -u +%s)"
           echo "[CI-2] pytest" | tee -a diagnostics/diagnostics.log
-          python3 -m pytest tests/ -q --cov=scripts/kb --cov-fail-under=90 2>&1 | tee -a diagnostics/diagnostics.log
+          python3 -m pytest tests/ -q --cov=scripts/kb --cov=scripts.validation._runtime_budget --cov-fail-under=90 2>&1 | tee -a diagnostics/diagnostics.log
           tests_exit="${PIPESTATUS[0]}"
+          tests_end="$(date -u +%s)"
+          tests_duration="$((tests_end - tests_start))"
 
           diagnostics_exit=0
           if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then
             diagnostics_exit=1
           fi
+
+          WRAPPER_DURATION="${wrapper_duration}" \
+          FRESHNESS_DURATION="${freshness_duration}" \
+          QUALITY_DURATION="${quality_duration}" \
+          LINT_DURATION="${lint_duration}" \
+          TESTS_DURATION="${tests_duration}" \
+          python3 - <<'PY' > diagnostics/runtime-metrics.json
+          import json
+          import os
+
+          payload = {
+              "workflow_id": "ci-2-analyst-diagnostics",
+              "stage_durations_seconds": {
+                  "validate_wiki_governance": int(os.environ["WRAPPER_DURATION"]),
+                  "check_doc_freshness": int(os.environ["FRESHNESS_DURATION"]),
+                  "content_quality_summary": int(os.environ["QUALITY_DURATION"]),
+                  "lint_wiki_strict": int(os.environ["LINT_DURATION"]),
+                  "pytest_suite": int(os.environ["TESTS_DURATION"]),
+              },
+          }
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
 
           echo "[CI-2] wrapper_exit=${wrapper_exit} freshness_exit=${freshness_exit} quality_exit=${quality_exit} lint_exit=${lint_exit} tests_exit=${tests_exit} diagnostics_exit=${diagnostics_exit}" | tee -a diagnostics/diagnostics.log
           echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"
@@ -137,6 +185,45 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
           exit 0
 
+      - name: Evaluate CI-2 runtime budgets
+        id: runtime-budget
+        if: ${{ always() && steps.diagnostics.outputs.exit_code != '' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from scripts.validation import _runtime_budget
+
+          metrics_path = Path("diagnostics/runtime-metrics.json")
+          metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
+          evaluation = _runtime_budget.evaluate_workflow_budgets(
+              config=config,
+              workflow_id=metrics["workflow_id"],
+              stage_durations_seconds=metrics["stage_durations_seconds"],
+          )
+          artifact = _runtime_budget.build_artifact_payload(
+              evaluation=evaluation,
+              config=config,
+              budget_config_path="schema/runtime-budgets.json",
+          )
+          report_path = Path("diagnostics/runtime-budget-report.json")
+          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
+              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
+              output_handle.write(f"overall_status={artifact['overall_status']}\n")
+          PY
+
+      - name: Warn on CI-2 runtime budget breaches
+        if: steps.runtime-budget.outputs.overall_status == 'warn'
+        run: |
+          set -euo pipefail
+          echo "::warning::CI-2 runtime budgets exceeded warn threshold(s). See diagnostics/runtime-budget-report.json and the step summary."
+
       - name: Upload diagnostics artifacts
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -146,14 +233,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Fail explicitly when diagnostics fail
-        if: steps.diagnostics.outputs.exit_code != '0'
+      - name: Fail explicitly when diagnostics fail or runtime budgets fail
+        if: ${{ steps.diagnostics.outputs.exit_code != '0' || steps.runtime-budget.outputs.overall_status == 'fail' }}
         env:
           WRAPPER_EXIT: ${{ steps.diagnostics.outputs.wrapper_exit }}
           FRESHNESS_EXIT: ${{ steps.diagnostics.outputs.freshness_exit }}
           QUALITY_EXIT: ${{ steps.diagnostics.outputs.quality_exit }}
           LINT_EXIT: ${{ steps.diagnostics.outputs.lint_exit }}
           TESTS_EXIT: ${{ steps.diagnostics.outputs.tests_exit }}
+          RUNTIME_BUDGET_STATUS: ${{ steps.runtime-budget.outputs.overall_status }}
         run: |
           set -euo pipefail
           [ "${WRAPPER_EXIT}" = "0" ] || echo "::error::validate_wiki_governance failed. FIX: run python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --quiet locally to see failures."
@@ -161,6 +249,7 @@ jobs:
           [ "${QUALITY_EXIT}" = "0" ] || echo "::error::content_quality_report failed. FIX: add missing sources/updated_at fields or resolve placeholder markers in affected wiki pages."
           [ "${LINT_EXIT}" = "0" ] || echo "::error::lint_wiki failed. FIX: run python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict locally to see violations with remediation hints."
           [ "${TESTS_EXIT}" = "0" ] || echo "::error::pytest failed. FIX: run python3 -m pytest tests/ -q locally to see failures."
+          [ "${RUNTIME_BUDGET_STATUS}" != "fail" ] || echo "::error::CI-2 runtime budgets exceeded fail threshold(s). See diagnostics/runtime-budget-report.json and the step summary for remediation."
           exit 1
 
   lint-workflows:

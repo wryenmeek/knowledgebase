@@ -238,6 +238,7 @@ Operators can validate the landed framework with these repo-local entrypoints:
 ## Write and safety controls
 
 - Canonical write allowlist for automation: `wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`, `raw/rejected/**`.
+- CI-3 has one narrow delete-only exception outside the write allowlist: after a successful ingest handoff, it may remove `raw/inbox/**` files listed in the generated ingest manifest. No new writes under `raw/inbox/**` are allowed.
 - The current CI/runtime write allowlist above is unchanged by the approved
   post-MVP package surfaces; those surfaces only widen where future code may
   live, not what automation may write by default.
@@ -293,3 +294,6 @@ Key architecture decisions are captured in ADRs:
 - [`ADR-020`](decisions/ADR-020-post-mvp-package-family-criteria.md): criteria for approving post-MVP script package families
 - [`ADR-021`](decisions/ADR-021-google-drive-source-monitoring.md): Google Drive source monitoring pipeline
 - [`ADR-022`](decisions/ADR-022-afk-uses-scripts-hitl-uses-copilot-cli.md): three-tier CI executor model — AFK writes use scripts, AFK advisory passes and HITL use Copilot CLI
+- [`ADR-023`](decisions/ADR-023-batch-query-persistence-design.md): batch query persistence design (single lock, partial failure, and size limits)
+- [`ADR-024`](decisions/ADR-024-synthesis-curator-stage-design.md): CI-3 synthesis curator stage design for entity/concept draft generation
+- [`ADR-025`](decisions/ADR-025-runtime-budget-contract-scope.md): runtime-budget contract scope and schema/workflow parity requirements

@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2026-05-19
+last_updated: 2026-05-20
 ---
 
 # CONTEXT — .github/skills/
@@ -18,6 +18,7 @@ Vocabulary for the skill and agent persona layer. `AGENTS.md` takes precedence o
 | intake lane | The governing pathway for processing new source material. Requires: boundary validation → provenance check → evidence verification → policy review → synthesis. |
 | AFK lane | Operator-direct pathway for tasks on the ADR-014 allowlist. Skips persona pipeline but still requires lock, log entry, and post-publication patrol. |
 | evidence-verifier → policy-arbiter → synthesis-curator pipeline | The three-persona sequence that governs non-AFK synthesis. `knowledgebase-orchestrator` tests enforce this ordering — AFK cannot bypass without an allowlist entry. |
+| synthesis combined entrypoint | `.github/skills/synthesize-entity-page/logic/synthesize_combined.py` — CI-3 entrypoint that synthesizes entity + concept pages in one critical section under a single `wiki/.kb_write.lock` acquisition. |
 | `parents[4]` import pattern | The canonical way to import from `scripts.kb` inside skill logic files: `sys.path.insert(0, str(Path(__file__).resolve().parents[4]))`. Resolves 4 levels up from `logic/<file>.py` to the repo root. |
 | skill-first execution | When a task matches a skill, invoke and follow that skill workflow. Do not quick-implement around an applicable skill. |
 
@@ -27,6 +28,7 @@ Vocabulary for the skill and agent persona layer. `AGENTS.md` takes precedence o
 |-----------|-------------|
 | Skill-first execution | If a task matches a skill, invoke the skill workflow. Do not skip required skill phases for non-trivial work. |
 | Fail-closed on lock/policy | Skill logic files in `logic/` must fail closed on any lock contention, policy gap, or validation error. Partial success is treated as failure on protected/write paths. |
+| Combined synthesis uses one lock | CI-3 synthesis flows run entity and concept draft generation under one lock-critical section (`synthesize_combined.py`) and release only after all writes/index/log updates complete. |
 | `parents[4]` for imports | Skill logic files use `sys.path.insert(0, str(Path(__file__).resolve().parents[4]))` to import from `scripts.kb`. Never inline-reimplement helpers from canonical modules. |
 | Logic files need matrix rows | Every `logic/*.py` file needs a row in the AGENTS.md write-surface matrix. A doc-only skill (no `logic/`) needs no row. |
 

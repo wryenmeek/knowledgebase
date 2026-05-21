@@ -54,21 +54,59 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("Psych.parse_file", self.workflow_text)
 
     def test_workflow_is_diagnostics_only_with_explicit_failures(self) -> None:
-        self.assertIn("Bootstrap repo-local qmd preflight shim", self.workflow_text)
-        self.assertIn("mkdir -p .ci-bin .qmd/index", self.workflow_text)
-        self.assertIn('printf \'%s\\n\' "${PWD}/.ci-bin" >> "${GITHUB_PATH}"', self.workflow_text)
+        self.assertIn("Install pinned qmd runtime", self.workflow_text)
+        self.assertIn("Set up Node.js", self.workflow_text)
+        self.assertIn("uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444", self.workflow_text)
+        self.assertIn('QMD_NPM_PACKAGE="@tobilu/qmd"', self.workflow_text)
+        self.assertIn('QMD_VERSION="2.5.1"', self.workflow_text)
+        self.assertIn(
+            'QMD_EXPECTED_INTEGRITY="sha512-Ep9ccOj1bNRinfTIszp5UZP8xfi5AJNtmzwWDD4ZVm2YdWVS+rFobWJQovj0HD2uIAFrryvbSpZYeGa3flEO7g=="',
+            self.workflow_text,
+        )
+        self.assertIn(
+            'npm view "${QMD_NPM_PACKAGE}@${QMD_VERSION}" dist.integrity --registry=https://registry.npmjs.org',
+            self.workflow_text,
+        )
+        self.assertIn(
+            'if [ "${QMD_DIST_INTEGRITY}" != "${QMD_EXPECTED_INTEGRITY}" ]; then',
+            self.workflow_text,
+        )
+        self.assertIn(
+            "::error::qmd dist.integrity mismatch",
+            self.workflow_text,
+        )
+        self.assertIn("exit 1", self.workflow_text)
+        self.assertIn(
+            'npm install --global "${QMD_NPM_PACKAGE}@${QMD_VERSION}" --registry=https://registry.npmjs.org',
+            self.workflow_text,
+        )
+        self.assertIn("qmd init", self.workflow_text)
+        self.assertIn("cp .qmd/index.sqlite .qmd/index/index.sqlite", self.workflow_text)
+        self.assertIn("cp .qmd/index.yml .qmd/index/index.yml", self.workflow_text)
+        self.assertIn("python3 scripts/kb/qmd_preflight.py --repo-root .", self.workflow_text)
+        self.assertNotIn(".ci-bin", self.workflow_text)
+        self.assertNotIn("cat > .ci-bin/qmd", self.workflow_text)
         self.assertIn(
             "python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
             self.workflow_text,
         )
         self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
         self.assertIn("python3 -m pytest tests/ -q", self.workflow_text)
+        self.assertIn("--cov=scripts.validation._runtime_budget", self.workflow_text)
+        self.assertIn("Secret scan (gitleaks)", self.workflow_text)
+        self.assertIn("Dependency vulnerability audit (pip-audit)", self.workflow_text)
         self.assertIn(
             "uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
             self.workflow_text,
         )
         self.assertIn("if: always()", self.workflow_text)
-        self.assertIn("if: steps.diagnostics.outputs.exit_code != '0'", self.workflow_text)
+        self.assertIn(
+            "steps.diagnostics.outputs.exit_code != '0' || steps.runtime-budget.outputs.overall_status == 'fail'",
+            self.workflow_text,
+        )
+        self.assertIn("Evaluate CI-2 runtime budgets", self.workflow_text)
+        self.assertIn("schema/runtime-budgets.json", self.workflow_text)
+        self.assertIn("diagnostics/runtime-budget-report.json", self.workflow_text)
         self.assertIn("exit 1", self.workflow_text)
 
         forbidden_write_or_release_commands = (

@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2026-04-29
+last_updated: 2026-05-20
 ---
 
 # CONTEXT — schema/
@@ -20,6 +20,7 @@ Vocabulary for the schema and contract layer. `AGENTS.md` takes precedence on an
 | ontology-entity-contract | `schema/ontology-entity-contract.md` — governs entity identity, alias rules, canonical naming, and merge/split decisions. |
 | SourceRef | Canonical citation format used throughout schema documentation: `repo://<owner>/<repo>/<path>@<git_sha>#<anchor>?sha256=<64-hex>`. |
 | report-artifact-contract | `schema/report-artifact-contract.md` — defines the JSON schema for wiki report artifacts (quality scores, content quality reports). |
+| runtime-budgets | `schema/runtime-budgets.json` — canonical runtime budget thresholds (warn/fail in seconds) for CI stage timing enforcement and fail-closed classification. |
 | github-source-registry-contract | `schema/github-source-registry-contract.md` — defines the JSON schema for `*.source-registry.json` files in `raw/github-sources/`. |
 | drive-source-registry-contract | `schema/drive-source-registry-contract.md` — defines the JSON schema for `*.source-registry.json` files in `raw/drive-sources/`. |
 | rejection-registry-contract | `schema/rejection-registry-contract.md` — defines the contract for write-once rejection records in `raw/rejected/`. Governs `log-intake-rejection` skill. |
@@ -44,6 +45,7 @@ Vocabulary for the schema and contract layer. `AGENTS.md` takes precedence on an
 | `ingest-checklist.md` | Ordered intake prerequisites checklist. |
 | `drift-report-contract.md` | JSON schema for drift reports. |
 | `report-artifact-contract.md` | JSON schema for quality report artifacts. |
+| `runtime-budgets.json` | Canonical CI runtime budget thresholds used by workflow runtime-budget evaluators. |
 | `github-source-registry-contract.md` | JSON schema for GitHub source registry files. |
 | `drive-source-registry-contract.md` | JSON schema for Drive source registry files. |
 | `rejection-registry-contract.md` | Contract for write-once rejection records (ADR-013). |

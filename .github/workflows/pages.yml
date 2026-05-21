@@ -10,20 +10,19 @@ on:
   workflow_dispatch:
 
 permissions:
-  pages: write
-  id-token: write
+  contents: read
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -32,34 +31,100 @@ jobs:
           cache: 'pip'
           cache-dependency-path: requirements-pages.txt
 
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+
       - name: Install MkDocs Material
         run: pip install -r requirements-pages.txt
 
-      - name: Bootstrap qmd preflight shim
+      - name: Install pinned qmd runtime
         run: |
-          mkdir -p .ci-bin .qmd/index
-          cat > .ci-bin/qmd <<'EOF'
-          #!/usr/bin/env sh
-          set -eu
-          exit 0
-          EOF
-          chmod +x .ci-bin/qmd
+          set -euo pipefail
+          QMD_NPM_PACKAGE="@tobilu/qmd"
+          QMD_VERSION="2.5.1"
+          QMD_EXPECTED_INTEGRITY="sha512-Ep9ccOj1bNRinfTIszp5UZP8xfi5AJNtmzwWDD4ZVm2YdWVS+rFobWJQovj0HD2uIAFrryvbSpZYeGa3flEO7g==" # pragma: allowlist secret
+          QMD_DIST_INTEGRITY="$(npm view "${QMD_NPM_PACKAGE}@${QMD_VERSION}" dist.integrity --registry=https://registry.npmjs.org)"
+          if [ "${QMD_DIST_INTEGRITY}" != "${QMD_EXPECTED_INTEGRITY}" ]; then
+            echo "::error::qmd dist.integrity mismatch (expected ${QMD_EXPECTED_INTEGRITY}, got ${QMD_DIST_INTEGRITY})" >&2
+            exit 1
+          fi
+          npm install --global "${QMD_NPM_PACKAGE}@${QMD_VERSION}" --registry=https://registry.npmjs.org
+          qmd --version
 
-      - name: Run qmd preflight
-        run: PATH="$PWD/.ci-bin:$PATH" python3 scripts/kb/qmd_preflight.py --repo-root .
+      - name: Initialize qmd runtime index resource
+        run: |
+          set -euo pipefail
+          qmd init
+          mkdir -p .qmd/index
+          cp .qmd/index.sqlite .qmd/index/index.sqlite
+          cp .qmd/index.yml .qmd/index/index.yml
 
       - name: Build MkDocs site
         run: mkdocs build --strict
 
+      - name: Build qmd wiki collection
+        run: |
+          set -euo pipefail
+          echo "::add-mask::${GITHUB_WORKSPACE}"
+          qmd collection add wiki --name wiki
+
+      - name: Run qmd preflight
+        run: python3 scripts/kb/qmd_preflight.py --repo-root .
+
+      - name: Build qmd embeddings
+        run: qmd embed
+
+      - name: Refresh qmd index export
+        run: |
+          set -euo pipefail
+          rm -rf .qmd/index
+          mkdir -p .qmd/index
+          cp .qmd/index.sqlite .qmd/index/index.sqlite
+          cp .qmd/index.yml .qmd/index/index.yml
+
+      - name: Upload qmd index artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: qmd-index-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .qmd/index/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Install pinned Pagefind runtime
+        run: |
+          set -euo pipefail
+          PF_NPM_PACKAGE="pagefind"
+          PF_VERSION="1.5.2"
+          PF_EXPECTED_INTEGRITY="sha512-XTUaK0hXMCu2jszWE584JGQT7y284TmMV9l/HX3rnG5uo3rHI/uHU56XTyyyPFjeWEBxECbAi0CaFDJOONtG0Q==" # pragma: allowlist secret
+          PF_DIST_INTEGRITY="$(npm view "${PF_NPM_PACKAGE}@${PF_VERSION}" dist.integrity --registry=https://registry.npmjs.org)"
+          if [ "${PF_DIST_INTEGRITY}" != "${PF_EXPECTED_INTEGRITY}" ]; then
+            echo "::error::pagefind dist.integrity mismatch (expected ${PF_EXPECTED_INTEGRITY}, got ${PF_DIST_INTEGRITY})" >&2
+            exit 1
+          fi
+          npm install --global "${PF_NPM_PACKAGE}@${PF_VERSION}" --registry=https://registry.npmjs.org
+          pagefind --version
+
       - name: Build Pagefind index
-        run: npx --yes pagefind --site site
+        run: pagefind --site site
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: site/
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
-

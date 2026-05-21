@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import textwrap
 import unittest
 
@@ -196,6 +199,376 @@ def _parse_job_mapping_block(text: str, job_name: str, key: str) -> dict[str, st
     )
 
 
+def _leading_spaces(value: str) -> int:
+    return len(value) - len(value.lstrip(" "))
+
+
+def _extract_step_run_script(workflow_text: str, *, step_name: str) -> str:
+    lines = workflow_text.splitlines()
+    step_start = next(
+        (index for index, line in enumerate(lines) if line.strip() == f"- name: {step_name}"),
+        None,
+    )
+    if step_start is None:
+        raise AssertionError(f"Unable to locate CI-3 step: {step_name}")
+    step_indent = _leading_spaces(lines[step_start])
+
+    run_index = next(
+        (
+            index
+            for index in range(step_start + 1, len(lines))
+            if lines[index].strip() == "run: |" and _leading_spaces(lines[index]) > step_indent
+        ),
+        None,
+    )
+    if run_index is None:
+        raise AssertionError(f"Unable to locate run block for CI-3 step: {step_name}")
+    run_indent = _leading_spaces(lines[run_index])
+
+    raw_script_lines: list[str] = []
+    for line in lines[run_index + 1 :]:
+        if line.strip() and _leading_spaces(line) <= run_indent:
+            break
+        if line.strip() == "":
+            raw_script_lines.append("")
+            continue
+        raw_script_lines.append(line)
+
+    non_empty_lines = [line for line in raw_script_lines if line.strip()]
+    if not non_empty_lines:
+        raise AssertionError(f"CI-3 run block is empty for step: {step_name}")
+
+    script_indent = min(_leading_spaces(line) for line in non_empty_lines)
+    script_lines = [line[script_indent:] if line.strip() else "" for line in raw_script_lines]
+    return "\n".join(script_lines)
+
+
+def _extract_ci3_preflight_script(workflow_text: str) -> str:
+    return _extract_step_run_script(
+        workflow_text,
+        step_name="Assert CI-3 preflight prerequisites",
+    )
+
+
+def _extract_ci3_source_resolution_script(workflow_text: str) -> str:
+    return _extract_step_run_script(
+        workflow_text,
+        step_name="Resolve CI-3 source inputs",
+    )
+
+
+def _extract_ci3_write_path_script(workflow_text: str) -> str:
+    return _extract_step_run_script(
+        workflow_text,
+        step_name="Run CI-3 required checks and write path",
+    )
+
+
+def _with_mapfile_compat(script: str) -> str:
+    mapfile_compat = textwrap.dedent(
+        """\
+        if ! command -v mapfile >/dev/null 2>&1; then
+          mapfile() {
+            local trim_newline="false"
+            if [[ "${1:-}" == "-t" ]]; then
+              trim_newline="true"
+              shift
+            fi
+
+            local target_array="${1:-MAPFILE}"
+            if [[ ! "${target_array}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+              echo "mapfile compatibility shim received invalid array name: ${target_array}" >&2
+              return 2
+            fi
+
+            local index=0
+            local line
+            eval "${target_array}=()"
+
+            while IFS= read -r line || [[ -n "${line}" ]]; do
+              if [[ "${trim_newline}" != "true" ]]; then
+                line="${line}"$'\\n'
+              fi
+              local quoted_line
+              printf -v quoted_line '%q' "${line}"
+              eval "${target_array}[${index}]=${quoted_line}"
+              index=$((index + 1))
+            done
+          }
+        fi
+        """
+    ).strip()
+    return f"{mapfile_compat}\n{script}"
+
+
+def _run_ci3_preflight_script(
+    workflow_text: str,
+    *,
+    dispatch_changed_paths: tuple[str, ...],
+    manual_approved: str = "true",
+    dispatch_sha: str = "1111111111111111111111111111111111111111",
+    dispatch_merge_base: str = "0000000000000000000000000000000000000000",
+    dispatch_merge_base_exit: int = 0,
+    dispatch_diff_exit: int = 0,
+) -> subprocess.CompletedProcess[str]:
+    script = _with_mapfile_compat(_extract_ci3_preflight_script(workflow_text))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        workflow_file = temp_root / ".github/workflows/ci-3-pr-producer.yml"
+        workflow_file.parent.mkdir(parents=True, exist_ok=True)
+        workflow_file.write_text(workflow_text, encoding="utf-8")
+
+        scripts_dir = temp_root / "scripts/kb"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        for script_name in ("ingest.py", "update_index.py", "lint_wiki.py", "persist_query.py"):
+            (scripts_dir / script_name).write_text("# stub\n", encoding="utf-8")
+
+        fake_bin = temp_root / "bin"
+        fake_bin.mkdir(parents=True, exist_ok=True)
+
+        fake_git = fake_bin / "git"
+        fake_git.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "if [[ \"${1:-}\" == \"merge-base\" ]]; then\n"
+            "  if [[ \"${MOCK_DISPATCH_MERGE_BASE_EXIT:-0}\" != \"0\" ]]; then\n"
+            "    exit \"${MOCK_DISPATCH_MERGE_BASE_EXIT}\"\n"
+            "  fi\n"
+            "  printf '%s\\n' \"${MOCK_DISPATCH_MERGE_BASE:-}\"\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \"diff\" ]]; then\n"
+            "  if [[ \"${MOCK_DISPATCH_DIFF_EXIT:-0}\" != \"0\" ]]; then\n"
+            "    exit \"${MOCK_DISPATCH_DIFF_EXIT}\"\n"
+            "  fi\n"
+            "  if [[ -n \"${MOCK_DISPATCH_CHANGED_PATHS:-}\" ]]; then\n"
+            "    while IFS= read -r changed_path; do\n"
+            "      [[ -z \"${changed_path}\" ]] && continue\n"
+            "      printf '%s\\0' \"${changed_path}\"\n"
+            "    done <<< \"${MOCK_DISPATCH_CHANGED_PATHS}\"\n"
+            "  fi\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        fake_git.chmod(0o755)
+
+        fake_gh = fake_bin / "gh"
+        fake_gh.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        fake_gh.chmod(0o755)
+
+        github_output_path = temp_root / "github-output.txt"
+        github_output_path.write_text("", encoding="utf-8")
+
+        env = os.environ.copy()
+        env.update(
+            {
+                "CI_ID": "CI-3",
+                "TOKEN_PROFILE": "tp-pr-producer",
+                "WRITE_ALLOWLIST": "wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**",
+                "FALLBACK_MANUAL_INSTRUCTIONS": "manual fallback",
+                "EVENT_NAME": "workflow_dispatch",
+                "MANUAL_APPROVED": manual_approved,
+                "DISPATCH_SHA": dispatch_sha,
+                "DEFAULT_BRANCH": "main",
+                "WORKFLOW_RUN_NAME": "",
+                "WORKFLOW_RUN_EVENT": "",
+                "WORKFLOW_RUN_CONCLUSION": "",
+                "WORKFLOW_FILE": ".github/workflows/ci-3-pr-producer.yml",
+                "GITHUB_OUTPUT": str(github_output_path),
+                "MOCK_DISPATCH_CHANGED_PATHS": "\n".join(dispatch_changed_paths),
+                "MOCK_DISPATCH_MERGE_BASE": dispatch_merge_base,
+                "MOCK_DISPATCH_MERGE_BASE_EXIT": str(dispatch_merge_base_exit),
+                "MOCK_DISPATCH_DIFF_EXIT": str(dispatch_diff_exit),
+                "PATH": f"{fake_bin}:{env.get('PATH', '')}",
+            }
+        )
+
+        return subprocess.run(
+            ["bash", "-c", script],
+            cwd=temp_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+
+def _run_ci3_source_resolution_script(
+    workflow_text: str,
+    *,
+    manual_source_path: str = "",
+    inbox_files: tuple[str, ...] = ("raw/inbox/example-source.md",),
+    extra_files: tuple[str, ...] = (),
+    symlinks: tuple[tuple[str, str], ...] = (),
+) -> subprocess.CompletedProcess[str]:
+    script = _with_mapfile_compat(_extract_ci3_source_resolution_script(workflow_text))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        for rel_path in inbox_files + extra_files:
+            target = temp_root / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("stub\n", encoding="utf-8")
+
+        for link_path, link_target in symlinks:
+            link = temp_root / link_path
+            link.parent.mkdir(parents=True, exist_ok=True)
+            link.symlink_to(link_target)
+
+        github_output_path = temp_root / "github-output.txt"
+        github_output_path.write_text("", encoding="utf-8")
+
+        env = os.environ.copy()
+        env.update(
+            {
+                "MANUAL_SOURCE_PATH": manual_source_path,
+                "GITHUB_OUTPUT": str(github_output_path),
+            }
+        )
+
+        return subprocess.run(
+            ["bash", "-c", script],
+            cwd=temp_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+
+def _run_ci3_write_path_script(
+    workflow_text: str,
+    *,
+    tracked_changed_path: str = "wiki/index.md",
+) -> tuple[subprocess.CompletedProcess[str], str, dict[str, object]]:
+    script = _with_mapfile_compat(_extract_ci3_write_path_script(workflow_text))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        (temp_root / "raw/inbox").mkdir(parents=True, exist_ok=True)
+        (temp_root / "raw/inbox/.ci3-ingest-manifest").write_text(
+            "raw/inbox/example-source.md\n",
+            encoding="utf-8",
+        )
+        (temp_root / "wiki/sources").mkdir(parents=True, exist_ok=True)
+        (temp_root / "wiki/sources/example.md").write_text("# Source: Example\n", encoding="utf-8")
+
+        fake_bin = temp_root / "bin"
+        fake_bin.mkdir(parents=True, exist_ok=True)
+
+        real_python = subprocess.run(
+            ["python3", "-c", "import sys; print(sys.executable)"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        fake_python = fake_bin / "python3"
+        fake_python.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "if [[ \"${1:-}\" == \"-m\" && \"${2:-}\" == \"scripts.kb.ingest\" ]]; then\n"
+            "  cat <<'JSON'\n"
+            '{"status":"ok","per_source":[{"status":"written","source_page":"wiki/sources/example.md"}]}\n'
+            "JSON\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \".github/skills/extract-entities-and-claims/logic/extract_entities.py\" ]]; then\n"
+            "  output_path=\"\"\n"
+            "  while [[ \"$#\" -gt 0 ]]; do\n"
+            "    if [[ \"$1\" == \"--output\" ]]; then\n"
+            "      output_path=\"$2\"\n"
+            "      shift 2\n"
+            "      continue\n"
+            "    fi\n"
+            "    shift\n"
+            "  done\n"
+            "  if [[ -n \"${output_path}\" ]]; then\n"
+            "    cat <<'JSON' > \"${output_path}\"\n"
+            '{"entities":[],"concepts":[],"claims":[]}\n'
+            "JSON\n"
+            "  fi\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \".github/skills/synthesize-entity-page/logic/synthesize_combined.py\" ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \"-c\" && \"${2:-}\" == *\"from scripts.kb import update_index\"* ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \"scripts/kb/lint_wiki.py\" ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \"-m\" && \"${2:-}\" == \"scripts.kb.persist_query\" ]]; then\n"
+            "  cat <<'JSON'\n"
+            '{"status":"no_write_policy","reason_code":"policy_enforced"}\n'
+            "JSON\n"
+            "  exit 0\n"
+            "fi\n"
+            "exec \"${REAL_PYTHON}\" \"$@\"\n",
+            encoding="utf-8",
+        )
+        fake_python.chmod(0o755)
+
+        fake_git = fake_bin / "git"
+        fake_git.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "while [[ \"${1:-}\" == \"-c\" ]]; do\n"
+            "  shift 2\n"
+            "done\n"
+            "if [[ \"${1:-}\" == \"diff\" ]]; then\n"
+            "  printf 'M\\t%s\\0' \"${MOCK_TRACKED_CHANGED_PATH:-wiki/index.md}\"\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == \"ls-files\" ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        fake_git.chmod(0o755)
+
+        github_output_path = temp_root / "github-output.txt"
+        github_output_path.write_text("", encoding="utf-8")
+
+        env = os.environ.copy()
+        env.update(
+            {
+                "GITHUB_OUTPUT": str(github_output_path),
+                "SYNTHESIS_GITHUB_TOKEN": "stub-token",
+                "WRITE_ALLOWLIST": "wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**",
+                "REAL_PYTHON": real_python,
+                "MOCK_TRACKED_CHANGED_PATH": tracked_changed_path,
+                "PATH": f"{fake_bin}:{env.get('PATH', '')}",
+            }
+        )
+
+        result = subprocess.run(
+            ["bash", "-c", script],
+            cwd=temp_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        runtime_metrics_path = temp_root / "ci3-metrics/runtime-metrics.json"
+        runtime_metrics = (
+            json.loads(runtime_metrics_path.read_text(encoding="utf-8"))
+            if runtime_metrics_path.exists()
+            else {}
+        )
+        return result, github_output_path.read_text(encoding="utf-8"), runtime_metrics
+
+
 class Ci3WorkflowContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.assertTrue(WORKFLOW_PATH.exists(), f"Missing workflow file: {WORKFLOW_PATH}")
@@ -259,16 +632,41 @@ class Ci3WorkflowContractTests(unittest.TestCase):
 
     def test_preflight_and_allowlist_fail_closed_controls_are_explicit(self) -> None:
         required_controls = (
-            "WRITE_ALLOWLIST: wiki/**,wiki/index.md,wiki/log.md,raw/processed/**",
-            "Bootstrap repo-local qmd preflight shim",
-            "mkdir -p .ci-bin .qmd/index",
-            'printf \'%s\\n\' "${PWD}/.ci-bin" >> "${GITHUB_PATH}"',
+            "WRITE_ALLOWLIST: wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**",
+            "DISPATCH_SHA: ${{ github.sha }}",
+            "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}",
+            "fetch-depth: 0",
+            "persist-credentials: false",
+            "Set up Node.js",
+            "uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444",
+            "Install pinned qmd runtime",
+            'QMD_NPM_PACKAGE="@tobilu/qmd"',
+            'QMD_VERSION="2.5.1"',
+            'QMD_EXPECTED_INTEGRITY="sha512-Ep9ccOj1bNRinfTIszp5UZP8xfi5AJNtmzwWDD4ZVm2YdWVS+rFobWJQovj0HD2uIAFrryvbSpZYeGa3flEO7g=="',
+            'npm view "${QMD_NPM_PACKAGE}@${QMD_VERSION}" dist.integrity --registry=https://registry.npmjs.org',
+            'if [ "${QMD_DIST_INTEGRITY}" != "${QMD_EXPECTED_INTEGRITY}" ]; then',
+            "::error::qmd dist.integrity mismatch",
+            'npm install --global "${QMD_NPM_PACKAGE}@${QMD_VERSION}" --registry=https://registry.npmjs.org',
+            "qmd init",
+            "cp .qmd/index.sqlite .qmd/index/index.sqlite",
+            "cp .qmd/index.yml .qmd/index/index.yml",
+            "python3 scripts/kb/qmd_preflight.py --repo-root .",
             "Run framework governance wrapper",
             "python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
             "reject:trusted_trigger_model:manual_approval_required",
+            "prereq_missing:ghaw_readiness:missing_dispatch_sha",
+            "prereq_missing:ghaw_readiness:dispatch_merge_base_unavailable",
+            "prereq_missing:ghaw_readiness:dispatch_changed_paths_unavailable",
             "reject:trusted_trigger_model:unexpected_handoff_workflow",
             "reject:trusted_trigger_model:workflow_run_event_not_push",
             "reject:trusted_trigger_model:upstream_ci1_not_success",
+            "reject:path_filter:no_changed_paths_detected",
+            "reject:path_filter:sensitive_control_plane_path:",
+            "reject:trusted_trigger_model:manual_dispatch_sensitive_paths_present",
+            'dispatch_merge_base="$(git merge-base "origin/${DEFAULT_BRANCH}" "${DISPATCH_SHA}" 2>/dev/null)"',
+            'git diff --name-only -z "${dispatch_merge_base}" "${DISPATCH_SHA}" > "${dispatch_diff_file}" 2>/dev/null',
+            "while IFS= read -r -d '' changed_path || [[ -n \"${changed_path:-}\" ]]; do",
+            ".github/workflows/*|.github/skills/*|.github/agents/*|.github/extensions/*|scripts/*|schema/*|AGENTS.md|pyproject.toml)",
             "reject:permissions_scope:minimum_permissions_mismatch",
             "reject:permissions_scope:permissions_block_missing:top_level",
             "reject:permissions_scope:permissions_block_duplicated:top_level",
@@ -283,11 +681,208 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "prereq_missing:concurrency_guard:missing_kb_write_group",
             "prereq_missing:concurrency_guard:cancel_in_progress_mismatch",
             "reject:permissions_scope:out_of_allowlist_write:",
+            "manual workflow_dispatch cannot run when commit includes sensitive control-plane paths",
+            "split sensitive control-plane changes from manual CI-3 dispatch commits",
+            "git -c core.quotepath=false diff --name-status -z --no-renames -- .",
+            "git -c core.quotepath=false ls-files --others --exclude-standard -z -- .",
             "reason_code=lock_unavailable",
+            "gh auth setup-git",
+            'if [[ "${changed_path}" == ci3-metrics/* ]]; then',
+            "No allowlisted repository changes detected after CI-3 write path.",
             "exit 1",
+            'repo_root="$(realpath .)"',
+            'inbox_root="$(realpath raw/inbox)"',
+            'if [[ -L "${MANUAL_SOURCE_PATH}" ]]; then',
+            "reject:path_filter:manual_source_symlink:",
+            'manual_resolved="$(realpath "${MANUAL_SOURCE_PATH}")"',
+            'manual_relative="${manual_resolved#"${repo_root}/"}"',
+            'source_resolved="$(realpath "${source_path}")"',
         )
         for expected in required_controls:
             self.assertIn(expected, self.workflow_text)
+        self.assertNotIn(".ci-bin", self.workflow_text)
+        self.assertNotIn("cat > .ci-bin/qmd", self.workflow_text)
+
+    def test_preflight_checkout_step_uses_fetch_depth_zero(self) -> None:
+        self.assertRegex(
+            self.workflow_text,
+            r"(?ms)- name: Checkout workflow context\s+uses: actions/checkout@[^\n]+\n\s+with:\n\s+fetch-depth:\s*0\b",
+        )
+
+    def test_preflight_behavior_rejects_manual_dispatch_sensitive_control_plane_paths(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            dispatch_changed_paths=("scripts/kb/ingest.py",),
+            manual_approved="true",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:path_filter:sensitive_control_plane_path:scripts/kb/ingest.py",
+            combined_output,
+        )
+        self.assertIn(
+            "reject:trusted_trigger_model:manual_dispatch_sensitive_paths_present",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_manual_dispatch_github_skills_paths(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            dispatch_changed_paths=(".github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",),
+            manual_approved="true",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:path_filter:sensitive_control_plane_path:.github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
+            combined_output,
+        )
+        self.assertIn(
+            "reject:trusted_trigger_model:manual_dispatch_sensitive_paths_present",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_when_dispatch_paths_unavailable(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            dispatch_changed_paths=(),
+            manual_approved="true",
+            dispatch_diff_exit=1,
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:dispatch_changed_paths_unavailable",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_when_dispatch_merge_base_unavailable(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            dispatch_changed_paths=("raw/inbox/example-source.md",),
+            manual_approved="true",
+            dispatch_merge_base_exit=1,
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:dispatch_merge_base_unavailable",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_when_dispatch_merge_base_is_empty(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            dispatch_changed_paths=("raw/inbox/example-source.md",),
+            dispatch_merge_base="",
+            dispatch_merge_base_exit=0,
+            manual_approved="true",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:dispatch_merge_base_unavailable",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_when_dispatch_sha_missing(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            dispatch_sha="",
+            dispatch_changed_paths=("raw/inbox/example-source.md",),
+            manual_approved="true",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:missing_dispatch_sha",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_when_no_changed_paths_detected(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            dispatch_changed_paths=(),
+            manual_approved="true",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn("reject:path_filter:no_changed_paths_detected", combined_output)
+
+    def test_preflight_behavior_accepts_manual_dispatch_source_only_commit(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            dispatch_changed_paths=("raw/inbox/example-source.md",),
+            manual_approved="true",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("CI-3 preflight PASS", combined_output)
+
+    def test_preflight_behavior_rejects_sensitive_paths_with_spaces(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            dispatch_changed_paths=("scripts/kb/path with spaces.py",),
+            manual_approved="true",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:path_filter:sensitive_control_plane_path:scripts/kb/path with spaces.py",
+            combined_output,
+        )
+
+    def test_source_resolution_rejects_manual_source_symlink(self) -> None:
+        result = _run_ci3_source_resolution_script(
+            self.workflow_text,
+            manual_source_path="raw/inbox/manual-link.md",
+            inbox_files=("raw/inbox/example-source.md",),
+            extra_files=("raw/processed/outside.md",),
+            symlinks=(("raw/inbox/manual-link.md", "../processed/outside.md"),),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:path_filter:manual_source_symlink:raw/inbox/manual-link.md",
+            combined_output,
+        )
+
+    def test_source_resolution_rejects_manual_source_path_traversal(self) -> None:
+        result = _run_ci3_source_resolution_script(
+            self.workflow_text,
+            manual_source_path="raw/inbox/../../raw/processed/outside.md",
+            inbox_files=("raw/inbox/example-source.md",),
+            extra_files=("raw/processed/outside.md",),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:path_filter:outside_raw_inbox:raw/inbox/../../raw/processed/outside.md",
+            combined_output,
+        )
+
+    def test_write_path_behavior_emits_runtime_metrics_and_allowlisted_changed_paths(self) -> None:
+        result, github_output, runtime_metrics = _run_ci3_write_path_script(self.workflow_text)
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("has_changes=true", github_output)
+        self.assertIn("wiki/index.md", github_output)
+        self.assertEqual(runtime_metrics.get("workflow_id"), "ci-3-pr-producer")
+        stage_durations = runtime_metrics.get("stage_durations_seconds")
+        self.assertIsInstance(stage_durations, dict)
+        self.assertIn("ingest_write_path", stage_durations)
+        self.assertIn("persist_query_gate", stage_durations)
+
+    def test_write_path_behavior_handles_allowlisted_paths_with_spaces(self) -> None:
+        result, github_output, _runtime_metrics = _run_ci3_write_path_script(
+            self.workflow_text,
+            tracked_changed_path="wiki/pages/page with spaces.md",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("has_changes=true", github_output)
+        self.assertIn("wiki/pages/page with spaces.md", github_output)
 
     def test_pr_updates_are_gated_by_preflight_and_required_checks(self) -> None:
         self.assertIn("needs:", self.workflow_text)

@@ -24,3 +24,16 @@ tags:
 - provenance_git_sha_kind: `real`
 - checksum_sha256: `6c88f48b5200b971fb99d1ca2a1aeedf87ce47f6c7540cf02fb07d98acc54d66`
 - bytes: 9944
+
+## Summary
+
+This page records ingest metadata for the processed source artifact.
+
+## Evidence
+
+- `repo://local/knowledgebase/raw/processed/pre-commit-guardrails.md@021d32778765eb6ba54644c53740f2eb2fb70473#asset?sha256=6c88f48b5200b971fb99d1ca2a1aeedf87ce47f6c7540cf02fb07d98acc54d66` — canonical SourceRef for the processed source.
+- `raw/processed/pre-commit-guardrails.md` with checksum `6c88f48b5200b971fb99d1ca2a1aeedf87ce47f6c7540cf02fb07d98acc54d66`.
+
+## Open Questions
+
+- None.
