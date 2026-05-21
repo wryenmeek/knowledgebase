@@ -1,6 +1,6 @@
 ---
 scope: module
-last_updated: 2026-04-29
+last_updated: 2026-05-20
 ---
 
 # CONTEXT — scripts/github_monitor/
@@ -42,6 +42,8 @@ Vocabulary for the GitHub source-monitoring pipeline. `AGENTS.md` takes preceden
 | `fetch_content.py` | Downloads drifted content to `raw/assets/`, updates `last_fetched_*` in registry under `raw/.github-sources.lock`. |
 | `synthesize_diff.py` | Diffs old and new assets, updates wiki page, advances `last_applied_*` under both locks (wiki first). |
 | `create_issues.py` | Creates or updates GitHub Issues for HITL-classified entries. |
+| `dispatch_client.py` | Shared `repository_dispatch` HTTP client wrapper used by webhook relays. |
+| `_relay.py` | Webhook relay helpers: GitHub signature validation, push-path-to-registry filtering, and `repository_dispatch` payload construction/dispatch for CI-5. |
 | `_types.py` | Typed dicts for registry entries, drift report structure, and API response shapes. |
 | `_validators.py` | Path traversal and registry structure validators. |
 | `_http.py` | GitHub API client helpers: authenticated requests, retry logic, contents and commits endpoints. |
