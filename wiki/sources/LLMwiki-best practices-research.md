@@ -24,3 +24,16 @@ tags:
 - provenance_git_sha_kind: `real`
 - checksum_sha256: `be1da73fb59773dfa81d34ef85d0654fb80a8ce53a0affa7eda3b145061cefb9`
 - bytes: 48405
+
+## Summary
+
+This page records ingest metadata for the processed source artifact.
+
+## Evidence
+
+- `repo://local/knowledgebase/raw/processed/LLMwiki-best practices-research.md@021d32778765eb6ba54644c53740f2eb2fb70473#asset?sha256=be1da73fb59773dfa81d34ef85d0654fb80a8ce53a0affa7eda3b145061cefb9` — canonical SourceRef for the processed source.
+- `raw/processed/LLMwiki-best practices-research.md` with checksum `be1da73fb59773dfa81d34ef85d0654fb80a8ce53a0affa7eda3b145061cefb9`.
+
+## Open Questions
+
+- None.

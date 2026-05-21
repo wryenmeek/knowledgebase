@@ -24,3 +24,16 @@ tags:
 - provenance_git_sha_kind: `placeholder`
 - checksum_sha256: `eae6a70eea1307d95a5989ec3dc2f44c4b3513473748edcae3e033b3edf91a01`
 - bytes: 1008
+
+## Summary
+
+This page records ingest metadata for the processed source artifact.
+
+## Evidence
+
+- `repo://local/knowledgebase/raw/processed/README.md@0000000000000000000000000000000000000000#asset?sha256=eae6a70eea1307d95a5989ec3dc2f44c4b3513473748edcae3e033b3edf91a01` — canonical SourceRef for the processed source.
+- `raw/processed/README.md` with checksum `eae6a70eea1307d95a5989ec3dc2f44c4b3513473748edcae3e033b3edf91a01`.
+
+## Open Questions
+
+- None.

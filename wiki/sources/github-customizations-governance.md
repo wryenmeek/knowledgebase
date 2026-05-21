@@ -24,3 +24,16 @@ tags:
 - provenance_git_sha_kind: `real`
 - checksum_sha256: `a3b9f5b680f468740adf55bd051285010fe39a0ec2489455ceee0de3453c0290`
 - bytes: 9593
+
+## Summary
+
+This page records ingest metadata for the processed source artifact.
+
+## Evidence
+
+- `repo://local/knowledgebase/raw/processed/github-customizations-governance.md@021d32778765eb6ba54644c53740f2eb2fb70473#asset?sha256=a3b9f5b680f468740adf55bd051285010fe39a0ec2489455ceee0de3453c0290` — canonical SourceRef for the processed source.
+- `raw/processed/github-customizations-governance.md` with checksum `a3b9f5b680f468740adf55bd051285010fe39a0ec2489455ceee0de3453c0290`.
+
+## Open Questions
+
+- None.

@@ -24,3 +24,16 @@ tags:
 - provenance_git_sha_kind: `real`
 - checksum_sha256: `4d742b3c97eaa6a0d2b2a108f805eaec29abe45bd8b61f7d482e4efcc5ce81d5`
 - bytes: 12744
+
+## Summary
+
+This page records ingest metadata for the processed source artifact.
+
+## Evidence
+
+- `repo://local/knowledgebase/raw/processed/google-drive-source-monitoring.md@021d32778765eb6ba54644c53740f2eb2fb70473#asset?sha256=4d742b3c97eaa6a0d2b2a108f805eaec29abe45bd8b61f7d482e4efcc5ce81d5` — canonical SourceRef for the processed source.
+- `raw/processed/google-drive-source-monitoring.md` with checksum `4d742b3c97eaa6a0d2b2a108f805eaec29abe45bd8b61f7d482e4efcc5ce81d5`.
+
+## Open Questions
+
+- None.

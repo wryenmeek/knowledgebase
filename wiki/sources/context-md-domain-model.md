@@ -24,3 +24,16 @@ tags:
 - provenance_git_sha_kind: `real`
 - checksum_sha256: `6495e596a109c6ced0410451ec13de4332a3646b16eb2390899d230334c210bd`
 - bytes: 8150
+
+## Summary
+
+This page records ingest metadata for the processed source artifact.
+
+## Evidence
+
+- `repo://local/knowledgebase/raw/processed/context-md-domain-model.md@021d32778765eb6ba54644c53740f2eb2fb70473#asset?sha256=6495e596a109c6ced0410451ec13de4332a3646b16eb2390899d230334c210bd` — canonical SourceRef for the processed source.
+- `raw/processed/context-md-domain-model.md` with checksum `6495e596a109c6ced0410451ec13de4332a3646b16eb2390899d230334c210bd`.
+
+## Open Questions
+
+- None.

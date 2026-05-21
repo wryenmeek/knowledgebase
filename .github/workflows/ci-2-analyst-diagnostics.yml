@@ -187,7 +187,7 @@ jobs:
 
       - name: Evaluate CI-2 runtime budgets
         id: runtime-budget
-        if: ${{ always() && steps.diagnostics.conclusion != 'skipped' }}
+        if: ${{ always() && steps.diagnostics.outputs.exit_code != '' }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
