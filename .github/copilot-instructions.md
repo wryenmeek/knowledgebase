@@ -124,6 +124,10 @@ SQL tracking tables (`todos`, `review_findings`, etc.) must be updated in the **
 
 Before answering questions like "what was deferred?" or "is there a GH issue for this drift?", reconcile local SQL tracking rows with live GitHub state. For every referenced issue/todo, verify current issue status with `gh issue view` (or equivalent) and update stale local tracker status before reporting.
 
+### Issue implementation completion must reconcile with GitHub state
+
+When implementing GitHub issues, do not mark local trackers (`issue_work`, `todos`, or summary notes) as terminal `done` while the corresponding GitHub issue is still open. Use an explicit non-terminal state (`open`, `in_progress`, or `implemented_pending_close`) with a note that includes the live GitHub issue state and why it remains open. Only move to terminal `done` after closure on GitHub or an explicit user decision to keep the issue open is recorded.
+
 ### Mermaid diagram syntax (GitHub renderer)
 
 When writing Mermaid diagrams in markdown research reports or docs:
@@ -338,9 +342,9 @@ When dispatching research or explore subagents, instruct them to verify every st
 
 `run_surface_cli`-backed scripts exit `1` on partial success (some entries succeeded, some failed). Any downstream CI step — commit, PR creation, artifact upload — that should run regardless of partial failure **must** have `if: always()`. Without it, successful writes are silently discarded whenever any entry fails.
 
-### GitHub Actions secrets: `GITHUB_` prefix is banned
+### GitHub Actions secrets: `GITHUB_` prefix is banned <!-- pragma: allowlist secret -->
 
-GitHub forbids repository secrets with the `GITHUB_` prefix (HTTP 422). Use `GH_APP_ID` / `GH_APP_PRIVATE_KEY` for GitHub App credentials. Workflow YAML must reference `secrets.GH_APP_*`, not `secrets.GITHUB_APP_*`. This also applies to environment secrets.
+GitHub forbids repository secrets with the `GITHUB_` prefix (HTTP 422). Use `GH_APP_ID` / `GH_APP_PRIVATE_KEY` for GitHub App credentials. Workflow YAML must reference `secrets.GH_APP_*`, not `secrets.GITHUB_APP_*`. This also applies to environment secrets. <!-- pragma: allowlist secret -->
 
 ### GitHub Actions shell injection guard
 
@@ -435,11 +439,20 @@ When the user sends "Fleet deployed" (or similar), it means they have pushed com
 
 ### "Pickup where you left off" resume protocol
 
-When the user says "pickup where you left off" (or equivalent), immediately resume from durable state instead of re-discovery. Execute this exact sequence:
+When the user says "pickup where you left off" (or equivalent typo/variant like "youleft"), immediately resume from durable state instead of re-discovery. Execute this exact sequence:
 1. Read the latest checkpoint.
 2. Run `git fetch origin` and confirm both local-ahead and remote-ahead state (`git log origin/main..HEAD --oneline` and `git log HEAD..origin/main --oneline`).
-3. Identify the first unfinished actionable item from the existing plan/checkpoint.
+3. Identify the first unfinished actionable item from the existing plan/checkpoint and local tracking state (`issue_work`, `todos`).
 4. Continue from that item directly (not a fresh broad audit).
+
+### Ready-for-agent issue orchestration protocol
+
+When the user asks to work "open ready-for-agent issues", run this lane by default:
+1. Enumerate open `ready-for-agent` GitHub issues and open PRs touching the same scope (dedup before coding).
+2. For each issue, run a dedicated `verified-research` pass (one issue per pass) to confirm current codebase state and acceptance gaps.
+3. Implement/remediate with subagents, then run the cross-functional review gate (`@code-reviewer`, `@test-engineer`, `@security-auditor`, `@documentation-engineer`).
+4. Run `documentation-and-adrs` and `audit-knowledgebase-workspace` before claiming completion.
+5. Reconcile local tracker state with live GitHub issue state, then close the issue or record why it remains open.
 
 ### Cross-functional review as default post-implementation step
 
@@ -464,6 +477,10 @@ After completing a cross-functional review, automatically proceed to remediate a
 ### Deferred findings issue ledger
 
 When P3+ findings are intentionally deferred, create (or verify) a GitHub issue for each deferred item in the same session, then report a ledger: issue number, deferred item, and owner. If an item is intentionally not filed, state that explicitly with rationale.
+
+### Deferred work issue-tracking applies beyond review findings
+
+The deferred issue ledger rule is not limited to P3+ review findings. Any acknowledged-but-unimplemented item (audit drift, workflow/documentation/customization gap, scoped deferral, or partial implementation) must either be fixed in-session or tracked in a GitHub issue before task completion. Report the same ledger fields: issue number, deferred item, owner.
 
 ### Session-close deferred remediation ledger
 
@@ -507,6 +524,14 @@ When grill-me produces a complete decision log with resolved questions, treat th
 ### Batch all review finding types in one remediation commit
 
 When remediating review findings, batch all finding types (code, test, doc, security) into a single remediation commit rather than addressing them type-by-type in separate passes. A review that surfaces a code bug, a missing test, and a stale doc reference must land all three fixes together — not code first, tests later, docs last.
+
+### Chronicle-improve dedup hygiene
+
+When handling `/chronicle improve`:
+1. Add a new instruction only when the pattern appears in at least 2 repository sessions.
+2. Search `.github/copilot-instructions.md` first and amend an existing section in place when coverage already exists.
+3. If a new rule supersedes an older one, remove or merge the older text in the same edit.
+4. Prefer concise deltas over appending near-duplicate policy blocks.
 
 ## Boundaries
 
