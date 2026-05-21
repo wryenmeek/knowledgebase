@@ -15,6 +15,7 @@ describe("fleet-merge preflight", () => {
           ...process.env,
           JULES_API_KEY: "test-key", // pragma: allowlist secret
           GITHUB_TOKEN: "test-token", // pragma: allowlist secret
+          FLEET_BASE_BRANCH: "main",
           FLEET_MAX_RETRIES: invalidValue,
         },
         stdout: "pipe",
@@ -36,6 +37,7 @@ describe("fleet-merge preflight", () => {
         ...process.env,
         JULES_API_KEY: "test-key", // pragma: allowlist secret
         GITHUB_TOKEN: "test-token", // pragma: allowlist secret
+        FLEET_BASE_BRANCH: "main",
         FLEET_PENDING_DATE: "../bad-date",
       },
       stdout: "pipe",
