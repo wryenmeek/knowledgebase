@@ -411,7 +411,8 @@ Suggested HTTP response mapping from relay result:
 
 - `status=dispatched` → `202 Accepted`
 - `status=ignored` (non-relevant event/replay) → `202 Accepted`
-- `status=rejected` (invalid signature/token/headers/body) → `401 Unauthorized`, `400 Bad Request`, or `413 Payload Too Large`
+- `status=rejected` (invalid signature/token/headers/body) → `400 Bad Request`
+- GitHub relay oversized request body (`reason=request_body_too_large`) → `413 Payload Too Large`
 - `status=failed` (dispatch transport failure) → `502 Bad Gateway` / retryable `5xx`
 
 ## Support and infrastructure workflows

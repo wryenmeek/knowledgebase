@@ -58,7 +58,7 @@ Before implementing any new helper, check these five canonical modules. See ADR-
 | **CI-3** | PR-producing write path with allowlists, preflight, and LLM-based synthesis of entity/concept draft pages (`models: read`) | Yes (allowlisted paths only, including `wiki/entities/**` and `wiki/concepts/**`) |
 | **CI-4** | Framework writer: staged agent-generated content for `docs/**` and `.github/skills/**` | Yes (`docs/**`, `.github/skills/**`; workflow_dispatch only; approval-gated) |
 | **CI-5** | GitHub source monitor: scheduled drift detection (read-only) + PR-producing fetch/synthesize path | Drift job: No. Write jobs: Yes (`raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**`) |
-| **CI-6** | Google Drive source monitor: scheduled drift detection (read-only) + approval-gated fetch/synthesize path | Drift job: No. Write jobs: Yes (`raw/assets/**`, `raw/drive-sources/**`, bounded `wiki/**`) |
+| **CI-6** | Google Drive source monitor: scheduled drift detection (read-only) + approval-gated fetch/synthesize/cursor-advance path | Drift job: No. Write jobs: Yes (`raw/assets/**`, `raw/drive-sources/**`, bounded `wiki/**`) |
 
 This split is intentional: it isolates trust checks, diagnostics, and write operations
 so permission scope can stay minimal for each path.

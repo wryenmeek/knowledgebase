@@ -12,7 +12,7 @@ python3 -m pytest tests/
 python3 -m pytest tests/kb/test_ingest.py
 
 # TypeScript build verification (scripts/fleet/ only — NOT covered by pytest)
-cd scripts/fleet && bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts
+cd scripts/fleet && bun build --target bun fleet-plan.ts fleet-dispatch.ts fleet-merge.ts --outdir dist
 ```
 
 > **Two separate runtimes:** `scripts/fleet/` is a standalone TypeScript/Bun project (`package.json`, `tsconfig.json`). It is independent of the Python test suite. Always run `bun build` after editing TypeScript fleet files — pytest passing does **not** mean TypeScript is clean.
