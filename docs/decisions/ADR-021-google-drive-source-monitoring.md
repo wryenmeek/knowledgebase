@@ -191,8 +191,8 @@ avoid lock contention), plus `repository_dispatch` (`drive-source-updated`) and
 1. **`check-drift` job** (`contents: read`): reads registry files, calls Drive Changes API,
    emits JSON drift report. Exits nonzero if any API call fails.
 2. **`fetch-and-update` job** (`contents: write`, `pull-requests: write`, protected
-   environment): runs only when drift is detected; fetches assets, normalizes, updates
-   registry and cursor.
+   environment): runs only when drift is detected; fetches assets, normalizes, and updates
+   `last_fetched_*` registry fields.
 3. **`classify-drift` job** (read-only): classifies drift entries into AFK/HITL lists.
 4. **`synthesize` job** (same permissions, protected environment): applies diff-aware wiki
    updates for AFK entries; opens HITL Issues for non-AFK entries.

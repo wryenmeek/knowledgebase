@@ -94,6 +94,92 @@ def test_oversized_request_body_returns_413(tmp_path: Path) -> None:
     assert parsed["reason"] == "request_body_too_large"
 
 
+def test_missing_content_length_returns_400_rejected(tmp_path: Path) -> None:
+    app = GitHubRelayWsgiApp(
+        repo_root=tmp_path,
+        webhook_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+            "wsgi.input": io.BytesIO(b"{}"),
+        },
+    )
+
+    assert status.startswith("400 ")
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["status"] == "rejected"
+    assert parsed["reason"] == "missing_content_length"
+
+
+def test_invalid_content_length_returns_400_rejected(tmp_path: Path) -> None:
+    app = GitHubRelayWsgiApp(
+        repo_root=tmp_path,
+        webhook_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+            "CONTENT_LENGTH": "not-a-number",
+            "wsgi.input": io.BytesIO(b"{}"),
+        },
+    )
+
+    assert status.startswith("400 ")
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["status"] == "rejected"
+    assert parsed["reason"] == "invalid_content_length"
+
+
+def test_missing_wsgi_input_returns_400_rejected(tmp_path: Path) -> None:
+    app = GitHubRelayWsgiApp(
+        repo_root=tmp_path,
+        webhook_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+            "CONTENT_LENGTH": "2",
+        },
+    )
+
+    assert status.startswith("400 ")
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["status"] == "rejected"
+    assert parsed["reason"] == "missing_request_body_stream"
+
+
+def test_incomplete_request_body_returns_400_rejected(tmp_path: Path) -> None:
+    app = GitHubRelayWsgiApp(
+        repo_root=tmp_path,
+        webhook_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+            "CONTENT_LENGTH": "4",
+            "wsgi.input": io.BytesIO(b"{}"),
+        },
+    )
+
+    assert status.startswith("400 ")
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["status"] == "rejected"
+    assert parsed["reason"] == "incomplete_request_body"
+
+
 @pytest.mark.parametrize(
     ("relay_status", "expected_http"),
     [

@@ -382,6 +382,17 @@ def test_parse_push_event_requires_event_and_delivery_headers() -> None:
         )
 
 
+def test_parse_push_event_rejects_invalid_delivery_header_format() -> None:
+    body = _push_body()
+    headers = _headers(body, secret="secret-1", delivery_id="bad delivery id")
+    with pytest.raises(RelayValidationError):
+        parse_github_push_event(
+            headers=headers,
+            body=body,
+            webhook_secret="secret-1",
+        )
+
+
 def test_relay_ignores_non_push_events(tmp_path: Path) -> None:
     body = _push_body()
     result = relay_github_push_event(
@@ -513,6 +524,18 @@ def test_validate_upstream_source_payload_rejects_invalid_registry_path() -> Non
                 registry_path="../raw/github-sources/a.source-registry.json"
             )
         )
+
+
+def test_validate_upstream_source_payload_rejects_invalid_upstream_repo() -> None:
+    with pytest.raises(RelayValidationError):
+        validate_upstream_source_payload(
+            _valid_upstream_payload(upstream_repo="owner-only")
+        )
+
+
+def test_validate_upstream_source_payload_rejects_invalid_upstream_ref() -> None:
+    with pytest.raises(RelayValidationError):
+        validate_upstream_source_payload(_valid_upstream_payload(upstream_ref="main"))
 
 
 def test_validate_upstream_source_payload_rejects_unexpected_fields() -> None:

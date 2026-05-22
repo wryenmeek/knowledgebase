@@ -544,6 +544,13 @@ def test_validate_drive_source_payload_rejects_invalid_file_id() -> None:
         validate_drive_source_payload(payload)
 
 
+def test_validate_drive_source_payload_rejects_invalid_delivery_id() -> None:
+    payload = _valid_payload()
+    payload["delivery_id"] = "bad/value"
+    with pytest.raises(RelayValidationError):
+        validate_drive_source_payload(payload)
+
+
 def test_validate_drive_source_payload_rejects_unexpected_fields() -> None:
     payload = _valid_payload()
     payload["unexpected"] = "field"
