@@ -13,4 +13,6 @@ Modules:
     check_drift     -- Read-only drift detection; emits a JSON drift report.
     fetch_content   -- Fetches and vendors assets; updates registry state.
     synthesize_diff -- Applies diff-aware wiki page updates from fetched assets.
+    _relay          -- Webhook signature/path filtering + dispatch payload helpers.
+    relay_http      -- Deployable WSGI webhook entrypoint wrapper.
 """

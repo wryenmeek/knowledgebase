@@ -1,6 +1,6 @@
 ---
 scope: module
-last_updated: 2026-05-20
+last_updated: 2026-05-22
 ---
 
 # CONTEXT — scripts/github_monitor/
@@ -44,6 +44,7 @@ Vocabulary for the GitHub source-monitoring pipeline. `AGENTS.md` takes preceden
 | `create_issues.py` | Creates or updates GitHub Issues for HITL-classified entries. |
 | `dispatch_client.py` | Shared `repository_dispatch` HTTP client wrapper used by webhook relays. |
 | `_relay.py` | Webhook relay helpers: GitHub signature validation, push-path-to-registry filtering, and `repository_dispatch` payload construction/dispatch for CI-5. |
+| `relay_http.py` | Minimal deployable WSGI wrapper for GitHub webhook ingress (`POST`) and `repository_dispatch` relay execution. |
 | `_types.py` | Typed dicts for registry entries, drift report structure, and API response shapes. |
 | `_validators.py` | Path traversal and registry structure validators. |
 | `_http.py` | GitHub API client helpers: authenticated requests, retry logic, contents and commits endpoints. |

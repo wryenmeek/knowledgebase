@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 import tempfile
 import unittest
@@ -29,6 +29,18 @@ class Ci5WorkflowContractTests(unittest.TestCase):
                 return script.replace("${{ github.run_id }}", "123456")
         self.fail("Unable to locate CI-5 detect step script")
 
+    @staticmethod
+    def _is_allowlisted_registry_path(path: str) -> bool:
+        if not path:
+            return False
+        candidate = PurePosixPath(path)
+        return (
+            not candidate.is_absolute()
+            and ".." not in candidate.parts
+            and path.startswith("raw/github-sources/")
+            and path.endswith(".source-registry.json")
+        )
+
     def _run_detect_script(
         self,
         *,
@@ -36,12 +48,25 @@ class Ci5WorkflowContractTests(unittest.TestCase):
         dispatch_registry_path: str,
         workflow_registry_path: str = "",
         use_fake_python: bool = False,
-    ) -> tuple[subprocess.CompletedProcess[str], str]:
+        create_allowlisted_registry_files: bool = True,
+    ) -> tuple[subprocess.CompletedProcess[str], str, str]:
         script = self._detect_step_script()
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             github_output_path = temp_root / "github-output.txt"
             github_output_path.write_text("", encoding="utf-8")
+            check_drift_args_path = temp_root / "check-drift-args.txt"
+            check_drift_args_path.write_text("", encoding="utf-8")
+
+            if create_allowlisted_registry_files:
+                for candidate_path in (dispatch_registry_path, workflow_registry_path):
+                    if self._is_allowlisted_registry_path(candidate_path):
+                        registry_path = temp_root / candidate_path
+                        registry_path.parent.mkdir(parents=True, exist_ok=True)
+                        registry_path.write_text(
+                            '{"version": "1", "entries": []}\n',
+                            encoding="utf-8",
+                        )
 
             env = os.environ.copy()
             env.update(
@@ -50,6 +75,7 @@ class Ci5WorkflowContractTests(unittest.TestCase):
                     "DISPATCH_REGISTRY_PATH": dispatch_registry_path,
                     "REGISTRY_PATH": workflow_registry_path,
                     "GITHUB_OUTPUT": str(github_output_path),
+                    "FAKE_CHECK_DRIFT_ARGS_FILE": str(check_drift_args_path),
                 }
             )
 
@@ -61,6 +87,7 @@ class Ci5WorkflowContractTests(unittest.TestCase):
                     "#!/usr/bin/env bash\n"
                     "set -euo pipefail\n"
                     "if [[ \"${1:-}\" == \"-m\" ]] && [[ \"${2:-}\" == \"scripts.github_monitor.check_drift\" ]]; then\n"
+                    "  printf '%s\\n' \"$@\" > \"${FAKE_CHECK_DRIFT_ARGS_FILE}\"\n"
                     "  out=\"drift-report.json\"\n"
                     "  shift 2\n"
                     "  while [[ $# -gt 0 ]]; do\n"
@@ -91,7 +118,11 @@ class Ci5WorkflowContractTests(unittest.TestCase):
                 check=False,
                 env=env,
             )
-            return result, github_output_path.read_text(encoding="utf-8")
+            return (
+                result,
+                github_output_path.read_text(encoding="utf-8"),
+                check_drift_args_path.read_text(encoding="utf-8"),
+            )
 
     def _mask_steps(self) -> list[dict[str, object]]:
         steps: list[dict[str, object]] = []
@@ -101,38 +132,97 @@ class Ci5WorkflowContractTests(unittest.TestCase):
                     steps.append(step)
         return steps
 
-    def test_repository_dispatch_registry_payload_validation_fails_closed(self) -> None:
-        result, _ = self._run_detect_script(
+    def test_repository_dispatch_invalid_registry_hint_falls_back_to_full_scan(self) -> None:
+        result, github_output, check_drift_args = self._run_detect_script(
             event_name="repository_dispatch",
             dispatch_registry_path="../bad-path",
+            use_fake_python=True,
         )
         combined_output = f"{result.stdout}\n{result.stderr}"
-        self.assertNotEqual(result.returncode, 0, combined_output)
-        self.assertIn("Invalid repository_dispatch registry_path payload", combined_output)
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "CI-5 full-scan fallback reason=invalid_registry_hint source=repository_dispatch",
+            combined_output,
+        )
+        self.assertNotIn("--registry", check_drift_args)
+        self.assertIn("drift_detected=false", github_output)
 
     def test_repository_dispatch_registry_payload_validation_accepts_safe_hint(self) -> None:
-        result, github_output = self._run_detect_script(
+        result, github_output, check_drift_args = self._run_detect_script(
             event_name="repository_dispatch",
             dispatch_registry_path="raw/github-sources/example.source-registry.json",
             use_fake_python=True,
         )
         combined_output = f"{result.stdout}\n{result.stderr}"
         self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("CI-5 targeted mode source=repository_dispatch", combined_output)
+        self.assertIn("--registry", check_drift_args)
+        self.assertIn("raw/github-sources/example.source-registry.json", check_drift_args)
         self.assertIn("drift_detected=false", github_output)
         self.assertIn("artifact_name=drift-report-123456", github_output)
 
-    def test_workflow_dispatch_registry_input_validation_fails_closed(self) -> None:
-        result, _ = self._run_detect_script(
+    def test_repository_dispatch_safe_pattern_missing_file_falls_back(self) -> None:
+        result, github_output, check_drift_args = self._run_detect_script(
+            event_name="repository_dispatch",
+            dispatch_registry_path="raw/github-sources/example.source-registry.json",
+            use_fake_python=True,
+            create_allowlisted_registry_files=False,
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "CI-5 full-scan fallback reason=invalid_registry_hint source=repository_dispatch",
+            combined_output,
+        )
+        self.assertNotIn("--registry", check_drift_args)
+        self.assertIn("drift_detected=false", github_output)
+
+    def test_repository_dispatch_hint_takes_precedence_over_workflow_input(self) -> None:
+        result, _, check_drift_args = self._run_detect_script(
+            event_name="repository_dispatch",
+            dispatch_registry_path="raw/github-sources/dispatch.source-registry.json",
+            workflow_registry_path="raw/github-sources/workflow.source-registry.json",
+            use_fake_python=True,
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("--registry", check_drift_args)
+        self.assertIn("raw/github-sources/dispatch.source-registry.json", check_drift_args)
+        self.assertNotIn("raw/github-sources/workflow.source-registry.json", check_drift_args)
+
+    def test_repository_dispatch_missing_registry_hint_falls_back_to_full_scan(self) -> None:
+        result, github_output, check_drift_args = self._run_detect_script(
+            event_name="repository_dispatch",
+            dispatch_registry_path="",
+            use_fake_python=True,
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "CI-5 full-scan fallback reason=missing_registry_hint source=repository_dispatch",
+            combined_output,
+        )
+        self.assertNotIn("--registry", check_drift_args)
+        self.assertIn("drift_detected=false", github_output)
+
+    def test_workflow_dispatch_invalid_registry_input_falls_back_to_full_scan(self) -> None:
+        result, github_output, check_drift_args = self._run_detect_script(
             event_name="workflow_dispatch",
             dispatch_registry_path="",
             workflow_registry_path="../bad-path",
+            use_fake_python=True,
         )
         combined_output = f"{result.stdout}\n{result.stderr}"
-        self.assertNotEqual(result.returncode, 0, combined_output)
-        self.assertIn("Invalid workflow_dispatch registry_path input", combined_output)
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "CI-5 full-scan fallback reason=invalid_registry_hint source=workflow_dispatch",
+            combined_output,
+        )
+        self.assertNotIn("--registry", check_drift_args)
+        self.assertIn("drift_detected=false", github_output)
 
     def test_workflow_dispatch_registry_input_validation_accepts_safe_path(self) -> None:
-        result, github_output = self._run_detect_script(
+        result, github_output, check_drift_args = self._run_detect_script(
             event_name="workflow_dispatch",
             dispatch_registry_path="",
             workflow_registry_path="raw/github-sources/example.source-registry.json",
@@ -140,6 +230,9 @@ class Ci5WorkflowContractTests(unittest.TestCase):
         )
         combined_output = f"{result.stdout}\n{result.stderr}"
         self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("CI-5 targeted mode source=workflow_dispatch", combined_output)
+        self.assertIn("--registry", check_drift_args)
+        self.assertIn("raw/github-sources/example.source-registry.json", check_drift_args)
         self.assertIn("drift_detected=false", github_output)
         self.assertIn("artifact_name=drift-report-123456", github_output)
 

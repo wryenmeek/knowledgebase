@@ -101,7 +101,8 @@ The pipeline uses a **GitHub App** (not a PAT) for authentication:
 
 ### CI-5 workflow structure
 
-A new scheduled workflow (daily at 06:00 UTC, plus `workflow_dispatch`):
+A scheduled workflow (daily at 06:30 UTC via cron `30 6 * * *`, plus
+`repository_dispatch` and `workflow_dispatch`):
 
 1. **`check-drift` job** (`contents: read`): reads registry files, calls GitHub contents
    API, emits JSON drift report. Exits nonzero if any API call fails.
@@ -114,15 +115,49 @@ A new scheduled workflow (daily at 06:00 UTC, plus `workflow_dispatch`):
 
 Both write jobs use `concurrency.group: kb-write-${{ github.repository }}` (no `${{ github.ref }}` suffix). This differs from CI-3's branch-scoped group (`kb-write-${{ github.repository }}-${{ github.ref }}`); CI-5 runs on a schedule rather than per-branch, so ref-scoping is not applicable.
 
+### Webhook relay contract (alignment-lock addendum)
+
+The repository adds a deployable GitHub webhook relay wrapper
+(`scripts/github_monitor/relay_http.py`) over the relay core
+(`scripts/github_monitor/_relay.py`) for low-latency CI-5 triggering.
+The relay is additive to the cron schedule (cron remains the safety-net).
+
+`repository_dispatch` contract for `event_type: upstream-source-updated` is frozen to:
+
+- `source_kind` (`"github"`)
+- `registry_path`
+- `upstream_repo`
+- `upstream_ref`
+- `upstream_after_sha`
+- `delivery_id`
+- `observed_at` (ISO-8601)
+- `changed_paths`
+
+Security and fail-closed guarantees:
+
+- Validate `X-Hub-Signature-256` before payload processing.
+- Enforce source allowlist by dispatching only when upstream `owner/repo`
+  matches allowlisted registry files and changed paths intersect monitored entries.
+- Suppress replayed deliveries using `delivery_id` with TTL replay cache.
+- Keep least-privilege dispatch credentials (GitHub App token or narrowly scoped
+  token capable only of calling repository dispatch).
+
+CI-5 consumer behavior is fixed:
+
+- Valid, allowlisted `registry_path` hint => targeted check-drift mode.
+- Missing/invalid `registry_path` hint => explicit diagnostic + safe full-scan fallback
+  (no hard-fail solely for missing/invalid hint).
+
 ## Alternatives considered
 
-### Webhook-based real-time monitoring
+### Webhook-based real-time monitoring (amended)
 
-- **Pros:** lower latency.
-- **Cons:** requires a running webhook receiver service; significantly more infra; harder
-  to audit; higher attack surface.
-- **Rejected:** scheduled polling via GitHub Actions is sufficient for the maintainer's
-  latency needs and is self-contained in the repository.
+- **Pros:** near-real-time latency for CI-5 drift detection after upstream pushes.
+- **Cons:** requires a maintained webhook receiver runtime and relay hardening.
+- **Original disposition (2026-04-21):** rejected in favor of cron-only scheduling.
+- **Amended disposition (2026-05-22):** accepted as an additive trigger with frozen
+  payload contract, strict signature/replay/allowlist controls, and cron retained as
+  safety-net fallback.
 
 ### Use a PAT instead of a GitHub App
 
@@ -174,6 +209,22 @@ to match.
 
 **What didn't change:** Authentication model (GitHub App, not PAT), installation token
 expiry handling, and the principle that secrets are passed via environment variables only.
+
+---
+
+**Date:** 2026-05-22
+
+**What changed:** Added alignment-locked webhook relay contract for
+`upstream-source-updated` (`source_kind`, `registry_path`, `upstream_repo`,
+`upstream_ref`, `upstream_after_sha`, `delivery_id`, `observed_at`,
+`changed_paths`), added deployable relay wrapper surface
+(`scripts/github_monitor/relay_http.py`), and updated CI-5 consumer behavior to
+use targeted mode only for valid allowlisted `registry_path` hints with explicit
+full-scan fallback diagnostics for missing/invalid hints.
+
+**What didn't change:** Cron-triggered CI-5 remains active as safety-net, GitHub App
+authentication model remains preferred, and registry/wiki write-lock ordering
+requirements remain unchanged.
 
 ## References
 

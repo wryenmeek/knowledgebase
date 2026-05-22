@@ -12,9 +12,11 @@ import glob as glob_module
 import hashlib
 import hmac
 import json
+import re
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Protocol, TypedDict
 
@@ -32,21 +34,29 @@ _GITHUB_SIGNATURE_HEADER = "x-hub-signature-256"
 _SIGNATURE_PREFIX = "sha256="
 _HEX_DIGITS = frozenset("0123456789abcdef")
 _UPSTREAM_SOURCE_UPDATED_EVENT = "upstream-source-updated"
+_GITHUB_SOURCE_KIND = "github"
 _MONITORED_TRACKING_STATUSES = frozenset({"active", "uninitialized"})
 _MAX_CHANGED_PATHS = 200
 _MAX_REGISTRY_PATH_LENGTH = 256
+_MAX_UPSTREAM_REPO_LENGTH = 256
+_MAX_UPSTREAM_REF_LENGTH = 256
 _MAX_IDENTIFIER_LENGTH = 128
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_DELIVERY_ID_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
+_SAFE_REPO_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 class UpstreamSourceUpdatedPayload(TypedDict):
     """Stable payload contract for event_type=upstream-source-updated."""
 
+    source_kind: str
     registry_path: str
-    owner: str
-    repo: str
+    upstream_repo: str
+    upstream_ref: str
+    upstream_after_sha: str
     changed_paths: list[str]
     delivery_id: str
-    event_name: str
+    observed_at: str
 
 
 @dataclass(frozen=True)
@@ -55,9 +65,11 @@ class GitHubPushEvent:
 
     owner: str
     repo: str
+    ref: str
+    after_sha: str
     changed_paths: tuple[str, ...]
     delivery_id: str
-    event_name: str
+    observed_at: str
 
 
 @dataclass(frozen=True)
@@ -225,6 +237,13 @@ def parse_github_push_event(
     delivery_id = normalized_headers.get(_GITHUB_DELIVERY_HEADER)
     if not delivery_id:
         raise RelayValidationError("missing X-GitHub-Delivery header")
+    delivery_id = delivery_id.strip()
+    if (
+        not delivery_id
+        or len(delivery_id) > _MAX_IDENTIFIER_LENGTH
+        or not _DELIVERY_ID_RE.fullmatch(delivery_id)
+    ):
+        raise RelayValidationError("invalid X-GitHub-Delivery header")
 
     signature_header = normalized_headers.get(_GITHUB_SIGNATURE_HEADER)
     if not validate_github_signature(
@@ -261,6 +280,24 @@ def parse_github_push_event(
         raise RelayValidationError(
             "push payload repository.owner.login (or owner.name) is required"
         )
+    repo_name = repo_name.strip()
+    owner_login = owner_login.strip()
+    if not _SAFE_REPO_SEGMENT_RE.fullmatch(repo_name):
+        raise RelayValidationError("push payload repository.name contains unsafe characters")
+    if not _SAFE_REPO_SEGMENT_RE.fullmatch(owner_login):
+        raise RelayValidationError(
+            "push payload repository.owner.login contains unsafe characters"
+        )
+
+    ref = payload.get("ref")
+    if not isinstance(ref, str) or not ref.strip():
+        raise RelayValidationError("push payload ref is required")
+    ref = _validate_upstream_ref(ref)
+
+    after_raw = payload.get("after")
+    if not isinstance(after_raw, str) or not after_raw.strip():
+        raise RelayValidationError("push payload after is required")
+    after_sha = _normalize_commit_sha(after_raw)
 
     try:
         changed_paths = extract_changed_paths(payload)
@@ -269,9 +306,11 @@ def parse_github_push_event(
     return GitHubPushEvent(
         owner=owner_login,
         repo=repo_name,
+        ref=ref,
+        after_sha=after_sha,
         changed_paths=changed_paths,
         delivery_id=delivery_id,
-        event_name=event_name,
+        observed_at=_format_utc_iso8601(_current_utc_datetime()),
     )
 
 
@@ -286,6 +325,69 @@ def _normalize_registry_entry_path(value: Any) -> str | None:
         return validate_external_path(value)
     except ValueError:
         return None
+
+
+def _current_utc_datetime() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _format_utc_iso8601(value: datetime) -> str:
+    normalized = value.astimezone(timezone.utc).replace(microsecond=0)
+    return normalized.isoformat().replace("+00:00", "Z")
+
+
+def _parse_observed_at(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RelayValidationError(
+            "payload field 'observed_at' must be a valid ISO-8601 timestamp"
+        ) from exc
+    if parsed.tzinfo is None:
+        raise RelayValidationError(
+            "payload field 'observed_at' must include timezone information"
+        )
+    return parsed.astimezone(timezone.utc)
+
+
+def _normalize_commit_sha(value: str) -> str:
+    normalized = value.strip().lower()
+    if not _COMMIT_SHA_RE.fullmatch(normalized):
+        raise RelayValidationError("upstream commit SHA must be a 40-char hex string")
+    return normalized
+
+
+def _validate_upstream_repo(value: str) -> str:
+    normalized = value.strip()
+    if len(normalized) > _MAX_UPSTREAM_REPO_LENGTH:
+        raise RelayValidationError("payload field 'upstream_repo' exceeds max length")
+    parts = normalized.split("/", 1)
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise RelayValidationError(
+            "payload field 'upstream_repo' must be formatted as '<owner>/<repo>'"
+        )
+    owner, repo = parts
+    if not _SAFE_REPO_SEGMENT_RE.fullmatch(owner) or not _SAFE_REPO_SEGMENT_RE.fullmatch(
+        repo
+    ):
+        raise RelayValidationError(
+            "payload field 'upstream_repo' contains unsafe characters"
+        )
+    return f"{owner}/{repo}"
+
+
+def _validate_upstream_ref(value: str) -> str:
+    normalized = value.strip()
+    if len(normalized) > _MAX_UPSTREAM_REF_LENGTH:
+        raise RelayValidationError("payload field 'upstream_ref' exceeds max length")
+    if any(ord(ch) < 0x20 for ch in normalized):
+        raise RelayValidationError(
+            "payload field 'upstream_ref' contains control characters"
+        )
+    path = PurePosixPath(normalized)
+    if path.is_absolute() or ".." in path.parts or not normalized.startswith("refs/"):
+        raise RelayValidationError("payload field 'upstream_ref' is invalid")
+    return path.as_posix()
 
 
 def _intersect_monitored_paths(
@@ -310,19 +412,22 @@ def _intersect_monitored_paths(
 def build_upstream_source_payload(
     *,
     registry_path: str,
-    owner: str,
-    repo: str,
+    upstream_repo: str,
+    upstream_ref: str,
+    upstream_after_sha: str,
+    observed_at: str,
     changed_paths: list[str],
     delivery_id: str,
-    event_name: str,
 ) -> UpstreamSourceUpdatedPayload:
     payload: UpstreamSourceUpdatedPayload = {
+        "source_kind": _GITHUB_SOURCE_KIND,
         "registry_path": registry_path,
-        "owner": owner,
-        "repo": repo,
+        "upstream_repo": upstream_repo,
+        "upstream_ref": upstream_ref,
+        "upstream_after_sha": upstream_after_sha,
+        "observed_at": observed_at,
         "changed_paths": changed_paths,
         "delivery_id": delivery_id,
-        "event_name": event_name,
     }
     return validate_upstream_source_payload(payload)
 
@@ -333,12 +438,14 @@ def validate_upstream_source_payload(
     """Validate the stable payload contract for CI-5 dispatch events."""
 
     expected_fields = {
+        "source_kind",
         "registry_path",
-        "owner",
-        "repo",
+        "upstream_repo",
+        "upstream_ref",
+        "upstream_after_sha",
+        "observed_at",
         "changed_paths",
         "delivery_id",
-        "event_name",
     }
     extra_fields = sorted(set(payload.keys()) - expected_fields)
     if extra_fields:
@@ -346,23 +453,37 @@ def validate_upstream_source_payload(
             f"payload contains unexpected field(s): {', '.join(extra_fields)}"
         )
 
+    source_kind = payload.get("source_kind")
+    if source_kind != _GITHUB_SOURCE_KIND:
+        raise RelayValidationError("payload field 'source_kind' must be 'github'")
+
     required_fields = (
         "registry_path",
-        "owner",
-        "repo",
+        "upstream_repo",
+        "upstream_ref",
+        "upstream_after_sha",
+        "observed_at",
         "delivery_id",
-        "event_name",
     )
+    normalized_values: dict[str, str] = {}
     for field in required_fields:
         value = payload.get(field)
-        if not isinstance(value, str) or not value:
+        if not isinstance(value, str) or not value.strip():
             raise RelayValidationError(f"payload field {field!r} must be a string")
-        if field == "registry_path" and len(value) > _MAX_REGISTRY_PATH_LENGTH:
-            raise RelayValidationError("payload field 'registry_path' exceeds max length")
-        if field != "registry_path" and len(value) > _MAX_IDENTIFIER_LENGTH:
-            raise RelayValidationError(f"payload field {field!r} exceeds max length")
-    if payload["event_name"] != "push":
-        raise RelayValidationError("payload field 'event_name' must be 'push'")
+        normalized_values[field] = value.strip()
+
+    if len(normalized_values["registry_path"]) > _MAX_REGISTRY_PATH_LENGTH:
+        raise RelayValidationError("payload field 'registry_path' exceeds max length")
+    if len(normalized_values["upstream_repo"]) > _MAX_UPSTREAM_REPO_LENGTH:
+        raise RelayValidationError("payload field 'upstream_repo' exceeds max length")
+    if len(normalized_values["upstream_ref"]) > _MAX_UPSTREAM_REF_LENGTH:
+        raise RelayValidationError("payload field 'upstream_ref' exceeds max length")
+    if len(normalized_values["delivery_id"]) > _MAX_IDENTIFIER_LENGTH:
+        raise RelayValidationError("payload field 'delivery_id' exceeds max length")
+
+    if not _DELIVERY_ID_RE.fullmatch(normalized_values["delivery_id"]):
+        raise RelayValidationError("payload field 'delivery_id' contains unsafe characters")
+
     changed_paths = payload.get("changed_paths")
     if not isinstance(changed_paths, list):
         raise RelayValidationError("payload field 'changed_paths' must be a list")
@@ -387,7 +508,7 @@ def validate_upstream_source_payload(
         except ValueError as exc:
             raise RelayValidationError(str(exc)) from exc
 
-    registry_path = payload["registry_path"]
+    registry_path = normalized_values["registry_path"]
     registry_parts = PurePosixPath(registry_path).parts
     if (
         PurePosixPath(registry_path).is_absolute()
@@ -397,13 +518,20 @@ def validate_upstream_source_payload(
     ):
         raise RelayValidationError("payload field 'registry_path' is invalid")
 
+    upstream_repo = _validate_upstream_repo(normalized_values["upstream_repo"])
+    upstream_ref = _validate_upstream_ref(normalized_values["upstream_ref"])
+    upstream_after_sha = _normalize_commit_sha(normalized_values["upstream_after_sha"])
+    observed_at = _format_utc_iso8601(_parse_observed_at(normalized_values["observed_at"]))
+
     validated: UpstreamSourceUpdatedPayload = {
+        "source_kind": _GITHUB_SOURCE_KIND,
         "registry_path": registry_path,
-        "owner": str(payload["owner"]),
-        "repo": str(payload["repo"]),
+        "upstream_repo": upstream_repo,
+        "upstream_ref": upstream_ref,
+        "upstream_after_sha": upstream_after_sha,
+        "observed_at": observed_at,
         "changed_paths": sorted(set(normalized_changed_paths)),
-        "delivery_id": str(payload["delivery_id"]),
-        "event_name": str(payload["event_name"]),
+        "delivery_id": normalized_values["delivery_id"],
     }
     return validated
 
@@ -451,11 +579,12 @@ def plan_upstream_source_dispatches(
         payloads.append(
             build_upstream_source_payload(
                 registry_path=registry_path,
-                owner=push_event.owner,
-                repo=push_event.repo,
+                upstream_repo=f"{push_event.owner}/{push_event.repo}",
+                upstream_ref=push_event.ref,
+                upstream_after_sha=push_event.after_sha,
+                observed_at=push_event.observed_at,
                 changed_paths=matching_paths,
                 delivery_id=push_event.delivery_id,
-                event_name=push_event.event_name,
             )
         )
     return payloads

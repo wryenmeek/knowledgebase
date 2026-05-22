@@ -301,7 +301,7 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 | **CI-2** (`.github/workflows/ci-2-analyst-diagnostics.yml`) | read-only diagnostics (`validate_wiki_governance`, `check_doc_freshness`, `content_quality_report`, `lint_wiki --strict`, dependency audit, secret scan, and test suite); triggers on `pull_request`, `push` to `main`, and `workflow_dispatch` | run the same diagnostics locally (`python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --quiet`, `python3 -m scripts.validation.check_doc_freshness --scope wiki --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 --failures-only`, `python3 scripts/reporting/content_quality_report.py --mode summary --path wiki --failures-only`, `python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict`, `python -m pip install --quiet 'pip>=26.1' pip-audit && pip-audit --desc on --ignore-vuln CVE-2026-3219`, `gitleaks detect --source . --config .gitleaks.toml --redact --no-banner`, `python3 -m pytest tests/ -q --cov=scripts/kb --cov=scripts.validation._runtime_budget --cov-fail-under=90`), attach findings to PR/issue; no repo-write automation needed. |
 | **CI-3** (`.github/workflows/ci-3-pr-producer.yml`) | write-capable PR producer after trusted handoff/manual approval; includes LLM-based synthesis stage that calls GitHub Models API (gpt-4o-mini via `SYNTHESIS_GITHUB_TOKEN: ${{ github.token }}`, `models: read` scope) to extract entities and concepts from each ingested source page and write draft pages to `wiki/entities/**` and `wiki/concepts/**` before `update_index`; synthesis always soft-fails (emits `::warning`, exits 0) — the ingest PR is never blocked by LLM errors | execute the local sequence in this runbook, commit only allowlisted paths (`wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`, `raw/rejected/**`) plus the CI-3 exception for `raw/inbox/**` deletions, and open/update PR manually through normal approvals/checks. Manual dispatch runs additionally require protected-environment reviewer approval (`ci3-manual-approval`) and now fail closed with explicit reason codes when the dispatch commit touches sensitive control-plane paths (`reject:path_filter:sensitive_control_plane_path:*`, `reject:trusted_trigger_model:manual_dispatch_sensitive_paths_present`). If synthesis fails locally: check bundle JSON for `"soft_skipped": true` (all 3 LLM attempts failed) or `::warning` output from `synthesize_combined.py`; synthesis failures do not prevent the PR from opening. |
 | **CI-4** (`.github/workflows/ci-4-framework-writer.yml`) | framework-writer: staged agent-generated content for `docs/**` and `.github/skills/**`; `workflow_dispatch` only; approval-gated | trigger `workflow_dispatch` manually after generating staged content; requires `ci4-framework-approval` environment gating; only allowlisted paths (`docs/**`, `.github/skills/**`) may be written. |
-| **CI-5** (`.github/workflows/ci-5-github-monitor.yml`) | GitHub source monitor: daily schedule (cron `30 6 * * *`, 06:30 UTC) + `repository_dispatch` (type `upstream-source-updated`) + drift detection (read-only) + PR-producing fetch/synthesize path; manual `workflow_dispatch` runs can scope to `inputs.registry_path`; writes `raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**` | run `scripts/github_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; open PR for any changes. See ADR-015 and ADR-012 for governance rules. |
+| **CI-5** (`.github/workflows/ci-5-github-monitor.yml`) | GitHub source monitor: daily schedule (cron `30 6 * * *`, 06:30 UTC) + `repository_dispatch` (type `upstream-source-updated`) + drift detection (read-only) + PR-producing fetch/synthesize path; optional `registry_path` hints from `repository_dispatch` payload or `workflow_dispatch` input run targeted mode only when allowlisted (`raw/github-sources/*.source-registry.json` + existing file), otherwise CI-5 logs an explicit full-scan fallback diagnostic and proceeds safely; writes `raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**` | run `scripts/github_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; open PR for any changes. See ADR-015 and ADR-012 for governance rules. |
 | **CI-6** (`.github/workflows/ci-6-google-drive-monitor.yml`) | Google Drive source monitor: weekly schedule (cron `0 8 * * 1`, Mon 08:00 UTC) + `repository_dispatch` (type `drive-source-updated`) + drift detection (read-only) + approval-gated fetch/synthesize path; workflow-level concurrency key is `ci-6-drive-monitor-${{ github.ref }}-${{ github.event.client_payload.channel_id || 'none' }}-${{ github.event.client_payload.resource_id || 'none' }}-${{ github.event.client_payload.change_id || 'none' }}-${{ github.event.client_payload.file_id || 'none' }}` and manual `workflow_dispatch` runs can scope to `inputs.registry_path`; writes `raw/assets/**`, `raw/drive-sources/**`, bounded `wiki/**` | run `scripts/drive_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; advance cursor with `advance_cursor.py --approval approved`. See ADR-021 for governance rules. |
 
 - **CI-3 manual dispatch note:** `maintainer_approved` remains a required attestation input for `workflow_dispatch`, manual runs are gated by protected-environment reviewer approval (`ci3-manual-approval`), and preflight hard-blocks dispatch commits that include sensitive control-plane paths (`.github/workflows/**`, `.github/skills/**`, `.github/agents/**`, `.github/extensions/**`, `scripts/**`, `schema/**`, `AGENTS.md`, `pyproject.toml`).
@@ -330,7 +330,8 @@ Additional runtime prerequisite for both relays:
 ### Stable `repository_dispatch` payload contracts
 
 - `event_type: upstream-source-updated` payload fields:
-  `registry_path`, `owner`, `repo`, `changed_paths`, `delivery_id`, `event_name`
+  `source_kind` (`"github"`), `registry_path`, `upstream_repo`, `upstream_ref`,
+  `upstream_after_sha`, `delivery_id`, `observed_at` (ISO-8601), `changed_paths`
 - `event_type: drive-source-updated` payload fields:
   `source_kind` (`"drive"`), `alias`, `registry_path`, `file_id`, `change_id`,
   `channel_id`, `resource_id`, `delivery_id`, `observed_at` (ISO-8601)
@@ -339,8 +340,13 @@ Additional runtime prerequisite for both relays:
 
 - GitHub relay validates `X-Hub-Signature-256` (HMAC SHA-256) and fails closed
   on signature mismatch.
+- GitHub relay enforces an upstream source allowlist by dispatching only when the
+  push source repo matches a monitored registry and changed paths intersect active
+  or uninitialized tracked entries.
 - GitHub relay only dispatches when changed push paths intersect monitored
   registry entry paths for that upstream `owner/repo`.
+- GitHub relay suppresses replayed deliveries (`X-GitHub-Delivery`) with a TTL
+  cache and returns `replay_suppressed` on duplicates.
 - Drive relay validates signed channel token context (including optional
   channel/resource expectations) and registry alias/path, and fails closed on
   mismatches.
@@ -392,16 +398,18 @@ drive_replay_cache = InMemoryDriveReplayCache()
 # )
 ```
 
-Example service run commands (for the maintainer-owned HTTP wrapper module):
+Example service run commands (for the maintainer-owned HTTP wrapper modules):
 
-- local/dev: `python -m scripts.drive_monitor.relay_http --host 0.0.0.0 --port 8080`
-- container/Cloud Run entrypoint: `gunicorn -b :${PORT:-8080} scripts.drive_monitor.relay_http:app`
+- local/dev (GitHub): `python -m scripts.github_monitor.relay_http --host 0.0.0.0 --port 8080`
+- container/Cloud Run entrypoint (GitHub): `gunicorn -b :${PORT:-8080} scripts.github_monitor.relay_http:app`
+- local/dev (Drive): `python -m scripts.drive_monitor.relay_http --host 0.0.0.0 --port 8080`
+- container/Cloud Run entrypoint (Drive): `gunicorn -b :${PORT:-8080} scripts.drive_monitor.relay_http:app`
 
 Suggested HTTP response mapping from relay result:
 
 - `status=dispatched` → `202 Accepted`
-- `status=ignored` (non-relevant event/replay) → `204 No Content`
-- `status=rejected` (invalid signature/token/headers) → `401 Unauthorized` or `400 Bad Request`
+- `status=ignored` (non-relevant event/replay) → `202 Accepted`
+- `status=rejected` (invalid signature/token/headers/body) → `401 Unauthorized`, `400 Bad Request`, or `413 Payload Too Large`
 - `status=failed` (dispatch transport failure) → `502 Bad Gateway` / retryable `5xx`
 
 ## Support and infrastructure workflows

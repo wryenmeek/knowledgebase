@@ -317,6 +317,22 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("schema/github-source-registry-contract.md", "ADR-014"),
         "Hard-fail behavior": ("malformed json", "fail closed"),
     },
+    "scripts/github_monitor/relay_http.py": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("None", "repository_dispatch"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": (
+            "scripts/github_monitor/_relay.py",
+            "dispatch_client.py",
+            "ADR-012",
+        ),
+        "Hard-fail behavior": (
+            "missing required env",
+            "relay validation failure",
+            "dispatch failure",
+            "fail closed",
+        ),
+    },
     "scripts/hooks/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None",),

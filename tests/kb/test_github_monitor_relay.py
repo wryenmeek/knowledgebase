@@ -31,6 +31,8 @@ def _push_body(
     *,
     owner: str = "upstream-owner",
     repo: str = "upstream-repo",
+    ref: str = "refs/heads/main",
+    after: str = "a" * 40,
     commits: list[dict[str, Any]] | None = None,
 ) -> bytes:
     payload = {
@@ -38,6 +40,8 @@ def _push_body(
             "name": repo,
             "owner": {"login": owner},
         },
+        "ref": ref,
+        "after": after,
         "commits": commits
         or [
             {
@@ -87,6 +91,21 @@ def _write_registry(
         encoding="utf-8",
     )
     return path
+
+
+def _valid_upstream_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "source_kind": "github",
+        "registry_path": "raw/github-sources/a.source-registry.json",
+        "upstream_repo": "owner/repo",
+        "upstream_ref": "refs/heads/main",
+        "upstream_after_sha": "a" * 40,
+        "delivery_id": "delivery-1",
+        "observed_at": "2026-05-22T00:00:00Z",
+        "changed_paths": ["docs/guide.md"],
+    }
+    payload.update(overrides)
+    return payload
 
 
 class _RecordingDispatchClient:
@@ -172,12 +191,14 @@ def test_relay_filters_paths_to_monitored_entries(tmp_path: Path) -> None:
     assert len(client.calls) == 1
     event_type, payload = client.calls[0]
     assert event_type == "upstream-source-updated"
+    assert payload["source_kind"] == "github"
     assert payload["registry_path"] == "raw/github-sources/upstream.source-registry.json"
-    assert payload["owner"] == "upstream-owner"
-    assert payload["repo"] == "upstream-repo"
+    assert payload["upstream_repo"] == "upstream-owner/upstream-repo"
+    assert payload["upstream_ref"] == "refs/heads/main"
+    assert payload["upstream_after_sha"] == "a" * 40
     assert payload["changed_paths"] == ["docs/guide.md"]
     assert payload["delivery_id"] == "delivery-123"
-    assert payload["event_name"] == "push"
+    assert payload["observed_at"].endswith("Z")
 
 
 def test_relay_ignores_when_no_registry_path_intersection(tmp_path: Path) -> None:
@@ -206,6 +227,31 @@ def test_relay_ignores_when_no_registry_path_intersection(tmp_path: Path) -> Non
     assert result.status == "ignored"
     assert result.reason == "no_registry_match_or_path_intersection"
     assert result.dispatched_count == 0
+
+
+def test_relay_ignores_non_allowlisted_upstream_repo(tmp_path: Path) -> None:
+    _write_registry(
+        tmp_path,
+        owner="allowlisted-owner",
+        repo="allowlisted-repo",
+        entries=[{"path": "docs/guide.md", "tracking_status": "active"}],
+    )
+    body = _push_body(
+        owner="different-owner",
+        repo="different-repo",
+        commits=[{"added": [], "modified": ["docs/guide.md"], "removed": []}],
+    )
+    result = relay_github_push_event(
+        repo_root=tmp_path,
+        headers=_headers(body, secret="secret-1"),
+        body=body,
+        webhook_secret="secret-1",
+        dispatch_client=_RecordingDispatchClient(),
+        replay_cache=GitHubDeliveryReplayCache(),
+    )
+
+    assert result.status == "ignored"
+    assert result.reason == "no_registry_match_or_path_intersection"
 
 
 def test_relay_fails_closed_on_invalid_signature(tmp_path: Path) -> None:
@@ -298,15 +344,7 @@ def test_relay_dispatch_failure_does_not_consume_replay_key(tmp_path: Path) -> N
 
 def test_validate_upstream_source_payload_requires_contract_fields() -> None:
     with pytest.raises(RelayValidationError):
-        validate_upstream_source_payload(
-            {
-                "registry_path": "raw/github-sources/a.source-registry.json",
-                "owner": "owner",
-                "repo": "repo",
-                "changed_paths": ["docs/guide.md"],
-                "delivery_id": "delivery-1",
-            }
-        )
+        validate_upstream_source_payload(_valid_upstream_payload(observed_at=""))
 
 
 def test_validate_github_signature_rejects_missing_and_malformed_headers() -> None:
@@ -471,44 +509,46 @@ def test_relay_reports_partial_dispatch_count_on_multi_registry_failure(tmp_path
 def test_validate_upstream_source_payload_rejects_invalid_registry_path() -> None:
     with pytest.raises(RelayValidationError):
         validate_upstream_source_payload(
-            {
-                "registry_path": "../raw/github-sources/a.source-registry.json",
-                "owner": "owner",
-                "repo": "repo",
-                "changed_paths": ["docs/guide.md"],
-                "delivery_id": "delivery-1",
-                "event_name": "push",
-            }
+            _valid_upstream_payload(
+                registry_path="../raw/github-sources/a.source-registry.json"
+            )
         )
 
 
 def test_validate_upstream_source_payload_rejects_unexpected_fields() -> None:
     with pytest.raises(RelayValidationError):
         validate_upstream_source_payload(
-            {
-                "registry_path": "raw/github-sources/a.source-registry.json",
-                "owner": "owner",
-                "repo": "repo",
-                "changed_paths": ["docs/guide.md"],
-                "delivery_id": "delivery-1",
-                "event_name": "push",
-                "unexpected": "field",
-            }
+            _valid_upstream_payload(unexpected="field")
         )
 
 
 def test_validate_upstream_source_payload_rejects_too_many_changed_paths() -> None:
     with pytest.raises(RelayValidationError):
         validate_upstream_source_payload(
-            {
-                "registry_path": "raw/github-sources/a.source-registry.json",
-                "owner": "owner",
-                "repo": "repo",
-                "changed_paths": [f"docs/{i}.md" for i in range(201)],
-                "delivery_id": "delivery-1",
-                "event_name": "push",
-            }
+            _valid_upstream_payload(changed_paths=[f"docs/{i}.md" for i in range(201)])
         )
+
+
+def test_validate_upstream_source_payload_rejects_invalid_source_kind() -> None:
+    with pytest.raises(RelayValidationError):
+        validate_upstream_source_payload(_valid_upstream_payload(source_kind="drive"))
+
+
+def test_relay_rejects_push_with_invalid_after_sha(tmp_path: Path) -> None:
+    body = _push_body(
+        after="not-a-commit-sha",
+        commits=[{"added": [], "modified": ["docs/guide.md"], "removed": []}],
+    )
+    result = relay_github_push_event(
+        repo_root=tmp_path,
+        headers=_headers(body, secret="secret-1"),
+        body=body,
+        webhook_secret="secret-1",
+        dispatch_client=_RecordingDispatchClient(),
+        replay_cache=GitHubDeliveryReplayCache(),
+    )
+    assert result.status == "rejected"
+    assert "commit SHA" in result.reason
 
 
 def test_relay_rejects_invalid_changed_paths_in_push_body(tmp_path: Path) -> None:
