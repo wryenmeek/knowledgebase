@@ -435,14 +435,14 @@ When the user requests review of "all changes", "all N files", or specifies a co
 
 ### "Fleet deployed" continuation signal
 
-When the user sends "Fleet deployed" (or similar), it means they have pushed commits and are ready for the next planned phase to proceed. Treat it as a continuation signal: check the current plan state, identify the next pending task, and execute it.
+When the user sends "Fleet deployed" (or similar), it means they have pushed commits and are ready for the next planned phase to proceed. Treat it as a continuation signal: check tracker + plan state, take the first unfinished actionable item (`todos` non-`done`, then plan/checkpoint), and execute it immediately. Do not restart with a fresh broad audit unless no unfinished tracked items exist.
 
 ### "Pickup where you left off" resume protocol
 
 When the user says "pickup where you left off" (or equivalent typo/variant like "youleft"), immediately resume from durable state instead of re-discovery. Execute this exact sequence:
 1. Read the latest checkpoint.
 2. Run `git fetch origin` and confirm both local-ahead and remote-ahead state (`git log origin/main..HEAD --oneline` and `git log HEAD..origin/main --oneline`).
-3. Identify the first unfinished actionable item from the existing plan/checkpoint and local tracking state (`issue_work`, `todos`).
+3. Identify the first unfinished actionable item from local tracking first (`todos` non-`done`; then `issue_work`/plan/checkpoint).
 4. Continue from that item directly (not a fresh broad audit).
 
 ### Ready-for-agent issue orchestration protocol
@@ -468,7 +468,7 @@ This parallels the quality-pass-chain skill but uses custom agents for richer, d
 
 ### Post-remediation docs/customizations audit pair
 
-After landing cross-functional remediation commits, proactively run `documentation-and-adrs` and `audit-knowledgebase-workspace` to identify documentation/customization cascades by commit. Do this before declaring the work complete rather than waiting for a user prompt.
+After landing cross-functional remediation commits, proactively run `documentation-and-adrs` and `audit-knowledgebase-workspace` to identify documentation/customization cascades by commit. Trigger this pair automatically for issue slices that modify `.github/workflows/**`, `AGENTS.md`, `schema/**`, `docs/decisions/ADR-*.md`, or write-capable script surfaces under `scripts/**`. Remediate P0–P2 findings in-session; track deferred P3+ items in GitHub Issues before completion.
 
 ### Auto-remediate P0–P2 findings after cross-functional review
 
@@ -508,14 +508,19 @@ In multi-issue orchestration sessions, do not carry a large mixed working tree a
 
 For `gh issue create/edit` and `gh pr create/edit` with multiline markdown bodies, always use `--body-file` with a single-quoted heredoc. Avoid inline `--body` strings when content contains backticks or shell metacharacters.
 
+### Executable-command doc drift guard
+
+When editing documentation/instruction files that contain executable commands (especially `.github/copilot-instructions.md`, `docs/mvp-runbook.md`, and `docs/architecture.md`), verify each changed command in-session (or the closest repo-safe equivalent) before task closure. If a command cannot be executed in the current environment, open a tracking issue and mark the guidance as unverified in the session summary.
+
 ### "What skills should have been used?" is an execution directive
 
 When a user asks **"what skills should have been used to validate these changes?"** (or any close variant), treat this as a directive to execute — not just an informational question. Immediately:
 1. Identify the applicable skills for the change types in scope
-2. Dispatch the corresponding custom agents in parallel (use `@code-reviewer`, `@test-engineer`, `@security-auditor`, `@documentation-engineer` as appropriate)
-3. Collect results, present consolidated findings, and remediate P0–P2 findings
+2. Invoke `quality-pass-chain` when the change scope is non-trivial or touches code paths
+3. Dispatch the corresponding custom agents in parallel (use `@code-reviewer`, `@test-engineer`, `@security-auditor`, `@documentation-engineer` as appropriate)
+4. Collect results, present consolidated findings, and remediate P0–P2 findings before any completion signal
 
-Do not answer with a list and stop. The question means "run them now."
+Do not answer with a list and stop. The question means "run them now," and `task_complete` is blocked until that execution lane finishes.
 
 ### Grill-me decision logs are sufficient specs
 
