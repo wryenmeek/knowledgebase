@@ -1,7 +1,7 @@
 # ADR-025: Runtime-budget contract scope and CI parity
 
 ## Status
-Accepted
+Accepted — amended in-place: expanded runtime-budget contract scope to CI-5/CI-6 parity (see § Amendment)
 
 ## Date
 2026-05-21
@@ -10,48 +10,84 @@ Accepted
 
 `schema/runtime-budgets.json` is consumed by `scripts/validation/_runtime_budget.py`
 in CI workflows that emit runtime-metrics artifacts and evaluate stage thresholds.
-The schema had expanded to include CI-5/CI-6 workflow IDs even though those
-workflows do not execute a runtime-budget evaluation stage today. That created
-contract drift: schema entries existed without executable enforcement, while tests
-only verified CI-2/CI-3 runtime-budget wiring.
+
+The initial ADR-025 decision constrained schema scope to CI-2/CI-3 only to avoid
+placeholder drift. CI-5 and CI-6 now execute runtime-budget evaluation stages
+with machine-readable reports, warn gates, fail gates, and step-summary output.
+Leaving CI-5/CI-6 outside the schema contract would recreate drift between
+runtime wiring and declared budget governance.
+
+The issue-19 alignment lock also freezes the budget-entry contract and severity
+policy for this lane.
 
 ## Decision
 
-Limit the runtime-budget contract to workflows that currently execute the
-runtime-budget evaluator end-to-end.
-
-As of this ADR, the authoritative scope is:
+`schema/runtime-budgets.json` remains the canonical in-repo runtime budget
+registry and now covers **all currently wired runtime-budget workflow IDs**:
 
 - `ci-2-analyst-diagnostics`
 - `ci-3-pr-producer`
+- `ci-5-check-drift`
+- `ci-5-fetch-and-update`
+- `ci-5-classify-drift`
+- `ci-5-synthesize`
+- `ci-6-check-drift`
+- `ci-6-fetch-and-update`
+- `ci-6-classify-drift`
+- `ci-6-synthesize`
+- `ci-6-advance-cursor`
 
-CI-5/CI-6 remain explicitly out of runtime-budget scope until they implement all
-three surfaces in the same change set:
+Each stage entry in the registry must define exactly:
 
-1. Runtime metrics emission (`<artifact>/runtime-metrics.json`)
-2. Runtime-budget evaluation + report emission
-3. Contract tests that assert stage-ID parity against `schema/runtime-budgets.json`
+- `target_seconds`
+- `warn_pct`
+- `fail_pct`
+
+Deterministic classification policy:
+
+- `ok` when `duration_seconds <= target_seconds`
+- `warn` when `target_seconds < duration_seconds < fail_seconds`
+- `fail` when `duration_seconds >= fail_seconds`
+
+where `fail_seconds = ceil(target_seconds * (100 + fail_pct) / 100)`.
+
+Runtime telemetry persistence remains CI artifact + `$GITHUB_STEP_SUMMARY` only.
+No external telemetry dependency is introduced.
 
 ## Alternatives considered
 
-### Keep CI-5/CI-6 entries as forward-looking placeholders (rejected)
+### Keep CI-5/CI-6 out of schema scope (rejected)
 
-- **Pros:** pre-declares intended future budget coverage.
-- **Cons:** introduces false confidence; schema appears enforced where no runtime
-  evaluator exists and no workflow-stage parity is tested.
+- **Pros:** smaller schema surface.
+- **Cons:** invalid once CI-5/CI-6 runtime-budget gates are wired; creates
+  contract drift and weakens parity testing.
 
-### Implement CI-5/CI-6 runtime-budget stages immediately (deferred)
+### Split runtime budgets across multiple schema files (rejected)
 
-- **Pros:** full cross-workflow parity now.
-- **Cons:** larger workflow changes with additional runtime and artifact handling;
-  outside the scope of the current remediation cycle.
+- **Pros:** per-workflow-family files are smaller.
+- **Cons:** violates single-source requirement and complicates deterministic
+  parity checks.
 
 ## Consequences
 
-- `schema/runtime-budgets.json` is now aligned to executable enforcement (CI-2/CI-3 only).
-- Runtime-budget regression tests must continue to validate schema/workflow stage parity.
-- Any future addition of CI-5/CI-6 (or other workflows) to the schema must land with
-  workflow wiring and tests in the same PR to avoid reintroducing contract drift.
+- Runtime-budget governance is now contract-aligned across CI-2/CI-3/CI-5/CI-6.
+- Contract tests must keep schema workflow IDs and stage IDs in lockstep with
+  all runtime-budget workflow literals and emitted stage-duration blocks.
+- Adding/removing any budgeted workflow stage now requires same-PR updates to:
+  schema, tests, and runtime-budget runbook documentation.
+
+## Amendment
+
+- **Date:** 2026-05-22
+- **What changed:** Expanded scope from CI-2/CI-3-only to include wired CI-5 and
+  CI-6 runtime-budget evaluators; replaced per-stage `warn_seconds`/`fail_seconds`
+  entries with `target_seconds`/`warn_pct`/`fail_pct` entries; updated parity
+  tests and runbook outputs accordingly.
+- **Why:** CI-5/CI-6 already emitted and evaluated runtime budgets, so excluding
+  them from the canonical registry created immediate contract drift.
+- **What did not change:** `schema/runtime-budgets.json` remains canonical;
+  severe breaches remain fail-closed; telemetry remains artifact + step summary
+  only.
 
 ## References
 

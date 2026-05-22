@@ -242,8 +242,10 @@ approved, keep these existing MVP suites green:
 ## Runtime budget baselines and remediation
 
 - **Canonical budget source:** `schema/runtime-budgets.json` is the single in-repo source of truth for CI runtime thresholds.
-- **Deterministic measurement:** CI-2/CI-3 record stage timings in integer seconds (`date -u +%s` start/end deltas) and evaluate them with `scripts/validation/_runtime_budget.py`.
-- **Severity model:** `ok` when `duration <= warn_seconds`; `warn` when `warn_seconds < duration <= fail_seconds`; `fail` when `duration > fail_seconds`.
+- **Deterministic measurement:** CI-2, CI-3, CI-5, and CI-6 record stage timings in integer seconds (`date -u +%s` start/end deltas) and evaluate them with `scripts/validation/_runtime_budget.py`.
+- **Budget fields:** every stage budget entry defines `target_seconds`, `warn_pct`, and `fail_pct`.
+- **Severity model:** `ok` when `duration_seconds <= target_seconds`; `warn` when `target_seconds < duration_seconds < fail_seconds`; `fail` when `duration_seconds >= fail_seconds` (`fail_seconds = ceil(target_seconds * (100 + fail_pct) / 100)`).
+- **Warn policy detail:** `warn_pct` is preserved in the contract/artifact for budget tuning, but warn gating begins immediately when runtime exceeds `target_seconds`.
 - **Fail-closed rule:** any `fail` runtime budget status hard-fails the job after publishing budget artifacts and step summary output.
 - **Telemetry hygiene:** runtime artifacts include only workflow/stage IDs, durations, and thresholds. Secrets/tokens are never written to budget outputs.
 
@@ -253,8 +255,8 @@ Runtime-budget outputs:
 |---|---|---|
 | CI-2 (`ci-2-analyst-diagnostics.yml`) | `diagnostics/runtime-metrics.json`, `diagnostics/runtime-budget-report.json` (artifact: `ci2-analyst-diagnostics-*`) | `$GITHUB_STEP_SUMMARY` runtime-budget table |
 | CI-3 (`ci-3-pr-producer.yml`) | `ci3-metrics/runtime-metrics.json`, `ci3-metrics/runtime-budget-report.json` (artifact: `ci3-runtime-budget-*`) | `$GITHUB_STEP_SUMMARY` runtime-budget table |
-| CI-5 (`ci-5-github-monitor.yml`) | N/A (runtime-budget stage not currently wired in workflow) | N/A |
-| CI-6 (`ci-6-google-drive-monitor.yml`) | N/A (runtime-budget stage not currently wired in workflow) | N/A |
+| CI-5 (`ci-5-github-monitor.yml`) | `runtime-metrics/check-drift-runtime-metrics.json`, `runtime-metrics/check-drift-runtime-budget-report.json`; `runtime-metrics/fetch-runtime-metrics.json`, `runtime-metrics/fetch-runtime-budget-report.json`; `runtime-metrics/classify-runtime-metrics.json`, `runtime-metrics/classify-runtime-budget-report.json`; `runtime-metrics/synthesize-runtime-metrics.json`, `runtime-metrics/synthesize-runtime-budget-report.json` | `$GITHUB_STEP_SUMMARY` runtime-budget table |
+| CI-6 (`ci-6-google-drive-monitor.yml`) | `runtime-metrics/check-drift-runtime-metrics.json`, `runtime-metrics/check-drift-runtime-budget-report.json`; `runtime-metrics/fetch-runtime-metrics.json`, `runtime-metrics/fetch-runtime-budget-report.json`; `runtime-metrics/classify-runtime-metrics.json`, `runtime-metrics/classify-runtime-budget-report.json`; `runtime-metrics/synthesize-runtime-metrics.json`, `runtime-metrics/synthesize-runtime-budget-report.json`; `runtime-metrics/advance-cursor-runtime-metrics.json`, `runtime-metrics/advance-cursor-runtime-budget-report.json` | `$GITHUB_STEP_SUMMARY` runtime-budget table |
 
 Remediation playbook:
 
