@@ -27,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-6-drive-monitor-${{ github.ref }}-${{ github.event.client_payload.channel_id || 'none' }}-${{ github.event.client_payload.resource_id || 'none' }}-${{ github.event.client_payload.message_number || 'none' }}
+  group: ci-6-drive-monitor-${{ github.ref }}-${{ github.event.client_payload.channel_id || 'none' }}-${{ github.event.client_payload.resource_id || 'none' }}-${{ github.event.client_payload.change_id || 'none' }}-${{ github.event.client_payload.file_id || 'none' }}
   cancel-in-progress: ${{ github.event_name == 'repository_dispatch' }}
 
 env:

@@ -1,6 +1,6 @@
 ---
 scope: module
-last_updated: 2026-05-20
+last_updated: 2026-05-22
 ---
 
 # CONTEXT — scripts/drive_monitor/
@@ -53,4 +53,5 @@ Vocabulary for the Google Drive source-monitoring pipeline. `AGENTS.md` takes pr
 | `_http.py` | Drive API v3 client factory: service account auth, retry wrapper, `files.get`, `files.export`, `changes.list`, `changes.getStartPageToken`. |
 | `_normalize.py` | `normalize_markdown_export(raw_bytes) → bytes` — canonical normalization for SHA-256. |
 | `_registry.py` | Registry read/update helpers: `find_registry_files()`, `update_last_fetched()`, `update_last_applied()`, `update_changes_cursor()`, `add_file_entry()`. |
-| `_relay.py` | Webhook relay helpers: channel-token context validation, replay suppression, lifecycle filtering, and `repository_dispatch` payload construction/dispatch for CI-6. |
+| `_relay.py` | Webhook relay core: channel-token context validation, replay suppression (`channel_id + resource_id + change_id + file_id`), lifecycle filtering (including expiration/renewal signals), and `repository_dispatch` payload construction/dispatch for CI-6. |
+| `relay_http.py` | Minimal deployable WSGI entrypoint wrapper for Drive relay invocation (env wiring, HTTP request handling, JSON responses, `/healthz`). |

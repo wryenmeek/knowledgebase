@@ -98,7 +98,8 @@ class Ci6WorkflowContractTests(unittest.TestCase):
         group = str(concurrency.get("group", ""))
         self.assertIn("channel_id", group)
         self.assertIn("resource_id", group)
-        self.assertIn("message_number", group)
+        self.assertIn("change_id", group)
+        self.assertIn("file_id", group)
         self.assertEqual(
             concurrency.get("cancel-in-progress"),
             "${{ github.event_name == 'repository_dispatch' }}",

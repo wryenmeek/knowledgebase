@@ -1,7 +1,7 @@
 # ADR-021: Google Drive source monitoring pipeline
 
 ## Status
-Accepted
+Accepted — amended in-place: Drive relay payload/lifecycle contract alignment (see § Amendment)
 
 ## Date
 2026-05-06
@@ -184,8 +184,9 @@ both in the order above.
 
 ### CI-6 workflow structure
 
-A new scheduled workflow (daily at 08:00 UTC — two hours offset from CI-5's 06:00 UTC to
-avoid lock contention), plus `workflow_dispatch`:
+A new scheduled workflow (weekly Monday 08:00 UTC via cron `0 8 * * 1`, offset from CI-5 to
+avoid lock contention), plus `repository_dispatch` (`drive-source-updated`) and
+`workflow_dispatch`:
 
 1. **`check-drift` job** (`contents: read`): reads registry files, calls Drive Changes API,
    emits JSON drift report. Exits nonzero if any API call fails.
@@ -203,14 +204,14 @@ All write jobs use `concurrency.group: kb-write-${{ github.repository }}` (no `$
 
 ## Alternatives considered
 
-### Webhook / push-based real-time monitoring via Drive push notifications
+### Webhook-first real-time monitoring that replaces scheduled polling
 
 - **Pros:** lower latency.
 - **Cons:** requires a running HTTPS endpoint to receive push notifications; significantly
   more infra; harder to audit; higher attack surface; notifications expire and require
   periodic renewal.
-- **Rejected:** scheduled polling via GitHub Actions is sufficient for the required latency
-  and is fully self-contained in the repository.
+- **Rejected:** real-time webhooks are acceptable only as an additive accelerator trigger.
+  Scheduled polling remains the authoritative fallback lane.
 
 ### Google Drive API v2 instead of v3
 
@@ -255,6 +256,65 @@ All write jobs use `concurrency.group: kb-write-${{ github.repository }}` (no `$
 - The `docs/architecture.md` automation model table gains a CI-6 row.
 - `pyproject.toml` gains a `drive-monitor` optional dependency group with
   `google-api-python-client>=2.100` and `google-auth>=2.23`.
+
+## Amendment
+
+Date: 2026-05-22
+
+This ADR is amended to lock the Drive relay contract used by CI-6 event-driven
+dispatches.
+
+### Stable `drive-source-updated` payload contract
+
+`repository_dispatch` payload fields are fixed to:
+
+- `source_kind` (`"drive"`)
+- `alias`
+- `registry_path`
+- `file_id`
+- `change_id`
+- `channel_id`
+- `resource_id`
+- `delivery_id`
+- `observed_at` (ISO-8601, UTC)
+
+### Idempotency contract
+
+Replay suppression key is fixed to:
+
+`channel_id + resource_id + change_id + file_id`
+
+TTL-based replay windows remain in force; replay suppression remains best-effort
+unless a shared cache backend is configured.
+
+### Authenticity and fail-closed behavior
+
+Relay processing remains fail-closed for channel/resource/token context errors:
+
+- invalid/missing signed channel token
+- channel/resource mismatch against signed token context (when provided)
+- invalid registry path or alias mismatch
+- malformed required Drive headers
+
+No dispatch is emitted on these failures.
+
+### Channel expiration and renewal semantics
+
+Relay lifecycle behavior is deterministic:
+
+- `X-Goog-Channel-Expiration` present and in the past → ignore notification
+  (`channel_expired`), do not dispatch.
+- `resource_state ∈ {sync, heartbeat}` stays ignored; when expiration is present
+  and within one hour, return `channel_renewal_due` to signal renewal urgency.
+- If no webhook expiration header is present, relay still behaves deterministically:
+  process relevant lifecycle states, ignore `sync`/`heartbeat`, and rely on
+  `sync` notifications plus operator automation for renewal cadence.
+
+### Deployment entrypoint
+
+`scripts/drive_monitor/relay_http.py` provides the minimal WSGI wrapper for
+deployable relay invocation (for example Cloud Run + gunicorn), while
+`scripts/drive_monitor/_relay.py` remains framework-agnostic relay logic.
 
 ## References
 

@@ -12,6 +12,7 @@ Script execution order::
     synthesize_diff.py   →  wiki/**                     (write, --approval)
     create_issues.py     →  GitHub Issues               (write, GitHub API)
     advance_cursor.py    →  registry cursor update      (write, --approval)
+    relay_http.py        →  webhook HTTP entrypoint     (blocking-only)
 
 See ``CONTEXT.md`` for full vocabulary and invariants.
 """

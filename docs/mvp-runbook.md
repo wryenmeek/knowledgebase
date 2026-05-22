@@ -302,7 +302,7 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 | **CI-3** (`.github/workflows/ci-3-pr-producer.yml`) | write-capable PR producer after trusted handoff/manual approval; includes LLM-based synthesis stage that calls GitHub Models API (gpt-4o-mini via `SYNTHESIS_GITHUB_TOKEN: ${{ github.token }}`, `models: read` scope) to extract entities and concepts from each ingested source page and write draft pages to `wiki/entities/**` and `wiki/concepts/**` before `update_index`; synthesis always soft-fails (emits `::warning`, exits 0) — the ingest PR is never blocked by LLM errors | execute the local sequence in this runbook, commit only allowlisted paths (`wiki/**`, `wiki/index.md`, `wiki/log.md`, `raw/processed/**`, `raw/rejected/**`) plus the CI-3 exception for `raw/inbox/**` deletions, and open/update PR manually through normal approvals/checks. Manual dispatch runs additionally require protected-environment reviewer approval (`ci3-manual-approval`) and now fail closed with explicit reason codes when the dispatch commit touches sensitive control-plane paths (`reject:path_filter:sensitive_control_plane_path:*`, `reject:trusted_trigger_model:manual_dispatch_sensitive_paths_present`). If synthesis fails locally: check bundle JSON for `"soft_skipped": true` (all 3 LLM attempts failed) or `::warning` output from `synthesize_combined.py`; synthesis failures do not prevent the PR from opening. |
 | **CI-4** (`.github/workflows/ci-4-framework-writer.yml`) | framework-writer: staged agent-generated content for `docs/**` and `.github/skills/**`; `workflow_dispatch` only; approval-gated | trigger `workflow_dispatch` manually after generating staged content; requires `ci4-framework-approval` environment gating; only allowlisted paths (`docs/**`, `.github/skills/**`) may be written. |
 | **CI-5** (`.github/workflows/ci-5-github-monitor.yml`) | GitHub source monitor: daily schedule (cron `30 6 * * *`, 06:30 UTC) + `repository_dispatch` (type `upstream-source-updated`) + drift detection (read-only) + PR-producing fetch/synthesize path; manual `workflow_dispatch` runs can scope to `inputs.registry_path`; writes `raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**` | run `scripts/github_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; open PR for any changes. See ADR-015 and ADR-012 for governance rules. |
-| **CI-6** (`.github/workflows/ci-6-google-drive-monitor.yml`) | Google Drive source monitor: weekly schedule (cron `0 8 * * 1`, Mon 08:00 UTC) + `repository_dispatch` (type `drive-source-updated`) + drift detection (read-only) + approval-gated fetch/synthesize path; workflow-level concurrency is `ci-6-drive-monitor-${{ github.ref }}` and manual `workflow_dispatch` runs can scope to `inputs.registry_path`; writes `raw/assets/**`, `raw/drive-sources/**`, bounded `wiki/**` | run `scripts/drive_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; advance cursor with `advance_cursor.py --approval approved`. See ADR-021 for governance rules. |
+| **CI-6** (`.github/workflows/ci-6-google-drive-monitor.yml`) | Google Drive source monitor: weekly schedule (cron `0 8 * * 1`, Mon 08:00 UTC) + `repository_dispatch` (type `drive-source-updated`) + drift detection (read-only) + approval-gated fetch/synthesize path; workflow-level concurrency key is `ci-6-drive-monitor-${{ github.ref }}-${{ github.event.client_payload.channel_id || 'none' }}-${{ github.event.client_payload.resource_id || 'none' }}-${{ github.event.client_payload.change_id || 'none' }}-${{ github.event.client_payload.file_id || 'none' }}` and manual `workflow_dispatch` runs can scope to `inputs.registry_path`; writes `raw/assets/**`, `raw/drive-sources/**`, bounded `wiki/**` | run `scripts/drive_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; advance cursor with `advance_cursor.py --approval approved`. See ADR-021 for governance rules. |
 
 - **CI-3 manual dispatch note:** `maintainer_approved` remains a required attestation input for `workflow_dispatch`, manual runs are gated by protected-environment reviewer approval (`ci3-manual-approval`), and preflight hard-blocks dispatch commits that include sensitive control-plane paths (`.github/workflows/**`, `.github/skills/**`, `.github/agents/**`, `.github/extensions/**`, `scripts/**`, `schema/**`, `AGENTS.md`, `pyproject.toml`).
 
@@ -332,8 +332,8 @@ Additional runtime prerequisite for both relays:
 - `event_type: upstream-source-updated` payload fields:
   `registry_path`, `owner`, `repo`, `changed_paths`, `delivery_id`, `event_name`
 - `event_type: drive-source-updated` payload fields:
-  `alias`, `registry_path`, `file_ids`, `channel_id`, `resource_id`,
-  `resource_state`, `message_number`
+  `source_kind` (`"drive"`), `alias`, `registry_path`, `file_id`, `change_id`,
+  `channel_id`, `resource_id`, `delivery_id`, `observed_at` (ISO-8601)
 
 ### Relay behavior guarantees
 
@@ -341,12 +341,20 @@ Additional runtime prerequisite for both relays:
   on signature mismatch.
 - GitHub relay only dispatches when changed push paths intersect monitored
   registry entry paths for that upstream `owner/repo`.
-- Drive relay validates signed channel token context and registry alias/path.
+- Drive relay validates signed channel token context (including optional
+  channel/resource expectations) and registry alias/path, and fails closed on
+  mismatches.
 - Drive relay dispatches only for relevant lifecycle states and suppresses
   replays using dedupe key
-  `X-Goog-Channel-ID + X-Goog-Resource-ID + X-Goog-Message-Number`.
+  `X-Goog-Channel-ID + X-Goog-Resource-ID + change_id + file_id`.
 - Replay suppression is best-effort unless you back relay caches with a shared
   store; the built-in cache is process-local.
+- Drive lifecycle handling is explicit: notifications with
+  `X-Goog-Channel-Expiration` in the past are ignored (`channel_expired`), and
+  `sync`/`heartbeat` notifications remain ignored; if expiration is within one
+  hour they return `channel_renewal_due`. When no expiration header is present,
+  relay behavior is deterministic: process relevant states normally and ignore
+  `sync`/`heartbeat` as `resource_state_ignored`.
 
 ### Minimal handler wiring (example)
 
@@ -386,8 +394,8 @@ drive_replay_cache = InMemoryDriveReplayCache()
 
 Example service run commands (for the maintainer-owned HTTP wrapper module):
 
-- local/dev: `uvicorn relay_app:app --host 0.0.0.0 --port 8080`
-- container/Cloud Run entrypoint: `gunicorn -b :${PORT:-8080} relay_app:app`
+- local/dev: `python -m scripts.drive_monitor.relay_http --host 0.0.0.0 --port 8080`
+- container/Cloud Run entrypoint: `gunicorn -b :${PORT:-8080} scripts.drive_monitor.relay_http:app`
 
 Suggested HTTP response mapping from relay result:
 

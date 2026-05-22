@@ -387,6 +387,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
         "Hard-fail behavior": ("lock unavailable", "alias with pipeline errors", "fail closed"),
     },
+    "scripts/drive_monitor/relay_http.py": {
+        "Runtime mode": ("blocking-only",),
+        "Writable paths": ("None", "repository_dispatch"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("scripts/drive_monitor/_relay.py", "dispatch_client.py", "ADR-021"),
+        "Hard-fail behavior": ("missing required env", "relay validation failure", "dispatch failure", "fail closed"),
+    },
     "scripts/init.py` — `--fresh` mode only": {
         "Runtime mode": ("blocking-only", "destructive"),
         "Writable paths": ("wiki/log.md", "wiki/index.md", "raw/processed/SPEC.md"),
