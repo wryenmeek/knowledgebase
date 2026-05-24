@@ -136,6 +136,9 @@ The relay is additive to the cron schedule (cron remains the safety-net).
 Security and fail-closed guarantees:
 
 - Validate `X-Hub-Signature-256` before payload processing.
+- Require trusted `repository_dispatch` actor identity before CI-5 consumes payload hints.
+- Require minimal trusted payload contract fields (`source_kind=github`, `delivery_id`,
+  `upstream_repo`) before CI-5 evaluates registry-hint fallback behavior.
 - Enforce source allowlist by dispatching only when upstream `owner/repo`
   matches allowlisted registry files and changed paths intersect monitored entries.
 - Suppress replayed deliveries using `delivery_id` with TTL replay cache.
@@ -146,7 +149,11 @@ CI-5 consumer behavior is fixed:
 
 - Valid, allowlisted `registry_path` hint => targeted check-drift mode.
 - Missing/invalid `registry_path` hint => explicit diagnostic + safe full-scan fallback
-  (no hard-fail solely for missing/invalid hint).
+  (no hard-fail solely for missing/invalid hint) **after** trusted actor and
+  payload-contract checks pass.
+- Fallback telemetry is emitted as a runtime artifact so repeated
+  `repository_dispatch` invalid-hint events can be surfaced as workflow
+  warnings on rerun attempts.
 
 ## Alternatives considered
 
@@ -225,6 +232,19 @@ full-scan fallback diagnostics for missing/invalid hints.
 **What didn't change:** Cron-triggered CI-5 remains active as safety-net, GitHub App
 authentication model remains preferred, and registry/wiki write-lock ordering
 requirements remain unchanged.
+
+---
+
+**Date:** 2026-05-23
+
+**What changed:** CI-5 fallback hardening now rejects untrusted
+`repository_dispatch` actors, enforces minimal payload contract checks
+(`source_kind`, `delivery_id`, `upstream_repo`) before fallback evaluation,
+and emits fallback telemetry/artifact warnings for repeated invalid-hint
+events on rerun attempts.
+
+**What didn't change:** Missing/invalid `registry_path` hints still route to safe
+full-scan fallback once trusted dispatch checks pass.
 
 ## References
 

@@ -1,7 +1,7 @@
 # ADR-024: Synthesis Curator Stage Design — LLM Entity/Concept Extraction in CI-3
 
 ## Status
-Accepted — amended in-place: single-lock synthesis implemented (#115, 2026-05-19)
+Accepted — amended in-place: single-lock synthesis implemented (#115, 2026-05-19); split-stage least-privilege synthesis extraction implemented (#139, 2026-05-24)
 
 ## Date
 2026-05-15
@@ -25,14 +25,18 @@ Several design questions had to be resolved before implementation.
 
 ## Decision
 
-Implement a synthesis stage directly inside CI-3 (`ci-3-pr-producer.yml`) that runs
-immediately after ingest and before `update_index`, using skill-local logic scripts under
-`.github/skills/*/logic/`.
+Implement a split synthesis boundary inside CI-3 (`ci-3-pr-producer.yml`):
 
-The stage calls the GitHub Models API (model: `gpt-4o-mini`) with a self-correcting
-three-attempt retry loop, then writes entity and concept draft pages to `wiki/entities/**`
-and `wiki/concepts/**` while holding `wiki/.kb_write.lock`. All synthesis steps soft-fail:
-they exit 0 and emit `::warning` on any LLM error, so the ingest PR always proceeds.
+- Low-privilege `synthesis-curator` job (`contents: read`, `models: read`) runs
+  `extract_entities.py` and emits deterministic extraction artifacts
+  (`ci3-synthesis/extraction-bundles.tsv` + bundle JSON files).
+- Write-capable `pr-producer` job (`contents: write`, `pull-requests: write`, no
+  `models` scope) ingests sources, applies those bundles via
+  `synthesize_combined.py`, then runs `update_index` and PR mutation steps.
+
+Synthesis extraction and synthesis application both soft-fail: they emit
+`::warning` and continue so the ingest PR flow still proceeds when LLM steps
+degrade or partially fail.
 
 ## Alternatives Considered
 
@@ -64,15 +68,16 @@ Write pages as `status: draft` and require a separate approval step to flip them
 - `status: draft` would exclude pages from `suggest-backlinks` and index queries until
   manually promoted, defeating the purpose of automated synthesis.
 
-### D — Separate token profile with tighter `models: read` scope (deferred)
+### D — Separate token profile with tighter `models: read` scope (implemented)
 
 Create a new CI job with only `models: read` (no `contents: write` or `pull-requests: write`)
-to isolate the LLM call from the write-capable step. Deferred, not rejected:
+to isolate the LLM call from the write-capable step. Implemented in issue #139:
 - Reduces blast radius if the LLM endpoint is compromised.
-- Adds workflow complexity (new job, artifact handoff, cross-job token passing).
-- Current mitigation: `--endpoint` is validated against an allowlist
-  (`models.inference.ai.azure.com` only); token is env-var only (never in CLI args to
-  prevent `/proc/<pid>/cmdline` exposure).
+- Uses deterministic extraction-bundle artifact handoff (`ci3-synthesis/extraction-bundles.tsv`
+  + bundle JSON files) from low-privilege `synthesis-curator` to write-capable
+  `pr-producer`.
+- Keeps existing endpoint allowlist mitigation (`models.inference.ai.azure.com` only)
+  and env-var-only token handling (never in CLI args).
 
 ## Key Design Decisions
 
@@ -123,8 +128,9 @@ index until the next CI-3 invocation.
 
 ## Consequences
 
-- CI-3's `tp-pr-producer` token profile now includes `models: read`. Any security review
-  of `tp-pr-producer` must account for this scope.
+- CI-3 now splits model-network scope and write scope across two jobs:
+  `synthesis-curator` has `models: read` + `contents: read`; `pr-producer` has
+  `contents: write` + `pull-requests: write` (no `models` scope).
 - Ingest PRs now include entity and concept draft pages as additional staged changes,
   visible in the PR diff for HITL review before merge.
 - LLM extraction quality depends on `gpt-4o-mini` and the quality of the source page body
@@ -148,6 +154,20 @@ section.
 **What didn't change:** Soft-fail behavior, endpoint allowlist enforcement,
 three-attempt extraction retry semantics, and synthesis placement before
 `update_index` remain unchanged.
+
+---
+
+**Date:** 2026-05-24
+
+**What changed:** Issue [#139](https://github.com/wryenmeek/knowledgebase/issues/139)
+implemented the deferred least-privilege split: CI-3 now runs extraction in a
+low-privilege `synthesis-curator` job (`contents: read`, `models: read`) and
+hands off deterministic extraction bundles as artifacts to `pr-producer`, which
+retains write/PR scopes but no model scope.
+
+**What didn't change:** Soft-fail synthesis semantics, endpoint allowlist
+enforcement, env-var-only token handling, and synthesis-before-`update_index`
+ordering remain unchanged.
 
 ## References
 

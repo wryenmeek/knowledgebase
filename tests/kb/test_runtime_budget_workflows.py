@@ -156,8 +156,7 @@ class RuntimeBudgetWorkflowIntegrationTests(unittest.TestCase):
     def test_workflows_reference_runtime_budget_contract_and_summary_outputs(self) -> None:
         required_snippets = (
             "schema/runtime-budgets.json",
-            "from scripts.validation import _runtime_budget",
-            "GITHUB_STEP_SUMMARY",
+            "python3 -m scripts.validation.evaluate_runtime_budget",
         )
         for workflow_path in WORKFLOW_EXPECTATIONS:
             with self.subTest(workflow=workflow_path):

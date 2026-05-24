@@ -72,6 +72,12 @@ jobs:
           # SECURITY: pass repository_dispatch payload via env var, never interpolate
           # ${{ github.event.* }} directly into a run: shell block.
           DISPATCH_REGISTRY_PATH: ${{ github.event.client_payload.registry_path }}
+          DISPATCH_SOURCE_KIND: ${{ github.event.client_payload.source_kind }}
+          DISPATCH_DELIVERY_ID: ${{ github.event.client_payload.delivery_id }}
+          DISPATCH_UPSTREAM_REPO: ${{ github.event.client_payload.upstream_repo }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CI5_TRUSTED_DISPATCH_ACTORS: github-actions[bot],${{ github.repository_owner }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
@@ -86,10 +92,50 @@ jobs:
               && [[ -f "${candidate}" ]]
           }
 
+          is_trusted_dispatch_actor() {
+            local candidate="${1:-}"
+            local allowlist_csv="${CI5_TRUSTED_DISPATCH_ACTORS:-}"
+            [[ -z "${candidate}" ]] && return 1
+            local allowlist_actor
+            IFS=',' read -r -a allowlist <<< "${allowlist_csv}"
+            for allowlist_actor in "${allowlist[@]}"; do
+              allowlist_actor="$(echo "${allowlist_actor}" | xargs)"
+              [[ -z "${allowlist_actor}" ]] && continue
+              if [[ "${candidate}" == "${allowlist_actor}" ]]; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
           REGISTRY_ARGS=()
           EFFECTIVE_REGISTRY_PATH=""
           REGISTRY_HINT_SOURCE=""
           REGISTRY_HINT_VALUE=""
+          FALLBACK_REASON=""
+
+          if [ "${GITHUB_EVENT_NAME}" = "repository_dispatch" ]; then
+            if ! is_trusted_dispatch_actor "${GITHUB_ACTOR:-}"; then
+              echo "::error::CI-5 repository_dispatch rejected: untrusted actor=${GITHUB_ACTOR:-unknown}." >&2
+              exit 1
+            fi
+
+            dispatch_contract_errors=()
+            if [ "${DISPATCH_SOURCE_KIND:-}" != "github" ]; then
+              dispatch_contract_errors+=("source_kind")
+            fi
+            if [ -z "${DISPATCH_DELIVERY_ID:-}" ]; then
+              dispatch_contract_errors+=("delivery_id")
+            fi
+            if [[ ! "${DISPATCH_UPSTREAM_REPO:-}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+              dispatch_contract_errors+=("upstream_repo")
+            fi
+            if [ "${#dispatch_contract_errors[@]}" -gt 0 ]; then
+              printf '::error::CI-5 repository_dispatch rejected: missing/invalid payload contract fields=%s\n' "$(IFS=,; echo "${dispatch_contract_errors[*]}")" >&2
+              exit 1
+            fi
+          fi
+
           if [ "${GITHUB_EVENT_NAME}" = "repository_dispatch" ]; then
             REGISTRY_HINT_SOURCE="repository_dispatch"
             REGISTRY_HINT_VALUE="${DISPATCH_REGISTRY_PATH:-}"
@@ -103,14 +149,48 @@ jobs:
               EFFECTIVE_REGISTRY_PATH="${REGISTRY_HINT_VALUE}"
               printf 'CI-5 targeted mode source=%s registry_path=%q\n' "${REGISTRY_HINT_SOURCE}" "${EFFECTIVE_REGISTRY_PATH}"
             else
+              FALLBACK_REASON="invalid_registry_hint"
               printf 'CI-5 full-scan fallback reason=invalid_registry_hint source=%s registry_path=%q\n' "${REGISTRY_HINT_SOURCE}" "${REGISTRY_HINT_VALUE}" >&2
             fi
           elif [ "${GITHUB_EVENT_NAME}" = "repository_dispatch" ]; then
+            FALLBACK_REASON="missing_registry_hint"
             echo "CI-5 full-scan fallback reason=missing_registry_hint source=repository_dispatch"
           fi
 
           if [ -n "${EFFECTIVE_REGISTRY_PATH}" ]; then
             REGISTRY_ARGS=(--registry "${EFFECTIVE_REGISTRY_PATH}")
+          fi
+
+          REGISTRY_HINT_SOURCE="${REGISTRY_HINT_SOURCE}" \
+          REGISTRY_HINT_VALUE="${REGISTRY_HINT_VALUE}" \
+          EFFECTIVE_REGISTRY_PATH="${EFFECTIVE_REGISTRY_PATH}" \
+          FALLBACK_REASON="${FALLBACK_REASON}" \
+          python3 - <<'PY' > runtime-metrics/fallback-telemetry.json
+          import json
+          import os
+
+          payload = {
+              "event_name": os.environ.get("GITHUB_EVENT_NAME", ""),
+              "registry_hint_source": os.environ.get("REGISTRY_HINT_SOURCE", ""),
+              "registry_hint_value": os.environ.get("REGISTRY_HINT_VALUE", ""),
+              "effective_registry_path": os.environ.get("EFFECTIVE_REGISTRY_PATH", ""),
+              "fallback_reason": os.environ.get("FALLBACK_REASON", ""),
+              "fallback_triggered": bool(os.environ.get("FALLBACK_REASON", "")),
+              "github_actor": os.environ.get("GITHUB_ACTOR", ""),
+              "dispatch_source_kind": os.environ.get("DISPATCH_SOURCE_KIND", ""),
+              "dispatch_delivery_id": os.environ.get("DISPATCH_DELIVERY_ID", ""),
+              "dispatch_upstream_repo": os.environ.get("DISPATCH_UPSTREAM_REPO", ""),
+              "run_attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
+          }
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+          if [ "${FALLBACK_REASON}" = "invalid_registry_hint" ] && [ "${GITHUB_EVENT_NAME}" = "repository_dispatch" ]; then
+            if [ "${GITHUB_RUN_ATTEMPT:-1}" -gt 1 ]; then
+              echo "::warning::CI-5 repeated invalid-hint fallback detected (run_attempt=${GITHUB_RUN_ATTEMPT}) delivery_id=${DISPATCH_DELIVERY_ID:-unknown} actor=${GITHUB_ACTOR:-unknown}."
+            else
+              echo "::warning::CI-5 invalid-hint fallback detected delivery_id=${DISPATCH_DELIVERY_ID:-unknown} actor=${GITHUB_ACTOR:-unknown}."
+            fi
           fi
 
           # Run drift detection; exits 0 on success (even when drift is found),
@@ -152,32 +232,10 @@ jobs:
         id: runtime-budget
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          from scripts.validation import _runtime_budget
-
-          metrics = json.loads(Path("runtime-metrics/check-drift-runtime-metrics.json").read_text(encoding="utf-8"))
-          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
-          evaluation = _runtime_budget.evaluate_workflow_budgets(
-              config=config,
-              workflow_id=metrics["workflow_id"],
-              stage_durations_seconds=metrics["stage_durations_seconds"],
-          )
-          artifact = _runtime_budget.build_artifact_payload(
-              evaluation=evaluation,
-              config=config,
-              budget_config_path="schema/runtime-budgets.json",
-          )
-          report_path = Path("runtime-metrics/check-drift-runtime-budget-report.json")
-          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
-              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
-              output_handle.write(f"overall_status={artifact['overall_status']}\n")
-          PY
+          python3 -m scripts.validation.evaluate_runtime_budget \
+            --metrics runtime-metrics/check-drift-runtime-metrics.json \
+            --report runtime-metrics/check-drift-runtime-budget-report.json \
+            --budget-config schema/runtime-budgets.json
 
       - name: Warn on CI-5 check-drift runtime budget breaches
         if: steps.runtime-budget.outputs.overall_status == 'warn'
@@ -192,6 +250,7 @@ jobs:
           name: ${{ steps.detect.outputs.artifact_name || format('drift-report-{0}', github.run_id) }}
           path: |
             drift-report.json
+            runtime-metrics/fallback-telemetry.json
             runtime-metrics/check-drift-runtime-metrics.json
             runtime-metrics/check-drift-runtime-budget-report.json
           retention-days: 7
@@ -281,32 +340,10 @@ jobs:
         id: runtime-budget
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          from scripts.validation import _runtime_budget
-
-          metrics = json.loads(Path("runtime-metrics/fetch-runtime-metrics.json").read_text(encoding="utf-8"))
-          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
-          evaluation = _runtime_budget.evaluate_workflow_budgets(
-              config=config,
-              workflow_id=metrics["workflow_id"],
-              stage_durations_seconds=metrics["stage_durations_seconds"],
-          )
-          artifact = _runtime_budget.build_artifact_payload(
-              evaluation=evaluation,
-              config=config,
-              budget_config_path="schema/runtime-budgets.json",
-          )
-          report_path = Path("runtime-metrics/fetch-runtime-budget-report.json")
-          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
-              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
-              output_handle.write(f"overall_status={artifact['overall_status']}\n")
-          PY
+          python3 -m scripts.validation.evaluate_runtime_budget \
+            --metrics runtime-metrics/fetch-runtime-metrics.json \
+            --report runtime-metrics/fetch-runtime-budget-report.json \
+            --budget-config schema/runtime-budgets.json
 
       - name: Warn on CI-5 fetch runtime budget breaches
         if: steps.runtime-budget.outputs.overall_status == 'warn'
@@ -438,10 +475,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json
-          import os
           from pathlib import Path
-
-          from scripts.validation import _runtime_budget
 
           stage_file = Path("runtime-metrics/classify-stage-durations.env")
           stage_durations: dict[str, int] = {}
@@ -460,24 +494,11 @@ jobs:
               json.dumps(metrics, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
           )
-          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
-          evaluation = _runtime_budget.evaluate_workflow_budgets(
-              config=config,
-              workflow_id=metrics["workflow_id"],
-              stage_durations_seconds=metrics["stage_durations_seconds"],
-          )
-          artifact = _runtime_budget.build_artifact_payload(
-              evaluation=evaluation,
-              config=config,
-              budget_config_path="schema/runtime-budgets.json",
-          )
-          report_path = Path("runtime-metrics/classify-runtime-budget-report.json")
-          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
-              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
-              output_handle.write(f"overall_status={artifact['overall_status']}\n")
           PY
+          python3 -m scripts.validation.evaluate_runtime_budget \
+            --metrics runtime-metrics/classify-runtime-metrics.json \
+            --report runtime-metrics/classify-runtime-budget-report.json \
+            --budget-config schema/runtime-budgets.json
 
       - name: Warn on CI-5 classify runtime budget breaches
         if: steps.runtime-budget.outputs.overall_status == 'warn'
@@ -575,32 +596,10 @@ jobs:
         id: runtime-budget
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          from scripts.validation import _runtime_budget
-
-          metrics = json.loads(Path("runtime-metrics/synthesize-runtime-metrics.json").read_text(encoding="utf-8"))
-          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
-          evaluation = _runtime_budget.evaluate_workflow_budgets(
-              config=config,
-              workflow_id=metrics["workflow_id"],
-              stage_durations_seconds=metrics["stage_durations_seconds"],
-          )
-          artifact = _runtime_budget.build_artifact_payload(
-              evaluation=evaluation,
-              config=config,
-              budget_config_path="schema/runtime-budgets.json",
-          )
-          report_path = Path("runtime-metrics/synthesize-runtime-budget-report.json")
-          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
-              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
-              output_handle.write(f"overall_status={artifact['overall_status']}\n")
-          PY
+          python3 -m scripts.validation.evaluate_runtime_budget \
+            --metrics runtime-metrics/synthesize-runtime-metrics.json \
+            --report runtime-metrics/synthesize-runtime-budget-report.json \
+            --budget-config schema/runtime-budgets.json
 
       - name: Warn on CI-5 synthesize runtime budget breaches
         if: steps.runtime-budget.outputs.overall_status == 'warn'

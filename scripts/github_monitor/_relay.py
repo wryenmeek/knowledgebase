@@ -13,13 +13,12 @@ import hashlib
 import hmac
 import json
 import re
-import threading
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Protocol, TypedDict
 
+from scripts.replay_cache import InMemoryReplayReservationCache
 from scripts.github_monitor.dispatch_client import (
     GitHubApiDispatchClient,
     RepositoryDispatchClient,
@@ -86,75 +85,15 @@ class RelayValidationError(ValueError):
     """Raised when webhook headers/body fail validation."""
 
 
-class GitHubDeliveryReplayCache:
+class GitHubDeliveryReplayCache(InMemoryReplayReservationCache):
     """Best-effort replay suppression keyed by ``X-GitHub-Delivery``."""
 
     def __init__(self, *, ttl_seconds: int = 86_400, max_entries: int = 20_000) -> None:
-        if ttl_seconds <= 0:
-            raise ValueError("ttl_seconds must be positive")
-        if max_entries <= 0:
-            raise ValueError("max_entries must be positive")
-        self._ttl_seconds = float(ttl_seconds)
-        self._max_entries = max_entries
-        self._expirations: dict[str, float] = {}
-        self._inflight: set[str] = set()
-        self._lock = threading.Lock()
-
-    def check_and_record(self, delivery_id: str, *, now: float | None = None) -> bool:
-        if self.reserve(delivery_id, now=now):
-            return True
-        self.commit(delivery_id, now=now)
-        return False
-
-    def is_replay(self, delivery_id: str, *, now: float | None = None) -> bool:
-        current = time.time() if now is None else now
-        with self._lock:
-            self._evict_expired(current)
-            return delivery_id in self._expirations or delivery_id in self._inflight
-
-    def reserve(self, delivery_id: str, *, now: float | None = None) -> bool:
-        current = time.time() if now is None else now
-        with self._lock:
-            self._evict_expired(current)
-            if delivery_id in self._expirations or delivery_id in self._inflight:
-                return True
-            self._inflight.add(delivery_id)
-            return False
-
-    def commit(self, delivery_id: str, *, now: float | None = None) -> None:
-        current = time.time() if now is None else now
-        with self._lock:
-            self._evict_expired(current)
-            self._inflight.discard(delivery_id)
-            self._record_unlocked(delivery_id, current)
-
-    def rollback(self, delivery_id: str) -> None:
-        with self._lock:
-            self._inflight.discard(delivery_id)
-
-    def record(self, delivery_id: str, *, now: float | None = None) -> None:
-        self.commit(delivery_id, now=now)
-
-    def _record_unlocked(self, delivery_id: str, now: float) -> None:
-        if len(self._expirations) >= self._max_entries:
-            oldest_key = min(self._expirations, key=self._expirations.get)
-            self._expirations.pop(oldest_key, None)
-        self._expirations[delivery_id] = now + self._ttl_seconds
-
-    def _evict_expired(self, now: float) -> None:
-        expired_keys = [k for k, expiry in self._expirations.items() if expiry <= now]
-        for key in expired_keys:
-            self._expirations.pop(key, None)
+        super().__init__(ttl_seconds=ttl_seconds, max_entries=max_entries)
 
 
 class GitHubReplayCache(Protocol):
     """Replay cache contract for delivery-ID suppression."""
-
-    def check_and_record(self, delivery_id: str, *, now: float | None = None) -> bool:
-        """Return True when delivery_id is replayed, else record and return False."""
-
-    def is_replay(self, delivery_id: str, *, now: float | None = None) -> bool:
-        """Return True when delivery_id has already been recorded."""
 
     def reserve(self, delivery_id: str, *, now: float | None = None) -> bool:
         """Atomically reserve a delivery_id; return True when replayed."""
@@ -164,9 +103,6 @@ class GitHubReplayCache(Protocol):
 
     def rollback(self, delivery_id: str) -> None:
         """Release a reserved delivery_id after dispatch failure."""
-
-    def record(self, delivery_id: str, *, now: float | None = None) -> None:
-        """Record delivery_id after successful dispatch."""
 
 
 _DEFAULT_REPLAY_CACHE = GitHubDeliveryReplayCache()
@@ -677,7 +613,18 @@ def relay_github_push_event(
     )
 
 
+def externalize_relay_reason(*, status: str, reason: str) -> str:
+    """Return an external-safe reason string for HTTP/webhook responses."""
+
+    if status == "rejected":
+        return "request_rejected"
+    if status == "failed":
+        return "relay_failed"
+    return reason
+
+
 __all__ = [
+    "externalize_relay_reason",
     "GitHubApiDispatchClient",
     "GitHubDeliveryReplayCache",
     "GitHubReplayCache",

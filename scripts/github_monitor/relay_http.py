@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
+import sys
 from pathlib import Path
 from typing import Iterable
 from wsgiref.simple_server import make_server
 from wsgiref.types import StartResponse, WSGIEnvironment
 
 from scripts.github_monitor._relay import (
+    externalize_relay_reason,
     GitHubDeliveryReplayCache,
-    GitHubRelayResult,
     GitHubApiDispatchClient,
     relay_github_push_event,
+)
+from scripts.relay_wsgi_common import (
+    extract_headers,
+    handle_common_http_envelope,
+    json_response,
+    required_env,
 )
 
 _STATUS_HTTP_MAP = {
@@ -23,33 +29,7 @@ _STATUS_HTTP_MAP = {
     "rejected": 400,
     "failed": 502,
 }
-_STATUS_REASON_MAP = {
-    202: "Accepted",
-    400: "Bad Request",
-    413: "Payload Too Large",
-    500: "Internal Server Error",
-    502: "Bad Gateway",
-}
 _DEFAULT_MAX_BODY_BYTES = 1_048_576
-
-
-def _required_env(name: str) -> str:
-    value = os.environ.get(name, "").strip()
-    if not value:
-        raise RuntimeError(f"missing required environment variable: {name}")
-    return value
-
-
-def _extract_headers(environ: WSGIEnvironment) -> dict[str, str]:
-    headers: dict[str, str] = {}
-    for key, value in environ.items():
-        if not key.startswith("HTTP_"):
-            continue
-        header_name = key[5:].replace("_", "-")
-        headers[header_name] = value
-    if "CONTENT_TYPE" in environ:
-        headers["Content-Type"] = environ["CONTENT_TYPE"]
-    return headers
 
 
 class RequestBodyError(ValueError):
@@ -97,18 +77,6 @@ def _read_request_body(environ: WSGIEnvironment, *, max_body_bytes: int) -> byte
     return body
 
 
-def _serialize_result(result: GitHubRelayResult) -> bytes:
-    return json.dumps(
-        {
-            "status": result.status,
-            "reason": result.reason,
-            "dispatched_count": result.dispatched_count,
-            "payloads": result.payloads,
-        },
-        sort_keys=True,
-    ).encode("utf-8")
-
-
 class GitHubRelayWsgiApp:
     """Minimal WSGI wrapper around ``relay_github_push_event``."""
 
@@ -133,13 +101,13 @@ class GitHubRelayWsgiApp:
         repo_root_raw = os.environ.get("REPO_ROOT", ".")
         repo_root = Path(repo_root_raw).resolve()
         dispatch_client = GitHubApiDispatchClient(
-            target_owner=_required_env("DISPATCH_TARGET_OWNER"),
-            target_repo=_required_env("DISPATCH_TARGET_REPO"),
-            token=_required_env("DISPATCH_TOKEN"),
+            target_owner=required_env("DISPATCH_TARGET_OWNER"),
+            target_repo=required_env("DISPATCH_TARGET_REPO"),
+            token=required_env("DISPATCH_TOKEN"),
         )
         return cls(
             repo_root=repo_root,
-            webhook_secret=_required_env("GITHUB_WEBHOOK_SECRET"),
+            webhook_secret=required_env("GITHUB_WEBHOOK_SECRET"),
             dispatch_client=dispatch_client,
             max_body_bytes=_load_max_body_bytes(),
         )
@@ -147,52 +115,24 @@ class GitHubRelayWsgiApp:
     def __call__(
         self, environ: WSGIEnvironment, start_response: StartResponse
     ) -> Iterable[bytes]:
-        method = str(environ.get("REQUEST_METHOD", "")).upper()
-        path = str(environ.get("PATH_INFO", "/"))
+        common_response = handle_common_http_envelope(environ, start_response)
+        if common_response is not None:
+            return common_response
 
-        if path == "/healthz":
-            body = json.dumps({"status": "ok"}).encode("utf-8")
-            start_response(
-                "200 OK",
-                [
-                    ("Content-Type", "application/json"),
-                    ("Content-Length", str(len(body))),
-                ],
-            )
-            return [body]
-
-        if method != "POST":
-            body = json.dumps({"error": "method_not_allowed"}).encode("utf-8")
-            start_response(
-                "405 Method Not Allowed",
-                [
-                    ("Content-Type", "application/json"),
-                    ("Content-Length", str(len(body))),
-                ],
-            )
-            return [body]
-
-        headers = _extract_headers(environ)
+        headers = extract_headers(environ)
         try:
             body = _read_request_body(environ, max_body_bytes=self._max_body_bytes)
         except RequestBodyError as exc:
-            rejected_body = json.dumps(
-                {
+            return json_response(
+                start_response=start_response,
+                status_code=exc.status_code,
+                payload={
                     "status": "rejected",
                     "reason": exc.reason,
                     "dispatched_count": 0,
                     "payloads": [],
                 },
-                sort_keys=True,
-            ).encode("utf-8")
-            start_response(
-                f"{exc.status_code} {_STATUS_REASON_MAP.get(exc.status_code, 'Bad Request')}",
-                [
-                    ("Content-Type", "application/json"),
-                    ("Content-Length", str(len(rejected_body))),
-                ],
             )
-            return [rejected_body]
         result = relay_github_push_event(
             repo_root=self._repo_root,
             headers=headers,
@@ -202,15 +142,26 @@ class GitHubRelayWsgiApp:
             replay_cache=self._replay_cache,
         )
         status_code = _STATUS_HTTP_MAP.get(result.status, 500)
-        serialized = _serialize_result(result)
-        start_response(
-            f"{status_code} {_STATUS_REASON_MAP.get(status_code, 'Internal Server Error')}",
-            [
-                ("Content-Type", "application/json"),
-                ("Content-Length", str(len(serialized))),
-            ],
+        external_reason = externalize_relay_reason(
+            status=result.status,
+            reason=result.reason,
         )
-        return [serialized]
+        if external_reason != result.reason:
+            print(
+                f"[github-relay] status={result.status} internal_reason={result.reason}",
+                file=sys.stderr,
+                flush=True,
+            )
+        return json_response(
+            start_response=start_response,
+            status_code=status_code,
+            payload={
+                "status": result.status,
+                "reason": external_reason,
+                "dispatched_count": result.dispatched_count,
+                "payloads": result.payloads,
+            },
+        )
 
 
 _APP: GitHubRelayWsgiApp | None = None
