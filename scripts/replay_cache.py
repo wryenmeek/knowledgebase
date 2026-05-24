@@ -41,15 +41,18 @@ class InMemoryReplayReservationCache:
             self._inflight.discard(key)
 
     def _record_unlocked(self, key: str, now: float) -> None:
+        # Keep insertion order aligned with expiration order.
+        self._expirations.pop(key, None)
         if len(self._expirations) >= self._max_entries:
-            oldest_key = min(self._expirations, key=self._expirations.get)
-            self._expirations.pop(oldest_key, None)
+            self._expirations.pop(next(iter(self._expirations)), None)
         self._expirations[key] = now + self._ttl_seconds
 
     def _evict_expired(self, now: float) -> None:
-        expired_keys = [k for k, expiry in self._expirations.items() if expiry <= now]
-        for key in expired_keys:
-            self._expirations.pop(key, None)
+        while self._expirations:
+            oldest_key = next(iter(self._expirations))
+            if self._expirations[oldest_key] > now:
+                break
+            self._expirations.pop(oldest_key, None)
 
 
 __all__ = ["InMemoryReplayReservationCache"]
