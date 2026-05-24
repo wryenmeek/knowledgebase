@@ -152,6 +152,10 @@ though they are not all landed today:
 | `scripts/hooks/**` | Pre-commit and CI governance hook scripts | Hooks are read-only — no repository writes. They enforce local governance guardrails (ADR-016 authorizes this family). |
 | `scripts/init.py` | Operator-only fresh-instance initialization for template instances; resets all content directories and regenerates skeleton artifacts (`raw/processed/SPEC.md`, sample inbox doc, stub wiki artifacts) | Operator-use only — never invoke in CI automation on a live instance; requires `--fresh` flag; `--yes` flag requires `INIT_ALLOW_WIPE=1` env var; checks `wiki/.kb_write.lock` before any write (blocks if held); uses `check_no_symlink_path` from `write_utils`; sole declared exception to the append-only `wiki/log.md` guardrail (full overwrite on clean-slate reset). |
 
+Relay HTTP wrappers for the GitHub and Drive monitors share WSGI envelope helpers
+in `scripts/relay_wsgi_common.py`. Contract-specific validation and dispatch logic
+remains in `scripts/github_monitor/_relay.py` and `scripts/drive_monitor/_relay.py`.
+
 Any future post-MVP writer that touches shared wiki artifacts must keep the
 ADR-005 workflow-concurrency plus `wiki/.kb_write.lock` model, and any
 post-MVP runtime path must preserve the CI-1/CI-2/CI-3 split from ADR-004.
