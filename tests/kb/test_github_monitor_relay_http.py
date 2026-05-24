@@ -137,6 +137,31 @@ def test_invalid_content_length_returns_400_rejected(tmp_path: Path) -> None:
     assert parsed["reason"] == "invalid_content_length"
 
 
+@pytest.mark.parametrize("content_length", ["0", "-7"])
+def test_zero_or_negative_content_length_returns_400_rejected(
+    tmp_path: Path, content_length: str
+) -> None:
+    app = GitHubRelayWsgiApp(
+        repo_root=tmp_path,
+        webhook_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+            "CONTENT_LENGTH": content_length,
+            "wsgi.input": io.BytesIO(b"{}"),
+        },
+    )
+
+    assert status.startswith("400 ")
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["status"] == "rejected"
+    assert parsed["reason"] == "invalid_content_length"
+
+
 def test_missing_wsgi_input_returns_400_rejected(tmp_path: Path) -> None:
     app = GitHubRelayWsgiApp(
         repo_root=tmp_path,
@@ -239,3 +264,101 @@ def test_from_env_rejects_invalid_max_body_size(monkeypatch: pytest.MonkeyPatch)
 
     with pytest.raises(RuntimeError, match="MAX_GITHUB_WEBHOOK_BODY_BYTES"):
         GitHubRelayWsgiApp.from_env()
+
+
+def test_from_env_rejects_non_integer_max_body_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DISPATCH_TARGET_OWNER", "owner")
+    monkeypatch.setenv("DISPATCH_TARGET_REPO", "repo")
+    monkeypatch.setenv("DISPATCH_TOKEN", "token")
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "secret")
+    monkeypatch.setenv("MAX_GITHUB_WEBHOOK_BODY_BYTES", "not-an-integer")
+
+    with pytest.raises(RuntimeError, match="MAX_GITHUB_WEBHOOK_BODY_BYTES"):
+        GitHubRelayWsgiApp.from_env()
+
+
+@pytest.mark.parametrize(
+    ("relay_status", "internal_reason", "expected_reason"),
+    [
+        ("rejected", "registry file is unreadable/invalid: raw/github-sources/x.source-registry.json", "request_rejected"),
+        ("failed", "dispatch_failed: boom", "relay_failed"),
+    ],
+)
+def test_wsgi_sanitizes_internal_failure_reasons(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relay_status: str,
+    internal_reason: str,
+    expected_reason: str,
+) -> None:
+    result = GitHubRelayResult(
+        status=relay_status,
+        reason=internal_reason,
+        dispatched_count=0,
+        payloads=(),
+    )
+    monkeypatch.setattr(relay_http, "relay_github_push_event", lambda **_: result)
+    app = GitHubRelayWsgiApp(
+        repo_root=tmp_path,
+        webhook_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    payload = b"{}"
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+            "CONTENT_LENGTH": str(len(payload)),
+            "wsgi.input": io.BytesIO(payload),
+        },
+    )
+
+    assert status.startswith("400 " if relay_status == "rejected" else "502 ")
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["status"] == relay_status
+    assert parsed["reason"] == expected_reason
+
+
+@pytest.mark.parametrize(
+    ("relay_status", "reason"),
+    [
+        ("dispatched", "dispatch_ok"),
+        ("ignored", "replay_suppressed"),
+    ],
+)
+def test_wsgi_keeps_non_failure_reasons_unchanged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relay_status: str,
+    reason: str,
+) -> None:
+    result = GitHubRelayResult(
+        status=relay_status,
+        reason=reason,
+        dispatched_count=0,
+        payloads=(),
+    )
+    monkeypatch.setattr(relay_http, "relay_github_push_event", lambda **_: result)
+    app = GitHubRelayWsgiApp(
+        repo_root=tmp_path,
+        webhook_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    payload = b"{}"
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+            "CONTENT_LENGTH": str(len(payload)),
+            "wsgi.input": io.BytesIO(payload),
+        },
+    )
+
+    assert status.startswith("202 ")
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["status"] == relay_status
+    assert parsed["reason"] == reason

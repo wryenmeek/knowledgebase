@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
+import sys
 from pathlib import Path
 from typing import Iterable
 from wsgiref.simple_server import make_server
 from wsgiref.types import StartResponse, WSGIEnvironment
 
 from scripts.drive_monitor._relay import (
+    externalize_relay_reason,
     DriveReplayCache,
     GitHubApiDispatchClient,
     relay_drive_notification,
+)
+from scripts.relay_wsgi_common import (
+    extract_headers,
+    handle_common_http_envelope,
+    json_response,
+    required_env,
 )
 
 _STATUS_HTTP_MAP = {
@@ -22,31 +29,6 @@ _STATUS_HTTP_MAP = {
     "rejected": 400,
     "failed": 502,
 }
-_STATUS_REASON_MAP = {
-    202: "Accepted",
-    400: "Bad Request",
-    500: "Internal Server Error",
-    502: "Bad Gateway",
-}
-
-
-def _required_env(name: str) -> str:
-    value = os.environ.get(name, "").strip()
-    if not value:
-        raise RuntimeError(f"missing required environment variable: {name}")
-    return value
-
-
-def _extract_headers(environ: WSGIEnvironment) -> dict[str, str]:
-    headers: dict[str, str] = {}
-    for key, value in environ.items():
-        if not key.startswith("HTTP_"):
-            continue
-        header_name = key[5:].replace("_", "-")
-        headers[header_name] = value
-    if "CONTENT_TYPE" in environ:
-        headers["Content-Type"] = environ["CONTENT_TYPE"]
-    return headers
 
 
 class DriveRelayWsgiApp:
@@ -69,45 +51,24 @@ class DriveRelayWsgiApp:
         repo_root_raw = os.environ.get("REPO_ROOT", ".")
         repo_root = Path(repo_root_raw).resolve()
         dispatch_client = GitHubApiDispatchClient(
-            target_owner=_required_env("DISPATCH_TARGET_OWNER"),
-            target_repo=_required_env("DISPATCH_TARGET_REPO"),
-            token=_required_env("DISPATCH_TOKEN"),
+            target_owner=required_env("DISPATCH_TARGET_OWNER"),
+            target_repo=required_env("DISPATCH_TARGET_REPO"),
+            token=required_env("DISPATCH_TOKEN"),
         )
         return cls(
             repo_root=repo_root,
-            token_secret=_required_env("DRIVE_CHANNEL_TOKEN_SECRET"),
+            token_secret=required_env("DRIVE_CHANNEL_TOKEN_SECRET"),
             dispatch_client=dispatch_client,
         )
 
     def __call__(
         self, environ: WSGIEnvironment, start_response: StartResponse
     ) -> Iterable[bytes]:
-        method = str(environ.get("REQUEST_METHOD", "")).upper()
-        path = str(environ.get("PATH_INFO", "/"))
+        common_response = handle_common_http_envelope(environ, start_response)
+        if common_response is not None:
+            return common_response
 
-        if path == "/healthz":
-            body = json.dumps({"status": "ok"}).encode("utf-8")
-            start_response(
-                "200 OK",
-                [
-                    ("Content-Type", "application/json"),
-                    ("Content-Length", str(len(body))),
-                ],
-            )
-            return [body]
-
-        if method != "POST":
-            body = json.dumps({"error": "method_not_allowed"}).encode("utf-8")
-            start_response(
-                "405 Method Not Allowed",
-                [
-                    ("Content-Type", "application/json"),
-                    ("Content-Length", str(len(body))),
-                ],
-            )
-            return [body]
-
-        headers = _extract_headers(environ)
+        headers = extract_headers(environ)
         result = relay_drive_notification(
             repo_root=self._repo_root,
             headers=headers,
@@ -116,23 +77,26 @@ class DriveRelayWsgiApp:
             replay_cache=self._replay_cache,
         )
         status_code = _STATUS_HTTP_MAP.get(result.status, 500)
-        body = json.dumps(
-            {
+        external_reason = externalize_relay_reason(
+            status=result.status,
+            reason=result.reason,
+        )
+        if external_reason != result.reason:
+            print(
+                f"[drive-relay] status={result.status} internal_reason={result.reason}",
+                file=sys.stderr,
+                flush=True,
+            )
+        return json_response(
+            start_response=start_response,
+            status_code=status_code,
+            payload={
                 "status": result.status,
-                "reason": result.reason,
+                "reason": external_reason,
                 "dispatched": result.dispatched,
                 "payload": result.payload,
             },
-            sort_keys=True,
-        ).encode("utf-8")
-        start_response(
-            f"{status_code} {_STATUS_REASON_MAP.get(status_code, 'Internal Server Error')}",
-            [
-                ("Content-Type", "application/json"),
-                ("Content-Length", str(len(body))),
-            ],
         )
-        return [body]
 
 
 _APP: DriveRelayWsgiApp | None = None

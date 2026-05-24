@@ -12,14 +12,13 @@ import hashlib
 import hmac
 import json
 import re
-import threading
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, NotRequired, Protocol, TypedDict
 
+from scripts.replay_cache import InMemoryReplayReservationCache
 from scripts.github_monitor.dispatch_client import (
     GitHubApiDispatchClient,
     RepositoryDispatchClient,
@@ -119,67 +118,11 @@ class RelayValidationError(ValueError):
     """Raised when Drive headers/token/context are invalid."""
 
 
-class DriveReplayCache:
+class DriveReplayCache(InMemoryReplayReservationCache):
     """In-memory replay suppression keyed by channel/resource/change/file tuple."""
 
     def __init__(self, *, ttl_seconds: int = 3600, max_entries: int = 20_000) -> None:
-        if ttl_seconds <= 0:
-            raise ValueError("ttl_seconds must be positive")
-        if max_entries <= 0:
-            raise ValueError("max_entries must be positive")
-        self._ttl_seconds = float(ttl_seconds)
-        self._max_entries = max_entries
-        self._expirations: dict[str, float] = {}
-        self._inflight: set[str] = set()
-        self._lock = threading.Lock()
-
-    def check_and_record(self, key: str, *, now: float | None = None) -> bool:
-        """Return ``True`` for replay, else record and return ``False``."""
-
-        if self.reserve(key, now=now):
-            return True
-        self.commit(key, now=now)
-        return False
-
-    def is_replay(self, key: str, *, now: float | None = None) -> bool:
-        current = time.time() if now is None else now
-        with self._lock:
-            self._evict_expired(current)
-            return key in self._expirations or key in self._inflight
-
-    def reserve(self, key: str, *, now: float | None = None) -> bool:
-        current = time.time() if now is None else now
-        with self._lock:
-            self._evict_expired(current)
-            if key in self._expirations or key in self._inflight:
-                return True
-            self._inflight.add(key)
-            return False
-
-    def commit(self, key: str, *, now: float | None = None) -> None:
-        current = time.time() if now is None else now
-        with self._lock:
-            self._evict_expired(current)
-            self._inflight.discard(key)
-            self._record_unlocked(key, current)
-
-    def rollback(self, key: str) -> None:
-        with self._lock:
-            self._inflight.discard(key)
-
-    def record(self, key: str, *, now: float | None = None) -> None:
-        self.commit(key, now=now)
-
-    def _record_unlocked(self, key: str, now: float) -> None:
-        if len(self._expirations) >= self._max_entries:
-            oldest_key = min(self._expirations, key=self._expirations.get)
-            self._expirations.pop(oldest_key, None)
-        self._expirations[key] = now + self._ttl_seconds
-
-    def _evict_expired(self, now: float) -> None:
-        expired_keys = [k for k, expiry in self._expirations.items() if expiry <= now]
-        for key in expired_keys:
-            self._expirations.pop(key, None)
+        super().__init__(ttl_seconds=ttl_seconds, max_entries=max_entries)
 
 
 # Explicit concrete alias used in operator docs/examples.
@@ -189,12 +132,6 @@ InMemoryDriveReplayCache = DriveReplayCache
 class DriveReplayStore(Protocol):
     """Replay cache/store contract for notification dedupe."""
 
-    def check_and_record(self, key: str, *, now: float | None = None) -> bool:
-        """Return True when key is replayed, else record and return False."""
-
-    def is_replay(self, key: str, *, now: float | None = None) -> bool:
-        """Return True when key has already been recorded."""
-
     def reserve(self, key: str, *, now: float | None = None) -> bool:
         """Atomically reserve a key; return True when replayed."""
 
@@ -203,9 +140,6 @@ class DriveReplayStore(Protocol):
 
     def rollback(self, key: str) -> None:
         """Release a reserved key after dispatch failure."""
-
-    def record(self, key: str, *, now: float | None = None) -> None:
-        """Record key after successful dispatch."""
 
 
 def _normalize_headers(headers: Mapping[str, str]) -> dict[str, str]:
@@ -453,38 +387,49 @@ def _extract_file_id(
     headers: Mapping[str, str],
     token_context: DriveChannelTokenContext,
 ) -> str:
+    token_file_ids = token_context.get("file_ids", [])
+    token_file_id_allowlist = set(token_file_ids)
+
+    file_id: str
     raw_single = headers.get(_HEADER_FILE_ID)
     if raw_single:
         try:
-            return validate_file_id(raw_single.strip())
+            file_id = validate_file_id(raw_single.strip())
         except ValueError as exc:
             raise RelayValidationError(str(exc)) from exc
-
-    raw_multiple = headers.get(_HEADER_FILE_IDS)
-    if raw_multiple:
-        parsed_ids: set[str] = set()
-        for value in raw_multiple.split(","):
-            trimmed = value.strip()
-            if not trimmed:
-                continue
-            try:
-                parsed_ids.add(validate_file_id(trimmed))
-            except ValueError as exc:
-                raise RelayValidationError(str(exc)) from exc
-        if len(parsed_ids) != 1:
+    else:
+        raw_multiple = headers.get(_HEADER_FILE_IDS)
+        if raw_multiple:
+            parsed_ids: set[str] = set()
+            for value in raw_multiple.split(","):
+                trimmed = value.strip()
+                if not trimmed:
+                    continue
+                try:
+                    parsed_ids.add(validate_file_id(trimmed))
+                except ValueError as exc:
+                    raise RelayValidationError(str(exc)) from exc
+            if len(parsed_ids) != 1:
+                raise RelayValidationError(
+                    "x-goog-file-ids must contain exactly one unique file_id"
+                )
+            file_id = next(iter(parsed_ids))
+        elif len(token_file_ids) == 1:
+            file_id = token_file_ids[0]
+        elif len(token_file_ids) > 1:
             raise RelayValidationError(
-                "x-goog-file-ids must contain exactly one unique file_id"
+                "Drive channel token file_ids is ambiguous; include x-goog-file-id header"
             )
-        return next(iter(parsed_ids))
+        else:
+            raise RelayValidationError(
+                "missing file_id context (x-goog-file-id or token file_ids)"
+            )
 
-    token_file_ids = token_context.get("file_ids", [])
-    if len(token_file_ids) == 1:
-        return token_file_ids[0]
-    if len(token_file_ids) > 1:
+    if token_file_id_allowlist and file_id not in token_file_id_allowlist:
         raise RelayValidationError(
-            "Drive channel token file_ids is ambiguous; include x-goog-file-id header"
+            "x-goog-file-id is outside signed channel token file_ids allowlist"
         )
-    raise RelayValidationError("missing file_id context (x-goog-file-id or token file_ids)")
+    return file_id
 
 
 def parse_drive_notification(
@@ -786,7 +731,18 @@ def relay_drive_notification(
     )
 
 
+def externalize_relay_reason(*, status: str, reason: str) -> str:
+    """Return an external-safe reason string for HTTP/webhook responses."""
+
+    if status == "rejected":
+        return "request_rejected"
+    if status == "failed":
+        return "relay_failed"
+    return reason
+
+
 __all__ = [
+    "externalize_relay_reason",
     "DriveChannelTokenContext",
     "DriveNotification",
     "DriveRelayResult",

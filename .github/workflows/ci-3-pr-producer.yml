@@ -173,11 +173,16 @@ jobs:
               "checks": "read",
               "contents": "read",
           }
+          expected_synthesis_curator_permissions = {
+              "actions": "read",
+              "checks": "read",
+              "contents": "read",
+              "models": "read",
+          }
           expected_pr_producer_permissions = {
               "actions": "read",
               "checks": "read",
               "contents": "write",
-              "models": "read",
               "pull-requests": "write",
           }
 
@@ -254,19 +259,28 @@ jobs:
               )
               validate_permissions(top_level_permissions, expected_top_level_permissions, "top_level")
 
-          pr_producer_job_indices = [
-              index
-              for index, workflow_line in enumerate(workflow_lines)
-              if workflow_line.strip() == "pr-producer:"
-              and workflow_line.startswith("  ")
-              and not workflow_line.startswith("    ")
-          ]
-          if not pr_producer_job_indices:
-              errors.append("reject:permissions_scope:pr_producer_job_missing")
-          elif len(pr_producer_job_indices) > 1:
-              errors.append("reject:permissions_scope:pr_producer_job_duplicated")
-          else:
-              job_start = pr_producer_job_indices[0]
+          def validate_job_permissions(
+              *,
+              job_name: str,
+              scope: str,
+              expected_permissions: dict[str, str],
+          ) -> None:
+              job_header = f"{job_name}:"
+              job_indices = [
+                  index
+                  for index, workflow_line in enumerate(workflow_lines)
+                  if workflow_line.strip() == job_header
+                  and workflow_line.startswith("  ")
+                  and not workflow_line.startswith("    ")
+              ]
+              if not job_indices:
+                  errors.append(f"reject:permissions_scope:{scope}_job_missing")
+                  return
+              if len(job_indices) > 1:
+                  errors.append(f"reject:permissions_scope:{scope}_job_duplicated")
+                  return
+
+              job_start = job_indices[0]
               job_permissions_indices = []
               for index in range(job_start + 1, len(workflow_lines)):
                   candidate = workflow_lines[index]
@@ -279,20 +293,31 @@ jobs:
                       job_permissions_indices.append(index)
 
               if not job_permissions_indices:
-                  errors.append("reject:permissions_scope:permissions_block_missing:pr_producer")
+                  errors.append(f"reject:permissions_scope:permissions_block_missing:{scope}")
               elif len(job_permissions_indices) > 1:
-                  errors.append("reject:permissions_scope:permissions_block_duplicated:pr_producer")
+                  errors.append(f"reject:permissions_scope:permissions_block_duplicated:{scope}")
               else:
-                  pr_producer_permissions = parse_mapping_block(
+                  actual_permissions = parse_mapping_block(
                       job_permissions_indices[0],
                       indent=6,
-                      scope="pr_producer",
+                      scope=scope,
                   )
                   validate_permissions(
-                      pr_producer_permissions,
-                      expected_pr_producer_permissions,
-                      "pr_producer",
+                      actual_permissions,
+                      expected_permissions,
+                      scope,
                   )
+
+          validate_job_permissions(
+              job_name="synthesis-curator",
+              scope="synthesis_curator",
+              expected_permissions=expected_synthesis_curator_permissions,
+          )
+          validate_job_permissions(
+              job_name="pr-producer",
+              scope="pr_producer",
+              expected_permissions=expected_pr_producer_permissions,
+          )
 
           if errors:
               print("\n".join(errors))
@@ -437,8 +462,8 @@ jobs:
           set -euo pipefail
           echo "CI-3 manual dispatch approved via protected environment reviewers."
 
-  pr-producer:
-    name: CI-3 produce/update PR (tp-pr-producer)
+  synthesis-curator:
+    name: CI-3 synthesis extraction (tp-pr-producer)
     needs:
       - preflight
       - manual-approval
@@ -448,8 +473,193 @@ jobs:
     permissions:
       actions: read
       checks: read
-      contents: write
+      contents: read
       models: read
+    env:
+      CI_ID: CI-3
+      TOKEN_PROFILE: tp-pr-producer
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout trusted source revision
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Resolve CI-3 source inputs
+        id: sources
+        env:
+          MANUAL_SOURCE_PATH: ${{ github.event.inputs.source_path || '' }}
+        run: |
+          set -euo pipefail
+
+          repo_root="$(realpath .)"
+          inbox_root="$(realpath raw/inbox)"
+          mapfile -t source_paths < <(find raw/inbox -type f ! -name '.gitkeep' ! -name '.ci3-ingest-manifest' | sort)
+
+          if [[ -n "${MANUAL_SOURCE_PATH}" ]]; then
+            if [[ "${MANUAL_SOURCE_PATH}" != raw/inbox/* ]]; then
+              echo "::error::reject:path_filter:outside_raw_inbox:${MANUAL_SOURCE_PATH}" >&2
+              exit 1
+            fi
+            if [[ ! -f "${MANUAL_SOURCE_PATH}" ]]; then
+              echo "::error::reject:path_filter:missing_manual_source:${MANUAL_SOURCE_PATH}" >&2
+              exit 1
+            fi
+            if [[ -L "${MANUAL_SOURCE_PATH}" ]]; then
+              echo "::error::reject:path_filter:manual_source_symlink:${MANUAL_SOURCE_PATH}" >&2
+              exit 1
+            fi
+            manual_resolved="$(realpath "${MANUAL_SOURCE_PATH}")"
+            if [[ "${manual_resolved}" != "${inbox_root}/"* ]]; then
+              echo "::error::reject:path_filter:outside_raw_inbox:${MANUAL_SOURCE_PATH}" >&2
+              exit 1
+            fi
+            if [[ "${manual_resolved}" != "${repo_root}/"* ]]; then
+              echo "::error::reject:path_filter:outside_repo_root:${MANUAL_SOURCE_PATH}" >&2
+              exit 1
+            fi
+            manual_relative="${manual_resolved#"${repo_root}/"}"
+            source_paths=("${manual_relative}")
+          fi
+
+          if [[ "${#source_paths[@]}" -eq 0 ]]; then
+            echo "has_sources=false" >> "${GITHUB_OUTPUT}"
+            echo "No raw/inbox sources found; CI-3 synthesis extraction is a no-op."
+            exit 0
+          fi
+
+          for source_path in "${source_paths[@]}"; do
+            if [[ "${source_path}" != raw/inbox/* ]]; then
+              echo "::error::reject:path_filter:outside_raw_inbox:${source_path}" >&2
+              exit 1
+            fi
+            source_resolved="$(realpath "${source_path}")"
+            if [[ "${source_resolved}" != "${inbox_root}/"* ]]; then
+              echo "::error::reject:path_filter:outside_raw_inbox:${source_path}" >&2
+              exit 1
+            fi
+          done
+
+          printf '%s\n' "${source_paths[@]}" > raw/inbox/.ci3-ingest-manifest
+          echo "has_sources=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Build CI-3 extraction bundles
+        id: extract-bundles
+        if: steps.sources.outputs.has_sources == 'true'
+        env:
+          SYNTHESIS_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci3-synthesis
+          : > ci3-synthesis/extraction-bundles.tsv
+
+          extract_json_field() {
+            local field_name="$1"
+            python3 -c $'import json, sys\nfield = sys.argv[1]\npayload = sys.stdin.read().strip()\ntry:\n    value = json.loads(payload).get(field, "")\nexcept Exception:\n    value = ""\nprint("" if value is None else value)' "${field_name}"
+          }
+
+          echo "[CI-3] ingest --sources-manifest raw/inbox/.ci3-ingest-manifest (extraction prep)"
+          set +e
+          ingest_json="$(python3 -m scripts.kb.ingest \
+            --sources-manifest raw/inbox/.ci3-ingest-manifest \
+            --batch-policy continue_and_report_per_source \
+            --wiki-root wiki \
+            --schema AGENTS.md \
+            --report-json)"
+          ingest_exit=$?
+          set -e
+          rm -f raw/inbox/.ci3-ingest-manifest || true
+
+          echo "${ingest_json}"
+          if [[ "${ingest_exit}" -ne 0 ]]; then
+            ingest_reason="$(printf '%s' "${ingest_json}" | extract_json_field reason_code)"
+            if [[ "${ingest_reason}" == "lock_unavailable" ]]; then
+              echo "::error::CI-3 ingest failed closed during extraction prep (reason_code=lock_unavailable)." >&2
+            else
+              echo "::error::CI-3 ingest failed closed during extraction prep (exit=${ingest_exit}, reason_code=${ingest_reason:-unknown})." >&2
+            fi
+            exit 1
+          fi
+
+          written_source_pages=()
+          while IFS= read -r written_page; do
+            [[ -n "${written_page}" ]] && written_source_pages+=("${written_page}")
+          done < <(printf '%s' "${ingest_json}" | python3 -c $'import json,sys\nd=json.load(sys.stdin)\nfor s in d.get("per_source",[]):\n    if s.get("status")=="written" and s.get("source_page"):\n        print(s["source_page"])' 2>/dev/null || true)
+
+          if [[ "${#written_source_pages[@]}" -eq 0 ]]; then
+            echo "has_bundles=false" >> "${GITHUB_OUTPUT}"
+            echo "No written source pages available for extraction bundles."
+            exit 0
+          fi
+
+          bundle_count=0
+          for source_page in "${written_source_pages[@]}"; do
+            safe_source="$(printf '%s' "${source_page}" | sed 's#[^A-Za-z0-9._-]#_#g')"
+            source_hash="$(printf '%s' "${source_page}" | sha256sum | awk '{print $1}')"
+            bundle_file="${safe_source}-${source_hash:0:12}.bundle.json"
+            bundle_path="ci3-synthesis/${bundle_file}"
+
+            set +e
+            python3 .github/skills/extract-entities-and-claims/logic/extract_entities.py \
+              --source-page "${source_page}" \
+              --wiki-root wiki \
+              --output "${bundle_path}"
+            extract_exit=$?
+            set -e
+
+            if [[ "${extract_exit}" -ne 0 ]]; then
+              echo "::warning::Synthesis extraction failed for ${source_page}; skipping bundle." >&2
+              rm -f "${bundle_path}" || true
+              continue
+            fi
+
+            printf '%s\t%s\n' "${source_page}" "${bundle_file}" >> ci3-synthesis/extraction-bundles.tsv
+            bundle_count="$((bundle_count + 1))"
+          done
+
+          if [[ "${bundle_count}" -gt 0 ]]; then
+            echo "has_bundles=true" >> "${GITHUB_OUTPUT}"
+            echo "Prepared ${bundle_count} extraction bundle(s) for CI-3 write stage."
+          else
+            echo "has_bundles=false" >> "${GITHUB_OUTPUT}"
+            echo "::warning::No extraction bundles were produced; write stage synthesis will be skipped." >&2
+          fi
+
+      - name: Upload CI-3 extraction bundles
+        if: always() && steps.sources.outputs.has_sources == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ci3-extraction-bundles-${{ github.run_id }}
+          path: ci3-synthesis/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record CI-3 synthesis no-op state
+        if: steps.sources.outputs.has_sources != 'true'
+        run: |
+          set -euo pipefail
+          echo "CI-3 synthesis extraction completed with no sources."
+
+  pr-producer:
+    name: CI-3 produce/update PR (tp-pr-producer)
+    needs:
+      - preflight
+      - manual-approval
+      - synthesis-curator
+    if: ${{ always() && needs.preflight.result == 'success' && needs.synthesis-curator.result == 'success' && (github.event_name != 'workflow_dispatch' || needs.manual-approval.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      checks: read
+      contents: write
       pull-requests: write
     env:
       CI_ID: CI-3
@@ -557,11 +767,16 @@ jobs:
           printf '%s\n' "${source_paths[@]}" > raw/inbox/.ci3-ingest-manifest
           echo "has_sources=true" >> "${GITHUB_OUTPUT}"
 
+      - name: Download CI-3 extraction bundles
+        if: steps.sources.outputs.has_sources == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ci3-extraction-bundles-${{ github.run_id }}
+          path: ci3-synthesis
+
       - name: Run CI-3 required checks and write path
         id: write-path
         if: steps.sources.outputs.has_sources == 'true'
-        env:
-          SYNTHESIS_GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p ci3-metrics
@@ -606,25 +821,31 @@ jobs:
             [[ -n "${written_page}" ]] && written_source_pages+=("${written_page}")
           done < <(printf '%s' "${ingest_json}" | python3 -c $'import json,sys\nd=json.load(sys.stdin)\nfor s in d.get("per_source",[]):\n    if s.get("status")=="written" and s.get("source_page"):\n        print(s["source_page"])' 2>/dev/null || true)
 
-          # --- Synthesis Curator stage ---
-          # Runs before update_index so entity/concept drafts are included in the index.
-          if [[ "${#written_source_pages[@]}" -gt 0 ]]; then
-            echo "[CI-3] synthesis: processing ${#written_source_pages[@]} source page(s)"
-            for source_page in "${written_source_pages[@]}"; do
-              echo "[CI-3] synthesis: extract from ${source_page}"
-              bundle_path="$(mktemp /tmp/ci3-bundle-XXXXXXXX.json)"
+          # --- Synthesis Curator stage (artifact handoff) ---
+          # Extraction bundles are produced in the low-privilege synthesis-curator
+          # job and handed off via deterministic artifact files.
+          bundle_manifest="ci3-synthesis/extraction-bundles.tsv"
+          if [[ -s "${bundle_manifest}" ]] && [[ "${#written_source_pages[@]}" -gt 0 ]]; then
+            echo "[CI-3] synthesis: applying extraction bundles from ${bundle_manifest}"
+            while IFS=$'\t' read -r manifest_source_page manifest_bundle_file || [[ -n "${manifest_source_page:-}" || -n "${manifest_bundle_file:-}" ]]; do
+              [[ -z "${manifest_source_page}" ]] && continue
+              [[ -z "${manifest_bundle_file}" ]] && continue
 
-              set +e
-              python3 .github/skills/extract-entities-and-claims/logic/extract_entities.py \
-                --source-page "${source_page}" \
-                --wiki-root wiki \
-                --output "${bundle_path}"
-              extract_exit=$?
-              set -e
+              source_written="false"
+              for written_source_page in "${written_source_pages[@]}"; do
+                if [[ "${written_source_page}" == "${manifest_source_page}" ]]; then
+                  source_written="true"
+                  break
+                fi
+              done
+              if [[ "${source_written}" != "true" ]]; then
+                echo "::warning::Synthesis bundle source ${manifest_source_page} was not written in this run; skipping." >&2
+                continue
+              fi
 
-              if [[ "${extract_exit}" -ne 0 ]]; then
-                echo "::warning::Synthesis extraction failed for ${source_page}; skipping." >&2
-                rm -f "${bundle_path}" || true
+              bundle_path="ci3-synthesis/${manifest_bundle_file}"
+              if [[ ! -f "${bundle_path}" ]]; then
+                echo "::warning::Synthesis bundle missing at ${bundle_path}; skipping ${manifest_source_page}." >&2
                 continue
               fi
 
@@ -635,11 +856,11 @@ jobs:
               synthesis_exit=$?
               set -e
               if [[ "${synthesis_exit}" -ne 0 ]]; then
-                echo "::warning::Combined synthesis had errors for ${source_page}; continuing." >&2
+                echo "::warning::Combined synthesis had errors for ${manifest_source_page}; continuing." >&2
               fi
-
-              rm -f "${bundle_path}" || true
-            done
+            done < "${bundle_manifest}"
+          elif [[ "${#written_source_pages[@]}" -gt 0 ]]; then
+            echo "::warning::CI-3 synthesis bundle manifest missing or empty; skipping synthesis." >&2
           fi
 
           # update_index.main() acquires exclusive_write_lock internally —
@@ -792,33 +1013,10 @@ jobs:
         if: steps.sources.outputs.has_sources == 'true'
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          from scripts.validation import _runtime_budget
-
-          metrics_path = Path("ci3-metrics/runtime-metrics.json")
-          metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
-          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
-          evaluation = _runtime_budget.evaluate_workflow_budgets(
-              config=config,
-              workflow_id=metrics["workflow_id"],
-              stage_durations_seconds=metrics["stage_durations_seconds"],
-          )
-          artifact = _runtime_budget.build_artifact_payload(
-              evaluation=evaluation,
-              config=config,
-              budget_config_path="schema/runtime-budgets.json",
-          )
-          report_path = Path("ci3-metrics/runtime-budget-report.json")
-          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
-              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
-              output_handle.write(f"overall_status={artifact['overall_status']}\n")
-          PY
+          python3 -m scripts.validation.evaluate_runtime_budget \
+            --metrics ci3-metrics/runtime-metrics.json \
+            --report ci3-metrics/runtime-budget-report.json \
+            --budget-config schema/runtime-budgets.json
 
       - name: Warn on CI-3 runtime budget breaches
         if: steps.runtime-budget.outputs.overall_status == 'warn'

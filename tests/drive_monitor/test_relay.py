@@ -159,7 +159,7 @@ def test_relay_dispatches_relevant_drive_notification(tmp_path: Path) -> None:
         alias="my-alias",
         registry_path=registry_path,
         token_secret="relay-secret",
-        file_ids=["FILE_TOKEN"],
+        file_ids=["FILE_HDR"],
     )
     client = _RecordingDispatchClient()
     result = relay_drive_notification(
@@ -188,6 +188,80 @@ def test_relay_dispatches_relevant_drive_notification(tmp_path: Path) -> None:
     assert payload["resource_id"] == "resource-456"
     assert payload["delivery_id"] == "delivery-override"
     datetime.fromisoformat(payload["observed_at"].replace("Z", "+00:00"))
+
+
+def test_relay_uses_single_token_file_id_when_x_goog_file_id_missing(tmp_path: Path) -> None:
+    registry_path = _write_registry(tmp_path, alias="my-alias")
+    token = build_drive_channel_token(
+        alias="my-alias",
+        registry_path=registry_path,
+        token_secret="relay-secret",
+        file_ids=["FILE_FROM_TOKEN"],
+    )
+    headers = _headers(token=token, resource_state="update")
+    headers.pop("X-Goog-File-ID")
+    client = _RecordingDispatchClient()
+    result = relay_drive_notification(
+        repo_root=tmp_path,
+        headers=headers,
+        token_secret="relay-secret",
+        dispatch_client=client,
+        replay_cache=DriveReplayCache(),
+    )
+
+    assert result.status == "dispatched"
+    assert len(client.calls) == 1
+    _event_type, payload = client.calls[0]
+    assert payload["file_id"] == "FILE_FROM_TOKEN"
+
+
+def test_relay_accepts_single_unique_x_goog_file_ids_header(tmp_path: Path) -> None:
+    registry_path = _write_registry(tmp_path, alias="my-alias")
+    token = build_drive_channel_token(
+        alias="my-alias",
+        registry_path=registry_path,
+        token_secret="relay-secret",
+        file_ids=["FILE_LIST"],
+    )
+    headers = _headers(
+        token=token,
+        resource_state="update",
+        file_id="",
+        extra={"X-Goog-File-IDs": "FILE_LIST, FILE_LIST"},
+    )
+    headers.pop("X-Goog-File-ID")
+    client = _RecordingDispatchClient()
+    result = relay_drive_notification(
+        repo_root=tmp_path,
+        headers=headers,
+        token_secret="relay-secret",
+        dispatch_client=client,
+        replay_cache=DriveReplayCache(),
+    )
+
+    assert result.status == "dispatched"
+    assert len(client.calls) == 1
+    _event_type, payload = client.calls[0]
+    assert payload["file_id"] == "FILE_LIST"
+
+
+def test_relay_rejects_file_id_not_in_signed_token_allowlist(tmp_path: Path) -> None:
+    registry_path = _write_registry(tmp_path, alias="my-alias")
+    token = build_drive_channel_token(
+        alias="my-alias",
+        registry_path=registry_path,
+        token_secret="relay-secret",
+        file_ids=["FILE_ALLOWED"],
+    )
+    result = relay_drive_notification(
+        repo_root=tmp_path,
+        headers=_headers(token=token, resource_state="update", file_id="FILE_OTHER"),
+        token_secret="relay-secret",
+        dispatch_client=_RecordingDispatchClient(),
+        replay_cache=DriveReplayCache(),
+    )
+    assert result.status == "rejected"
+    assert "allowlist" in result.reason
 
 
 def test_relay_replay_suppression_uses_change_and_file_context(tmp_path: Path) -> None:
@@ -494,6 +568,48 @@ def test_relay_rejects_ambiguous_file_id_context(tmp_path: Path) -> None:
     assert "x-goog-file-ids" in result.reason
 
 
+def test_relay_rejects_missing_registry_file(tmp_path: Path) -> None:
+    token = build_drive_channel_token(
+        alias="my-alias",
+        registry_path="raw/drive-sources/my-alias.source-registry.json",
+        token_secret="relay-secret",
+        file_ids=["FILE_1"],
+    )
+    headers = _headers(token=token, resource_state="update", file_id="FILE_1")
+    result = relay_drive_notification(
+        repo_root=tmp_path,
+        headers=headers,
+        token_secret="relay-secret",
+        dispatch_client=_RecordingDispatchClient(),
+        replay_cache=DriveReplayCache(),
+    )
+    assert result.status == "rejected"
+    assert "registry_path does not exist" in result.reason
+
+
+def test_relay_rejects_invalid_registry_json(tmp_path: Path) -> None:
+    registry_dir = tmp_path / "raw" / "drive-sources"
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    registry_path = registry_dir / "my-alias.source-registry.json"
+    registry_path.write_text("not json", encoding="utf-8")
+    token = build_drive_channel_token(
+        alias="my-alias",
+        registry_path="raw/drive-sources/my-alias.source-registry.json",
+        token_secret="relay-secret",
+        file_ids=["FILE_1"],
+    )
+    headers = _headers(token=token, resource_state="update", file_id="FILE_1")
+    result = relay_drive_notification(
+        repo_root=tmp_path,
+        headers=headers,
+        token_secret="relay-secret",
+        dispatch_client=_RecordingDispatchClient(),
+        replay_cache=DriveReplayCache(),
+    )
+    assert result.status == "rejected"
+    assert "registry_path is unreadable/invalid" in result.reason
+
+
 def test_replay_cache_allows_next_change_id(tmp_path: Path) -> None:
     registry_path = _write_registry(tmp_path, alias="my-alias")
     token = build_drive_channel_token(
@@ -525,9 +641,10 @@ def test_replay_cache_allows_next_change_id(tmp_path: Path) -> None:
 def test_replay_cache_expires_old_entries() -> None:
     cache = DriveReplayCache(ttl_seconds=1)
     key = "channel-123:resource-456:22:FILE_22"
-    assert cache.check_and_record(key, now=0.0) is False
-    assert cache.check_and_record(key, now=0.5) is True
-    assert cache.check_and_record(key, now=1.1) is False
+    assert cache.reserve(key, now=0.0) is False
+    cache.commit(key, now=0.0)
+    assert cache.reserve(key, now=0.5) is True
+    assert cache.reserve(key, now=1.1) is False
 
 
 def test_validate_drive_source_payload_rejects_invalid_registry_path() -> None:

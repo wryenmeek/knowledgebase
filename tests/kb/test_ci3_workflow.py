@@ -606,12 +606,20 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             },
         )
         self.assertEqual(
+            _parse_job_mapping_block(self.workflow_text, "synthesis-curator", "permissions"),
+            {
+                "actions": "read",
+                "checks": "read",
+                "contents": "read",
+                "models": "read",
+            },
+        )
+        self.assertEqual(
             _parse_job_mapping_block(self.workflow_text, "pr-producer", "permissions"),
             {
                 "actions": "read",
                 "checks": "read",
                 "contents": "write",
-                "models": "read",
                 "pull-requests": "write",
             },
         )
@@ -670,19 +678,25 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "reject:permissions_scope:minimum_permissions_mismatch",
             "reject:permissions_scope:permissions_block_missing:top_level",
             "reject:permissions_scope:permissions_block_duplicated:top_level",
-            "reject:permissions_scope:permissions_block_missing:pr_producer",
-            "reject:permissions_scope:permissions_block_duplicated:pr_producer",
+            "reject:permissions_scope:{scope}_job_missing",
+            "reject:permissions_scope:{scope}_job_duplicated",
+            "reject:permissions_scope:permissions_block_missing:{scope}",
+            "reject:permissions_scope:permissions_block_duplicated:{scope}",
             "reject:permissions_scope:permissions_key_duplicated:{scope}:{duplicate_key}",
             "reject:permissions_scope:permissions_key_missing:{scope}:{missing_key}",
             "reject:permissions_scope:permissions_key_unexpected:{scope}:{unexpected_key}",
             "reject:permissions_scope:permissions_value_mismatch:",
             'scope="top_level"',
+            'scope="synthesis_curator"',
             'scope="pr_producer"',
             "prereq_missing:concurrency_guard:missing_kb_write_group",
             "prereq_missing:concurrency_guard:cancel_in_progress_mismatch",
             "reject:permissions_scope:out_of_allowlist_write:",
             "manual workflow_dispatch cannot run when commit includes sensitive control-plane paths",
             "split sensitive control-plane changes from manual CI-3 dispatch commits",
+            "Download CI-3 extraction bundles",
+            "ci3-extraction-bundles-${{ github.run_id }}",
+            "ci3-synthesis/extraction-bundles.tsv",
             "git -c core.quotepath=false diff --name-status -z --no-renames -- .",
             "git -c core.quotepath=false ls-files --others --exclude-standard -z -- .",
             "reason_code=lock_unavailable",
@@ -820,6 +834,42 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("CI-3 preflight PASS", combined_output)
 
+    def test_preflight_behavior_rejects_missing_synthesis_curator_job(self) -> None:
+        mutated_workflow = self.workflow_text.replace(
+            "  synthesis-curator:\n",
+            "  synthesis-curator-disabled:\n",
+            1,
+        )
+        result = _run_ci3_preflight_script(
+            mutated_workflow,
+            dispatch_changed_paths=("raw/inbox/example-source.md",),
+            manual_approved="true",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:permissions_scope:synthesis_curator_job_missing",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_pr_producer_models_scope_drift(self) -> None:
+        mutated_workflow = self.workflow_text.replace(
+            "      pull-requests: write\n",
+            "      models: read\n      pull-requests: write\n",
+            1,
+        )
+        result = _run_ci3_preflight_script(
+            mutated_workflow,
+            dispatch_changed_paths=("raw/inbox/example-source.md",),
+            manual_approved="true",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:permissions_scope:permissions_key_unexpected:pr_producer:models",
+            combined_output,
+        )
+
     def test_preflight_behavior_rejects_sensitive_paths_with_spaces(self) -> None:
         result = _run_ci3_preflight_script(
             self.workflow_text,
@@ -888,8 +938,13 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertIn("needs:", self.workflow_text)
         self.assertIn("- preflight", self.workflow_text)
         self.assertIn("- manual-approval", self.workflow_text)
+        self.assertIn("- synthesis-curator", self.workflow_text)
         self.assertIn(
             "needs.manual-approval.result == 'success'",
+            self.workflow_text,
+        )
+        self.assertIn(
+            "needs.synthesis-curator.result == 'success'",
             self.workflow_text,
         )
         self.assertIn("if: steps.write-path.outputs.has_changes == 'true'", self.workflow_text)
@@ -1008,6 +1063,12 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertIn("SYNTHESIS_GITHUB_TOKEN", self.workflow_text)
         # Token must come from secrets, not as a CLI argument
         self.assertNotIn("--github-token", self.workflow_text)
+
+    def test_write_path_uses_artifact_handoff_not_model_calls(self) -> None:
+        write_path_script = _extract_ci3_write_path_script(self.workflow_text)
+        self.assertIn("ci3-synthesis/extraction-bundles.tsv", write_path_script)
+        self.assertNotIn("extract_entities.py", write_path_script)
+        self.assertIn("synthesize_combined.py", write_path_script)
 
     def test_base_branch_validated_before_gh_cli_use(self) -> None:
         # SEC-P2-2: base_branch must be validated as a safe format before being passed

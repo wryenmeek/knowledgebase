@@ -126,3 +126,82 @@ def test_from_env_requires_dispatch_env_vars(monkeypatch: pytest.MonkeyPatch) ->
 
     with pytest.raises(RuntimeError, match="DISPATCH_TOKEN"):
         DriveRelayWsgiApp.from_env()
+
+
+@pytest.mark.parametrize(
+    ("relay_status", "internal_reason", "expected_reason"),
+    [
+        ("rejected", "registry_path is unreadable/invalid: raw/drive-sources/a.source-registry.json", "request_rejected"),
+        ("failed", "dispatch_failed: boom", "relay_failed"),
+    ],
+)
+def test_wsgi_sanitizes_internal_failure_reasons(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relay_status: str,
+    internal_reason: str,
+    expected_reason: str,
+) -> None:
+    result = DriveRelayResult(
+        status=relay_status,
+        reason=internal_reason,
+        dispatched=False,
+        payload=None,
+    )
+    monkeypatch.setattr(relay_http, "relay_drive_notification", lambda **_: result)
+    app = DriveRelayWsgiApp(
+        repo_root=tmp_path,
+        token_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+        },
+    )
+
+    assert status.startswith("400 " if relay_status == "rejected" else "502 ")
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["status"] == relay_status
+    assert parsed["reason"] == expected_reason
+
+
+@pytest.mark.parametrize(
+    ("relay_status", "reason"),
+    [
+        ("dispatched", "dispatch_ok"),
+        ("ignored", "replay_suppressed"),
+    ],
+)
+def test_wsgi_keeps_non_failure_reasons_unchanged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relay_status: str,
+    reason: str,
+) -> None:
+    result = DriveRelayResult(
+        status=relay_status,
+        reason=reason,
+        dispatched=False,
+        payload=None,
+    )
+    monkeypatch.setattr(relay_http, "relay_drive_notification", lambda **_: result)
+    app = DriveRelayWsgiApp(
+        repo_root=tmp_path,
+        token_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+        },
+    )
+
+    assert status.startswith("202 ")
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["status"] == relay_status
+    assert parsed["reason"] == reason

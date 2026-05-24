@@ -190,33 +190,10 @@ jobs:
         if: ${{ always() && steps.diagnostics.outputs.exit_code != '' }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          from scripts.validation import _runtime_budget
-
-          metrics_path = Path("diagnostics/runtime-metrics.json")
-          metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
-          config = _runtime_budget.load_runtime_budgets("schema/runtime-budgets.json")
-          evaluation = _runtime_budget.evaluate_workflow_budgets(
-              config=config,
-              workflow_id=metrics["workflow_id"],
-              stage_durations_seconds=metrics["stage_durations_seconds"],
-          )
-          artifact = _runtime_budget.build_artifact_payload(
-              evaluation=evaluation,
-              config=config,
-              budget_config_path="schema/runtime-budgets.json",
-          )
-          report_path = Path("diagnostics/runtime-budget-report.json")
-          report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_handle:
-              summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_handle:
-              output_handle.write(f"overall_status={artifact['overall_status']}\n")
-          PY
+          python3 -m scripts.validation.evaluate_runtime_budget \
+            --metrics diagnostics/runtime-metrics.json \
+            --report diagnostics/runtime-budget-report.json \
+            --budget-config schema/runtime-budgets.json
 
       - name: Warn on CI-2 runtime budget breaches
         if: steps.runtime-budget.outputs.overall_status == 'warn'

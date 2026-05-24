@@ -111,8 +111,13 @@ CI3_PR_PRODUCER_JOB_PERMISSIONS = {
     "actions": "read",
     "checks": "read",
     "contents": "write",
-    "models": "read",
     "pull-requests": "write",
+}
+CI3_SYNTHESIS_CURATOR_JOB_PERMISSIONS = {
+    "actions": "read",
+    "checks": "read",
+    "contents": "read",
+    "models": "read",
 }
 
 
@@ -281,6 +286,15 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
                     self.assertEqual(
                         _parse_job_mapping_block(
                             workflow_text,
+                            "synthesis-curator",
+                            "permissions",
+                            policy.workflow_path,
+                        ),
+                        CI3_SYNTHESIS_CURATOR_JOB_PERMISSIONS,
+                    )
+                    self.assertEqual(
+                        _parse_job_mapping_block(
+                            workflow_text,
                             "pr-producer",
                             "permissions",
                             policy.workflow_path,
@@ -303,6 +317,24 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
             (
                 f"{ci3_policy.workflow_path} must scope write permissions to the pr-producer job "
                 "while keeping workflow-level permissions read-only"
+            ),
+        )
+
+    def test_ci3_synthesis_curator_job_permissions_are_explicit_model_read_scoped(self) -> None:
+        ci3_policy = next(policy for policy in WORKFLOW_POLICY_MATRIX if policy.ci_id == "CI-3")
+        workflow_text = ci3_policy.workflow_path.read_text(encoding="utf-8")
+        actual_permissions = _parse_job_mapping_block(
+            workflow_text,
+            "synthesis-curator",
+            "permissions",
+            ci3_policy.workflow_path,
+        )
+        self.assertEqual(
+            actual_permissions,
+            CI3_SYNTHESIS_CURATOR_JOB_PERMISSIONS,
+            (
+                f"{ci3_policy.workflow_path} must scope models: read to synthesis-curator "
+                "while keeping write scopes in pr-producer only"
             ),
         )
 
@@ -361,13 +393,16 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
             "reject:permissions_scope:minimum_permissions_mismatch",
             "reject:permissions_scope:permissions_block_missing:top_level",
             "reject:permissions_scope:permissions_block_duplicated:top_level",
-            "reject:permissions_scope:permissions_block_missing:pr_producer",
-            "reject:permissions_scope:permissions_block_duplicated:pr_producer",
+            "reject:permissions_scope:{scope}_job_missing",
+            "reject:permissions_scope:{scope}_job_duplicated",
+            "reject:permissions_scope:permissions_block_missing:{scope}",
+            "reject:permissions_scope:permissions_block_duplicated:{scope}",
             "reject:permissions_scope:permissions_key_duplicated:{scope}:{duplicate_key}",
             "reject:permissions_scope:permissions_key_missing:{scope}:{missing_key}",
             "reject:permissions_scope:permissions_key_unexpected:{scope}:{unexpected_key}",
             "reject:permissions_scope:permissions_value_mismatch:",
             'scope="top_level"',
+            'scope="synthesis_curator"',
             'scope="pr_producer"',
         )
         for control in required_permission_controls:
