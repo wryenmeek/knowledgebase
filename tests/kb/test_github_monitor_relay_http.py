@@ -255,6 +255,23 @@ def test_from_env_requires_webhook_secret(monkeypatch: pytest.MonkeyPatch) -> No
         GitHubRelayWsgiApp.from_env()
 
 
+def test_from_env_builds_app_with_valid_configuration(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("REPO_ROOT", str(tmp_path))
+    monkeypatch.setenv("DISPATCH_TARGET_OWNER", "owner")
+    monkeypatch.setenv("DISPATCH_TARGET_REPO", "repo")
+    monkeypatch.setenv("DISPATCH_TOKEN", "token")
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "secret")
+    monkeypatch.setenv("MAX_GITHUB_WEBHOOK_BODY_BYTES", "2048")
+
+    app = GitHubRelayWsgiApp.from_env()
+
+    assert app._repo_root == tmp_path.resolve()
+    assert app._webhook_secret == "secret"
+    assert app._max_body_bytes == 2048
+
+
 def test_from_env_rejects_invalid_max_body_size(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DISPATCH_TARGET_OWNER", "owner")
     monkeypatch.setenv("DISPATCH_TARGET_REPO", "repo")
