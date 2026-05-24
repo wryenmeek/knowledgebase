@@ -143,6 +143,90 @@ def test_from_env_builds_app_with_valid_configuration(
     assert app._token_secret == "secret"
 
 
+def test_module_app_bootstraps_once_from_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    created: dict[str, int] = {"count": 0}
+    fake_app = DriveRelayWsgiApp(
+        repo_root=tmp_path,
+        token_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+
+    def _fake_from_env(cls: type[DriveRelayWsgiApp]) -> DriveRelayWsgiApp:
+        created["count"] += 1
+        return fake_app
+
+    monkeypatch.setattr(relay_http, "_APP", None)
+    monkeypatch.setattr(
+        relay_http.DriveRelayWsgiApp, "from_env", classmethod(_fake_from_env)
+    )
+
+    status1, _, body1 = _invoke_wsgi_app(
+        relay_http.app,  # type: ignore[arg-type]
+        {
+            "REQUEST_METHOD": "GET",
+            "PATH_INFO": "/healthz",
+        },
+    )
+    status2, _, body2 = _invoke_wsgi_app(
+        relay_http.app,  # type: ignore[arg-type]
+        {
+            "REQUEST_METHOD": "GET",
+            "PATH_INFO": "/healthz",
+        },
+    )
+
+    assert created["count"] == 1
+    assert status1.startswith("200 ")
+    assert status2.startswith("200 ")
+    assert json.loads(body1.decode("utf-8")) == {"status": "ok"}
+    assert json.loads(body2.decode("utf-8")) == {"status": "ok"}
+
+
+def test_main_wires_make_server_with_from_env_app(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake_app = DriveRelayWsgiApp(
+        repo_root=tmp_path,
+        token_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    server_state: dict[str, Any] = {}
+
+    class _FakeServer:
+        def __init__(self, host: str, port: int, application: Any) -> None:
+            server_state["host"] = host
+            server_state["port"] = port
+            server_state["application"] = application
+
+        def __enter__(self) -> "_FakeServer":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def serve_forever(self) -> None:
+            server_state["served"] = True
+
+    monkeypatch.setattr(
+        relay_http.DriveRelayWsgiApp, "from_env", classmethod(lambda cls: fake_app)
+    )
+    monkeypatch.setattr(
+        relay_http, "make_server", lambda host, port, app: _FakeServer(host, port, app)
+    )
+    monkeypatch.setattr(
+        relay_http.sys, "argv", ["relay_http.py", "--host", "127.0.0.1", "--port", "9099"]
+    )
+
+    relay_http.main()
+
+    assert server_state["host"] == "127.0.0.1"
+    assert server_state["port"] == 9099
+    assert server_state["application"] is fake_app
+    assert server_state["served"] is True
+
+
 @pytest.mark.parametrize(
     ("relay_status", "internal_reason", "expected_reason"),
     [
