@@ -37,7 +37,6 @@ class Ci2WorkflowContractTests(unittest.TestCase):
                 "actions": "read",
                 "checks": "read",
                 "contents": "read",
-                "issues": "read",
             },
         )
         self.assertIsNone(
@@ -46,6 +45,21 @@ class Ci2WorkflowContractTests(unittest.TestCase):
                 self.workflow_text,
             ),
             "Workflow must not request write token scopes",
+        )
+        # issues: read is scoped to the analyst-diagnostics job, not workflow level
+        from tests.kb._workflow_yaml import parse_job_mapping_block
+        job_perms = parse_job_mapping_block(
+            self.workflow_text, "analyst-diagnostics", "permissions", WORKFLOW_PATH
+        )
+        self.assertEqual(
+            job_perms,
+            {
+                "actions": "read",
+                "checks": "read",
+                "contents": "read",
+                "issues": "read",
+            },
+            "analyst-diagnostics job must declare issues: read at job level",
         )
 
     def test_workflow_yaml_syntax_validated_by_python_test_suite(self) -> None:
@@ -116,7 +130,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         )
         self.assertIn("if: always()", self.workflow_text)
         self.assertIn(
-            "steps.diagnostics.outputs.exit_code != '0' || steps.runtime-budget.outputs.overall_status == 'fail'",
+            "steps.diagnostics.outputs.exit_code != '0' || steps.closure-evidence.outputs.closure_evidence_exit != '0' || steps.runtime-budget.outputs.overall_status == 'fail'",
             self.workflow_text,
         )
         self.assertIn("Evaluate CI-2 runtime budgets", self.workflow_text)
@@ -159,13 +173,19 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             ),
             "Quality report command status must be captured for final diagnostics exit_code",
         )
+        # closure_evidence runs in its own dedicated step (issue #154: GH_TOKEN scoped to that step only)
         self.assertIsNotNone(
             re.search(
                 r"python3 -m scripts\.validation\.check_issue_closure_evidence.*?closure_evidence_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
                 flags=re.DOTALL,
             ),
-            "Closure evidence command status must be captured for final diagnostics exit_code",
+            "Closure evidence command status must be captured in the dedicated closure-evidence step",
+        )
+        self.assertIn(
+            "steps.closure-evidence.outputs.closure_evidence_exit",
+            self.workflow_text,
+            "Closure evidence exit must be propagated via steps.closure-evidence.outputs",
         )
         self.assertIsNotNone(
             re.search(
@@ -184,7 +204,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             "Test command status must be captured for final diagnostics exit_code",
         )
         self.assertIn(
-            'if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${closure_evidence_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
+            'if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
             self.workflow_text,
         )
         self.assertIn("CLOSURE_EVIDENCE_EXIT", self.workflow_text)

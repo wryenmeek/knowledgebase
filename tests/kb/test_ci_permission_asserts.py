@@ -39,7 +39,6 @@ WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
             "actions": "read",
             "checks": "read",
             "contents": "read",
-            "issues": "read",
         },
         write_contract="read-only",
     ),
@@ -302,6 +301,27 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
                         ),
                         CI3_PR_PRODUCER_JOB_PERMISSIONS,
                     )
+
+    def test_ci2_analyst_diagnostics_job_has_issues_read_permission(self) -> None:
+        """CI-2 scopes `issues: read` to the analyst-diagnostics job, not workflow level."""
+        ci2_policy = next(policy for policy in WORKFLOW_POLICY_MATRIX if policy.ci_id == "CI-2")
+        workflow_text = ci2_policy.workflow_path.read_text(encoding="utf-8")
+        job_perms = _parse_job_mapping_block(
+            workflow_text,
+            "analyst-diagnostics",
+            "permissions",
+            ci2_policy.workflow_path,
+        )
+        self.assertEqual(
+            job_perms,
+            {
+                "actions": "read",
+                "checks": "read",
+                "contents": "read",
+                "issues": "read",
+            },
+            "CI-2 analyst-diagnostics job must declare issues: read at job level",
+        )
 
     def test_ci3_pr_producer_job_permissions_are_explicit_write_scoped(self) -> None:
         ci3_policy = next(policy for policy in WORKFLOW_POLICY_MATRIX if policy.ci_id == "CI-3")
