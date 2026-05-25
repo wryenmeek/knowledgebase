@@ -6,7 +6,11 @@ from pathlib import Path
 import re
 import unittest
 
-from tests.kb._workflow_yaml import parse_top_level_mapping_block
+from tests.kb._workflow_yaml import (
+    extract_named_step_block,
+    parse_job_mapping_block,
+    parse_top_level_mapping_block,
+)
 
 
 WORKFLOW_PATH = Path(".github/workflows/ci-2-analyst-diagnostics.yml")
@@ -47,7 +51,6 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             "Workflow must not request write token scopes",
         )
         # issues: read is scoped to the analyst-diagnostics job, not workflow level
-        from tests.kb._workflow_yaml import parse_job_mapping_block
         job_perms = parse_job_mapping_block(
             self.workflow_text, "analyst-diagnostics", "permissions", WORKFLOW_PATH
         )
@@ -120,7 +123,6 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             ),
             "Closure evidence command must include lookback, issue-limit, and closed-after flags",
         )
-        self.assertIn("GH_TOKEN: ${{ github.token }}", self.workflow_text)
         self.assertIn("--cov=scripts.validation._runtime_budget", self.workflow_text)
         self.assertIn("Secret scan (gitleaks)", self.workflow_text)
         self.assertIn("Dependency vulnerability audit (pip-audit)", self.workflow_text)
@@ -209,6 +211,34 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         )
         self.assertIn("CLOSURE_EVIDENCE_EXIT", self.workflow_text)
         self.assertIn('echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"', self.workflow_text)
+
+    def test_closure_evidence_token_is_step_scoped(self) -> None:
+        closure_step = extract_named_step_block(
+            self.workflow_text,
+            "Check issue closure evidence",
+            workflow_path=WORKFLOW_PATH,
+        )
+        self.assertIn(
+            "GH_TOKEN: ${{ github.token }}",
+            closure_step,
+            "Closure-evidence step must bind GH_TOKEN locally",
+        )
+
+        diagnostics_step = extract_named_step_block(
+            self.workflow_text,
+            "Run analyst diagnostics (lint + unit tests)",
+            workflow_path=WORKFLOW_PATH,
+        )
+        self.assertNotIn(
+            "GH_TOKEN:",
+            diagnostics_step,
+            "Diagnostics step must not bind GH_TOKEN across all commands",
+        )
+        self.assertEqual(
+            self.workflow_text.count("GH_TOKEN:"),
+            1,
+            "CI-2 workflow must bind GH_TOKEN exactly once in the closure-evidence step",
+        )
 
 
 

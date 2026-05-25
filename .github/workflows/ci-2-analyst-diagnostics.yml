@@ -173,6 +173,7 @@ jobs:
                   "validate_wiki_governance": int(os.environ["WRAPPER_DURATION"]),
                   "check_doc_freshness": int(os.environ["FRESHNESS_DURATION"]),
                   "content_quality_summary": int(os.environ["QUALITY_DURATION"]),
+                  "check_issue_closure_evidence": 0,
                   "lint_wiki_strict": int(os.environ["LINT_DURATION"]),
                   "pytest_suite": int(os.environ["TESTS_DURATION"]),
               },
