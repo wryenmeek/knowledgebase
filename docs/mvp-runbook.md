@@ -275,6 +275,14 @@ python3 -m scripts.validation.check_issue_closure_evidence \
   --closed-after 2026-05-25T00:00:00Z
 ```
 
+Notes:
+
+- `--issue-limit` defaults to `100`; CI-2 sets `500` to reduce false truncation
+  failures on larger repositories.
+- The cutover value (`2026-05-25T00:00:00Z`) is intentionally aligned with
+  `CLOSURE_EVIDENCE_POLICY_START` in
+  `.github/workflows/ci-2-analyst-diagnostics.yml`.
+
 Remediation for flagged closures:
 
 1. Post a closure-evidence comment that fills all four template sections.

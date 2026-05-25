@@ -25,6 +25,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         self.assertIn("name: CI-2 Analyst Read-Only Diagnostics", self.workflow_text)
         self.assertIn("CI_ID: CI-2", self.workflow_text)
         self.assertIn("TOKEN_PROFILE: tp-analyst-readonly", self.workflow_text)
+        self.assertIn('CLOSURE_EVIDENCE_POLICY_START: "2026-05-25T00:00:00Z"', self.workflow_text)
         self.assertIn("push:", self.workflow_text)
         self.assertIn("pull_request:", self.workflow_text)
         self.assertIn("workflow_dispatch:", self.workflow_text)
@@ -94,9 +95,18 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
         self.assertIn("python3 -m pytest tests/ -q", self.workflow_text)
         self.assertIn(
-            "python3 -m scripts.validation.check_issue_closure_evidence --lookback-days 3650 --issue-limit 500 --closed-after",
+            "python3 -m scripts.validation.check_issue_closure_evidence",
             self.workflow_text,
         )
+        self.assertIsNotNone(
+            re.search(
+                r"python3 -m scripts\.validation\.check_issue_closure_evidence.*?--lookback-days 3650.*?--issue-limit 500.*?--closed-after",
+                self.workflow_text,
+                flags=re.DOTALL,
+            ),
+            "Closure evidence command must include lookback, issue-limit, and closed-after flags",
+        )
+        self.assertIn("GH_TOKEN: ${{ github.token }}", self.workflow_text)
         self.assertIn("--cov=scripts.validation._runtime_budget", self.workflow_text)
         self.assertIn("Secret scan (gitleaks)", self.workflow_text)
         self.assertIn("Dependency vulnerability audit (pip-audit)", self.workflow_text)
@@ -177,6 +187,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             'if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${closure_evidence_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
             self.workflow_text,
         )
+        self.assertIn("CLOSURE_EVIDENCE_EXIT", self.workflow_text)
         self.assertIn('echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"', self.workflow_text)
 
 
