@@ -158,7 +158,7 @@ class RuntimeBudgetWorkflowEvaluationTests(unittest.TestCase):
         self.assertEqual(warn_evaluation.stage_results[0].status, _runtime_budget.STATUS_WARN)
         self.assertEqual(fail_evaluation.stage_results[0].status, _runtime_budget.STATUS_FAIL)
 
-    def test_warn_pct_is_metadata_and_does_not_change_warn_gate_boundary(self) -> None:
+    def test_warn_pct_is_metadata_and_does_not_change_status_boundaries(self) -> None:
         config = _runtime_budget.parse_runtime_budgets(
             {
                 "schema_version": 2,
@@ -177,15 +177,21 @@ class RuntimeBudgetWorkflowEvaluationTests(unittest.TestCase):
                 },
             }
         )
-        evaluation = _runtime_budget.evaluate_workflow_budgets(
-            config=config,
-            workflow_id="ci-example",
-            stage_durations_seconds={"stage_low_warn_pct": 11, "stage_high_warn_pct": 11},
-        )
-        self.assertEqual(
-            [stage.status for stage in evaluation.stage_results],
-            [_runtime_budget.STATUS_WARN, _runtime_budget.STATUS_WARN],
-        )
+        for duration, expected_status in (
+            (10, _runtime_budget.STATUS_OK),
+            (11, _runtime_budget.STATUS_WARN),
+            (20, _runtime_budget.STATUS_FAIL),
+        ):
+            with self.subTest(duration=duration, expected_status=expected_status):
+                evaluation = _runtime_budget.evaluate_workflow_budgets(
+                    config=config,
+                    workflow_id="ci-example",
+                    stage_durations_seconds={"stage_low_warn_pct": duration, "stage_high_warn_pct": duration},
+                )
+                self.assertEqual(
+                    [stage.status for stage in evaluation.stage_results],
+                    [expected_status, expected_status],
+                )
 
 
 class RuntimeBudgetArtifactSchemaTests(unittest.TestCase):
@@ -313,6 +319,41 @@ class RuntimeBudgetArtifactSchemaTests(unittest.TestCase):
         self.assertEqual(stage_by_id["stage_warn"]["fail_overage_seconds"], 0)
         self.assertEqual(stage_by_id["stage_fail"]["target_overage_seconds"], 10)
         self.assertEqual(stage_by_id["stage_fail"]["fail_overage_seconds"], 0)
+
+    def test_runtime_budget_artifact_preserves_declared_warn_pct_metadata(self) -> None:
+        config = _runtime_budget.parse_runtime_budgets(
+            {
+                "schema_version": 2,
+                "severity_model": {
+                    "ok": "duration <= target",
+                    "warn": "target < duration < fail",
+                    "fail": "duration >= fail",
+                },
+                "workflows": {
+                    "ci-example": {
+                        "stages": {
+                            "stage_low_warn_pct": {"target_seconds": 10, "warn_pct": 0, "fail_pct": 100},
+                            "stage_high_warn_pct": {"target_seconds": 10, "warn_pct": 90, "fail_pct": 100},
+                        }
+                    }
+                },
+            }
+        )
+        evaluation = _runtime_budget.evaluate_workflow_budgets(
+            config=config,
+            workflow_id="ci-example",
+            stage_durations_seconds={"stage_low_warn_pct": 11, "stage_high_warn_pct": 11},
+        )
+        artifact = _runtime_budget.build_artifact_payload(
+            evaluation=evaluation,
+            config=config,
+            budget_config_path="schema/runtime-budgets.json",
+        )
+        stage_by_id = {stage["stage_id"]: stage for stage in artifact["stages"]}
+        self.assertEqual(stage_by_id["stage_low_warn_pct"]["warn_pct"], 0)
+        self.assertEqual(stage_by_id["stage_high_warn_pct"]["warn_pct"], 90)
+        self.assertEqual(stage_by_id["stage_low_warn_pct"]["status"], _runtime_budget.STATUS_WARN)
+        self.assertEqual(stage_by_id["stage_high_warn_pct"]["status"], _runtime_budget.STATUS_WARN)
 
     def test_summary_markdown_includes_status_and_remediation_for_failures(self) -> None:
         config = _runtime_budget.load_runtime_budgets(REPO_ROOT / "schema" / "runtime-budgets.json")

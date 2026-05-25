@@ -16,6 +16,12 @@ _STATUS_RANK = {status: index for index, status in enumerate(_STATUS_ORDER)}
 
 @dataclass(frozen=True, slots=True)
 class StageBudget:
+    """Per-stage runtime thresholds from schema/runtime-budgets.json.
+
+    warn_pct is metadata-only in the current severity model. Classification
+    boundaries are based on target_seconds and derived fail_seconds.
+    """
+
     target_seconds: int
     warn_pct: int
     fail_pct: int
@@ -119,6 +125,8 @@ def parse_runtime_budgets(payload: Mapping[str, Any]) -> RuntimeBudgetConfig:
 
 
 def classify_stage_result(*, duration_seconds: int, target_seconds: int, fail_seconds: int) -> str:
+    """Classify a stage using target and fail thresholds only."""
+
     normalized_duration = _parse_positive_int(duration_seconds, field="duration_seconds", allow_zero=True)
     normalized_target = _parse_positive_int(target_seconds, field="target_seconds", allow_zero=False)
     normalized_fail = _parse_positive_int(fail_seconds, field="fail_seconds", allow_zero=False)

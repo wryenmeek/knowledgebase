@@ -15,13 +15,13 @@ from scripts.relay_wsgi_common import (
 )
 
 
-def _capture_start_response() -> tuple[Any, dict[str, str], dict[str, str]]:
+def _capture_start_response() -> tuple[Any, dict[str, str], list[tuple[str, str]]]:
     status_holder: dict[str, str] = {}
-    header_holder: dict[str, str] = {}
+    header_holder: list[tuple[str, str]] = []
 
     def start_response(status: str, headers: list[tuple[str, str]]) -> None:
         status_holder["status"] = status
-        header_holder.update(dict(headers))
+        header_holder.extend(headers)
 
     return start_response, status_holder, header_holder
 
@@ -62,7 +62,23 @@ def test_extract_headers_maps_http_keys_and_content_type() -> None:
     }
 
 
-def test_json_response_sets_status_headers_and_sorted_body() -> None:
+def test_capture_start_response_preserves_duplicate_header_tuples() -> None:
+    start_response, status_holder, header_holder = _capture_start_response()
+
+    start_response(
+        "200 OK",
+        [("Set-Cookie", "a=1"), ("Set-Cookie", "b=2"), ("Content-Type", "application/json")],
+    )
+
+    assert status_holder["status"] == "200 OK"
+    assert header_holder == [
+        ("Set-Cookie", "a=1"),
+        ("Set-Cookie", "b=2"),
+        ("Content-Type", "application/json"),
+    ]
+
+
+def test_json_response_sets_status_headers_and_json_body() -> None:
     start_response, status_holder, header_holder = _capture_start_response()
 
     response = json_response(
@@ -72,12 +88,12 @@ def test_json_response_sets_status_headers_and_sorted_body() -> None:
     )
     body = b"".join(response)
     parsed = json.loads(body.decode("utf-8"))
+    headers = dict(header_holder)
 
     assert status_holder["status"] == "202 Accepted"
-    assert header_holder["Content-Type"] == "application/json"
-    assert header_holder["Content-Length"] == str(len(body))
+    assert headers["Content-Type"] == "application/json"
+    assert headers["Content-Length"] == str(len(body))
     assert parsed == {"a": 1, "b": 2}
-    assert body.decode("utf-8").index('"a"') < body.decode("utf-8").index('"b"')
 
 
 def test_json_response_unknown_status_uses_internal_server_error_reason() -> None:

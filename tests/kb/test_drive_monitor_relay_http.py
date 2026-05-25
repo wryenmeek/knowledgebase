@@ -20,13 +20,13 @@ class _NoopDispatchClient:
 
 def _invoke_wsgi_app(
     app: DriveRelayWsgiApp, environ: dict[str, Any]
-) -> tuple[str, dict[str, str], bytes]:
+) -> tuple[str, list[tuple[str, str]], bytes]:
     status_holder: dict[str, str] = {}
-    header_holder: dict[str, str] = {}
+    header_holder: list[tuple[str, str]] = []
 
     def start_response(status: str, headers: list[tuple[str, str]]) -> None:
         status_holder["status"] = status
-        header_holder.update(dict(headers))
+        header_holder.extend(headers)
 
     body = b"".join(app(environ, start_response))
     return status_holder["status"], header_holder, body
@@ -47,6 +47,7 @@ def test_healthz_returns_ok_json(tmp_path: Path) -> None:
     )
 
     assert status.startswith("200 ")
+    headers = dict(headers)
     assert headers["Content-Type"] == "application/json"
     assert json.loads(body.decode("utf-8")) == {"status": "ok"}
 
@@ -138,9 +139,30 @@ def test_from_env_builds_app_with_valid_configuration(
     monkeypatch.setenv("DISPATCH_TOKEN", "token")
 
     app = DriveRelayWsgiApp.from_env()
+    captured: dict[str, Any] = {}
 
-    assert app._repo_root == tmp_path.resolve()
-    assert app._token_secret == "secret"
+    def _fake_relay_drive_notification(**kwargs: Any) -> DriveRelayResult:
+        captured.update(kwargs)
+        return DriveRelayResult(
+            status="ignored",
+            reason="replay_suppressed",
+            dispatched=False,
+            payload=None,
+        )
+
+    monkeypatch.setattr(relay_http, "relay_drive_notification", _fake_relay_drive_notification)
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+        },
+    )
+
+    assert status.startswith("202 ")
+    assert json.loads(body.decode("utf-8"))["status"] == "ignored"
+    assert captured["repo_root"] == tmp_path.resolve()
+    assert captured["token_secret"] == "secret"
 
 
 def test_module_app_bootstraps_once_from_env(

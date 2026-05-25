@@ -170,6 +170,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/kb/page_template_utils.py", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("SCOPE_ROOTS", "fail closed"),
     },
+    "scripts/validation/check_issue_closure_evidence.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("docs/mvp-runbook.md", "scripts/_optional_surface_common.py"),
+        "Hard-fail behavior": ("closedat", "cli failure", "fail closed"),
+    },
     "scripts/reporting/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "narrower contract"),

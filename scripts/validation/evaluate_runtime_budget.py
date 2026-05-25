@@ -37,6 +37,10 @@ def evaluate_runtime_budget(
         stage_name = str(stage_id)
         if not stage_name:
             raise ValueError("stage_durations_seconds keys must be non-empty")
+        if isinstance(raw_duration, bool) or isinstance(raw_duration, float):
+            raise ValueError(
+                "metrics.stage_durations_seconds values must be integer durations (bool/float rejected)"
+            )
         stage_durations_seconds[stage_name] = int(raw_duration)
 
     config = _runtime_budget.load_runtime_budgets(budget_config_path)

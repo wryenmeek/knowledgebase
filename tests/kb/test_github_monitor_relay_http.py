@@ -21,13 +21,13 @@ class _NoopDispatchClient:
 
 def _invoke_wsgi_app(
     app: GitHubRelayWsgiApp, environ: dict[str, Any]
-) -> tuple[str, dict[str, str], bytes]:
+) -> tuple[str, list[tuple[str, str]], bytes]:
     status_holder: dict[str, str] = {}
-    header_holder: dict[str, str] = {}
+    header_holder: list[tuple[str, str]] = []
 
     def start_response(status: str, headers: list[tuple[str, str]]) -> None:
         status_holder["status"] = status
-        header_holder.update(dict(headers))
+        header_holder.extend(headers)
 
     body = b"".join(app(environ, start_response))
     return status_holder["status"], header_holder, body
@@ -48,6 +48,7 @@ def test_healthz_returns_ok_json(tmp_path: Path) -> None:
     )
 
     assert status.startswith("200 ")
+    headers = dict(headers)
     assert headers["Content-Type"] == "application/json"
     assert json.loads(body.decode("utf-8")) == {"status": "ok"}
 
@@ -92,6 +93,45 @@ def test_oversized_request_body_returns_413(tmp_path: Path) -> None:
     parsed = json.loads(body.decode("utf-8"))
     assert parsed["status"] == "rejected"
     assert parsed["reason"] == "request_body_too_large"
+
+
+def test_max_sized_request_body_is_accepted_and_relayed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_relay_github_push_event(**kwargs: Any) -> GitHubRelayResult:
+        captured.update(kwargs)
+        return GitHubRelayResult(
+            status="ignored",
+            reason="replay_suppressed",
+            dispatched_count=0,
+            payloads=(),
+        )
+
+    monkeypatch.setattr(relay_http, "relay_github_push_event", _fake_relay_github_push_event)
+    app = GitHubRelayWsgiApp(
+        repo_root=tmp_path,
+        webhook_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+        max_body_bytes=4,
+    )
+    payload = b"1234"
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+            "CONTENT_LENGTH": str(len(payload)),
+            "wsgi.input": io.BytesIO(payload),
+        },
+    )
+
+    assert status.startswith("202 ")
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["status"] == "ignored"
+    assert parsed["reason"] == "replay_suppressed"
+    assert captured["body"] == payload
 
 
 def test_missing_content_length_returns_400_rejected(tmp_path: Path) -> None:
@@ -266,10 +306,45 @@ def test_from_env_builds_app_with_valid_configuration(
     monkeypatch.setenv("MAX_GITHUB_WEBHOOK_BODY_BYTES", "2048")
 
     app = GitHubRelayWsgiApp.from_env()
+    captured: dict[str, Any] = {}
 
-    assert app._repo_root == tmp_path.resolve()
-    assert app._webhook_secret == "secret"
-    assert app._max_body_bytes == 2048
+    def _fake_relay_github_push_event(**kwargs: Any) -> GitHubRelayResult:
+        captured.update(kwargs)
+        return GitHubRelayResult(
+            status="ignored",
+            reason="replay_suppressed",
+            dispatched_count=0,
+            payloads=(),
+        )
+
+    monkeypatch.setattr(relay_http, "relay_github_push_event", _fake_relay_github_push_event)
+    status, _, body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+            "CONTENT_LENGTH": "2",
+            "wsgi.input": io.BytesIO(b"{}"),
+        },
+    )
+    oversized_status, _, oversized_body = _invoke_wsgi_app(
+        app,
+        {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/",
+            "CONTENT_LENGTH": "2049",
+            "wsgi.input": io.BytesIO(b"x" * 2049),
+        },
+    )
+
+    assert status.startswith("202 ")
+    assert json.loads(body.decode("utf-8"))["status"] == "ignored"
+    assert captured["repo_root"] == tmp_path.resolve()
+    assert captured["webhook_secret"] == "secret"
+    assert oversized_status.startswith("413 ")
+    oversized_parsed = json.loads(oversized_body.decode("utf-8"))
+    assert oversized_parsed["status"] == "rejected"
+    assert oversized_parsed["reason"] == "request_body_too_large"
 
 
 def test_from_env_rejects_invalid_max_body_size(monkeypatch: pytest.MonkeyPatch) -> None:

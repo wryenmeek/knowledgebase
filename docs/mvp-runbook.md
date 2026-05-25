@@ -239,6 +239,41 @@ approved, keep these existing MVP suites green:
 - **Persist policy envelope:** `persist_query.py` can return exit `0` with `status=no_write_policy` (expected no-write outcome) or `status=written`; both are valid automation outcomes.
 - **No-write envelope contract:** `no_write_policy` must not mutate repo files (`analysis_path=null`, `index_updated=false`, `log_appended=false`).
 
+## Issue closure evidence policy (security/refactor/testing hardening)
+
+For recently closed issues labeled `security`, `refactor`, `testing`, or
+`hardening`, add a deterministic closure-evidence comment in the issue thread
+using this template:
+
+```markdown
+### Closure evidence
+- Implementation reference: <PR URL, commit SHA, or issue/PR reference>
+- Key files/surfaces changed:
+  - <repo/path/one>
+  - <repo/path/two>
+- Validation commands:
+  - `<exact command 1>`
+  - `<exact command 2>`
+- Pass/fail summary: PASS|FAIL with concise result details
+```
+
+The checker requires the `Closure evidence` heading and all four fields.
+
+Automation report (read-only):
+
+```bash
+python3 -m scripts.validation.check_issue_closure_evidence \
+  --lookback-days 30
+```
+
+Remediation for flagged closures:
+
+1. Post a closure-evidence comment that fills all four template sections.
+2. Ensure the implementation reference points to the actual commit/PR used to
+   remediate the issue.
+3. Include exact validation commands and a PASS/FAIL summary from real runs.
+4. Re-run `check_issue_closure_evidence` until `flagged_issue_count` is `0`.
+
 ## Runtime budget baselines and remediation
 
 - **Canonical budget source:** `schema/runtime-budgets.json` is the single in-repo source of truth for CI runtime thresholds.
