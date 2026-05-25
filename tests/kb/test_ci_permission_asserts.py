@@ -7,6 +7,7 @@ from pathlib import Path
 import unittest
 
 from scripts.kb import contracts
+from tests.kb._workflow_yaml import parse_job_mapping_block, parse_top_level_mapping_block
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +40,6 @@ WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
             "actions": "read",
             "checks": "read",
             "contents": "read",
-            "issues": "read",
         },
         write_contract="read-only",
     ),
@@ -122,98 +122,12 @@ CI3_SYNTHESIS_CURATOR_JOB_PERMISSIONS = {
 }
 
 
-def _parse_mapping_block(
-    lines: list[str],
-    block_start: int,
-    *,
-    indent: int,
-    context: str,
-    workflow_path: Path,
-) -> dict[str, str]:
-    mapping: dict[str, str] = {}
-    duplicate_keys: set[str] = set()
-    expected_prefix = " " * indent
-    nested_prefix = expected_prefix + "  "
-
-    for candidate in lines[block_start + 1 :]:
-        stripped = candidate.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("#"):
-            continue
-        if not candidate.startswith(expected_prefix) or candidate.startswith(nested_prefix):
-            break
-        if ":" not in stripped:
-            raise AssertionError(f"{workflow_path} has malformed entry in {context}: {candidate}")
-        map_key, map_value = stripped.split(":", 1)
-        normalized_key = map_key.strip()
-        if normalized_key in mapping:
-            duplicate_keys.add(normalized_key)
-        mapping[normalized_key] = map_value.strip()
-
-    if duplicate_keys:
-        duplicates = ", ".join(sorted(duplicate_keys))
-        raise AssertionError(f"{workflow_path} has duplicate keys in {context}: {duplicates}")
-
-    return mapping
-
-
 def _parse_top_level_mapping_block(text: str, key: str, workflow_path: Path) -> dict[str, str]:
-    lines = text.splitlines()
-    target = f"{key}:"
-
-    for index, line in enumerate(lines):
-        if line.strip() != target or line.startswith(" "):
-            continue
-
-        return _parse_mapping_block(
-            lines,
-            index,
-            indent=2,
-            context=f"top-level '{key}' block",
-            workflow_path=workflow_path,
-        )
-
-    raise AssertionError(f"{workflow_path} is missing top-level '{key}' block")
+    return parse_top_level_mapping_block(text, key, workflow_path=workflow_path)
 
 
 def _parse_job_mapping_block(text: str, job_name: str, key: str, workflow_path: Path) -> dict[str, str]:
-    lines = text.splitlines()
-    job_target = f"{job_name}:"
-    key_target = f"{key}:"
-    job_indices = [
-        index
-        for index, line in enumerate(lines)
-        if line.strip() == job_target and line.startswith("  ") and not line.startswith("    ")
-    ]
-    if not job_indices:
-        raise AssertionError(f"{workflow_path} is missing job '{job_name}'")
-    if len(job_indices) > 1:
-        raise AssertionError(f"{workflow_path} has duplicate job blocks for '{job_name}'")
-
-    key_indices: list[int] = []
-    for index in range(job_indices[0] + 1, len(lines)):
-        candidate = lines[index]
-        stripped = candidate.strip()
-        if not stripped:
-            continue
-        if not candidate.startswith("    "):
-            break
-        if stripped == key_target and candidate.startswith("    ") and not candidate.startswith("      "):
-            key_indices.append(index)
-
-    if not key_indices:
-        raise AssertionError(f"{workflow_path} is missing '{key}' block in job '{job_name}'")
-    if len(key_indices) > 1:
-        raise AssertionError(f"{workflow_path} has duplicate '{key}' blocks in job '{job_name}'")
-
-    return _parse_mapping_block(
-        lines,
-        key_indices[0],
-        indent=6,
-        context=f"job '{job_name}' '{key}' block",
-        workflow_path=workflow_path,
-    )
+    return parse_job_mapping_block(text, job_name, key, workflow_path=workflow_path)
 
 
 class CiPermissionPolicyAssertions(unittest.TestCase):
@@ -302,6 +216,27 @@ class CiPermissionPolicyAssertions(unittest.TestCase):
                         ),
                         CI3_PR_PRODUCER_JOB_PERMISSIONS,
                     )
+
+    def test_ci2_analyst_diagnostics_job_has_issues_read_permission(self) -> None:
+        """CI-2 scopes `issues: read` to the analyst-diagnostics job, not workflow level."""
+        ci2_policy = next(policy for policy in WORKFLOW_POLICY_MATRIX if policy.ci_id == "CI-2")
+        workflow_text = ci2_policy.workflow_path.read_text(encoding="utf-8")
+        job_perms = _parse_job_mapping_block(
+            workflow_text,
+            "analyst-diagnostics",
+            "permissions",
+            ci2_policy.workflow_path,
+        )
+        self.assertEqual(
+            job_perms,
+            {
+                "actions": "read",
+                "checks": "read",
+                "contents": "read",
+                "issues": "read",
+            },
+            "CI-2 analyst-diagnostics job must declare issues: read at job level",
+        )
 
     def test_ci3_pr_producer_job_permissions_are_explicit_write_scoped(self) -> None:
         ci3_policy = next(policy for policy in WORKFLOW_POLICY_MATRIX if policy.ci_id == "CI-3")
