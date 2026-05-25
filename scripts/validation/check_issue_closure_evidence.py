@@ -129,6 +129,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"Lookback window in days for recently closed issues (default: {DEFAULT_LOOKBACK_DAYS}).",
     )
     parser.add_argument(
+        "--closed-after",
+        help=(
+            "Optional inclusive ISO datetime lower bound for closedAt filtering. "
+            "Use this to enforce policy from a specific cutover timestamp without "
+            "requiring historical backfill."
+        ),
+    )
+    parser.add_argument(
         "--target-label",
         action="append",
         default=[],
@@ -304,6 +312,7 @@ def _load_recent_closed_issues_from_gh(
     repo_root: Path,
     as_of: datetime,
     lookback_days: int,
+    closed_after: datetime | None,
     target_labels: tuple[str, ...],
     issue_limit: int,
 ) -> tuple[dict[str, Any], ...]:
@@ -340,6 +349,8 @@ def _load_recent_closed_issues_from_gh(
         if not isinstance(closed_at_raw, str):
             raise ValueError("gh issue list returned issue without closedAt")
         closed_at = _parse_iso_datetime(closed_at_raw)
+        if closed_after is not None and closed_at < closed_after:
+            continue
         if not _is_within_lookback(closed_at, as_of=as_of, lookback_days=lookback_days):
             continue
         number_raw = raw_issue.get("number")
@@ -524,6 +535,7 @@ def run_closure_evidence_report(
     issues_json_path: str | None = None,
     as_of: str,
     lookback_days: int,
+    closed_after: str | None = None,
     target_labels: Sequence[str] | None = None,
     issue_limit: int = DEFAULT_ISSUE_LIMIT,
     issues_payload: Any | None = None,
@@ -550,6 +562,9 @@ def run_closure_evidence_report(
         )
     try:
         as_of_dt = _parse_iso_datetime(as_of)
+        closed_after_dt = _parse_iso_datetime(closed_after) if closed_after else None
+        if closed_after_dt is not None and closed_after_dt > as_of_dt:
+            raise ValueError("--closed-after must be less than or equal to --as-of")
         normalized_labels = _normalize_target_labels(tuple(target_labels or ()))
         if issues_payload is not None:
             issues = _parse_issues_payload(issues_payload)
@@ -562,6 +577,7 @@ def run_closure_evidence_report(
                 repo_root=normalized_repo_root,
                 as_of=as_of_dt,
                 lookback_days=lookback_days,
+                closed_after=closed_after_dt,
                 target_labels=normalized_labels,
                 issue_limit=issue_limit,
             )
@@ -600,6 +616,7 @@ def run_closure_evidence_report(
         issue
         for issue in issues
         if target_label_set.intersection(issue["labels"])
+        and (closed_after_dt is None or issue["closed_at"] >= closed_after_dt)
         and _is_within_lookback(issue["closed_at"], as_of=as_of_dt, lookback_days=lookback_days)
     )
     if not filtered:
@@ -616,6 +633,11 @@ def run_closure_evidence_report(
                 "flagged_issue_count": 0,
                 "lookback_days": lookback_days,
                 "as_of": as_of_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "closed_after": (
+                    closed_after_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    if closed_after_dt is not None
+                    else None
+                ),
                 "target_labels": list(normalized_labels),
                 "source": source,
             },
@@ -645,6 +667,11 @@ def run_closure_evidence_report(
             "flagged_issue_count": flagged_issue_count,
             "lookback_days": lookback_days,
             "as_of": as_of_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "closed_after": (
+                closed_after_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                if closed_after_dt is not None
+                else None
+            ),
             "target_labels": list(normalized_labels),
             "required_fields": list(REQUIRED_EVIDENCE_FIELDS),
             "required_template_fields": list(REQUIRED_TEMPLATE_FIELDS),
@@ -671,6 +698,7 @@ def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.st
             "issues_json_path": args.issues_json,
             "as_of": args.as_of,
             "lookback_days": args.lookback_days,
+            "closed_after": args.closed_after,
             "target_labels": args.target_label,
             "issue_limit": args.issue_limit,
         },

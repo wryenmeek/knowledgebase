@@ -23,6 +23,11 @@
           "warn_pct": 25,
           "fail_pct": 167
         },
+        "check_issue_closure_evidence": {
+          "target_seconds": 45,
+          "warn_pct": 25,
+          "fail_pct": 167
+        },
         "lint_wiki_strict": {
           "target_seconds": 90,
           "warn_pct": 25,

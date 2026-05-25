@@ -18,6 +18,7 @@ WORKFLOW_EXPECTATIONS: dict[str, dict[str, object]] = {
                 "validate_wiki_governance",
                 "check_doc_freshness",
                 "content_quality_summary",
+                "check_issue_closure_evidence",
                 "lint_wiki_strict",
                 "pytest_suite",
             ),

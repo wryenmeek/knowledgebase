@@ -352,6 +352,62 @@ def test_run_closure_evidence_report_ignores_issue_outside_lookback_window(tmp_p
     assert result.summary["checked_issue_count"] == 0
 
 
+def test_run_closure_evidence_report_lookback_zero_includes_only_as_of_timestamp(tmp_path) -> None:
+    (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
+    result = run_closure_evidence_report(
+        repo_root=tmp_path,
+        mode="report",
+        as_of="2026-05-25T00:00:00Z",
+        lookback_days=0,
+        target_labels=("security",),
+        issues_payload=[
+            _issue(
+                number=165,
+                labels=("security",),
+                closed_at="2026-05-24T23:59:59Z",
+                comments=(GOOD_EVIDENCE_COMMENT,),
+            ),
+            _issue(
+                number=166,
+                labels=("security",),
+                closed_at="2026-05-25T00:00:00Z",
+                comments=(GOOD_EVIDENCE_COMMENT,),
+            ),
+        ],
+    )
+    assert result.status == "pass"
+    assert result.summary["checked_issue_count"] == 1
+
+
+def test_run_closure_evidence_report_filters_issues_before_closed_after_cutover(tmp_path) -> None:
+    (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
+    result = run_closure_evidence_report(
+        repo_root=tmp_path,
+        mode="report",
+        as_of="2026-05-25T00:00:00Z",
+        lookback_days=365,
+        closed_after="2026-05-20T12:00:00Z",
+        target_labels=("security",),
+        issues_payload=[
+            _issue(
+                number=157,
+                labels=("security",),
+                closed_at="2026-05-20T11:59:59Z",
+                comments=(),
+            ),
+            _issue(
+                number=158,
+                labels=("security",),
+                closed_at="2026-05-20T12:00:00Z",
+                comments=(GOOD_EVIDENCE_COMMENT,),
+            ),
+        ],
+    )
+    assert result.status == "pass"
+    assert result.summary["checked_issue_count"] == 1
+    assert result.summary["closed_after"] == "2026-05-20T12:00:00Z"
+
+
 def test_run_closure_evidence_report_loads_issues_json_fixture(tmp_path) -> None:
     (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
     fixture_path = tmp_path / "issues.json"
@@ -461,6 +517,21 @@ def test_run_closure_evidence_report_rejects_negative_lookback(tmp_path) -> None
     assert result.reason_code == "invalid_input"
 
 
+def test_run_closure_evidence_report_rejects_closed_after_newer_than_as_of(tmp_path) -> None:
+    (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
+    result = run_closure_evidence_report(
+        repo_root=tmp_path,
+        mode="report",
+        as_of="2026-05-25T00:00:00Z",
+        lookback_days=30,
+        closed_after="2026-05-26T00:00:00Z",
+        target_labels=("security",),
+        issues_payload=[],
+    )
+    assert result.status == "fail"
+    assert result.reason_code == "invalid_input"
+
+
 def test_run_closure_evidence_report_rejects_out_of_range_issue_limit(tmp_path) -> None:
     (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
     result = run_closure_evidence_report(
@@ -501,6 +572,21 @@ def test_run_closure_evidence_report_fails_closed_on_invalid_as_of_timestamp(tmp
         mode="report",
         as_of="not-a-datetime",
         lookback_days=30,
+        target_labels=("security",),
+        issues_payload=[],
+    )
+    assert result.status == "fail"
+    assert result.reason_code == "invalid_input"
+
+
+def test_run_closure_evidence_report_fails_closed_on_invalid_closed_after_timestamp(tmp_path) -> None:
+    (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
+    result = run_closure_evidence_report(
+        repo_root=tmp_path,
+        mode="report",
+        as_of="2026-05-25T00:00:00Z",
+        lookback_days=30,
+        closed_after="not-a-datetime",
         target_labels=("security",),
         issues_payload=[],
     )
@@ -682,6 +768,63 @@ def test_run_closure_evidence_run_cli_rejects_invalid_mode(tmp_path) -> None:
     payload = json.loads("".join(result_buffer))
     assert exit_code == 1
     assert payload["reason_code"] == "invalid_input"
+
+
+def test_run_closure_evidence_run_cli_applies_closed_after_filter_from_args(tmp_path) -> None:
+    (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
+    fixture_path = tmp_path / "issues.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "issues": [
+                    _issue(
+                        number=180,
+                        labels=("security",),
+                        closed_at="2026-05-20T11:59:59Z",
+                        comments=(),
+                    ),
+                    _issue(
+                        number=181,
+                        labels=("security",),
+                        closed_at="2026-05-20T12:00:00Z",
+                        comments=(GOOD_EVIDENCE_COMMENT,),
+                    ),
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result_buffer = []
+
+    class _Buffer:
+        def write(self, value: str) -> int:
+            result_buffer.append(value)
+            return len(value)
+
+    exit_code = closure_evidence.run_cli(
+        argv=[
+            "--repo-root",
+            str(tmp_path),
+            "--mode",
+            "report",
+            "--issues-json",
+            "issues.json",
+            "--as-of",
+            "2026-05-25T00:00:00Z",
+            "--lookback-days",
+            "365",
+            "--closed-after",
+            "2026-05-20T12:00:00Z",
+            "--target-label",
+            "security",
+        ],
+        output_stream=_Buffer(),
+    )
+    payload = json.loads("".join(result_buffer))
+    assert exit_code == 0
+    assert payload["summary"]["checked_issue_count"] == 1
+    assert payload["summary"]["closed_after"] == "2026-05-20T12:00:00Z"
 
 
 def test_run_closure_evidence_report_executes_gh_from_repo_root_even_when_cwd_differs(

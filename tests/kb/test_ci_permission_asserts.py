@@ -39,6 +39,7 @@ WORKFLOW_POLICY_MATRIX: tuple[WorkflowPolicyExpectation, ...] = (
             "actions": "read",
             "checks": "read",
             "contents": "read",
+            "issues": "read",
         },
         write_contract="read-only",
     ),

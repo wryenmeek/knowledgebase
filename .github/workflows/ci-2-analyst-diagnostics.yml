@@ -15,6 +15,7 @@ permissions:
   actions: read
   checks: read
   contents: read
+  issues: read
 
 concurrency:
   group: kb-readonly-ci2-${{ github.repository }}-${{ github.ref }}
@@ -28,6 +29,7 @@ jobs:
     env:
       CI_ID: CI-2
       TOKEN_PROFILE: tp-analyst-readonly
+      CLOSURE_EVIDENCE_POLICY_START: "2026-05-25T00:00:00Z"
     steps:
       - name: Checkout repository snapshot (read-only token)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -96,7 +98,7 @@ jobs:
           {
             echo "ci_id=${CI_ID}"
             echo "token_profile=${TOKEN_PROFILE}"
-            echo "permission_contract=actions:read,checks:read,contents:read"
+            echo "permission_contract=actions:read,checks:read,contents:read,issues:read"
             echo "event=${GITHUB_EVENT_NAME}"
             echo "sha=${GITHUB_SHA}"
           } | tee diagnostics/context.log
@@ -107,6 +109,8 @@ jobs:
       - name: Run analyst diagnostics (lint + unit tests)
         id: diagnostics
         continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
           mkdir -p diagnostics
@@ -133,6 +137,13 @@ jobs:
           quality_end="$(date -u +%s)"
           quality_duration="$((quality_end - quality_start))"
 
+          closure_evidence_start="$(date -u +%s)"
+          echo "[CI-2] check_issue_closure_evidence --closed-after ${CLOSURE_EVIDENCE_POLICY_START}" | tee -a diagnostics/diagnostics.log
+          python3 -m scripts.validation.check_issue_closure_evidence --lookback-days 3650 --issue-limit 500 --closed-after "${CLOSURE_EVIDENCE_POLICY_START}" 2>&1 | tee -a diagnostics/diagnostics.log
+          closure_evidence_exit="${PIPESTATUS[0]}"
+          closure_evidence_end="$(date -u +%s)"
+          closure_evidence_duration="$((closure_evidence_end - closure_evidence_start))"
+
           lint_start="$(date -u +%s)"
           echo "[CI-2] lint_wiki --strict" | tee -a diagnostics/diagnostics.log
           python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict 2>&1 | tee -a diagnostics/diagnostics.log
@@ -148,13 +159,14 @@ jobs:
           tests_duration="$((tests_end - tests_start))"
 
           diagnostics_exit=0
-          if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then
+          if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${closure_evidence_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then
             diagnostics_exit=1
           fi
 
           WRAPPER_DURATION="${wrapper_duration}" \
           FRESHNESS_DURATION="${freshness_duration}" \
           QUALITY_DURATION="${quality_duration}" \
+          CLOSURE_EVIDENCE_DURATION="${closure_evidence_duration}" \
           LINT_DURATION="${lint_duration}" \
           TESTS_DURATION="${tests_duration}" \
           python3 - <<'PY' > diagnostics/runtime-metrics.json
@@ -167,6 +179,7 @@ jobs:
                   "validate_wiki_governance": int(os.environ["WRAPPER_DURATION"]),
                   "check_doc_freshness": int(os.environ["FRESHNESS_DURATION"]),
                   "content_quality_summary": int(os.environ["QUALITY_DURATION"]),
+                  "check_issue_closure_evidence": int(os.environ["CLOSURE_EVIDENCE_DURATION"]),
                   "lint_wiki_strict": int(os.environ["LINT_DURATION"]),
                   "pytest_suite": int(os.environ["TESTS_DURATION"]),
               },
@@ -174,12 +187,13 @@ jobs:
           print(json.dumps(payload, indent=2, sort_keys=True))
           PY
 
-          echo "[CI-2] wrapper_exit=${wrapper_exit} freshness_exit=${freshness_exit} quality_exit=${quality_exit} lint_exit=${lint_exit} tests_exit=${tests_exit} diagnostics_exit=${diagnostics_exit}" | tee -a diagnostics/diagnostics.log
+          echo "[CI-2] wrapper_exit=${wrapper_exit} freshness_exit=${freshness_exit} quality_exit=${quality_exit} closure_evidence_exit=${closure_evidence_exit} lint_exit=${lint_exit} tests_exit=${tests_exit} diagnostics_exit=${diagnostics_exit}" | tee -a diagnostics/diagnostics.log
           echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"
           {
             echo "wrapper_exit=${wrapper_exit}"
             echo "freshness_exit=${freshness_exit}"
             echo "quality_exit=${quality_exit}"
+            echo "closure_evidence_exit=${closure_evidence_exit}"
             echo "lint_exit=${lint_exit}"
             echo "tests_exit=${tests_exit}"
           } >> "${GITHUB_OUTPUT}"
@@ -216,6 +230,7 @@ jobs:
           WRAPPER_EXIT: ${{ steps.diagnostics.outputs.wrapper_exit }}
           FRESHNESS_EXIT: ${{ steps.diagnostics.outputs.freshness_exit }}
           QUALITY_EXIT: ${{ steps.diagnostics.outputs.quality_exit }}
+          CLOSURE_EVIDENCE_EXIT: ${{ steps.diagnostics.outputs.closure_evidence_exit }}
           LINT_EXIT: ${{ steps.diagnostics.outputs.lint_exit }}
           TESTS_EXIT: ${{ steps.diagnostics.outputs.tests_exit }}
           RUNTIME_BUDGET_STATUS: ${{ steps.runtime-budget.outputs.overall_status }}
@@ -224,6 +239,7 @@ jobs:
           [ "${WRAPPER_EXIT}" = "0" ] || echo "::error::validate_wiki_governance failed. FIX: run python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --quiet locally to see failures."
           [ "${FRESHNESS_EXIT}" = "0" ] || echo "::error::check_doc_freshness failed. FIX: update the updated_at frontmatter field on stale pages. See diagnostics artifacts for which files."
           [ "${QUALITY_EXIT}" = "0" ] || echo "::error::content_quality_report failed. FIX: add missing sources/updated_at fields or resolve placeholder markers in affected wiki pages."
+          [ "${CLOSURE_EVIDENCE_EXIT}" = "0" ] || echo "::error::check_issue_closure_evidence failed. FIX: add closure evidence comments to newly closed security/refactor/testing/hardening issues and rerun python3 -m scripts.validation.check_issue_closure_evidence locally."
           [ "${LINT_EXIT}" = "0" ] || echo "::error::lint_wiki failed. FIX: run python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict locally to see violations with remediation hints."
           [ "${TESTS_EXIT}" = "0" ] || echo "::error::pytest failed. FIX: run python3 -m pytest tests/ -q locally to see failures."
           [ "${RUNTIME_BUDGET_STATUS}" != "fail" ] || echo "::error::CI-2 runtime budgets exceeded fail threshold(s). See diagnostics/runtime-budget-report.json and the step summary for remediation."

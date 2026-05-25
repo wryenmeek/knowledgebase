@@ -365,6 +365,7 @@ class RuntimeBudgetArtifactSchemaTests(unittest.TestCase):
                 "validate_wiki_governance": 999_999,
                 "check_doc_freshness": 1,
                 "content_quality_summary": 1,
+                "check_issue_closure_evidence": 1,
                 "lint_wiki_strict": 1,
                 "pytest_suite": 1,
             },

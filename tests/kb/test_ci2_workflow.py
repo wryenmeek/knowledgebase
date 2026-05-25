@@ -36,6 +36,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
                 "actions": "read",
                 "checks": "read",
                 "contents": "read",
+                "issues": "read",
             },
         )
         self.assertIsNone(
@@ -92,6 +93,10 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         )
         self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
         self.assertIn("python3 -m pytest tests/ -q", self.workflow_text)
+        self.assertIn(
+            "python3 -m scripts.validation.check_issue_closure_evidence --lookback-days 3650 --issue-limit 500 --closed-after",
+            self.workflow_text,
+        )
         self.assertIn("--cov=scripts.validation._runtime_budget", self.workflow_text)
         self.assertIn("Secret scan (gitleaks)", self.workflow_text)
         self.assertIn("Dependency vulnerability audit (pip-audit)", self.workflow_text)
@@ -146,6 +151,14 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         )
         self.assertIsNotNone(
             re.search(
+                r"python3 -m scripts\.validation\.check_issue_closure_evidence.*?closure_evidence_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+                self.workflow_text,
+                flags=re.DOTALL,
+            ),
+            "Closure evidence command status must be captured for final diagnostics exit_code",
+        )
+        self.assertIsNotNone(
+            re.search(
                 r"python3 scripts/kb/lint_wiki\.py --wiki-root wiki --strict.*?lint_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
                 flags=re.DOTALL,
@@ -161,7 +174,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             "Test command status must be captured for final diagnostics exit_code",
         )
         self.assertIn(
-            'if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
+            'if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${closure_evidence_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
             self.workflow_text,
         )
         self.assertIn('echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"', self.workflow_text)
