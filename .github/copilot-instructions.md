@@ -50,6 +50,16 @@ Skill-level `references/` paths are expected by some skills and may be symlinked
 - Do not “quick-implement” around an applicable skill.
 - Prefer explicit lifecycle progression over ad-hoc execution.
 
+### Skill-context reentry guard
+
+Within a single session, do not repeatedly re-invoke the same heavy skill context unless the scope changed. Reuse prior skill output, continue with targeted follow-up prompts, and only re-open the full skill context when new evidence or a new scope boundary requires it.
+
+For heavy skills, enforce a delta-first retry rule:
+1. If the same skill was already run in this session and no new commit range/scope boundary is present, do a delta pass (`<last-reviewed-commit>..HEAD`) instead of reloading full context.
+2. If a full rerun is required, state the concrete scope-change reason in the prompt before re-invoking.
+3. Avoid re-opening discovery-heavy skills (for example `using-agent-skills`) multiple times in one session when a targeted skill invocation can satisfy the request.
+4. If the same heavy skill would be loaded a third time in one session without a new scope boundary, fail closed on full-context reload and run delta-only (`<last-reviewed-commit>..HEAD`) with an explicit note that the cap was applied.
+
 ## Workflow expectations
 
 - Start with specification and plan for non-trivial changes (`spec-driven-development`, `planning-and-task-breakdown`).
@@ -431,11 +441,25 @@ When reporting on CI/automation health, investigate failure root causes — don'
 
 ### Honor explicit review scope requests
 
-When the user requests review of "all changes", "all N files", or specifies a commit range, review the full scope — do not silently narrow to recent files or a convenient subset. Use `git diff` or `git log` to enumerate the complete changeset, then partition into parallel subagent reviews if the scope exceeds what one pass can cover. If you must limit scope, state the limitation explicitly before starting ("reviewing 40 of 116 files in this pass; will continue in a follow-up").
+When the user requests review of "all changes", "all N files", or specifies a commit range, review the full scope — do not silently narrow to recent files or a convenient subset. Use `git diff` or `git log` to enumerate the complete changeset, then partition into parallel subagent reviews if the scope exceeds what one pass can cover. If you must limit scope, state the limitation explicitly before starting ("reviewing 40 of 116 files in this pass; will continue in a follow-up"). For full-scope reviews, report a coverage statement up front (`reviewed X/Y files`, commit range) and return the full material finding set in one pass before remediation (do not stop after the first issue).
 
 ### "Fleet deployed" continuation signal
 
 When the user sends "Fleet deployed" (or similar), it means they have pushed commits and are ready for the next planned phase to proceed. Treat it as a continuation signal: check tracker + plan state, take the first unfinished actionable item (`todos` non-`done`, then plan/checkpoint), and execute it immediately. Do not restart with a fresh broad audit unless no unfinished tracked items exist.
+
+### Global long-session checkpoint guard
+
+For any session (not only Fleet-deployed flows), when context ages beyond a practical boundary (for example >40 turns or spanning >24 hours), compact the working state before continuing broad work:
+1. Create a short checkpoint-style handoff (completed work, open items, next actionable step).
+2. Continue from the checkpointed plan/todo instead of re-deriving prior context from scratch.
+3. Use this guard before launching broad audits, full-scope reviews, or heavy multi-skill passes.
+
+### Micro-turn batching trigger
+
+If the user sends repeated short acknowledgements/route markers (for example "agreed", "proceed", "fleet deployed", single-letter option replies), avoid one-step-at-a-time churn:
+1. Consolidate pending decisions into a numbered decision block.
+2. Execute selected items in one batch rather than requiring multiple micro-turn confirmations.
+3. Preserve momentum by defaulting to the first unfinished actionable item when user intent is continuation.
 
 ### "Pickup where you left off" resume protocol
 
@@ -453,6 +477,14 @@ When the user asks to work "open ready-for-agent issues", run this lane by defau
 3. Implement/remediate with subagents, then run the cross-functional review gate (`@code-reviewer`, `@test-engineer`, `@security-auditor`, `@documentation-engineer`).
 4. Run `documentation-and-adrs` and `audit-knowledgebase-workspace` before claiming completion.
 5. Reconcile local tracker state with live GitHub issue state, then close the issue or record why it remains open.
+
+### Session-close verification bundle
+
+After merging a PR (or when reporting merge readiness/completion), proactively provide one bundled status update that includes: (1) CI/check rollup state, (2) unresolved review-thread/comment count, and (3) issue/deferred-ledger reconciliation state. Do this without waiting for separate follow-up prompts for each status check.
+
+Before the first `task_complete` in any implementation/audit session, provide the same closeout bundle even if no merge occurred, plus:
+4. Documentation cascade check result (what needed updates vs what was already current).
+5. `.github/` customization cascade check result (what needed updates vs none required).
 
 ### Cross-functional review as default post-implementation step
 
@@ -494,11 +526,30 @@ Before closing any implementation/audit session, build a full deferred ledger (n
 
 When the user runs `/chronicle improve`, execute this sequence without improvising:
 1. Read `.github/copilot-instructions.md`.
-2. Query `session_store` for recent repo-scoped sessions and friction signals.
-3. Present 3-5 evidence-backed recommendations.
-4. Ask which recommendations to apply.
-5. If no selection arrives and execution continues autonomously, apply all proposed recommendations and state that assumption explicitly.
-6. Update `.github/copilot-instructions.md` with only the selected recommendations.
+2. If `/chronicle improve` already ran in this session and no new evidence boundary exists (no new commit range, no new friction signal, and <10 new turns), run a delta amend pass instead of a fresh full improve pass.
+3. Query `session_store` for recent repo-scoped sessions and friction signals.
+4. Present 3-5 evidence-backed recommendations.
+5. Ask which recommendations to apply.
+6. If no selection arrives and execution continues autonomously, apply all proposed recommendations and state that assumption explicitly.
+7. Update `.github/copilot-instructions.md` with only the selected recommendations.
+
+### `/chronicle tips` deterministic flow
+
+When the user runs `/chronicle tips`, execute this sequence:
+1. Query `session_store` for repo-scoped workflow patterns (recent session summaries, repeated kickoff prompts, frequent slash commands, and recurring turn markers).
+2. Fetch Copilot CLI documentation to anchor feature recommendations.
+3. Inspect repo-local custom surface (`.github/skills/**`, `.github/agents/**`) so recommendations reflect available capabilities.
+4. Return 3-5 personalized, non-obvious workflow tips grounded in observed data (cite concrete patterns, counts, or session IDs).
+5. Prefer capability and prompting improvements that reduce repeated coordination turns and improve first-pass execution quality.
+
+### `/chronicle cost-tips` deterministic flow
+
+When the user runs `/chronicle cost-tips`, execute this sequence:
+1. Query `session_store` for cost proxies (turn count, message length, checkpoint frequency/timing, repeated prompts, repeated large context payloads, and session duration).
+2. Read representative turn history from high-cost sessions to identify root causes (not just aggregates).
+3. Fetch Copilot CLI documentation and map findings to concrete controls (`/compact`, `/new`, `/usage`, `/model`, `/delegate`, `/fleet`, `/tasks`, `/after`, `/every`, `/ask`).
+4. Return 3-5 evidence-backed cost recommendations with specific workflow changes and quantified savings estimates when possible.
+5. If local store lacks token-level telemetry, state that limitation and recommend `/usage` plus cloud session store for exact token accounting.
 
 ### Multi-issue commit boundary discipline
 
@@ -522,6 +573,26 @@ When a user asks **"what skills should have been used to validate these changes?
 
 Do not answer with a list and stop. The question means "run them now," and `task_complete` is blocked until that execution lane finishes.
 
+### "What documentation/customizations should have been updated?" is an execution directive
+
+When a user asks **"what documentation should have been updated?"**, **"what documents should have been updated?"**, **"what customizations should have been updated?"**, or close variants (including `.github` customization wording), treat it as an execution directive. Immediately:
+1. Determine the commit range in scope (`<last-reviewed-commit>..HEAD` when available).
+2. Run `documentation-and-adrs` against that scope and produce concrete required doc updates.
+3. Run `audit-knowledgebase-workspace` for `.github` customization drift in the same scope.
+4. Return one consolidated cascade report (docs + customizations) with fixed vs. deferred items and reasons.
+
+Do not answer these prompts with a speculative list only; execute the audit lane first.
+
+### "What deferred work remains?" is an execution directive
+
+When a user asks about deferred/acknowledged-but-unimplemented work (including typo variants such as `deffered`, `aknowledged`, `remediaiton`), treat it as an execution directive. Immediately:
+1. Enumerate deferred items from session trackers/review outputs.
+2. Reconcile each item with live GitHub issue state via `gh issue view`.
+3. Create missing issues in-session for uncovered deferred items.
+4. Return one final ledger table: deferred item, issue number, and live issue status.
+
+Do not stop at narrative summaries for deferred-work prompts; complete reconciliation and issue coverage in the same response cycle.
+
 ### Grill-me decision logs are sufficient specs
 
 When grill-me produces a complete decision log with resolved questions, treat that log as a sufficient spec for implementation. Do not require a separate spec-driven-development pass unless the scope is large enough to warrant formal task breakdown (5+ files, new module, or cross-cutting concern).
@@ -537,6 +608,8 @@ When handling `/chronicle improve`:
 2. Search `.github/copilot-instructions.md` first and amend an existing section in place when coverage already exists.
 3. If a new rule supersedes an older one, remove or merge the older text in the same edit.
 4. Prefer concise deltas over appending near-duplicate policy blocks.
+5. Keep each `/chronicle improve` edit small by default (one new subsection or a compact in-place amendment) unless the user explicitly asks for broader restructuring.
+6. When this file is the repeatedly touched surface in recent sessions, prioritize consolidation/pruning over adding new standalone sections.
 
 ## Boundaries
 
