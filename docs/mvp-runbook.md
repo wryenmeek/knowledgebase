@@ -161,6 +161,62 @@ python3 scripts/reporting/coverage_report.py --mode persist --approval approved
 python3 -m pytest tests/ -q --cov=scripts/kb --cov=scripts.validation._runtime_budget --cov-fail-under=90
 ```
 
+## Wiki search semantic API contract (repo-local)
+
+Issue [#158](https://github.com/wryenmeek/knowledgebase/issues/158) covers the
+repo-local search-page integration only. Hosting/deployment/ownership decisions
+for a production semantic API endpoint remain in
+[#156](https://github.com/wryenmeek/knowledgebase/issues/156).
+
+### Configuration contract
+
+- `wiki/search.md` reads the endpoint from localStorage key
+  `kb-semantic-search-endpoint` (set with the in-page **Save endpoint** control).
+- Endpoint values must resolve to `http` or `https`.
+- Semantic requests always use `POST <base-endpoint>/query`.
+- Pagefind behavior remains active in all modes; semantic failures never disable
+  Pagefind.
+
+### Request contract (`POST <base-endpoint>/query`)
+
+```json
+{
+  "query": "search text",
+  "limit": 5
+}
+```
+
+### Response contract (`2xx application/json`)
+
+```json
+{
+  "results": [
+    {
+      "title": "Result title",
+      "url": "/knowledgebase/concepts/example/",
+      "snippet": "Short excerpt from the result.",
+      "score": 0.92
+    }
+  ]
+}
+```
+
+The `results` array is required. Items may include `title`, `url`, `snippet`,
+and `score`.
+
+### Error and fallback contract
+
+- Missing endpoint: semantic lane stays disabled and Pagefind results remain
+  available.
+- Network failure: semantic lane reports unavailable state and Pagefind results
+  remain available.
+- Non-2xx HTTP status: semantic lane reports HTTP fallback state and Pagefind
+  results remain available.
+- Non-JSON `Content-Type`, JSON parse errors, or missing `results` array:
+  semantic lane reports contract mismatch and Pagefind results remain available.
+- Semantic result rendering must use text nodes (`textContent`) and must not use
+  `innerHTML`.
+
 ## Framework verification entrypoints
 
 Use these repo-local checks when validating the landed framework artifacts
