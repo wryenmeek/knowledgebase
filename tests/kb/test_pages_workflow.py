@@ -8,6 +8,9 @@ import unittest
 
 
 WORKFLOW_PATH = Path(".github/workflows/pages.yml")
+SEARCH_PAGE_PATH = Path("wiki/search.md")
+RUNBOOK_PATH = Path("docs/mvp-runbook.md")
+USER_GUIDE_PATH = Path("docs/user-guide.md")
 
 
 class PagesWorkflowContractTests(unittest.TestCase):
@@ -119,6 +122,73 @@ class PagesWorkflowContractTests(unittest.TestCase):
             self.workflow_text,
             r"(?ms)  deploy:\n\s+needs:\s+build\n.*?permissions:\n\s+pages:\s*write\n\s+id-token:\s*write",
         )
+
+
+class SearchPageSemanticContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.assertTrue(SEARCH_PAGE_PATH.exists(), f"Missing search page: {SEARCH_PAGE_PATH}")
+        self.assertTrue(RUNBOOK_PATH.exists(), f"Missing runbook: {RUNBOOK_PATH}")
+        self.assertTrue(USER_GUIDE_PATH.exists(), f"Missing user guide: {USER_GUIDE_PATH}")
+        self.search_page_text = SEARCH_PAGE_PATH.read_text(encoding="utf-8")
+        self.runbook_text = RUNBOOK_PATH.read_text(encoding="utf-8")
+        self.user_guide_text = USER_GUIDE_PATH.read_text(encoding="utf-8")
+
+    def test_search_page_keeps_pagefind_and_declares_semantic_api_markers(self) -> None:
+        expected_markers = (
+            "new PagefindUI(",
+            'element: "#pagefind-search"',
+            'const STORAGE_KEY = "kb-semantic-search-endpoint";',
+            'const SEARCH_PATH = "/query";',
+            '"Content-Type": "application/json"',
+            "query,",
+            "limit: RESULT_LIMIT",
+            "semantic_api_http_",
+            "semantic_api_content_type",
+            "semantic_api_json_parse",
+            "semantic_api_payload_shape",
+            "function sanitizeEndpoint(rawEndpoint)",
+            "function sanitizeResultUrl(rawUrl)",
+            'if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:")',
+            'id="semantic-search"',
+            'id="semantic-api-status"',
+            'id="semantic-results-list"',
+            "Pagefind results remain available.",
+        )
+        for marker in expected_markers:
+            self.assertIn(marker, self.search_page_text)
+        self.assertNotIn("innerHTML", self.search_page_text)
+
+    def test_runbook_documents_semantic_api_contract(self) -> None:
+        expected_markers = (
+            "## Wiki search semantic API contract (repo-local)",
+            "`kb-semantic-search-endpoint`",
+            "Endpoint values must resolve to `http` or `https`",
+            "`POST <base-endpoint>/query`",
+            "`results` array",
+            '"title": "Result title"',
+            '"url": "/knowledgebase/concepts/example/"',
+            '"snippet": "Short excerpt from the result."',
+            '"score": 0.92',
+            "Missing endpoint: semantic lane stays disabled",
+            "Network failure: semantic lane reports unavailable state",
+            "Non-2xx HTTP status: semantic lane reports HTTP fallback state",
+            "Non-JSON `Content-Type`, JSON parse errors, or missing `results` array",
+            "text nodes (`textContent`)",
+            "Pagefind results remain",
+        )
+        for marker in expected_markers:
+            self.assertIn(marker, self.runbook_text)
+
+    def test_user_guide_documents_semantic_api_configuration_and_fallback(self) -> None:
+        expected_markers = (
+            "### Optional semantic API results in wiki/search.md",
+            "Enter an `http`/`https` endpoint and click **Save endpoint**.",
+            "`kb-semantic-search-endpoint`",
+            "`POST <base-endpoint>/query`",
+            "Pagefind results remain",
+        )
+        for marker in expected_markers:
+            self.assertIn(marker, self.user_guide_text)
 
 
 if __name__ == "__main__":

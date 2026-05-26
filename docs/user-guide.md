@@ -59,6 +59,28 @@ qmd query "your question here"
 This builds a local vector index and returns ranked results from the wiki
 content.
 
+### Optional semantic API results in wiki/search.md
+
+The published search page (`wiki/search.md`) supports a second semantic result
+lane in addition to Pagefind.
+
+1. Open `/knowledgebase/search/` on GitHub Pages.
+2. Enter an `http`/`https` endpoint and click **Save endpoint**.
+3. The page stores the endpoint in localStorage key
+   `kb-semantic-search-endpoint` for reuse.
+4. The search page sends semantic queries as `POST <base-endpoint>/query` with
+   JSON payload:
+
+```json
+{
+  "query": "your question here",
+  "limit": 5
+}
+```
+
+If the semantic endpoint is missing or unavailable, Pagefind results remain
+available and the page reports semantic fallback status.
+
 ### GitHub Pages
 
 The wiki is deployed as a browsable website at
