@@ -61,7 +61,7 @@ available as a fallback.
         return "";
       }
       try {
-        const parsed = new URL(normalized, window.location.origin);
+        const parsed = new URL(normalized);
         if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
           return "";
         }
