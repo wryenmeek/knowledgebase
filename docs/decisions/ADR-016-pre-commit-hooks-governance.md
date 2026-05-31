@@ -142,6 +142,27 @@ in `AGENTS.md`.
 dispatch mechanism, the `scripts/hooks/` script location, and the CI-2
 enforcement gate.
 
+### Amendment 3 — Mixed-scope intake/control-plane hook (2026-05-31)
+
+**Date:** 2026-05-31
+
+**What changed:** A new hook was added to `.pre-commit-config.yaml`:
+
+1. **`check_mixed_scope.py` (id: `mixed-scope-commit-guard`)** — enforces intake/control-plane separation before commit by:
+   - rejecting staged commits that mix `raw/inbox/**` with sensitive non-inbox paths; and
+   - rejecting staged commits that would transition the current branch into mixed scope relative to the default-branch merge base.
+
+The hook is read-only and fail-closed for branch-baseline resolution errors on
+non-benign staged changes.
+
+**Why:** CI-1 already enforces trusted-trigger path segmentation, but mixed
+scope reached CI after push. This hook moves that separation check to local
+commit-time and reduces avoidable CI-1 handoff failures.
+
+**What didn't change:** CI-2 remains the authoritative gate, `--no-verify`
+still bypasses local hooks, and hooks remain read-only scripts under
+`scripts/hooks/`.
+
 ## References
 
 - `scripts/hooks/` — hook implementation scripts
