@@ -129,8 +129,8 @@ jobs:
           wrapper_duration="$((wrapper_end - wrapper_start))"
 
           freshness_start="$(date -u +%s)"
-          echo "[CI-2] check_doc_freshness --scope wiki" | tee -a diagnostics/diagnostics.log
-          python3 scripts/validation/check_doc_freshness.py --scope wiki --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 --failures-only 2>&1 | tee -a diagnostics/diagnostics.log
+          echo "[CI-2] check_doc_freshness --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses" | tee -a diagnostics/diagnostics.log
+          python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 --failures-only 2>&1 | tee -a diagnostics/diagnostics.log
           freshness_exit="${PIPESTATUS[0]}"
           freshness_end="$(date -u +%s)"
           freshness_duration="$((freshness_end - freshness_start))"

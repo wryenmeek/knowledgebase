@@ -2,7 +2,15 @@
 type: process
 title: Semantic Search
 status: active
+sources: []
+open_questions: []
+confidence: 4
+sensitivity: internal
 updated_at: "2026-05-25T21:06:37Z"
+tags:
+  - search
+  - semantic
+  - pagefind
 hide:
   - navigation
   - toc
@@ -15,6 +23,7 @@ search:
 Full-text search across all wiki pages, powered by [Pagefind](https://pagefind.app).
 The page also supports an optional semantic API result lane while keeping Pagefind
 available as a fallback.
+For tag-first browsing, see [Tags](tags.md).
 
 <link href="../pagefind/pagefind-ui.css" rel="stylesheet">
 <script src="../pagefind/pagefind-ui.js"></script>

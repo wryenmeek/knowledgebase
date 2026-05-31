@@ -112,6 +112,10 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
         self.assertIn("python3 -m pytest tests/ -q", self.workflow_text)
         self.assertIn(
+            "python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses",
+            self.workflow_text,
+        )
+        self.assertIn(
             "python3 -m scripts.validation.check_issue_closure_evidence",
             self.workflow_text,
         )

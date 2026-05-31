@@ -41,8 +41,7 @@ agent personas → skills they claim to use → commands in `copilot-instruction
    - `.github/hooks/hooks.json` is valid JSON with required event keys
      (`SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`) and all referenced
      shell script paths resolve to real files.
-   - All `[text](path)` links in `.github/prompts/*.prompt.md` resolve to real
-     files.
+   - All markdown links in `.github/prompts/*.prompt.md` resolve to real files.
 
 2. **Scheduled repair workflow** (`github-customizations-freshness.yml`) — detects
    drift that slips through and opens fix PRs or labeled issues. Never
