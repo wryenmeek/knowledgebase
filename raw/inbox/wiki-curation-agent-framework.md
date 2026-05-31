@@ -627,7 +627,7 @@ ADR-007.
 [^11]: `raw/processed/LLMwiki-best practices-research.md:139-156`
 [^12]: `raw/processed/LLMwiki-best practices-research.md:158-172`
 [^13]: `raw/processed/LLMwiki-best practices-research.md:174-199`
-[^14]: `raw/inbox/post-mvp-rollout-packaging-spec.md:8-25`
+[^14]: `raw/inbox/post-mvp-rollout-packaging-spec.md:99-116`
 [^15]: `.github/skills/using-agent-skills/SKILL.md:14-37`
 [^16]: `.github/skills/using-agent-skills/SKILL.md:123-149`
 [^17]: `.github/agents/code-reviewer.md:1-92`
