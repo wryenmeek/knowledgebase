@@ -112,6 +112,10 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
         self.assertIn("python3 -m pytest tests/ -q", self.workflow_text)
         self.assertIn(
+            "python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses",
+            self.workflow_text,
+        )
+        self.assertIn(
             "python3 -m scripts.validation.check_issue_closure_evidence",
             self.workflow_text,
         )
@@ -132,7 +136,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         )
         self.assertIn("if: always()", self.workflow_text)
         self.assertIn(
-            "steps.diagnostics.outputs.exit_code != '0' || steps.closure-evidence.outputs.closure_evidence_exit != '0' || steps.runtime-budget.outputs.overall_status == 'fail'",
+            "always() && (steps.diagnostics.outcome != 'success' || steps.closure-evidence.outcome != 'success' || steps.diagnostics.outputs.exit_code != '0' || steps.closure-evidence.outputs.closure_evidence_exit != '0' || steps.runtime-budget.outputs.overall_status == 'fail')",
             self.workflow_text,
         )
         self.assertIn("Evaluate CI-2 runtime budgets", self.workflow_text)
@@ -151,6 +155,30 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             self.assertNotIn(forbidden, self.workflow_text)
 
     def test_diagnostics_step_propagates_lint_and_test_failures(self) -> None:
+        diagnostics_step = extract_named_step_block(
+            self.workflow_text,
+            "Run analyst diagnostics (lint + unit tests)",
+            workflow_path=WORKFLOW_PATH,
+        )
+        self.assertIn("set -uo pipefail", diagnostics_step)
+        self.assertIn(
+            "set +e",
+            diagnostics_step,
+            "Diagnostics step must disable inherited bash -e so it can emit all outputs deterministically",
+        )
+
+        closure_step = extract_named_step_block(
+            self.workflow_text,
+            "Check issue closure evidence",
+            workflow_path=WORKFLOW_PATH,
+        )
+        self.assertIn("set -uo pipefail", closure_step)
+        self.assertIn(
+            "set +e",
+            closure_step,
+            "Closure-evidence step must disable inherited bash -e so closure_evidence_exit is always emitted",
+        )
+
         self.assertIsNotNone(
             re.search(
                 r"python3 \.github/skills/validate-wiki-governance/logic/validate_wiki_governance\.py.*?wrapper_exit=\"\$\{PIPESTATUS\[0\]\}\"",

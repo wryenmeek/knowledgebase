@@ -90,7 +90,8 @@ handoff:
    Models API to produce an extraction bundle.
 2. `synthesize-entity-page/logic/synthesize_entity_page.py` and
    `synthesize-concept-page/logic/synthesize_concept_page.py` write draft pages to
-   `wiki/entities/` and `wiki/concepts/` while holding `wiki/.kb_write.lock`.
+   `wiki/entities/` and `wiki/concepts/` while holding the runtime wiki lock file
+   (wiki/.kb_write.lock).
 3. All synthesis steps soft-fail (exit 0, emit `::warning`) — the ingest PR is never
    blocked by LLM errors.
 4. The staged entity/concept pages appear in the ingest PR diff for HITL review before merge.
