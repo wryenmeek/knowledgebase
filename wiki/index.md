@@ -34,7 +34,7 @@ Catalog generated deterministically from wiki content.
 - [CONTEXT.md Domain Model](concepts/context-md-domain-model.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
 - [Google Drive Source Monitoring](concepts/google-drive-source-monitoring.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
 - [Knowledgebase Specification](concepts/knowledgebase-spec.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
-- [Pre-commit Guardrails](concepts/pre-commit-guardrails.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
+- [Pre-commit Guardrails](concepts/pre-commit-guardrails.md) _(status: active; confidence: 5; updated_at: 2026-05-31T04:10:00Z)_
 - [Wiki Quality Best Practices](concepts/wiki-quality-best-practices.md) _(status: active; confidence: 3; updated_at: 2026-05-12T06:00:00Z)_
 
 ## Analyses
