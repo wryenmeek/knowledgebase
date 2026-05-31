@@ -7,7 +7,7 @@ sources:
 open_questions: []
 confidence: 5
 sensitivity: internal
-updated_at: "2026-05-12T06:00:00Z"
+updated_at: "2026-05-31T04:10:00Z"
 tags:
   - pre-commit
   - git-hooks
@@ -35,6 +35,9 @@ CI — they do not replace it; CI remains the authoritative gate.
 | `check_hooks_json.py` | Validate `.github/hooks/hooks.json` syntax, structure, and script paths | ~0.2s |
 | `check_context_md_format.py` | Validate `CONTEXT.md` files have required sections (`## Terms`, `## Invariants`, `## File Roles`) and ≤200 lines | ~0.3s |
 | `check_matrix_coverage.py` | Verify staged new `scripts/` or `logic/` files have a write-surface matrix row in `AGENTS.md` | ~0.5s |
+| `check_mixed_scope.py` | Block mixed intake/control-plane staged commits and branch-transition-to-mixed-scope commits | ~0.2s |
+| `check_adr_cross_ref.py` | Require `docs/decisions/README.md` to be staged when ADR status is amended/extended | ~0.1s |
+| `check_stub_archive_path.py` | Validate `docs/ideas/` archive pointer targets exist in `raw/inbox/` or `wiki/sources/` | ~0.1s |
 
 **Framework choice.** The design proposal recommended raw git hooks. The
 implementation adopted the `pre-commit` Python framework (ADR-016 amended

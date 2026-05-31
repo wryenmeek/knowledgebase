@@ -8,6 +8,7 @@ This guide covers the setup, workflow, and governance rules every contributor ne
 ### Prerequisites
 
 - Python 3.10+
+- Node.js (current LTS) — required for semantic browser-behavior tests (`tests/kb/test_pages_workflow.py`)
 - [Bun](https://bun.sh) — only needed for `scripts/fleet/` TypeScript orchestration
 - `qmd` on your PATH — only needed for full index/query flow (not required for most framework contributions)
 
@@ -20,10 +21,18 @@ pre-commit install
 
 The pre-commit hooks (governed by ADR-016) enforce:
 - No staged governance lock files (`.kb_write.lock`, etc.)
+- Mixed-scope intake/control-plane separation:
+  - block staged commits that mix `raw/inbox/**` with sensitive non-inbox paths
+  - block staged commits that would make the current branch mixed-scope
 - Wiki page and `SKILL.md` frontmatter validation
 - `CONTEXT.md` structure (required sections, ≤200 lines)
 - SourceRef citation format in markdown files
-- Write-surface matrix coverage for any newly added scripts
+- Write-surface matrix coverage for newly added `scripts/**` and skill-local
+  `logic/*.py` files
+- ADR status-change cascade check (ADR amendment/extension requires staging
+  `docs/decisions/README.md`)
+- `docs/ideas/` archive-pointer check (`Archived to ...` target must exist in
+  `raw/inbox/` or `wiki/sources/`)
 
 Run all hooks manually with:
 
@@ -36,6 +45,8 @@ pre-commit run --all-files
 ```bash
 python3 -m pytest tests/ -q
 ```
+
+The semantic behavior checks in `tests/kb/test_pages_workflow.py` run through Node.js to execute a controlled JavaScript harness.
 
 Run the targeted framework suite after any `.github/agents/**`, `.github/skills/**`, or `AGENTS.md` write-surface matrix change:
 

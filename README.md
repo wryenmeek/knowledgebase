@@ -43,10 +43,18 @@ pre-commit run --all-files
 
 Hooks enforce:
 - No staged governance lock files (`.kb_write.lock`, etc.)
+- Mixed-scope guard: blocks commits that mix `raw/inbox/**` with sensitive
+  control-plane paths, and blocks staged commits that would transition the
+  branch into mixed scope
 - Wiki page and SKILL.md frontmatter validation
 - SourceRef citation format in markdown files
 - `CONTEXT.md` structure (required sections, ≤200 lines)
-- Write-surface matrix coverage for newly added scripts
+- Write-surface matrix coverage for newly added `scripts/**` and skill-local
+  `logic/*.py` files
+- ADR status-change cascade check (ADR status amendment/extension requires
+  staged `docs/decisions/README.md` update)
+- `docs/ideas/` archive-pointer validation (`Archived to ...` target must exist
+  in `raw/inbox/` or `wiki/sources/`)
 
 For full operational flow (including qmd and query-persist behavior), see
 [`docs/mvp-runbook.md`](docs/mvp-runbook.md).

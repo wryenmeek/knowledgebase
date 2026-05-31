@@ -14,6 +14,13 @@ repos:
         exclude: "^tests/"
         pass_filenames: true
 
+      - id: mixed-scope-commit-guard
+        name: Block mixed-scope intake/control-plane commits
+        language: python
+        entry: python -m scripts.hooks.check_mixed_scope
+        types: [file]
+        pass_filenames: false
+
       - id: frontmatter-validation
         name: Wiki, skill, and agent persona frontmatter validation
         language: python
