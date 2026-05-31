@@ -183,7 +183,7 @@ gh api -X PUT "repos/OWNER/REPO/branches/main/protection" \
 {
   "required_status_checks": {
     "strict": false,
-    "contexts": ["CI-2 Analyst Diagnostics / diagnostics"]
+    "contexts": ["CI-2 Analyst Read-Only Diagnostics / CI-2 diagnostics (tp-analyst-readonly)"]
   },
   "enforce_admins": false,
   "required_pull_request_reviews": null,
