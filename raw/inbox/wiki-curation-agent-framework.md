@@ -34,7 +34,7 @@ repository's existing deterministic Python execution surface.
 
 ### Current implementation status snapshot
 
-<!-- snapshot updated 2026-04-29 -->
+<!-- snapshot updated 2026-05-31 -->
 
 The current repo state is:
 
@@ -42,13 +42,13 @@ The current repo state is:
 |---|---|
 | Personas | 17 agents in `.github/agents/`: 11 `kb-workflow` category (knowledgebase-orchestrator, source-intake-steward, evidence-verifier, policy-arbiter, synthesis-curator, query-synthesist, topology-librarian, entity-resolution-and-canonicalization, maintenance-auditor, change-patrol, quality-analyst) and 6 `dev-support` category (code-reviewer, security-auditor, test-engineer, documentation-engineer, solutions-architect, framework-engineer). All have `category` frontmatter field. |
 | Skills | 102 skills in `.github/skills/`, all catalogued in `using-agent-skills/SKILL.md`. |
-| Framework wrappers (skill logic) | Skill-local logic wrappers landed for: `append-log-entry`, `check-link-topology`, `compute-kpis`, `analyze-missed-queries`, `context-engineering`, `documentation-and-adrs`, `enforce-page-template`, `enforce-repository-boundaries`, `run-deterministic-validators`, `sync-knowledgebase-state`, `validate-inbox-source`, `validate-wiki-governance`, `write-sourceref-citations`, `suggest-backlinks`, `log-intake-rejection`, `manage-redirects-and-anchors`. Two additional skills (`fill-context-pages`, `generate-maintenance-docs`) delegate to repo-level scripts (`scripts/context/fill_context_pages.py`, `scripts/maintenance/generate_docs.py`) rather than skill-local `logic/` directories. |
+| Framework wrappers (skill logic) | Skill-local logic wrappers landed for: `analyze-missed-queries`, `append-log-entry`, `check-link-topology`, `compute-kpis`, `context-engineering`, `documentation-and-adrs`, `enforce-page-template`, `enforce-repository-boundaries`, `extract-entities-and-claims`, `log-intake-rejection`, `manage-redirects-and-anchors`, `run-deterministic-validators`, `suggest-backlinks`, `sync-knowledgebase-state`, `synthesize-concept-page`, `synthesize-entity-page`, `validate-inbox-source`, `validate-wiki-governance`, `write-sourceref-citations` (19 skills). Two additional skills (`fill-context-pages`, `generate-maintenance-docs`) delegate to repo-level scripts (`scripts/context/fill_context_pages.py`, `scripts/maintenance/generate_docs.py`) rather than skill-local `logic/` directories. |
 | Knowledge-structure skills | All 5 original skills landed; `entity-resolution-and-canonicalization` now also has a full agent persona. |
 | Deterministic execution | Core entrypoints (`scripts/kb/ingest.py`, `scripts/kb/update_index.py`, `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, `scripts/kb/persist_query.py`) remain authoritative. All post-MVP package families also landed: `scripts/validation/**`, `scripts/reporting/**` (`content_quality_report.py`, `quality_runtime.py`), `scripts/context/**` (`fill_context_pages.py`, `manage_context_pages.py`), `scripts/maintenance/**` (`generate_docs.py`), `scripts/ingest/**` (`convert_sources_to_md.py`). |
-| Pre-commit hooks | All hooks landed in `scripts/hooks/`: `check_frontmatter.py`, `check_hooks_json.py`, `check_no_staged_locks.py`, `check_sourceref_format.py`, `check_context_md_format.py`, `check_matrix_coverage.py`. |
+| Pre-commit hooks | All hooks landed in `scripts/hooks/`: `check_frontmatter.py`, `check_hooks_json.py`, `check_no_staged_locks.py`, `check_sourceref_format.py`, `check_context_md_format.py`, `check_matrix_coverage.py`, `check_mixed_scope.py`, `check_adr_cross_ref.py`, `check_stub_archive_path.py`. |
 | CONTEXT.md files | 7 CONTEXT.md files landed: repo root, `wiki/`, `schema/`, `scripts/kb/`, `scripts/github_monitor/`, `scripts/drive_monitor/`, `.github/skills/`. |
 | GitHub monitor | `scripts/github_monitor/**` landed (`check_drift.py`, `classify_drift.py`, `fetch_content.py`, `synthesize_diff.py`, `create_issues.py`) with CI-5 workflow. `scripts/drive_monitor/**` also landed (`check_drift.py`, `classify_drift.py`, `fetch_content.py`, `synthesize_diff.py`, `create_issues.py`, `advance_cursor.py`) with CI-6 workflow. |
-| Verification | 1006 tests green. Includes `tests/kb/test_github_customizations.py`, `test_framework_agents.py` (22 tests), `UsingAgentSkillsTests` class, and `tests/drive_monitor/` (11 test files). |
+| Verification | 1568 tests green. Includes `tests/kb/test_github_customizations.py`, `test_framework_agents.py` (22 tests), `UsingAgentSkillsTests` class, and `tests/drive_monitor/` (11 test files). |
 
 ### In scope now
 
@@ -56,7 +56,7 @@ The current repo state is:
 |---|---|
 | Agent scaffolding | Persona files under `.github/agents/` with mission, handoff, and stop-condition contracts. |
 | Skill scaffolding | Skill directories under `.github/skills/` with discovery metadata, procedural `SKILL.md` files, references, and narrow wrapper logic where needed. |
-| Thin wrapper integration | Wrapper entrypoints currently landed for governance validation and index/state synchronization; ingest and query persistence still run through direct `scripts/kb/**` entrypoints rather than framework-local wrappers. |
+| Thin wrapper integration | Wrapper entrypoints are now landed across governance validation, extraction, synthesis drafting, and index/state synchronization; core deterministic ingest and query execution remains authoritative in direct `scripts/kb/**` entrypoints. |
 | Boundary documentation | Architecture and ADR updates that state where policy, personas, skills, wrappers, scripts, and tests belong. |
 
 ### Deferred follow-on work
@@ -461,9 +461,10 @@ Today, the skill layer is split across three real states, with direct
 
 | Current state | Skills |
 |---|---|
-| **Thin wrappers with Python logic** | `validate-wiki-governance`, `sync-knowledgebase-state` |
+| **Skills with Python logic wrappers** | `analyze-missed-queries`, `append-log-entry`, `check-link-topology`, `compute-kpis`, `context-engineering`, `documentation-and-adrs`, `enforce-page-template`, `enforce-repository-boundaries`, `extract-entities-and-claims`, `log-intake-rejection`, `manage-redirects-and-anchors`, `run-deterministic-validators`, `suggest-backlinks`, `sync-knowledgebase-state`, `synthesize-concept-page`, `synthesize-entity-page`, `validate-inbox-source`, `validate-wiki-governance`, `write-sourceref-citations` |
+| **Skills delegating to repo-level scripts** | `fill-context-pages` -> `scripts/context/fill_context_pages.py`; `generate-maintenance-docs` -> `scripts/maintenance/generate_docs.py` |
 | **Active doc-only skills** | `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, `knowledge-schema-and-metadata-governance`, `entity-resolution-and-canonicalization`, `search-and-discovery-optimization` |
-| **Active doc-only workflow skills** | `validate-inbox-source`, `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace` |
+| **Active doc-only workflow skills** | `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace` |
 
 Outside the landed wrapper/doc-only entries above, the remaining skill names in
 the next tables should be read as target-state workflow labels rather than
@@ -613,20 +614,20 @@ ADR-007.
 
 ## Footnotes
 
-[^1]: `raw/inbox/LLMwiki-best practices-research.md:5-11`
-[^2]: `raw/inbox/LLMwiki-best practices-research.md:15-35`
-[^3]: `raw/inbox/LLMwiki-best practices-research.md:37-46`
+[^1]: `raw/processed/LLMwiki-best practices-research.md:5-11`
+[^2]: `raw/processed/LLMwiki-best practices-research.md:15-35`
+[^3]: `raw/processed/LLMwiki-best practices-research.md:37-46`
 [^4]: `AGENTS.md:5-25`
 [^5]: `schema/page-template.md:1-31`
-[^6]: `raw/inbox/LLMwiki-best practices-research.md:57-67`
-[^7]: `raw/inbox/LLMwiki-best practices-research.md:69-87`
-[^8]: `raw/inbox/LLMwiki-best practices-research.md:89-107`
-[^9]: `raw/inbox/LLMwiki-best practices-research.md:109-121`
-[^10]: `raw/inbox/LLMwiki-best practices-research.md:123-137`
-[^11]: `raw/inbox/LLMwiki-best practices-research.md:139-156`
-[^12]: `raw/inbox/LLMwiki-best practices-research.md:158-172`
-[^13]: `raw/inbox/LLMwiki-best practices-research.md:174-199`
-[^14]: `docs/ideas/spec.md:4-21`
+[^6]: `raw/processed/LLMwiki-best practices-research.md:57-67`
+[^7]: `raw/processed/LLMwiki-best practices-research.md:69-87`
+[^8]: `raw/processed/LLMwiki-best practices-research.md:89-107`
+[^9]: `raw/processed/LLMwiki-best practices-research.md:109-121`
+[^10]: `raw/processed/LLMwiki-best practices-research.md:123-137`
+[^11]: `raw/processed/LLMwiki-best practices-research.md:139-156`
+[^12]: `raw/processed/LLMwiki-best practices-research.md:158-172`
+[^13]: `raw/processed/LLMwiki-best practices-research.md:174-199`
+[^14]: `raw/inbox/post-mvp-rollout-packaging-spec.md:99-116`
 [^15]: `.github/skills/using-agent-skills/SKILL.md:14-37`
 [^16]: `.github/skills/using-agent-skills/SKILL.md:123-149`
 [^17]: `.github/agents/code-reviewer.md:1-92`
