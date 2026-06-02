@@ -38,3 +38,8 @@ This should complete the full CI-1 → CI-3 → PR creation pipeline.
 Tests malformed status entry fix and baseline file exclusion.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+## Sixth validation pass
+
+Inbox-only commit after control-plane fix landed on previous SHA.
+
