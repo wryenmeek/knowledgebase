@@ -306,10 +306,14 @@ def _run_ci3_preflight_script(
     *,
     dispatch_changed_paths: tuple[str, ...],
     manual_approved: str = "true",
+    event_name: str = "workflow_dispatch",
     dispatch_sha: str = "1111111111111111111111111111111111111111",
     dispatch_merge_base: str = "0000000000000000000000000000000000000000",
     dispatch_merge_base_exit: int = 0,
     dispatch_diff_exit: int = 0,
+    workflow_run_name: str = "",
+    workflow_run_event: str = "",
+    workflow_run_conclusion: str = "",
 ) -> subprocess.CompletedProcess[str]:
     script = _with_mapfile_compat(_extract_ci3_preflight_script(workflow_text))
 
@@ -374,13 +378,13 @@ def _run_ci3_preflight_script(
                 "TOKEN_PROFILE": "tp-pr-producer",
                 "WRITE_ALLOWLIST": "wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**",
                 "FALLBACK_MANUAL_INSTRUCTIONS": "manual fallback",
-                "EVENT_NAME": "workflow_dispatch",
+                "EVENT_NAME": event_name,
                 "MANUAL_APPROVED": manual_approved,
                 "DISPATCH_SHA": dispatch_sha,
                 "DEFAULT_BRANCH": "main",
-                "WORKFLOW_RUN_NAME": "",
-                "WORKFLOW_RUN_EVENT": "",
-                "WORKFLOW_RUN_CONCLUSION": "",
+                "WORKFLOW_RUN_NAME": workflow_run_name,
+                "WORKFLOW_RUN_EVENT": workflow_run_event,
+                "WORKFLOW_RUN_CONCLUSION": workflow_run_conclusion,
                 "WORKFLOW_FILE": ".github/workflows/ci-3-pr-producer.yml",
                 "GITHUB_OUTPUT": str(github_output_path),
                 "MOCK_DISPATCH_CHANGED_PATHS": "\n".join(dispatch_changed_paths),
@@ -595,6 +599,7 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertIn("source_path:", self.workflow_text)
         self.assertIn("manual-approval:", self.workflow_text)
         self.assertIn("name: ci3-manual-approval", self.workflow_text)
+        self.assertIn(".github/skills/extract-entities-and-claims/**", self.workflow_text)
 
     def test_permissions_and_concurrency_match_ci3_requirements(self) -> None:
         self.assertEqual(
@@ -833,6 +838,31 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         combined_output = f"{result.stdout}\n{result.stderr}"
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("CI-3 preflight PASS", combined_output)
+
+    def test_preflight_behavior_accepts_push_extract_entities_skill_change(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(
+                ".github/skills/extract-entities-and-claims/logic/extract_entities.py",
+            ),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("CI-3 preflight PASS", combined_output)
+
+    def test_preflight_behavior_rejects_push_non_allowlisted_skill_change(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(".github/skills/some-unrelated-skill/logic/x.py",),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:path_filter:disallowed_push_path:.github/skills/some-unrelated-skill/logic/x.py",
+            combined_output,
+        )
 
     def test_preflight_behavior_rejects_missing_synthesis_curator_job(self) -> None:
         mutated_workflow = self.workflow_text.replace(

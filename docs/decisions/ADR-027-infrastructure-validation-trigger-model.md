@@ -19,6 +19,7 @@ This created a gap: infrastructure fixes were implemented but unvalidated end-to
 Enable CI-3 to be triggered automatically by direct `push` events to `main` when those pushes modify CI-3 infrastructure files only:
 
 - `.github/workflows/ci-3-pr-producer.yml` (the synthesis workflow itself)
+- `.github/skills/extract-entities-and-claims/**` (extraction logic used by CI-3 synthesis)
 - `.github/skills/validate-wiki-governance/**` (topology and synthesis validators)
 - `.github/skills/synthesize-entity-page/**` (entity synthesis implementation)
 - `.github/skills/synthesize-concept-page/**` (concept synthesis implementation)

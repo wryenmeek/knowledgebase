@@ -32,5 +32,5 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-023](ADR-023-batch-query-persistence-design.md) | Batch query persistence — single-lock, partial-failure, and size-limit design | Accepted — extends ADR-003 |
 | [ADR-024](ADR-024-synthesis-curator-stage-design.md) | Synthesis Curator stage design — LLM entity/concept extraction in CI-3 | Accepted — amended in-place |
 | [ADR-025](ADR-025-runtime-budget-contract-scope.md) | Runtime-budget contract scope and CI parity | Accepted — amended in-place |
-| [ADR-026](ADR-026-wiki-processing-checkpoint-registry.md) | Wiki processing checkpoint registry for resumed and revalidated synthesis | Proposed |
+| [ADR-026](ADR-026-wiki-processing-checkpoint-registry.md) | Wiki processing checkpoint registry for resumed and revalidated synthesis | Accepted |
 | [ADR-027](ADR-027-infrastructure-validation-trigger-model.md) | Infrastructure validation trigger model for CI-3 | Accepted |
