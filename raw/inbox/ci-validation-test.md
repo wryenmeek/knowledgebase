@@ -23,3 +23,12 @@ This update triggers a second CI-1 → CI-3 run to test the .gitignore fix for C
 
 This update triggers a third CI-1 → CI-3 run to test the workspace path
 exclusion fix for .qmd/, ci3-synthesis/, and ci3-metrics/.
+
+## Fourth validation pass
+
+Final end-to-end test with all CI-3 fixes:
+- Workspace paths (.qmd/, ci3-synthesis/) excluded from validation
+- raw/inbox files treated as read-only inputs
+- Baseline capture before synthesis
+
+This should complete the full CI-1 → CI-3 → PR creation pipeline.
