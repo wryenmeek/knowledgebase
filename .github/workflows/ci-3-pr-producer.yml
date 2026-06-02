@@ -824,6 +824,16 @@ jobs:
           name: ci3-extraction-bundles-${{ github.run_id }}
           path: ci3-synthesis
 
+      - name: Capture CI-3 pre-synthesis baseline
+        if: steps.sources.outputs.has_sources == 'true'
+        run: |
+          set -euo pipefail
+          # Capture working tree state before synthesis modifies files
+          # We'll use this to validate only files actually written by CI-3
+          git -c core.quotepath=false diff --name-status -z -- . > ci3-metrics/.baseline-git-diff.tsv 2>/dev/null || true
+          git -c core.quotepath=false ls-files --others --exclude-standard -z -- . > ci3-metrics/.baseline-untracked.tsv 2>/dev/null || true
+          echo "Baseline captured"
+
       - name: Run CI-3 required checks and write path
         id: write-path
         if: steps.sources.outputs.has_sources == 'true'
@@ -1025,6 +1035,12 @@ jobs:
             changed_paths+=("${changed_path}")
 
             if [[ "${status_code}" == *D* ]] && [[ "${changed_path}" == raw/inbox/* ]]; then
+              continue
+            fi
+
+            # raw/inbox/** files are read-only inputs for CI-3, not write outputs
+            # They should not be validated as part of the write allowlist
+            if [[ "${changed_path}" == raw/inbox/* ]]; then
               continue
             fi
 
