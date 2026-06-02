@@ -18,3 +18,8 @@ This validates that the separated-commit strategy and infrastructure validation 
 ## Second validation pass
 
 This update triggers a second CI-1 → CI-3 run to test the .gitignore fix for CI-3 workspace paths.
+
+## Third validation pass
+
+This update triggers a third CI-1 → CI-3 run to test the workspace path
+exclusion fix for .qmd/, ci3-synthesis/, and ci3-metrics/.
