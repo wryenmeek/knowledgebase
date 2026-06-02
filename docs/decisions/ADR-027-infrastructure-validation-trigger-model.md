@@ -1,8 +1,10 @@
 # ADR-027: Infrastructure validation trigger model for CI-3
 
-**Status:** Accepted
-
 **Date:** 2026-06-02
+
+## Status
+
+Accepted
 
 ## Context
 
