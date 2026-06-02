@@ -222,6 +222,9 @@ tests/kb/.runtime_skill_wrappers/
 .github-sources.lock
 .rejection-registry.lock
 
+.qmd/
+ci3-synthesis/
+
 # CI-3 runner shim — transient, never commit
 .ci-bin/
 site/
