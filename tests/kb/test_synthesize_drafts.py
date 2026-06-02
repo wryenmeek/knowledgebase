@@ -749,6 +749,108 @@ class TestExtractEntitiesRun(unittest.TestCase):
             )
             self.assertEqual(rc, 1)
 
+    def test_prefers_processed_source_text_when_sourceref_file_exists(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            (root / "wiki" / "sources").mkdir(parents=True)
+            (root / "wiki" / "entities").mkdir(parents=True)
+            (root / "wiki" / "concepts").mkdir(parents=True)
+            (root / "raw" / "processed").mkdir(parents=True)
+
+            processed_marker = "UNIQUE_PROCESSED_FACT_ABOUT_CMS"
+            (root / "raw" / "processed" / "source.md").write_text(
+                f"# Processed\n\n{processed_marker}\n",
+                encoding="utf-8",
+            )
+            source_page = root / "wiki" / "sources" / "test-source.md"
+            source_page.write_text(
+                """---
+type: source
+title: "Test Source"
+sources:
+  - "repo://local/knowledgebase/raw/processed/source.md@abc123#asset?sha256=deadbeef"
+open_questions: []
+confidence: 3
+sensitivity: internal
+updated_at: "2024-01-01T00:00:00Z"
+tags:
+  - test
+---
+
+# Test Source
+
+BODY_FALLBACK_TEXT_SHOULD_NOT_BE_USED
+""",
+                encoding="utf-8",
+            )
+            out = root / "bundle.json"
+            captured_prompt: dict[str, str] = {}
+
+            def _fake_call(prompt: str, github_token: str, endpoint: str):
+                captured_prompt["prompt"] = prompt
+                return _MOCK_API_RESPONSE
+
+            with patch.object(_extract_mod, "_call_models_api", side_effect=_fake_call):
+                rc = _extract_mod.run(
+                    source_page_path="wiki/sources/test-source.md",
+                    wiki_root="wiki",
+                    github_token="tok",
+                    output_path=str(out),
+                    repo_root=root,
+                )
+            self.assertEqual(rc, 0)
+            prompt = captured_prompt["prompt"]
+            self.assertIn(processed_marker, prompt)
+            self.assertNotIn("BODY_FALLBACK_TEXT_SHOULD_NOT_BE_USED", prompt)
+
+    def test_falls_back_to_source_page_body_when_sourceref_path_missing(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            (root / "wiki" / "sources").mkdir(parents=True)
+            (root / "wiki" / "entities").mkdir(parents=True)
+            (root / "wiki" / "concepts").mkdir(parents=True)
+
+            source_page = root / "wiki" / "sources" / "test-source.md"
+            source_page.write_text(
+                """---
+type: source
+title: "Test Source"
+sources:
+  - "repo://local/knowledgebase/raw/processed/missing.md@abc123#asset?sha256=deadbeef"
+open_questions: []
+confidence: 3
+sensitivity: internal
+updated_at: "2024-01-01T00:00:00Z"
+tags:
+  - test
+---
+
+# Test Source
+
+BODY_FALLBACK_TEXT_SHOULD_BE_USED
+""",
+                encoding="utf-8",
+            )
+            out = root / "bundle.json"
+            captured_prompt: dict[str, str] = {}
+
+            def _fake_call(prompt: str, github_token: str, endpoint: str):
+                captured_prompt["prompt"] = prompt
+                return _MOCK_API_RESPONSE
+
+            with patch.object(_extract_mod, "_call_models_api", side_effect=_fake_call):
+                rc = _extract_mod.run(
+                    source_page_path="wiki/sources/test-source.md",
+                    wiki_root="wiki",
+                    github_token="tok",
+                    output_path=str(out),
+                    repo_root=root,
+                )
+            self.assertEqual(rc, 0)
+            self.assertIn("BODY_FALLBACK_TEXT_SHOULD_BE_USED", captured_prompt["prompt"])
+
 
 # ---------------------------------------------------------------------------
 # Additional entity/concept tests (slug collision, missing concepts key, etc.)

@@ -1029,11 +1029,15 @@ jobs:
               continue
             fi
 
+            if [[ "${changed_path}" == ci3-metrics/* ]]; then
+              continue
+            fi
+
 
             # CI-3 workspace transients (.qmd/, ci3-synthesis/, ci3-metrics/) are
             # never part of the governed write allowlist or PR payload.
             case "${changed_path}" in
-              .qmd/*|ci3-synthesis/*|ci3-metrics/*|.baseline-*)
+              .qmd/*|ci3-synthesis/*|.baseline-*)
                 continue
                 ;;
             esac

@@ -55,6 +55,50 @@ def _validate_endpoint(endpoint: str) -> bool:
         return False
 
 
+def _resolve_repo_path_from_sourceref(source_ref: str) -> str | None:
+    """Extract the repo-relative path segment from a canonical SourceRef."""
+    if not source_ref:
+        return None
+    # repo://<owner>/<repo>/<path>@<git_sha>#...
+    match = re.match(r"^repo://[^/]+/[^/]+/(?P<path>[^@]+)@", source_ref)
+    if not match:
+        return None
+    path_part = (match.group("path") or "").strip()
+    return path_part or None
+
+
+def _load_primary_source_text(
+    *,
+    repo_root: Path,
+    source_ref: str,
+    fallback_text: str,
+) -> str:
+    """Prefer raw source text referenced by SourceRef; fallback to source-page body."""
+    source_path_part = _resolve_repo_path_from_sourceref(source_ref)
+    if not source_path_part:
+        return fallback_text
+    candidate = (repo_root / source_path_part).resolve()
+    try:
+        candidate.relative_to(repo_root.resolve())
+    except ValueError:
+        print(
+            f"warning: source_ref path escapes repo root; falling back to source page body: {source_ref}",
+            file=sys.stderr,
+        )
+        return fallback_text
+    if not candidate.is_file():
+        return fallback_text
+    try:
+        text = candidate.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(
+            f"warning: failed reading source_ref path '{source_path_part}': {exc}; falling back to source page body.",
+            file=sys.stderr,
+        )
+        return fallback_text
+    return text if text.strip() else fallback_text
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Extract entities and concepts from a source page."
@@ -324,6 +368,11 @@ def run(
     source_title = fm.get("title", source_path.stem).strip().strip('"').strip("'")
     sources = extract_sources_from_frontmatter(fm_str)
     source_ref = sources[0] if sources else ""
+    source_body_for_extraction = _load_primary_source_text(
+        repo_root=repo_root,
+        source_ref=source_ref,
+        fallback_text=body,
+    )
 
     existing_entities = scan_existing_pages(wiki_root_path, "entities")
     existing_concepts = scan_existing_pages(wiki_root_path, "concepts")
@@ -334,7 +383,7 @@ def run(
     for attempt in range(_MAX_ATTEMPTS):
         prompt = _build_prompt(
             source_title=source_title,
-            source_body=body,
+            source_body=source_body_for_extraction,
             existing_entities=existing_entities,
             existing_concepts=existing_concepts,
             validation_errors=last_errors,
