@@ -32,3 +32,9 @@ Final end-to-end test with all CI-3 fixes:
 - Baseline capture before synthesis
 
 This should complete the full CI-1 → CI-3 → PR creation pipeline.
+
+## Fifth validation pass
+
+Tests malformed status entry fix and baseline file exclusion.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
