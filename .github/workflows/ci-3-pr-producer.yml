@@ -106,6 +106,48 @@ jobs:
               reason_list+=("reject:trusted_trigger_model:upstream_ci1_not_success")
               prereq_trusted_trigger_model="FAIL"
             fi
+          elif [[ "${EVENT_NAME}" == "push" ]]; then
+            # Infrastructure validation: direct push to main for CI-3 control-plane changes.
+            # Allowed paths: .github/workflows/ci-3-*, .github/skills/validate-wiki-governance/**, etc.
+            set +e
+            git diff --name-only -z "origin/${DEFAULT_BRANCH}" HEAD > /tmp/push_diff 2>/dev/null
+            push_diff_exit=$?
+            set -e
+            if [[ "${push_diff_exit}" -ne 0 ]]; then
+              reason_list+=("prereq_missing:ghaw_readiness:push_changed_paths_unavailable")
+              prereq_ghaw_readiness="FAIL"
+            else
+              push_changed_paths=()
+              while IFS= read -r -d '' changed_path || [[ -n "${changed_path:-}" ]]; do
+                [[ -n "${changed_path}" ]] && push_changed_paths+=("${changed_path}")
+              done < /tmp/push_diff
+              mapfile -t push_changed_paths < <(printf '%s\n' "${push_changed_paths[@]}" | sed '/^$/d' | sort -u)
+               
+              if [[ "${#push_changed_paths[@]}" -eq 0 ]]; then
+                reason_list+=("reject:path_filter:no_changed_paths_detected")
+                prereq_trusted_trigger_model="FAIL"
+              fi
+
+              # Only allow CI-3 infrastructure changes (not inbox, not most control-plane)
+              allowed_push_paths=()
+              for changed_path in "${push_changed_paths[@]}"; do
+                case "${changed_path}" in
+                  .github/workflows/ci-3-*|.github/skills/validate-wiki-governance/**|.github/skills/synthesize-entity-page/**|.github/skills/synthesize-concept-page/**)
+                    allowed_push_paths+=("${changed_path}")
+                    ;;
+                  *)
+                    reason_list+=("reject:path_filter:disallowed_push_path:${changed_path}")
+                    prereq_trusted_trigger_model="FAIL"
+                    ;;
+                esac
+              done
+
+              if [[ "${#allowed_push_paths[@]}" -eq 0 ]] && [[ "${#push_changed_paths[@]}" -gt 0 ]]; then
+                reason_list+=("reject:trusted_trigger_model:push_paths_not_ci3_infrastructure")
+                prereq_trusted_trigger_model="FAIL"
+              fi
+            fi
+            rm -f /tmp/push_diff || true
           elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             if [[ "${MANUAL_APPROVED}" != "true" ]]; then
               reason_list+=("reject:trusted_trigger_model:manual_approval_required")
