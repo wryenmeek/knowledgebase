@@ -1024,10 +1024,16 @@ jobs:
             changed_path="${status_entry#*$'\t'}"
             [[ -z "${changed_path}" ]] && continue
 
+            # Skip malformed status entries (missing tab separator)
+            if [[ ! "${status_entry}" == *$'\t'* ]]; then
+              continue
+            fi
+
+
             # CI-3 workspace transients (.qmd/, ci3-synthesis/, ci3-metrics/) are
             # never part of the governed write allowlist or PR payload.
             case "${changed_path}" in
-              .qmd/*|ci3-synthesis/*|ci3-metrics/*)
+              .qmd/*|ci3-synthesis/*|ci3-metrics/*|.baseline-*)
                 continue
                 ;;
             esac
