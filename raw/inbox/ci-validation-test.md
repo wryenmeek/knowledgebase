@@ -43,3 +43,8 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 
 Inbox-only commit after control-plane fix landed on previous SHA.
 
+
+## Seventh validation pass
+
+Inbox-only trigger after expanded entity extraction prompt.
+
