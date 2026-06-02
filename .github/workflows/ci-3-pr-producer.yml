@@ -1,6 +1,13 @@
 name: CI-3 PR Producer Write Path
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ci-3-pr-producer.yml
+      - .github/skills/validate-wiki-governance/**
+      - .github/skills/synthesize-entity-page/**
+      - .github/skills/synthesize-concept-page/**
   workflow_run:
     workflows:
       - CI-1 Gatekeeper Trusted Handoff

@@ -663,3 +663,5 @@ ADR-007.
 [^47]: `hot-springs-island/scripts/validation/snapshot_dataset.py:94,129,244,273,373,379,415,435,494,500`
 [^48]: `hot-springs-island/scripts/reporting/extraction_quality_report.py:537,607,648,735,777,869,934,951-955,1010-1015`
 [^49]: `hot-springs-island/scripts/generators/convert_pdfs_to_md.py:1,3-5,27,35,70,97,105,124,131`
+
+<!-- Validation checkpoint: topology-hygiene validator verified -->
