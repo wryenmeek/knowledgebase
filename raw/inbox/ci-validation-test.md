@@ -14,3 +14,7 @@ CI-3 should then:
 3. Create PR with synthesized content if successful
 
 This validates that the separated-commit strategy and infrastructure validation trigger model work correctly.
+
+## Second validation pass
+
+This update triggers a second CI-1 → CI-3 run to test the .gitignore fix for CI-3 workspace paths.
