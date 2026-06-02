@@ -1014,11 +1014,13 @@ jobs:
             changed_path="${status_entry#*$'\t'}"
             [[ -z "${changed_path}" ]] && continue
 
-            # Runtime-budget artifacts are CI workspace telemetry and are never
-            # part of the governed write allowlist or PR payload.
-            if [[ "${changed_path}" == ci3-metrics/* ]]; then
-              continue
-            fi
+            # CI-3 workspace transients (.qmd/, ci3-synthesis/, ci3-metrics/) are
+            # never part of the governed write allowlist or PR payload.
+            case "${changed_path}" in
+              .qmd/*|ci3-synthesis/*|ci3-metrics/*)
+                continue
+                ;;
+            esac
 
             changed_paths+=("${changed_path}")
 
