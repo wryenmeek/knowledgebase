@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/ci-3-pr-producer.yml
+      - .github/skills/extract-entities-and-claims/**
       - .github/skills/validate-wiki-governance/**
       - .github/skills/synthesize-entity-page/**
       - .github/skills/synthesize-concept-page/**
@@ -133,7 +134,7 @@ jobs:
               allowed_push_paths=()
               for changed_path in "${push_changed_paths[@]}"; do
                 case "${changed_path}" in
-                  .github/workflows/ci-3-*|.github/skills/validate-wiki-governance/**|.github/skills/synthesize-entity-page/**|.github/skills/synthesize-concept-page/**)
+                  .github/workflows/ci-3-*|.github/skills/extract-entities-and-claims/**|.github/skills/validate-wiki-governance/**|.github/skills/synthesize-entity-page/**|.github/skills/synthesize-concept-page/**)
                     allowed_push_paths+=("${changed_path}")
                     ;;
                   *)
