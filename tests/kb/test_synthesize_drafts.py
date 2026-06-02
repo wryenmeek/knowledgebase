@@ -264,6 +264,21 @@ class TestValidateExtractionBundle(unittest.TestCase):
         self.assertEqual(errors, [])
 
 
+class TestExtractionPromptContract(unittest.TestCase):
+    def test_prompt_includes_expanded_entity_classes(self) -> None:
+        prompt = _extract_mod._build_prompt(
+            source_title="Test Source",
+            source_body="CI-3 uses GitHub Actions and the Knowledgebase Orchestrator.",
+            existing_entities=[],
+            existing_concepts=[],
+        )
+        self.assertIn(
+            "people, orgs, teams, software systems, workflows, repositories, services, programs, policies, and tools",
+            prompt,
+        )
+        self.assertIn("CI-3, GitHub Actions, Knowledgebase Orchestrator", prompt)
+
+
 # ---------------------------------------------------------------------------
 # append_to_existing_page
 # ---------------------------------------------------------------------------

@@ -202,7 +202,7 @@ Return ONLY valid JSON matching this exact schema. No prose, no markdown fences,
 {{
   "entities": [
     {{
-      "title": "<canonical entity name: person, organization, program, or policy>",
+      "title": "<canonical entity name: person, organization, team, system, workflow, repository, program, policy, or tool>",
       "aliases": ["<alternate name>"],
       "summary": "<1-3 sentence neutral description>",
       "evidence": "<quote or paraphrase from the source that supports this entity>",
@@ -225,7 +225,8 @@ Return ONLY valid JSON matching this exact schema. No prose, no markdown fences,
 Rules:
 - Include only entities/concepts clearly supported by the source text.
 - Skip any whose title or an alias exactly matches an already-indexed entry above.
-- Entities: real-world subjects (people, orgs, programs, policies). Concepts: durable ideas/patterns.
+- Entities: named subjects (people, orgs, teams, software systems, workflows, repositories, services, programs, policies, and tools). Concepts: durable ideas/patterns.
+- If the source names concrete systems/roles/workflows (for example CI-3, GitHub Actions, Knowledgebase Orchestrator), extract them as entities when not already indexed.
 - Use singular labels, not questions or source-specific headings.
 - Return empty arrays when no new entries are found.
 - All JSON must be syntactically valid.{error_section}"""
