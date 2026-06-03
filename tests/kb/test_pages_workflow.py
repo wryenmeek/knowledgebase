@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import tempfile
+import textwrap
 import unittest
 
 
@@ -11,6 +16,8 @@ WORKFLOW_PATH = Path(".github/workflows/pages.yml")
 SEARCH_PAGE_PATH = Path("wiki/search.md")
 RUNBOOK_PATH = Path("docs/mvp-runbook.md")
 USER_GUIDE_PATH = Path("docs/user-guide.md")
+SEMANTIC_BEHAVIOR_HARNESS_PATH = Path("tests/kb/fixtures/semantic_behavior_harness.js")
+SEMANTIC_INLINE_SCRIPT_PATH = Path("tests/kb/fixtures/semantic_inline_script.js")
 
 
 class PagesWorkflowContractTests(unittest.TestCase):
@@ -189,6 +196,102 @@ class SearchPageSemanticContractTests(unittest.TestCase):
         )
         for marker in expected_markers:
             self.assertIn(marker, self.user_guide_text)
+
+
+class SearchPageSemanticBehaviorTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.assertTrue(SEARCH_PAGE_PATH.exists(), f"Missing search page: {SEARCH_PAGE_PATH}")
+        self.assertTrue(
+            SEMANTIC_BEHAVIOR_HARNESS_PATH.exists(),
+            f"Missing semantic behavior harness fixture: {SEMANTIC_BEHAVIOR_HARNESS_PATH}",
+        )
+        self.assertTrue(
+            SEMANTIC_INLINE_SCRIPT_PATH.exists(),
+            f"Missing semantic inline script fixture: {SEMANTIC_INLINE_SCRIPT_PATH}",
+        )
+        self.search_page_text = SEARCH_PAGE_PATH.read_text(encoding="utf-8")
+        self.semantic_behavior_harness = SEMANTIC_BEHAVIOR_HARNESS_PATH.read_text(encoding="utf-8")
+        self.semantic_inline_script = SEMANTIC_INLINE_SCRIPT_PATH.read_text(encoding="utf-8")
+        node_path = shutil.which("node")
+        if not node_path:
+            self.skipTest("Node runtime is required for semantic behavior tests")
+        self.node_path = node_path
+
+    def _extract_inline_semantic_script(self) -> str:
+        script_match = re.search(
+            r"<script>\s*(?P<script>\(function\(\)\s*\{.*?\}\)\(\);)\s*</script>",
+            self.search_page_text,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(script_match, "Missing inline semantic script in wiki/search.md")
+        return textwrap.dedent(script_match.group("script")).strip()
+
+    def _run_semantic_behavior_scenario(self, scenario: str) -> dict[str, object]:
+        inline_script = self._extract_inline_semantic_script()
+        normalized_fixture_script = "\n".join(
+            line.lstrip() for line in self.semantic_inline_script.strip().splitlines()
+        )
+        normalized_search_script = "\n".join(
+            line.lstrip() for line in inline_script.splitlines()
+        )
+        self.assertEqual(
+            normalized_fixture_script,
+            normalized_search_script,
+            "semantic_inline_script.js must stay in sync with wiki/search.md inline script",
+        )
+        harness_script = self.semantic_behavior_harness.replace(
+            "__INLINE_SCRIPT__", json.dumps(inline_script)
+        ).replace("__SCENARIO__", json.dumps(scenario))
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", suffix=".js", delete=False
+        ) as harness_file:
+            harness_file.write(harness_script)
+            harness_path = Path(harness_file.name)
+        try:
+            completed = subprocess.run(
+                [self.node_path, str(harness_path)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            harness_path.unlink(missing_ok=True)
+        self.assertEqual(
+            completed.returncode,
+            0,
+            (
+                f"Semantic behavior harness failed for scenario {scenario}\n"
+                f"stdout:\n{completed.stdout}\n"
+                f"stderr:\n{completed.stderr}"
+            ),
+        )
+        try:
+            return json.loads(completed.stdout)
+        except json.JSONDecodeError as error:
+            self.fail(
+                (
+                    f"Semantic behavior harness did not emit JSON for scenario {scenario}: {error}\n"
+                    f"stdout:\n{completed.stdout}\n"
+                    f"stderr:\n{completed.stderr}"
+                )
+            )
+
+    def test_stale_response_cannot_overwrite_newest_query_results(self) -> None:
+        result = self._run_semantic_behavior_scenario("stale-response")
+        self.assertEqual(result["fetchCallCount"], 2)
+        self.assertTrue(result["firstRequestAborted"])
+        self.assertEqual(result["resultCount"], 1)
+        self.assertEqual(result["renderedTitles"], ["Newest semantic result"])
+        self.assertEqual(
+            result["statusMessage"],
+            "Semantic API query complete. Pagefind results remain available.",
+        )
+
+    def test_unsafe_result_urls_are_non_clickable_text(self) -> None:
+        result = self._run_semantic_behavior_scenario("unsafe-url")
+        self.assertEqual(result["childTag"], "span")
+        self.assertFalse(result["hasHref"])
+        self.assertEqual(result["renderedTitle"], "Unsafe semantic result")
 
 
 if __name__ == "__main__":
