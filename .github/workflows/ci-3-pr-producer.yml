@@ -57,6 +57,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           MANUAL_APPROVED: ${{ github.event.inputs.maintainer_approved || 'false' }}
           DISPATCH_SHA: ${{ github.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
+          PUSH_SHA: ${{ github.sha }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           WORKFLOW_RUN_NAME: ${{ github.event.workflow_run.name || '' }}
           WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event || '' }}
@@ -111,9 +113,12 @@ jobs:
             # Infrastructure validation: direct push to main for CI-3 control-plane changes.
             # Allowed paths: .github/workflows/ci-3-*, .github/skills/validate-wiki-governance/**, etc.
             set +e
-            # For push events, get changes since previous commit (HEAD~1...HEAD)
-            git diff --name-only -z "HEAD~1" HEAD > /tmp/push_diff 2>/dev/null
-            push_diff_exit=$?
+            if [[ -z "${PUSH_BEFORE_SHA}" ]] || [[ "${PUSH_BEFORE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
+              push_diff_exit=1
+            else
+              git diff --name-only -z "${PUSH_BEFORE_SHA}" "${PUSH_SHA}" > /tmp/push_diff 2>/dev/null
+              push_diff_exit=$?
+            fi
             set -e
             if [[ "${push_diff_exit}" -ne 0 ]]; then
               reason_list+=("prereq_missing:ghaw_readiness:push_changed_paths_unavailable")
