@@ -293,6 +293,51 @@ class SearchPageSemanticBehaviorTests(unittest.TestCase):
         self.assertFalse(result["hasHref"])
         self.assertEqual(result["renderedTitle"], "Unsafe semantic result")
 
+    def test_http_error_sets_http_fallback_status(self) -> None:
+        result = self._run_semantic_behavior_scenario("fallback-http-error")
+        self.assertEqual(result["fetchCallCount"], 1)
+        self.assertEqual(result["resultCount"], 0)
+        self.assertEqual(
+            result["statusMessage"],
+            "Semantic API returned an HTTP error. Pagefind results remain available.",
+        )
+
+    def test_non_json_content_type_sets_content_type_fallback_status(self) -> None:
+        result = self._run_semantic_behavior_scenario("fallback-content-type")
+        self.assertEqual(result["fetchCallCount"], 1)
+        self.assertEqual(result["resultCount"], 0)
+        self.assertEqual(
+            result["statusMessage"],
+            "Semantic API response was not JSON. Pagefind results remain available.",
+        )
+
+    def test_json_parse_error_sets_parse_fallback_status(self) -> None:
+        result = self._run_semantic_behavior_scenario("fallback-json-parse")
+        self.assertEqual(result["fetchCallCount"], 1)
+        self.assertEqual(result["resultCount"], 0)
+        self.assertEqual(
+            result["statusMessage"],
+            "Semantic API response could not be parsed. Pagefind results remain available.",
+        )
+
+    def test_missing_results_array_sets_payload_shape_fallback_status(self) -> None:
+        result = self._run_semantic_behavior_scenario("fallback-payload-shape")
+        self.assertEqual(result["fetchCallCount"], 1)
+        self.assertEqual(result["resultCount"], 0)
+        self.assertEqual(
+            result["statusMessage"],
+            "Semantic API response was missing a results array. Pagefind results remain available.",
+        )
+
+    def test_unclassified_semantic_error_sets_unavailable_fallback_status(self) -> None:
+        result = self._run_semantic_behavior_scenario("fallback-unavailable")
+        self.assertEqual(result["fetchCallCount"], 1)
+        self.assertEqual(result["resultCount"], 0)
+        self.assertEqual(
+            result["statusMessage"],
+            "Semantic API is unavailable. Pagefind results remain available.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

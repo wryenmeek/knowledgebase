@@ -182,6 +182,60 @@ function jsonResponse(results) {
   };
 }
 
+function httpErrorResponse(status) {
+  return {
+    ok: false,
+    status,
+    headers: {
+      get() {
+        return "application/json";
+      }
+    },
+    json: async () => ({})
+  };
+}
+
+function nonJsonResponse() {
+  return {
+    ok: true,
+    status: 200,
+    headers: {
+      get(name) {
+        return String(name || "").toLowerCase() === "content-type" ? "text/plain" : null;
+      }
+    },
+    json: async () => ({ results: [] })
+  };
+}
+
+function invalidJsonResponse() {
+  return {
+    ok: true,
+    status: 200,
+    headers: {
+      get(name) {
+        return String(name || "").toLowerCase() === "content-type" ? "application/json" : null;
+      }
+    },
+    json: async () => {
+      throw new Error("bad-json");
+    }
+  };
+}
+
+function invalidPayloadResponse() {
+  return {
+    ok: true,
+    status: 200,
+    headers: {
+      get(name) {
+        return String(name || "").toLowerCase() === "content-type" ? "application/json" : null;
+      }
+    },
+    json: async () => ({ not_results: [] })
+  };
+}
+
 async function flushMicrotasks(rounds = 5) {
   for (let index = 0; index < rounds; index += 1) {
     await Promise.resolve();
@@ -281,6 +335,40 @@ async function runUnsafeUrlScenario() {
   };
 }
 
+async function runFallbackScenario(kind) {
+  configureEndpoint("https://semantic.example.com/base");
+  pagefindInput.value = "fallback";
+  pagefindInput.dispatchEvent({ type: "input", target: pagefindInput });
+  if (!runNextTimeout()) {
+    throw new Error("No timeout scheduled for fallback query");
+  }
+  await flushMicrotasks();
+  if (fetchCalls.length !== 1) {
+    throw new Error("Expected one fetch call for fallback query");
+  }
+
+  if (kind === "http-error") {
+    fetchCalls[0].resolve(httpErrorResponse(503));
+  } else if (kind === "content-type") {
+    fetchCalls[0].resolve(nonJsonResponse());
+  } else if (kind === "json-parse") {
+    fetchCalls[0].resolve(invalidJsonResponse());
+  } else if (kind === "payload-shape") {
+    fetchCalls[0].resolve(invalidPayloadResponse());
+  } else if (kind === "unavailable") {
+    fetchCalls[0].reject(new Error("network-down"));
+  } else {
+    throw new Error("Unknown fallback scenario kind: " + kind);
+  }
+
+  await flushMicrotasks();
+  return {
+    fetchCallCount: fetchCalls.length,
+    resultCount: resultsNode.children.length,
+    statusMessage: statusNode.textContent
+  };
+}
+
 const sandbox = {
   document,
   location: { origin: "https://knowledgebase.example" },
@@ -325,6 +413,21 @@ async function main() {
   }
   if (scenario === "unsafe-url") {
     return runUnsafeUrlScenario();
+  }
+  if (scenario === "fallback-http-error") {
+    return runFallbackScenario("http-error");
+  }
+  if (scenario === "fallback-content-type") {
+    return runFallbackScenario("content-type");
+  }
+  if (scenario === "fallback-json-parse") {
+    return runFallbackScenario("json-parse");
+  }
+  if (scenario === "fallback-payload-shape") {
+    return runFallbackScenario("payload-shape");
+  }
+  if (scenario === "fallback-unavailable") {
+    return runFallbackScenario("unavailable");
   }
   throw new Error("Unknown scenario: " + scenario);
 }
