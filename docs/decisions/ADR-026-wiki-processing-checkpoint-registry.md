@@ -1,0 +1,219 @@
+# ADR-026: Wiki processing checkpoint registry
+
+## Status
+
+Accepted
+
+## Date
+
+2026-05-31
+
+## Context
+
+Wiki processing is currently evaluated from the live repository state on each run.
+That keeps the MVP simple, but it also means a fail-closed partial run does not
+leave behind enough structured state to resume safely. Operators can tell that a
+run failed, but the pipeline cannot reliably answer:
+
+1. Which generated wiki items were already completed?
+2. Which items were in progress when the run stopped?
+3. Which items need revalidation because their source or dependency set changed?
+
+The repository already has precedent for durable mutable registries in the GitHub
+and Google Drive monitoring lanes. Those registries keep source-state fields such
+as `last_applied_*`, `last_fetched_*`, and cursor values under a raw lock so the
+next run can resume deterministically after a partial failure.
+
+This ADR applies the same pattern to generated wiki-artifact recovery, but with
+two important constraints:
+
+- The checkpoint registry is operational state, not curated wiki content.
+- Recovery state must never override governance, policy, or write-surface rules.
+
+Operators also need a stable place to see recovery progress. The repository
+already has a governed mutable snapshot path for this kind of operator-facing
+state: `wiki/status.md`, published through the existing
+`sync-knowledgebase-state` wrapper.
+
+## Decision
+
+### Registry placement and ownership
+
+- Add a governed checkpoint registry under `raw/` at
+  `raw/wiki-processing/wiki-processing-checkpoint-registry.json`.
+- Define its schema in
+  `schema/wiki-processing-checkpoint-registry-contract.md`.
+- Keep implementation inside the existing MVP execution boundary; do not add new
+  repo-level runtime trees for this feature.
+
+### Locking
+
+- Use a dedicated checkpoint lock at `raw/.wiki-processing-checkpoint.lock`.
+- When a run must update both wiki content and checkpoint state, acquire
+  `wiki/.kb_write.lock` first, then the checkpoint lock.
+- The checkpoint registry fails closed on lock contention or lock acquisition
+  failure.
+
+### State model
+
+The registry tracks both batch-level and item-level recovery state.
+
+Batch fields:
+
+- `batch_id`
+- `trigger` (`automatic` or `manual_rescan`)
+- `started_at`
+- `finished_at`
+- `status` (`running`, `completed`, `failed`, `partial`)
+- `input_fingerprint`
+- `error_summary`
+
+Item fields:
+
+- `item_key`
+- `output_path`
+- `path_aliases`
+- `artifact_type`
+- `source_fingerprint`
+- `dependency_fingerprint`
+- `status` (`pending`, `in_progress`, `completed`, `stale`, `failed`, `skipped`)
+- `last_attempted_at`
+- `last_succeeded_at`
+- `last_error`
+- `last_successful_batch_id`
+
+### Identity
+
+- For entity and concept pages, derive `item_key` from the repository's canonical
+  identity contract: use `entity_id` when present; otherwise use the normalized
+  canonical slug.
+- For analysis or index-derived artifacts, derive `item_key` from a stable tuple
+  of artifact type plus source/query fingerprint.
+- Treat paths as mutable projections. Renames and moves update `output_path` and
+  append the previous path to `path_aliases`, but they do not change `item_key`.
+
+### State transitions
+
+- `pending` -> `in_progress` when a run claims the item.
+- `in_progress` -> `completed` only when the expected output exists and the
+  relevant fingerprints match.
+- `in_progress` -> `stale` when the 1-hour stale timeout expires or the expected
+  state/output is missing.
+- `completed` -> `stale` when source or dependency fingerprints change.
+- `stale` -> `in_progress` when a new automatic run or manual rescan takes over.
+- `failed` is reserved for hard processing errors.
+- `skipped` is reserved for intentionally retired or out-of-scope items.
+
+### Bootstrap and recovery
+
+- Bootstrap validates expected outputs at each stage before seeding state.
+- Seed every item that can be classified unambiguously from those expected
+  outputs and fingerprints.
+- Leave ambiguous or contradictory items out of the bootstrap set and require
+  manual resolution.
+- This keeps the registry trustworthy while still allowing the next run to pick
+  up from the latest proven stage.
+
+### Operator snapshot
+
+- Publish recovery progress in `wiki/status.md` through the existing
+  `sync-knowledgebase-state` wrapper.
+- Do not make `wiki/reports/` the primary recovery surface for this feature.
+- The checkpoint registry remains the source of truth; `wiki/status.md` is a
+  derived operator snapshot.
+
+### Retention
+
+- Retain completed batch records indefinitely for MVP.
+- If the registry later needs compaction or archival, record that in a separate
+  ADR rather than pruning the source of truth now.
+
+## Alternatives considered
+
+### Store recovery state in topical wiki content
+
+- **Pros:** easy to discover alongside the content being processed.
+- **Cons:** mixes operational state with curated knowledge, creates noisy diffs,
+  and makes recovery logic depend on topical content shape.
+- **Rejected:** operational state belongs in a governed raw registry, not in the
+  knowledge pages it helps produce.
+
+### Use a write-once report artifact as the primary recovery record
+
+- **Pros:** simple to reason about as a snapshot.
+- **Cons:** a write-once artifact cannot represent mutable recovery state well;
+  it is a history record, not a live checkpoint model.
+- **Rejected:** the feature needs resumable state, not just an audit snapshot.
+
+### Use opaque UUIDs for item identity
+
+- **Pros:** easy to generate and collision-resistant.
+- **Cons:** renames and moves would sever recovery continuity, and identity would
+  drift away from the repository's canonical wiki identity rules.
+- **Rejected:** recovery must follow the durable referent, not just the path that
+  happened to exist at bootstrap time.
+
+### Reuse only `wiki/.kb_write.lock`
+
+- **Pros:** fewer lock files.
+- **Cons:** checkpoint writes would be coupled too tightly to wiki writes and the
+  deadlock analysis would be less explicit.
+- **Rejected:** a dedicated checkpoint lock keeps the recovery state domain clear
+  while preserving deterministic lock ordering.
+
+### Add dedicated `removed` or `retired` states
+
+- **Pros:** more explicit semantics for intentionally gone items.
+- **Cons:** expands the state machine without adding real capability; `stale`
+  already covers missing outputs and `skipped` already covers intentional
+  retirement or out-of-scope items.
+- **Rejected:** keep the state machine small until evidence demands more states.
+
+### Prune completed batches after a fixed window
+
+- **Pros:** bounds registry growth.
+- **Cons:** removes audit history and makes replay/debugging harder.
+- **Rejected:** retain records indefinitely for MVP and revisit compaction later
+  if the registry becomes too large.
+
+### Publish recovery progress in `wiki/reports/` as the primary surface
+
+- **Pros:** JSON reports are easy to consume.
+- **Cons:** the repository already has a governed mutable status snapshot path,
+  and recovery progress is operational state rather than a durable report.
+- **Rejected:** `wiki/status.md` is the operator-facing surface; reports can stay
+  secondary if a future need appears.
+
+### Auto-seed ambiguous bootstrap items
+
+- **Pros:** fewer manual follow-up steps.
+- **Cons:** imports unverified junk state and weakens trust in the registry.
+- **Rejected:** only unambiguous items are auto-seeded.
+
+## Consequences
+
+- Wiki recovery becomes resumable without embedding process state in curated
+  wiki pages.
+- The registry is now a governed raw artifact that needs a schema contract, a
+  dedicated lock, and a write-surface matrix row before writes are enabled.
+- Recovery is still fail-closed: incomplete or contradictory state does not
+  silently advance.
+- `wiki/status.md` becomes the operator-facing recovery snapshot, while the raw
+  registry remains the source of truth.
+- Existing pages and artifact identities continue to follow the repository's
+  canonical identity rules.
+- Batch records are retained indefinitely unless a later ADR defines a separate
+  archival policy.
+
+## References
+
+- `docs/ideas/wiki-processing-checkpoint-registry.md`
+- `AGENTS.md`
+- `docs/decisions/ADR-005-write-concurrency-guards.md`
+- `docs/decisions/ADR-009-canonical-identity-and-anchor-management.md`
+- `docs/decisions/ADR-023-batch-query-persistence-design.md`
+- `schema/ontology-entity-contract.md`
+- `schema/governed-artifact-contract.md`
+- `schema/report-artifact-contract.md`
+- `.github/skills/sync-knowledgebase-state/SKILL.md`
+- `scripts/context/manage_context_pages.py`
