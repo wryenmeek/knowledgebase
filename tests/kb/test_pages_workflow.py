@@ -229,10 +229,10 @@ class SearchPageSemanticBehaviorTests(unittest.TestCase):
     def _run_semantic_behavior_scenario(self, scenario: str) -> dict[str, object]:
         inline_script = self._extract_inline_semantic_script()
         normalized_fixture_script = "\n".join(
-            line.lstrip() for line in self.semantic_inline_script.strip().splitlines()
+            line.strip() for line in self.semantic_inline_script.strip().splitlines() if line.strip()
         )
         normalized_search_script = "\n".join(
-            line.lstrip() for line in inline_script.splitlines()
+            line.strip() for line in inline_script.splitlines() if line.strip()
         )
         self.assertEqual(
             normalized_fixture_script,
@@ -242,12 +242,13 @@ class SearchPageSemanticBehaviorTests(unittest.TestCase):
         harness_script = self.semantic_behavior_harness.replace(
             "__INLINE_SCRIPT__", json.dumps(inline_script)
         ).replace("__SCENARIO__", json.dumps(scenario))
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", suffix=".js", delete=False
-        ) as harness_file:
-            harness_file.write(harness_script)
-            harness_path = Path(harness_file.name)
+        harness_path: Path | None = None
         try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", suffix=".js", delete=False
+            ) as harness_file:
+                harness_file.write(harness_script)
+                harness_path = Path(harness_file.name)
             completed = subprocess.run(
                 [self.node_path, str(harness_path)],
                 check=False,
@@ -255,7 +256,8 @@ class SearchPageSemanticBehaviorTests(unittest.TestCase):
                 text=True,
             )
         finally:
-            harness_path.unlink(missing_ok=True)
+            if harness_path is not None:
+                harness_path.unlink(missing_ok=True)
         self.assertEqual(
             completed.returncode,
             0,
