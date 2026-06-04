@@ -24,3 +24,12 @@ tags:
 - provenance_git_sha_kind: `ci_commit_sha`
 - checksum_sha256: `2d6a0e5bad1e58db9925aed6ad754cd4c0013b5946a039e377799969b1f134ff`
 - bytes: 22787
+
+## Summary
+Source registration record for the processed `post-mvp-rollout-packaging-spec` asset.
+
+## Evidence
+- `repo://local/knowledgebase/raw/processed/post-mvp-rollout-packaging-spec.md@23203c174330975ad7a5121b24d89fa3bc7383ad#asset?sha256=2d6a0e5bad1e58db9925aed6ad754cd4c0013b5946a039e377799969b1f134ff`: Confirms provenance path, commit binding, and checksum for this source page.
+
+## Open Questions
+- None.

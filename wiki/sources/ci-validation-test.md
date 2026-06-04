@@ -24,3 +24,12 @@ tags:
 - provenance_git_sha_kind: `ci_commit_sha`
 - checksum_sha256: `9afc0f8f14d66203c9beecc84e38cd6d1207757b4bfa2ad8d72bc53d5b2dd6c2`
 - bytes: 1543
+
+## Summary
+Source registration record for the processed `ci-validation-test` asset.
+
+## Evidence
+- `repo://local/knowledgebase/raw/processed/ci-validation-test.md@23203c174330975ad7a5121b24d89fa3bc7383ad#asset?sha256=9afc0f8f14d66203c9beecc84e38cd6d1207757b4bfa2ad8d72bc53d5b2dd6c2`: Confirms provenance path, commit binding, and checksum for this source page.
+
+## Open Questions
+- None.

@@ -24,3 +24,12 @@ tags:
 - provenance_git_sha_kind: `ci_commit_sha`
 - checksum_sha256: `1225b195fb4fed9a5b08150aef28faffc95836d8c33abf115b82844f3e169866`
 - bytes: 58887
+
+## Summary
+Source registration record for the processed `wiki-curation-agent-framework` asset.
+
+## Evidence
+- `repo://local/knowledgebase/raw/processed/wiki-curation-agent-framework.md@23203c174330975ad7a5121b24d89fa3bc7383ad#asset?sha256=1225b195fb4fed9a5b08150aef28faffc95836d8c33abf115b82844f3e169866`: Confirms provenance path, commit binding, and checksum for this source page.
+
+## Open Questions
+- None.
