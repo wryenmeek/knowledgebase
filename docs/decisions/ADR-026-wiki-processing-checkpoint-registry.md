@@ -91,6 +91,10 @@ Item fields:
   of artifact type plus source/query fingerprint.
 - Treat paths as mutable projections. Renames and moves update `output_path` and
   append the previous path to `path_aliases`, but they do not change `item_key`.
+- If canonical identity itself changes (for example, a corrected `entity_id`),
+  retain the previous key as a historical alias record and mark it `skipped`
+  with `last_error` documenting the replacement key. New runs continue under the
+  replacement key so orphaned keys are explicit and auditable.
 
 ### State transitions
 
@@ -101,8 +105,14 @@ Item fields:
   state/output is missing.
 - `completed` -> `stale` when source or dependency fingerprints change.
 - `stale` -> `in_progress` when a new automatic run or manual rescan takes over.
-- `failed` is reserved for hard processing errors.
+- `in_progress` -> `failed` on hard processing errors (for example, write denial,
+  schema mismatch, or deterministic validator failure).
+- `failed` -> `in_progress` only on an explicit retry attempt in a later batch;
+  retries must retain prior `last_error` history and update `last_attempted_at`.
 - `skipped` is reserved for intentionally retired or out-of-scope items.
+- `pending`/`stale` -> `skipped` when policy marks the item retired or replaced.
+- `skipped` is terminal for automatic runs; only a manual rescan may move
+  `skipped` -> `pending`.
 
 ### Bootstrap and recovery
 
@@ -127,6 +137,9 @@ Item fields:
 - Retain completed batch records indefinitely for MVP.
 - If the registry later needs compaction or archival, record that in a separate
   ADR rather than pruning the source of truth now.
+- Add a guardrail metric in the owning implementation: if checkpoint history
+  growth exceeds the agreed operational threshold, open a follow-up issue and
+  route compaction to a dedicated ADR instead of silent pruning.
 
 ## Alternatives considered
 
