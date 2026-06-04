@@ -129,6 +129,9 @@ For tag-first browsing, see [Tags](tags.md).
       }
 
       for (const result of results) {
+        if (!result || typeof result !== "object") {
+          continue;
+        }
         const item = document.createElement("li");
         const titleText = typeof result.title === "string" && result.title.trim()
           ? result.title.trim()
