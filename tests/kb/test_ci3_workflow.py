@@ -306,10 +306,16 @@ def _run_ci3_preflight_script(
     *,
     dispatch_changed_paths: tuple[str, ...],
     manual_approved: str = "true",
+    event_name: str = "workflow_dispatch",
     dispatch_sha: str = "1111111111111111111111111111111111111111",
     dispatch_merge_base: str = "0000000000000000000000000000000000000000",
     dispatch_merge_base_exit: int = 0,
     dispatch_diff_exit: int = 0,
+    workflow_run_name: str = "",
+    workflow_run_event: str = "",
+    workflow_run_conclusion: str = "",
+    push_before_sha: str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    push_sha: str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 ) -> subprocess.CompletedProcess[str]:
     script = _with_mapfile_compat(_extract_ci3_preflight_script(workflow_text))
 
@@ -339,6 +345,9 @@ def _run_ci3_preflight_script(
             "  exit 0\n"
             "fi\n"
             "if [[ \"${1:-}\" == \"diff\" ]]; then\n"
+            "  if [[ -n \"${MOCK_GIT_DIFF_ARGS_FILE:-}\" ]]; then\n"
+            "    printf '%s\\n' \"$*\" >> \"${MOCK_GIT_DIFF_ARGS_FILE}\"\n"
+            "  fi\n"
             "  if [[ \"${MOCK_DISPATCH_DIFF_EXIT:-0}\" != \"0\" ]]; then\n"
             "    exit \"${MOCK_DISPATCH_DIFF_EXIT}\"\n"
             "  fi\n"
@@ -366,6 +375,7 @@ def _run_ci3_preflight_script(
 
         github_output_path = temp_root / "github-output.txt"
         github_output_path.write_text("", encoding="utf-8")
+        git_diff_args_path = temp_root / "mock-git-diff-args.txt"
 
         env = os.environ.copy()
         env.update(
@@ -374,24 +384,27 @@ def _run_ci3_preflight_script(
                 "TOKEN_PROFILE": "tp-pr-producer",
                 "WRITE_ALLOWLIST": "wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**",
                 "FALLBACK_MANUAL_INSTRUCTIONS": "manual fallback",
-                "EVENT_NAME": "workflow_dispatch",
+                "EVENT_NAME": event_name,
                 "MANUAL_APPROVED": manual_approved,
                 "DISPATCH_SHA": dispatch_sha,
                 "DEFAULT_BRANCH": "main",
-                "WORKFLOW_RUN_NAME": "",
-                "WORKFLOW_RUN_EVENT": "",
-                "WORKFLOW_RUN_CONCLUSION": "",
+                "WORKFLOW_RUN_NAME": workflow_run_name,
+                "WORKFLOW_RUN_EVENT": workflow_run_event,
+                "WORKFLOW_RUN_CONCLUSION": workflow_run_conclusion,
+                "PUSH_BEFORE_SHA": push_before_sha,
+                "PUSH_SHA": push_sha,
                 "WORKFLOW_FILE": ".github/workflows/ci-3-pr-producer.yml",
                 "GITHUB_OUTPUT": str(github_output_path),
                 "MOCK_DISPATCH_CHANGED_PATHS": "\n".join(dispatch_changed_paths),
                 "MOCK_DISPATCH_MERGE_BASE": dispatch_merge_base,
                 "MOCK_DISPATCH_MERGE_BASE_EXIT": str(dispatch_merge_base_exit),
                 "MOCK_DISPATCH_DIFF_EXIT": str(dispatch_diff_exit),
+                "MOCK_GIT_DIFF_ARGS_FILE": str(git_diff_args_path),
                 "PATH": f"{fake_bin}:{env.get('PATH', '')}",
             }
         )
 
-        return subprocess.run(
+        completed = subprocess.run(
             ["bash", "-c", script],
             cwd=temp_root,
             capture_output=True,
@@ -399,6 +412,16 @@ def _run_ci3_preflight_script(
             check=False,
             env=env,
         )
+        if git_diff_args_path.exists():
+            diff_args = git_diff_args_path.read_text(encoding="utf-8").strip()
+            if diff_args:
+                completed = subprocess.CompletedProcess(
+                    args=completed.args,
+                    returncode=completed.returncode,
+                    stdout=f"{completed.stdout}MOCK_GIT_DIFF_ARGS:{diff_args}\n",
+                    stderr=completed.stderr,
+                )
+        return completed
 
 
 def _run_ci3_source_resolution_script(
@@ -595,6 +618,7 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertIn("source_path:", self.workflow_text)
         self.assertIn("manual-approval:", self.workflow_text)
         self.assertIn("name: ci3-manual-approval", self.workflow_text)
+        self.assertIn(".github/skills/extract-entities-and-claims/**", self.workflow_text)
 
     def test_permissions_and_concurrency_match_ci3_requirements(self) -> None:
         self.assertEqual(
@@ -642,6 +666,8 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         required_controls = (
             "WRITE_ALLOWLIST: wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**",
             "DISPATCH_SHA: ${{ github.sha }}",
+            "PUSH_BEFORE_SHA: ${{ github.event.before || '' }}",
+            "PUSH_SHA: ${{ github.sha }}",
             "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}",
             "fetch-depth: 0",
             "persist-credentials: false",
@@ -672,6 +698,7 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "reject:path_filter:sensitive_control_plane_path:",
             "reject:trusted_trigger_model:manual_dispatch_sensitive_paths_present",
             'dispatch_merge_base="$(git merge-base "origin/${DEFAULT_BRANCH}" "${DISPATCH_SHA}" 2>/dev/null)"',
+            'git diff --name-only -z "${PUSH_BEFORE_SHA}" "${PUSH_SHA}" > /tmp/push_diff 2>/dev/null',
             'git diff --name-only -z "${dispatch_merge_base}" "${DISPATCH_SHA}" > "${dispatch_diff_file}" 2>/dev/null',
             "while IFS= read -r -d '' changed_path || [[ -n \"${changed_path:-}\" ]]; do",
             ".github/workflows/*|.github/skills/*|.github/agents/*|.github/extensions/*|scripts/*|schema/*|AGENTS.md|pyproject.toml)",
@@ -833,6 +860,140 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         combined_output = f"{result.stdout}\n{result.stderr}"
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("CI-3 preflight PASS", combined_output)
+
+    def test_preflight_behavior_accepts_push_extract_entities_skill_change(self) -> None:
+        push_before_sha = "1111111111111111111111111111111111111111"
+        push_sha = "2222222222222222222222222222222222222222"
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(
+                ".github/skills/extract-entities-and-claims/logic/extract_entities.py",
+            ),
+            push_before_sha=push_before_sha,
+            push_sha=push_sha,
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("CI-3 preflight PASS", combined_output)
+        self.assertIn(
+            f"MOCK_GIT_DIFF_ARGS:diff --name-only -z {push_before_sha} {push_sha}",
+            combined_output,
+        )
+        self.assertNotIn("HEAD~1", combined_output)
+
+    def test_preflight_behavior_rejects_push_non_allowlisted_skill_change(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(".github/skills/some-unrelated-skill/logic/x.py",),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:path_filter:disallowed_push_path:.github/skills/some-unrelated-skill/logic/x.py",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_push_when_changed_paths_unavailable(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(".github/workflows/ci-3-pr-producer.yml",),
+            dispatch_diff_exit=1,
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:push_changed_paths_unavailable",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_push_when_before_sha_is_all_zeroes(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(".github/workflows/ci-3-pr-producer.yml",),
+            push_before_sha="0000000000000000000000000000000000000000",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:push_changed_paths_unavailable",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_push_when_before_sha_is_empty(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(".github/workflows/ci-3-pr-producer.yml",),
+            push_before_sha="",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:push_changed_paths_unavailable",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_push_when_sha_is_all_zeroes(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(".github/workflows/ci-3-pr-producer.yml",),
+            push_sha="0000000000000000000000000000000000000000",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:push_changed_paths_unavailable",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_push_when_sha_is_empty(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(".github/workflows/ci-3-pr-producer.yml",),
+            push_sha="",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:push_changed_paths_unavailable",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_push_when_no_changed_paths_detected(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(),
+            push_before_sha="1111111111111111111111111111111111111111",
+            push_sha="2222222222222222222222222222222222222222",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn("reject:path_filter:no_changed_paths_detected", combined_output)
+
+    def test_preflight_behavior_rejects_push_change_set_with_mixed_allowlisted_and_disallowed_paths(
+        self,
+    ) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(
+                ".github/skills/extract-entities-and-claims/logic/extract_entities.py",
+                ".github/skills/some-unrelated-skill/logic/x.py",
+            ),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "reject:path_filter:disallowed_push_path:.github/skills/some-unrelated-skill/logic/x.py",
+            combined_output,
+        )
 
     def test_preflight_behavior_rejects_missing_synthesis_curator_job(self) -> None:
         mutated_workflow = self.workflow_text.replace(

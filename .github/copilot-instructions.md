@@ -527,7 +527,7 @@ Before closing any implementation/audit session, build a full deferred ledger (n
 When the user runs `/chronicle improve`, execute this sequence without improvising:
 1. Read `.github/copilot-instructions.md`.
 2. If `/chronicle improve` already ran in this session and no new evidence boundary exists (no new commit range, no new friction signal, and <10 new turns), run a delta amend pass instead of a fresh full improve pass.
-3. Query `session_store` for recent repo-scoped sessions and friction signals.
+3. Query `session_store` for recent repo-scoped sessions and friction signals using the two-pass strategy (see below).
 4. Present 3-5 evidence-backed recommendations.
 5. Ask which recommendations to apply.
 6. If no selection arrives and execution continues autonomously, apply all proposed recommendations and state that assumption explicitly.
@@ -536,11 +536,11 @@ When the user runs `/chronicle improve`, execute this sequence without improvisi
 ### `/chronicle tips` deterministic flow
 
 When the user runs `/chronicle tips`, execute this sequence:
-1. Query `session_store` for repo-scoped workflow patterns (recent session summaries, repeated kickoff prompts, frequent slash commands, and recurring turn markers).
+1. Query `session_store` for repo-scoped workflow patterns using the two-pass strategy (see below).
 2. Fetch Copilot CLI documentation to anchor feature recommendations.
 3. Inspect repo-local custom surface (`.github/skills/**`, `.github/agents/**`) so recommendations reflect available capabilities.
 4. Return 3-5 personalized, non-obvious workflow tips grounded in observed data (cite concrete patterns, counts, or session IDs).
-5. Prefer capability and prompting improvements that reduce repeated coordination turns and improve first-pass execution quality.
+5. Prefer capability and prompting improvements that reduce repeated coordination turns and improve first-pass execution quality. When in limited-evidence mode, ground all recommendations in observable patterns from this session only.
 
 ### `/chronicle cost-tips` deterministic flow
 
@@ -549,7 +549,9 @@ When the user runs `/chronicle cost-tips`, execute this sequence:
 2. Read representative turn history from high-cost sessions to identify root causes (not just aggregates).
 3. Fetch Copilot CLI documentation and map findings to concrete controls (`/compact`, `/new`, `/usage`, `/model`, `/delegate`, `/fleet`, `/tasks`, `/after`, `/every`, `/ask`).
 4. Return 3-5 evidence-backed cost recommendations with specific workflow changes and quantified savings estimates when possible.
-5. If local store lacks token-level telemetry, state that limitation and recommend `/usage` plus cloud session store for exact token accounting.
+5. If local store lacks token-level telemetry, state that limitation and recommend `/usage` plus cloud session store for exact token accounting. Switch to two-pass strategy: repo-scoped first, broader if 0 rows, limited-evidence if still 0.
+
+**Two-pass session_store query strategy (applies to all /chronicle flows):** (1) Try repo-scoped query first (fast, precise). (2) If 0 rows returned, run broader query (recent history across repos, <7 days). (3) If still 0 rows, switch to "limited-evidence mode" — provide recommendations grounded in observable patterns within current session context only, with explicit telemetry gap acknowledgment at the start. Never fabricate claims about other sessions or repos when telemetry is unavailable.
 
 ### Multi-issue commit boundary discipline
 
