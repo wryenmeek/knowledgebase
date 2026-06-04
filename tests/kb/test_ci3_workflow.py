@@ -346,7 +346,7 @@ def _run_ci3_preflight_script(
             "fi\n"
             "if [[ \"${1:-}\" == \"diff\" ]]; then\n"
             "  if [[ -n \"${MOCK_GIT_DIFF_ARGS_FILE:-}\" ]]; then\n"
-            "    printf '%s\\n' \"$*\" > \"${MOCK_GIT_DIFF_ARGS_FILE}\"\n"
+            "    printf '%s\\n' \"$*\" >> \"${MOCK_GIT_DIFF_ARGS_FILE}\"\n"
             "  fi\n"
             "  if [[ \"${MOCK_DISPATCH_DIFF_EXIT:-0}\" != \"0\" ]]; then\n"
             "    exit \"${MOCK_DISPATCH_DIFF_EXIT}\"\n"
@@ -929,6 +929,34 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             event_name="push",
             dispatch_changed_paths=(".github/workflows/ci-3-pr-producer.yml",),
             push_before_sha="",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:push_changed_paths_unavailable",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_push_when_sha_is_all_zeroes(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(".github/workflows/ci-3-pr-producer.yml",),
+            push_sha="0000000000000000000000000000000000000000",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "prereq_missing:ghaw_readiness:push_changed_paths_unavailable",
+            combined_output,
+        )
+
+    def test_preflight_behavior_rejects_push_when_sha_is_empty(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(".github/workflows/ci-3-pr-producer.yml",),
+            push_sha="",
         )
         combined_output = f"{result.stdout}\n{result.stderr}"
         self.assertNotEqual(result.returncode, 0, combined_output)
