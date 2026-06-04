@@ -536,7 +536,7 @@ When the user runs `/chronicle improve`, execute this sequence without improvisi
 ### `/chronicle tips` deterministic flow
 
 When the user runs `/chronicle tips`, execute this sequence:
-1. Query `session_store` for repo-scoped workflow patterns using the two-pass strategy: repo-scoped first, then broader if 0 rows, then limited-evidence mode if still 0.
+1. Query `session_store` for repo-scoped workflow patterns using the two-pass strategy (see below).
 2. Fetch Copilot CLI documentation to anchor feature recommendations.
 3. Inspect repo-local custom surface (`.github/skills/**`, `.github/agents/**`) so recommendations reflect available capabilities.
 4. Return 3-5 personalized, non-obvious workflow tips grounded in observed data (cite concrete patterns, counts, or session IDs).
