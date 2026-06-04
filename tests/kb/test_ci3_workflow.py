@@ -937,6 +937,18 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             combined_output,
         )
 
+    def test_preflight_behavior_rejects_push_when_no_changed_paths_detected(self) -> None:
+        result = _run_ci3_preflight_script(
+            self.workflow_text,
+            event_name="push",
+            dispatch_changed_paths=(),
+            push_before_sha="1111111111111111111111111111111111111111",
+            push_sha="2222222222222222222222222222222222222222",
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn("reject:path_filter:no_changed_paths_detected", combined_output)
+
     def test_preflight_behavior_rejects_push_change_set_with_mixed_allowlisted_and_disallowed_paths(
         self,
     ) -> None:
