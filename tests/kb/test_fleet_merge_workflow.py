@@ -411,6 +411,29 @@ class BunVersionPinTests(unittest.TestCase):
 class CopilotSetupFleetValidationTests(unittest.TestCase):
     """Assert copilot setup runs fleet Bun tests before build checks."""
 
+    def test_copilot_setup_timeout_is_raised_above_ten_minutes(self) -> None:
+        """timeout-minutes must stay above the 10m cap without ballooning indefinitely."""
+        workflow = yaml.safe_load(COPILOT_SETUP_PATH.read_text(encoding="utf-8"))
+        jobs = workflow.get("jobs", {})
+        self.assertIn(
+            "copilot-setup-steps",
+            jobs,
+            "copilot-setup-steps job must exist in copilot-setup-steps.yml",
+        )
+        timeout = jobs["copilot-setup-steps"].get("timeout-minutes")
+        self.assertIsNotNone(timeout, "copilot-setup-steps must declare timeout-minutes")
+        self.assertIsInstance(timeout, int, "timeout-minutes must be a bare integer")
+        self.assertGreaterEqual(
+            timeout,
+            15,
+            "copilot-setup-steps.yml timeout must be at least 15 minutes to avoid the 10-minute cap",
+        )
+        self.assertLessEqual(
+            timeout,
+            30,
+            "copilot-setup-steps.yml timeout must stay bounded unless the workload changes",
+        )
+
     def test_copilot_setup_runs_fleet_bun_tests(self) -> None:
         self.assertTrue(COPILOT_SETUP_PATH.exists(), f"Missing: {COPILOT_SETUP_PATH}")
         workflow = yaml.safe_load(COPILOT_SETUP_PATH.read_text(encoding="utf-8"))

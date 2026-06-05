@@ -48,7 +48,14 @@ REQUIRED_EVIDENCE_FIELDS: tuple[str, ...] = (
     "validation_commands",
     "pass_fail_summary",
 )
+REQUIRED_EXEMPTION_FIELDS: tuple[str, ...] = ("exemption_rationale",)
+EXEMPTION_APPROVAL_LABEL = "closure-evidence-exemption-approved"
 REQUIRED_TEMPLATE_FIELDS: tuple[str, ...] = ("closure_evidence_heading", *REQUIRED_EVIDENCE_FIELDS)
+REQUIRED_EXEMPTION_TEMPLATE_FIELDS: tuple[str, ...] = (
+    "closure_evidence_exemption_heading",
+    *REQUIRED_EXEMPTION_FIELDS,
+    "closure_evidence_exemption_approval_label",
+)
 
 _IMPLEMENTATION_REFERENCE_PATTERN = re.compile(
     r"(https?://github\.com/\S+/(?:pull|commit)/\S+|#\d+|\b[0-9a-f]{7,40}\b)",
@@ -70,6 +77,9 @@ _PASS_FAIL_PATTERN = re.compile(r"\b(pass|fail)\b", re.IGNORECASE)
 _CLOSURE_EVIDENCE_HEADING_PATTERN = re.compile(
     r"(?im)^\s*(?:#{1,6}\s*)?closure evidence\s*$",
 )
+_CLOSURE_EXEMPTION_HEADING_PATTERN = re.compile(
+    r"(?im)^\s*(?:#{1,6}\s*)?closure evidence exemption\s*$",
+)
 
 _SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     "implementation_reference": re.compile(
@@ -86,6 +96,10 @@ _SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
     "pass_fail_summary": re.compile(
         r"^\s*(?:[-*]\s*)?(?:\*\*)?Pass/fail summary(?:\*\*)?\s*:\s*(.*)$",
+        re.IGNORECASE,
+    ),
+    "exemption_rationale": re.compile(
+        r"^\s*(?:[-*]\s*)?(?:\*\*)?Exemption rationale(?:\*\*)?\s*:\s*(.*)$",
         re.IGNORECASE,
     ),
 }
@@ -464,33 +478,100 @@ def _has_command_like_content(section_text: str) -> bool:
     return any(_is_command_like_line(raw_line) for raw_line in section_text.splitlines())
 
 
-def evaluate_closure_evidence_comment(comment_body: str) -> dict[str, Any]:
+def evaluate_closure_evidence_comment(
+    comment_body: str,
+    *,
+    issue_labels: Sequence[str] | None = None,
+) -> dict[str, Any]:
     sections = _extract_template_sections(comment_body)
-    missing_fields: list[str] = []
+    normalized_issue_labels = {
+        label.strip().lower()
+        for label in (issue_labels or ())
+        if isinstance(label, str) and label.strip()
+    }
 
-    if not _CLOSURE_EVIDENCE_HEADING_PATTERN.search(comment_body):
-        missing_fields.append("closure_evidence_heading")
+    def _evaluate_closure_evidence_template() -> dict[str, Any]:
+        missing_fields: list[str] = []
 
-    implementation_section = sections["implementation_reference"]
-    if not _IMPLEMENTATION_REFERENCE_PATTERN.search(implementation_section):
-        missing_fields.append("implementation_reference")
+        if not _CLOSURE_EVIDENCE_HEADING_PATTERN.search(comment_body):
+            missing_fields.append("closure_evidence_heading")
 
-    key_files_section = sections["key_files_surfaces_changed"]
-    if not _has_section_content(key_files_section):
-        missing_fields.append("key_files_surfaces_changed")
+        implementation_section = sections["implementation_reference"]
+        if not _IMPLEMENTATION_REFERENCE_PATTERN.search(implementation_section):
+            missing_fields.append("implementation_reference")
 
-    validation_commands_section = sections["validation_commands"]
-    if not _has_command_like_content(validation_commands_section):
-        missing_fields.append("validation_commands")
+        key_files_section = sections["key_files_surfaces_changed"]
+        if not _has_section_content(key_files_section):
+            missing_fields.append("key_files_surfaces_changed")
 
-    pass_fail_section = sections["pass_fail_summary"]
-    if not _PASS_FAIL_PATTERN.search(pass_fail_section):
-        missing_fields.append("pass_fail_summary")
+        validation_commands_section = sections["validation_commands"]
+        if not _has_command_like_content(validation_commands_section):
+            missing_fields.append("validation_commands")
+
+        pass_fail_section = sections["pass_fail_summary"]
+        if not _PASS_FAIL_PATTERN.search(pass_fail_section):
+            missing_fields.append("pass_fail_summary")
+
+        return {
+            "template": "closure_evidence",
+            "is_compliant": len(missing_fields) == 0,
+            "missing_fields": tuple(missing_fields),
+        }
+
+    def _evaluate_closure_exemption_template() -> dict[str, Any]:
+        missing_fields: list[str] = []
+
+        if not _CLOSURE_EXEMPTION_HEADING_PATTERN.search(comment_body):
+            missing_fields.append("closure_evidence_exemption_heading")
+
+        exemption_section = sections["exemption_rationale"]
+        if not _has_section_content(exemption_section):
+            missing_fields.append("exemption_rationale")
+
+        if EXEMPTION_APPROVAL_LABEL not in normalized_issue_labels:
+            missing_fields.append("closure_evidence_exemption_approval_label")
+
+        return {
+            "template": "closure_evidence_exemption",
+            "is_compliant": len(missing_fields) == 0,
+            "missing_fields": tuple(missing_fields),
+        }
+
+    evidence_result = _evaluate_closure_evidence_template()
+    exemption_result = _evaluate_closure_exemption_template()
+
+    if evidence_result["is_compliant"] or exemption_result["is_compliant"]:
+        return {
+            "is_compliant": True,
+            "missing_fields": (),
+            "sections": sections,
+            "matched_template": (
+                evidence_result["template"]
+                if evidence_result["is_compliant"]
+                else exemption_result["template"]
+            ),
+        }
+
+    candidates: list[dict[str, Any]] = []
+    if _CLOSURE_EVIDENCE_HEADING_PATTERN.search(comment_body):
+        candidates.append(evidence_result)
+    if _CLOSURE_EXEMPTION_HEADING_PATTERN.search(comment_body):
+        candidates.append(exemption_result)
+    if not candidates:
+        candidates.append(evidence_result)
+    chosen_result = min(
+        candidates,
+        key=lambda result: (
+            len(result["missing_fields"]),
+            1 if result["template"] == "closure_evidence_exemption" else 0,
+        ),
+    )
 
     return {
-        "is_compliant": len(missing_fields) == 0,
-        "missing_fields": tuple(missing_fields),
+        "is_compliant": False,
+        "missing_fields": chosen_result["missing_fields"],
         "sections": sections,
+        "matched_template": chosen_result["template"],
     }
 
 
@@ -498,7 +579,7 @@ def _evaluate_issue(issue: Mapping[str, Any]) -> dict[str, Any]:
     comments = issue["comments"]
     best_missing = REQUIRED_TEMPLATE_FIELDS
     for index, comment in enumerate(comments):
-        result = evaluate_closure_evidence_comment(comment)
+        result = evaluate_closure_evidence_comment(comment, issue_labels=issue["labels"])
         if result["is_compliant"]:
             return {
                 "issue_number": issue["number"],
@@ -716,6 +797,11 @@ __all__ = [
     "DEFAULT_TARGET_LABELS",
     "DEFAULT_LOOKBACK_DAYS",
     "evaluate_closure_evidence_comment",
+    "REQUIRED_EXEMPTION_FIELDS",
+    "EXEMPTION_APPROVAL_LABEL",
+    "REQUIRED_EXEMPTION_TEMPLATE_FIELDS",
+    "REQUIRED_EVIDENCE_FIELDS",
+    "REQUIRED_TEMPLATE_FIELDS",
     "run_closure_evidence_report",
     "run_cli",
     "main",

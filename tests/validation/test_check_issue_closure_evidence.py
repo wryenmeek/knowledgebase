@@ -24,6 +24,12 @@ GOOD_EVIDENCE_COMMENT = """### Closure evidence
 - Pass/fail summary: PASS (all targeted tests passed)
 """
 
+GOOD_EXEMPTION_COMMENT = """### Closure evidence exemption
+- Exemption rationale: Closed as part of a documentation-only sweep where no code, tests, or workflow files were changed.
+"""
+
+EXEMPTION_APPROVAL_LABEL = "closure-evidence-exemption-approved"
+
 
 def _issue(
     *,
@@ -169,6 +175,43 @@ def test_evaluate_closure_evidence_comment_requires_pass_fail_summary_keyword() 
     assert "pass_fail_summary" in result["missing_fields"]
 
 
+def test_evaluate_closure_evidence_comment_accepts_exemption_rationale() -> None:
+    result = evaluate_closure_evidence_comment(
+        GOOD_EXEMPTION_COMMENT,
+        issue_labels=(EXEMPTION_APPROVAL_LABEL,),
+    )
+    assert result["is_compliant"] is True
+    assert result["missing_fields"] == ()
+    assert result["matched_template"] == "closure_evidence_exemption"
+
+
+def test_evaluate_closure_evidence_comment_rejects_exemption_without_approval_label() -> None:
+    result = evaluate_closure_evidence_comment(GOOD_EXEMPTION_COMMENT)
+    assert result["is_compliant"] is False
+    assert "closure_evidence_exemption_approval_label" in result["missing_fields"]
+
+
+def test_evaluate_closure_evidence_comment_rejects_exemption_without_rationale() -> None:
+    comment = GOOD_EXEMPTION_COMMENT.replace(
+        "- Exemption rationale: Closed as part of a documentation-only sweep where no code, tests, or workflow files were changed.\n",
+        "",
+    )
+    result = evaluate_closure_evidence_comment(comment)
+    assert result["is_compliant"] is False
+    assert "exemption_rationale" in result["missing_fields"]
+
+
+def test_evaluate_closure_evidence_comment_rejects_exemption_without_heading() -> None:
+    comment = GOOD_EXEMPTION_COMMENT.replace("### Closure evidence exemption\n", "")
+    result = evaluate_closure_evidence_comment(
+        comment,
+        issue_labels=(EXEMPTION_APPROVAL_LABEL,),
+    )
+    assert result["is_compliant"] is False
+    assert result["matched_template"] == "closure_evidence"
+    assert "implementation_reference" in result["missing_fields"]
+
+
 def test_run_closure_evidence_report_flags_recent_target_issue_without_evidence(tmp_path) -> None:
     (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
     result = run_closure_evidence_report(
@@ -220,6 +263,73 @@ def test_run_closure_evidence_report_passes_when_compliant_comment_exists(tmp_pa
     assert result.reason_code == "ok"
     assert result.summary["flagged_issue_count"] == 0
     assert result.items[0]["matched_comment_index"] == 1
+
+
+def test_run_closure_evidence_report_passes_when_exemption_comment_exists(tmp_path) -> None:
+    (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
+    result = run_closure_evidence_report(
+        repo_root=tmp_path,
+        mode="report",
+        as_of="2026-05-25T00:00:00Z",
+        lookback_days=30,
+        target_labels=("security",),
+        issues_payload=[
+            _issue(
+                number=154,
+                labels=("security", EXEMPTION_APPROVAL_LABEL),
+                closed_at="2026-05-22T12:00:00Z",
+                comments=("placeholder comment", GOOD_EXEMPTION_COMMENT),
+            )
+        ],
+    )
+    assert result.status == "pass"
+    assert result.reason_code == "ok"
+    assert result.summary["flagged_issue_count"] == 0
+    assert result.items[0]["matched_comment_index"] == 1
+
+
+def test_run_closure_evidence_report_requires_exemption_approval_label(tmp_path) -> None:
+    (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
+    result = run_closure_evidence_report(
+        repo_root=tmp_path,
+        mode="report",
+        as_of="2026-05-25T00:00:00Z",
+        lookback_days=30,
+        target_labels=("security",),
+        issues_payload=[
+            _issue(
+                number=155,
+                labels=("security",),
+                closed_at="2026-05-22T12:00:00Z",
+                comments=(GOOD_EXEMPTION_COMMENT,),
+            )
+        ],
+    )
+    assert result.status == "fail"
+    assert result.reason_code == "missing_closure_evidence"
+    assert result.items[0]["missing_fields"] == ["closure_evidence_exemption_approval_label"]
+
+
+def test_run_closure_evidence_report_passes_when_exemption_label_is_present(tmp_path) -> None:
+    (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
+    result = run_closure_evidence_report(
+        repo_root=tmp_path,
+        mode="report",
+        as_of="2026-05-25T00:00:00Z",
+        lookback_days=30,
+        target_labels=("security",),
+        issues_payload=[
+            _issue(
+                number=156,
+                labels=("security", EXEMPTION_APPROVAL_LABEL),
+                closed_at="2026-05-22T12:00:00Z",
+                comments=(GOOD_EXEMPTION_COMMENT,),
+            )
+        ],
+    )
+    assert result.status == "pass"
+    assert result.reason_code == "ok"
+    assert result.summary["flagged_issue_count"] == 0
 
 
 def test_run_closure_evidence_report_ignores_non_target_label_issue(tmp_path) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -13,6 +14,7 @@ import unittest
 
 
 WORKFLOW_PATH = Path(".github/workflows/ci-3-pr-producer.yml")
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _parse_mapping_block(
@@ -471,6 +473,8 @@ def _run_ci3_write_path_script(
     workflow_text: str,
     *,
     tracked_changed_path: str = "wiki/index.md",
+    ingest_written_source_pages: tuple[str, ...] = ("wiki/sources/example.md",),
+    batch_persist_json: dict[str, object] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], str, dict[str, object]]:
     script = _with_mapfile_compat(_extract_ci3_write_path_script(workflow_text))
 
@@ -482,7 +486,102 @@ def _run_ci3_write_path_script(
             encoding="utf-8",
         )
         (temp_root / "wiki/sources").mkdir(parents=True, exist_ok=True)
-        (temp_root / "wiki/sources/example.md").write_text("# Source: Example\n", encoding="utf-8")
+        (temp_root / "wiki/index.md").write_text("stale-index\n", encoding="utf-8")
+        (temp_root / "wiki/log.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "type: process",
+                    'title: "Knowledgebase Log"',
+                    "status: active",
+                    "sources: []",
+                    "open_questions: []",
+                    "confidence: 1",
+                    "sensitivity: internal",
+                    'updated_at: "1970-01-01T00:00:00Z"',
+                    "tags: [audit]",
+                    "---",
+                    "",
+                    "# Knowledgebase Log",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (temp_root / "AGENTS.md").write_text("agents contract\n", encoding="utf-8")
+
+        example_source_ref = "repo://owner/repo/raw/processed/example-source.md@abc1234#L1-L2?sha256=" + ("a" * 64)
+        spec_source_ref = "repo://owner/repo/raw/processed/SPEC.md@abc1234#L1-L2?sha256=" + ("b" * 64)
+        (temp_root / "wiki/sources/example.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "type: source",
+                    'title: "Source: Example"',
+                    "status: active",
+                    "sources:",
+                    f'  - "{example_source_ref}"',
+                    "open_questions: []",
+                    "confidence: 5",
+                    "sensitivity: internal",
+                    'updated_at: "2026-05-04T02:55:00Z"',
+                    "tags:",
+                    "  - source",
+                    "---",
+                    "",
+                    "# Source: Example",
+                    "",
+                    "## Summary",
+                    "",
+                    "Example source content used to materialize CI-3 analysis artifacts.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (temp_root / "wiki/sources/SPEC.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "type: source",
+                    'title: "Source: Spec"',
+                    "status: active",
+                    "sources:",
+                    f'  - "{spec_source_ref}"',
+                    "open_questions: []",
+                    "confidence: 5",
+                    "sensitivity: internal",
+                    'updated_at: "2026-05-04T02:55:00Z"',
+                    "tags:",
+                    "  - source",
+                    "---",
+                    "",
+                    "# Source: Spec",
+                    "",
+                    "## Summary",
+                    "",
+                    "Specification source used to support CI-3 analysis persistence.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        query = "CI-3 analysis: Source: Example"
+        normalized_query = " ".join(query.split()).casefold()
+        analysis_sources = sorted([example_source_ref, spec_source_ref])
+        fingerprint_payload = "\n".join((normalized_query, *analysis_sources))
+        analysis_slug = re.sub(r"[^a-z0-9]+", "-", normalized_query).strip("-")[:80].rstrip("-") or "query"
+        analysis_fingerprint = hashlib.sha256(fingerprint_payload.encode("utf-8")).hexdigest()[:16]
+        analysis_path = f"wiki/analyses/{analysis_slug}-{analysis_fingerprint}.md"
+        expected_changed_paths = [
+            analysis_path,
+            "wiki/index.md",
+            "wiki/log.md",
+        ]
+        if tracked_changed_path and tracked_changed_path not in expected_changed_paths:
+            expected_changed_paths.append(tracked_changed_path)
+        expected_changed_entries = "\n".join(f"M\t{path}" for path in expected_changed_paths)
 
         fake_bin = temp_root / "bin"
         fake_bin.mkdir(parents=True, exist_ok=True)
@@ -499,9 +598,17 @@ def _run_ci3_write_path_script(
             "#!/usr/bin/env bash\n"
             "set -euo pipefail\n"
             "if [[ \"${1:-}\" == \"-m\" && \"${2:-}\" == \"scripts.kb.ingest\" ]]; then\n"
-            "  cat <<'JSON'\n"
-            '{"status":"ok","per_source":[{"status":"written","source_page":"wiki/sources/example.md"}]}\n'
+            "  if [[ -z \"${MOCK_INGEST_WRITTEN_SOURCE_PAGES:-}\" ]]; then\n"
+            "    cat <<'JSON'\n"
+            '{"status":"ok","per_source":[]}\n'
             "JSON\n"
+            "  else\n"
+            "    \"${REAL_PYTHON}\" - <<'PY'\n"
+            "import json, os\n"
+            "pages = [line for line in os.environ.get('MOCK_INGEST_WRITTEN_SOURCE_PAGES', '').splitlines() if line]\n"
+            "print(json.dumps({'status': 'ok', 'per_source': [{'status': 'written', 'source_page': page} for page in pages]}))\n"
+            "PY\n"
+            "  fi\n"
             "  exit 0\n"
             "fi\n"
             "if [[ \"${1:-}\" == \".github/skills/extract-entities-and-claims/logic/extract_entities.py\" ]]; then\n"
@@ -530,10 +637,14 @@ def _run_ci3_write_path_script(
             "if [[ \"${1:-}\" == \"scripts/kb/lint_wiki.py\" ]]; then\n"
             "  exit 0\n"
             "fi\n"
-            "if [[ \"${1:-}\" == \"-m\" && \"${2:-}\" == \"scripts.kb.persist_query\" ]]; then\n"
-            "  cat <<'JSON'\n"
-            '{"status":"no_write_policy","reason_code":"policy_enforced"}\n'
+            "if [[ \"${1:-}\" == \"-m\" && \"${2:-}\" == \"scripts.kb.batch_persist_query\" ]]; then\n"
+            "  if [[ -n \"${MOCK_BATCH_PERSIST_JSON:-}\" ]]; then\n"
+            "    printf '%s\\n' \"${MOCK_BATCH_PERSIST_JSON}\"\n"
+            "  else\n"
+            "    cat <<'JSON'\n"
+            '{"status":"pass","reason_code":"ok","total":1,"written":1,"skipped":0,"failed":0,"entries":[{"status":"written","reason_code":"ok","query":"CI-3 analysis: Source: Example","analysis_path":"wiki/analyses/ci-3-analysis-source-example-4d408d53965244c0.md"}]}\n'
             "JSON\n"
+            "  fi\n"
             "  exit 0\n"
             "fi\n"
             "exec \"${REAL_PYTHON}\" \"$@\"\n",
@@ -549,7 +660,12 @@ def _run_ci3_write_path_script(
             "  shift 2\n"
             "done\n"
             "if [[ \"${1:-}\" == \"diff\" ]]; then\n"
-            "  printf 'M\\t%s\\0' \"${MOCK_TRACKED_CHANGED_PATH:-wiki/index.md}\"\n"
+            "  if [[ -n \"${MOCK_CHANGED_ENTRIES:-}\" ]]; then\n"
+            "    while IFS= read -r entry; do\n"
+            "      [[ -z \"${entry}\" ]] && continue\n"
+            "      printf '%s\\0' \"${entry}\"\n"
+            "    done <<< \"${MOCK_CHANGED_ENTRIES}\"\n"
+            "  fi\n"
             "  exit 0\n"
             "fi\n"
             "if [[ \"${1:-}\" == \"ls-files\" ]]; then\n"
@@ -564,16 +680,25 @@ def _run_ci3_write_path_script(
         github_output_path.write_text("", encoding="utf-8")
 
         env = os.environ.copy()
+        existing_pythonpath = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = (
+            str(REPO_ROOT)
+            if not existing_pythonpath
+            else f"{REPO_ROOT}{os.pathsep}{existing_pythonpath}"
+        )
         env.update(
             {
                 "GITHUB_OUTPUT": str(github_output_path),
                 "SYNTHESIS_GITHUB_TOKEN": "stub-token",
                 "WRITE_ALLOWLIST": "wiki/**,wiki/index.md,wiki/log.md,raw/processed/**,raw/rejected/**",
                 "REAL_PYTHON": real_python,
-                "MOCK_TRACKED_CHANGED_PATH": tracked_changed_path,
+                "MOCK_CHANGED_ENTRIES": expected_changed_entries,
+                "MOCK_INGEST_WRITTEN_SOURCE_PAGES": "\n".join(ingest_written_source_pages),
                 "PATH": f"{fake_bin}:{env.get('PATH', '')}",
             }
         )
+        if batch_persist_json is not None:
+            env["MOCK_BATCH_PERSIST_JSON"] = json.dumps(batch_persist_json, sort_keys=True)
 
         result = subprocess.run(
             ["bash", "-c", script],
@@ -724,6 +849,7 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "Download CI-3 extraction bundles",
             "ci3-extraction-bundles-${{ github.run_id }}",
             "ci3-synthesis/extraction-bundles.tsv",
+            "ci3-synthesis/analysis-batch.json",
             "git -c core.quotepath=false diff --name-status -z --no-renames -- .",
             "git -c core.quotepath=false ls-files --others --exclude-standard -z -- .",
             "reason_code=lock_unavailable",
@@ -738,6 +864,9 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             'manual_resolved="$(realpath "${MANUAL_SOURCE_PATH}")"',
             'manual_relative="${manual_resolved#"${repo_root}/"}"',
             'source_resolved="$(realpath "${source_path}")"',
+            "python3 -m scripts.kb.batch_persist_query",
+            "[CI-3] batch_persist_query analysis write",
+            "CI-3 batch_persist_query did not fully materialize analysis artifacts.",
         )
         for expected in required_controls:
             self.assertIn(expected, self.workflow_text)
@@ -1079,11 +1208,45 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("has_changes=true", github_output)
         self.assertIn("wiki/index.md", github_output)
+        self.assertIn("wiki/analyses/", github_output)
         self.assertEqual(runtime_metrics.get("workflow_id"), "ci-3-pr-producer")
         stage_durations = runtime_metrics.get("stage_durations_seconds")
         self.assertIsInstance(stage_durations, dict)
         self.assertIn("ingest_write_path", stage_durations)
         self.assertIn("persist_query_gate", stage_durations)
+
+    def test_write_path_behavior_skips_batch_persist_query_when_no_source_pages_are_written(self) -> None:
+        result, github_output, _runtime_metrics = _run_ci3_write_path_script(
+            self.workflow_text,
+            ingest_written_source_pages=(),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("has_changes=true", github_output)
+        self.assertIn('"written":0,"skipped":0,"failed":0', combined_output)
+        self.assertNotIn("policy_enforced", combined_output)
+
+    def test_write_path_behavior_fails_when_batch_persist_query_reports_incomplete_materialization(
+        self,
+    ) -> None:
+        result, _github_output, _runtime_metrics = _run_ci3_write_path_script(
+            self.workflow_text,
+            batch_persist_json={
+                "status": "pass",
+                "reason_code": "ok",
+                "total": 1,
+                "written": 0,
+                "skipped": 0,
+                "failed": 0,
+                "entries": [],
+            },
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn(
+            "CI-3 batch_persist_query did not fully materialize analysis artifacts.",
+            combined_output,
+        )
 
     def test_write_path_behavior_handles_allowlisted_paths_with_spaces(self) -> None:
         result, github_output, _runtime_metrics = _run_ci3_write_path_script(
@@ -1110,7 +1273,7 @@ class Ci3WorkflowContractTests(unittest.TestCase):
         )
         self.assertIn("if: steps.write-path.outputs.has_changes == 'true'", self.workflow_text)
         self.assertIn(
-            "persist_query returned disallowed status",
+            "batch_persist_query did not fully materialize analysis artifacts",
             self.workflow_text,
         )
         self.assertIn(
@@ -1118,7 +1281,7 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             self.workflow_text,
         )
         self.assertIn("python3 -m scripts.kb.ingest", self.workflow_text)
-        self.assertIn("python3 -m scripts.kb.persist_query", self.workflow_text)
+        self.assertIn("python3 -m scripts.kb.batch_persist_query", self.workflow_text)
         self.assertNotIn("gh pr merge", self.workflow_text)
 
     def test_embedded_python_snippets_compile(self) -> None:
@@ -1228,6 +1391,8 @@ class Ci3WorkflowContractTests(unittest.TestCase):
     def test_write_path_uses_artifact_handoff_not_model_calls(self) -> None:
         write_path_script = _extract_ci3_write_path_script(self.workflow_text)
         self.assertIn("ci3-synthesis/extraction-bundles.tsv", write_path_script)
+        self.assertIn("ci3-synthesis/analysis-batch.json", write_path_script)
+        self.assertIn("python3 -m scripts.kb.batch_persist_query", write_path_script)
         self.assertNotIn("extract_entities.py", write_path_script)
         self.assertIn("synthesize_combined.py", write_path_script)
 

@@ -104,6 +104,7 @@ def _run_ci1_preflight_script(
     workflow_text: str,
     *,
     changed_paths: tuple[str, ...],
+    changed_statuses: tuple[str, ...] | None = None,
     event_name: str = "push",
     ref_name: str = "main",
     default_branch: str = "main",
@@ -128,12 +129,34 @@ def _run_ci1_preflight_script(
 
         fake_bin = temp_root / "bin"
         fake_bin.mkdir(parents=True, exist_ok=True)
+        if changed_statuses is None:
+            changed_statuses = tuple("M" for _ in changed_paths)
+        if len(changed_statuses) != len(changed_paths):
+            raise AssertionError("changed_statuses must match changed_paths length")
+
+        changed_entries = "\n".join(
+            f"{status}\t{path}" for status, path in zip(changed_statuses, changed_paths)
+        )
+
         fake_git = fake_bin / "git"
         fake_git.write_text(
             "#!/usr/bin/env bash\n"
             "set -euo pipefail\n"
-            "if [[ -n \"${MOCK_CHANGED_PATHS:-}\" ]]; then\n"
-            "  printf '%s\\n' \"${MOCK_CHANGED_PATHS}\"\n"
+            "if [[ \"${1:-}\" == \"diff\" || \"${1:-}\" == \"diff-tree\" ]]; then\n"
+            "  if [[ -n \"${MOCK_CHANGED_ENTRIES:-}\" ]]; then\n"
+            "    while IFS= read -r entry; do\n"
+            "      [[ -z \"${entry}\" ]] && continue\n"
+            "      IFS=$'\\t' read -r -a fields <<< \"${entry}\"\n"
+            "      printf '%s\\0' \"${fields[0]}\"\n"
+            "      if [[ \"${fields[0]}\" == R* || \"${fields[0]}\" == C* ]]; then\n"
+            "        printf '%s\\0' \"${fields[1]:-}\"\n"
+            "        printf '%s\\0' \"${fields[2]:-${fields[1]:-}}\"\n"
+            "      else\n"
+            "        printf '%s\\0' \"${fields[1]:-}\"\n"
+            "      fi\n"
+            "    done <<< \"${MOCK_CHANGED_ENTRIES}\"\n"
+            "  fi\n"
+            "  exit 0\n"
             "fi\n",
             encoding="utf-8",
         )
@@ -154,7 +177,7 @@ def _run_ci1_preflight_script(
                 "BEFORE_SHA": "1111111111111111111111111111111111111111",
                 "CURRENT_SHA": "2222222222222222222222222222222222222222",
                 "WORKFLOW_FILE": ".github/workflows/ci-1-gatekeeper.yml",
-                "MOCK_CHANGED_PATHS": "\n".join(changed_paths),
+                "MOCK_CHANGED_ENTRIES": changed_entries,
                 "PATH": f"{fake_bin}:{env.get('PATH', '')}",
             }
         )
@@ -237,6 +260,24 @@ class Ci1WorkflowContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("CI-1 gatekeeper preflight PASS", combined_output)
 
+    def test_preflight_behavior_rejects_rename_and_copy_to_sensitive_paths(self) -> None:
+        for changed_status in (
+            "R100\traw/inbox/example-source.md",
+            "C100\traw/inbox/example-source.md",
+        ):
+            with self.subTest(changed_status=changed_status):
+                result = _run_ci1_preflight_script(
+                    self.workflow_text,
+                    changed_paths=("scripts/kb/renamed.py",),
+                    changed_statuses=(changed_status,),
+                )
+                combined_output = f"{result.stdout}\n{result.stderr}"
+                self.assertNotEqual(result.returncode, 0, combined_output)
+                self.assertIn(
+                    "reject:path_filter:sensitive_control_plane_path:scripts/kb/renamed.py",
+                    combined_output,
+                )
+
     def test_preflight_script_extraction_handles_alternate_indentation(self) -> None:
         workflow_text = textwrap.dedent(
             """\
@@ -308,6 +349,22 @@ class Ci1WorkflowContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("benign_non_inbox_count=1", combined_output)
 
+    def test_preflight_behavior_allows_deletion_only_raw_inbox_cleanup(self) -> None:
+        """Deletion-only raw/inbox cleanup from CI-3 should not force a CI-1 rerun."""
+        result = _run_ci1_preflight_script(
+            self.workflow_text,
+            changed_paths=("raw/inbox/SPEC.md",),
+            changed_statuses=("D",),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("cleanup_only=true", combined_output)
+        self.assertIn("inbox_cleanup_paths_count=1", combined_output)
+        self.assertIn(
+            "CI-1 observed deletion-only raw/inbox cleanup; no handoff required.",
+            combined_output,
+        )
+
     def test_preflight_behavior_rejects_sensitive_control_plane_paths(self) -> None:
         """Sensitive paths (workflows, scripts) alongside inbox must be rejected."""
         result = _run_ci1_preflight_script(
@@ -320,6 +377,17 @@ class Ci1WorkflowContractTests(unittest.TestCase):
             "reject:path_filter:sensitive_control_plane_path:scripts/kb/ingest.py",
             combined_output,
         )
+
+    def test_preflight_behavior_rejects_cleanup_delete_plus_sensitive_control_plane_paths(self) -> None:
+        """Cleanup-only bypass must not activate when non-inbox control-plane paths change."""
+        result = _run_ci1_preflight_script(
+            self.workflow_text,
+            changed_paths=("raw/inbox/SPEC.md", "scripts/kb/ingest.py"),
+            changed_statuses=("D", "M"),
+        )
+        combined_output = f"{result.stdout}\n{result.stderr}"
+        self.assertNotEqual(result.returncode, 0, combined_output)
+        self.assertIn("reject:path_filter:sensitive_control_plane_path:scripts/kb/ingest.py", combined_output)
 
     def test_preflight_rejects_workflow_yaml_alongside_inbox(self) -> None:
         """Workflow YAML is sensitive — must be rejected even with inbox paths."""
