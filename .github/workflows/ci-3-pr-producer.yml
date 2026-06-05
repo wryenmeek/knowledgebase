@@ -958,17 +958,29 @@ jobs:
           lint_end="$(date -u +%s)"
           lint_duration="$((lint_end - lint_start))"
 
-          echo "[CI-3] persist_query policy gate"
+          echo "[CI-3] batch_persist_query analysis write"
           persist_start="$(date -u +%s)"
-          set +e
-          persist_json="$(python3 -m scripts.kb.persist_query \
-            --query "ci3 required-check policy probe" \
-            --confidence 3 \
-            --wiki-root wiki \
-            --schema AGENTS.md \
-            --result-json)"
-          persist_exit=$?
-          set -e
+          persist_json='{"status":"pass","reason_code":"ok","total":0,"written":0,"skipped":0,"failed":0,"entries":[]}'
+          persist_exit=0
+          if [[ "${#written_source_pages[@]}" -gt 0 ]]; then
+            analysis_batch_path="ci3-synthesis/analysis-batch.json"
+            analysis_source_pages_path="ci3-synthesis/written-source-pages.txt"
+            mkdir -p ci3-synthesis
+            printf '%s\n' "${written_source_pages[@]}" > "${analysis_source_pages_path}"
+            analysis_count="$(python3 -c $'from pathlib import Path\nimport json\nimport sys\nsys.path.insert(0, str(Path(".").resolve()))\nfrom scripts.kb.page_template_utils import extract_frontmatter, extract_yaml_list, parse_frontmatter\nrepo_root = Path(".")\nsource_pages_path = repo_root / "ci3-synthesis/written-source-pages.txt"\nspec_page = repo_root / "wiki/sources/SPEC.md"\nspec_fm_str, _ = extract_frontmatter(spec_page.read_text(encoding="utf-8"))\nspec_sources = [source.strip() for source in extract_yaml_list(spec_fm_str, "sources") if source.strip()]\nspec_source = spec_sources[0] if spec_sources else ""\nentries = []\nfor raw_rel_path in source_pages_path.read_text(encoding="utf-8").splitlines():\n    rel_path = raw_rel_path.strip()\n    if not rel_path:\n        continue\n    page_path = repo_root / rel_path\n    fm_str, _ = extract_frontmatter(page_path.read_text(encoding="utf-8"))\n    fm = parse_frontmatter(fm_str)\n    title = (fm.get("title") or "").strip().strip(\"\\\"\")\n    page_sources = [source.strip() for source in extract_yaml_list(fm_str, \"sources\") if source.strip()]\n    sources = []\n    for source in [*page_sources, spec_source]:\n        if source and source not in sources:\n            sources.append(source)\n    if len(sources) < 2:\n        continue\n    entries.append({\n        \"query\": f\"CI-3 analysis: {title}\",\n        \"result_summary\": f\"CI-3 synthesized {title} from trusted ingestion outputs.\",\n        \"sources\": sources,\n        \"confidence\": 4,\n        \"sensitivity\": \"internal\",\n    })\nPath(\"ci3-synthesis/analysis-batch.json\").write_text(json.dumps(entries, indent=2, sort_keys=True) + \"\\n\", encoding=\"utf-8\")\nprint(len(entries))')"
+            if [[ "${analysis_count}" -le 0 ]]; then
+              echo "::error::CI-3 analysis batch could not be constructed from written source pages." >&2
+              exit 1
+            fi
+            set +e
+            persist_json="$(python3 -m scripts.kb.batch_persist_query \
+              --batch-file "${analysis_batch_path}" \
+              --wiki-root wiki \
+              --schema AGENTS.md \
+              --result-json)"
+            persist_exit=$?
+            set -e
+          fi
           persist_end="$(date -u +%s)"
           persist_duration="$((persist_end - persist_start))"
 
@@ -976,17 +988,26 @@ jobs:
           if [[ "${persist_exit}" -ne 0 ]]; then
             persist_reason="$(printf '%s' "${persist_json}" | extract_json_field reason_code)"
             if [[ "${persist_reason}" == "lock_unavailable" ]]; then
-              echo "::error::CI-3 persist_query failed closed (reason_code=lock_unavailable)." >&2
+              echo "::error::CI-3 batch_persist_query failed closed (reason_code=lock_unavailable)." >&2
             else
-              echo "::error::CI-3 persist_query failed closed (exit=${persist_exit}, reason_code=${persist_reason:-unknown})." >&2
+              echo "::error::CI-3 batch_persist_query failed closed (exit=${persist_exit}, reason_code=${persist_reason:-unknown})." >&2
             fi
             exit 1
           fi
 
           persist_status="$(printf '%s' "${persist_json}" | extract_json_field status)"
-          if [[ "${persist_status}" != "written" ]] && [[ "${persist_status}" != "no_write_policy" ]]; then
-            echo "::error::CI-3 persist_query returned disallowed status=${persist_status:-unknown}; expected written|no_write_policy." >&2
+          persist_written="$(printf '%s' "${persist_json}" | extract_json_field written)"
+          persist_skipped="$(printf '%s' "${persist_json}" | extract_json_field skipped)"
+          persist_failed="$(printf '%s' "${persist_json}" | extract_json_field failed)"
+          if [[ "${persist_status}" != "pass" ]]; then
+            echo "::error::CI-3 batch_persist_query returned disallowed status=${persist_status:-unknown}; expected pass." >&2
             exit 1
+          fi
+          if [[ "${#written_source_pages[@]}" -gt 0 ]]; then
+            if [[ "${persist_written}" -le 0 ]] || [[ "${persist_failed}" -ne 0 ]] || [[ "${persist_skipped}" -ne 0 ]]; then
+              echo "::error::CI-3 batch_persist_query did not fully materialize analysis artifacts." >&2
+              exit 1
+            fi
           fi
 
           INGEST_DURATION="${ingest_duration}" \

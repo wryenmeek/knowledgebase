@@ -1,6 +1,6 @@
 # Wiki processing checkpoint registry
 
-**Status:** Proposed
+**Status:** In Progress — ADR-026 is published and tracked in docs/decisions/README.md; registry implementation remains pending (2026-06-04)
 
 This proposal adds a governed checkpoint registry under `raw/` for wiki processing. The registry tracks generated wiki artifacts/pages at item and batch granularity so partial fail-closed runs can resume and changed outputs can be re-evaluated without storing workflow state in topical wiki content.
 

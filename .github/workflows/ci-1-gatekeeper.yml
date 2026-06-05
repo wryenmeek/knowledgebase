@@ -106,15 +106,15 @@ jobs:
             prereq_trusted_trigger_model="FAIL"
           fi
 
-          mapfile -t changed_paths < <(
+          mapfile -d '' -t changed_entries < <(
             if [[ -n "${BEFORE_SHA}" ]] && [[ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]]; then
-              git diff --name-only "${BEFORE_SHA}" "${CURRENT_SHA}"
+              git diff --name-status -z --diff-filter=ACDMR "${BEFORE_SHA}" "${CURRENT_SHA}"
             else
-              git diff-tree --no-commit-id --name-only -r "${CURRENT_SHA}"
+              git diff-tree --no-commit-id --name-status -z -r --diff-filter=ACDMR "${CURRENT_SHA}"
             fi
           )
 
-          if [[ "${#changed_paths[@]}" -eq 0 ]]; then
+          if [[ "${#changed_entries[@]}" -eq 0 ]]; then
             reason_list+=("reject:path_filter:no_changed_paths_detected")
             prereq_trusted_trigger_model="FAIL"
           fi
@@ -123,11 +123,31 @@ jobs:
           # allowlist — everything not explicitly benign is treated as
           # sensitive control-plane to prevent co-mingled write-surface changes.
           inbox_paths=()
+          inbox_cleanup_paths=()
           benign_non_inbox=()
           sensitive_non_inbox=()
-          for changed_path in "${changed_paths[@]}"; do
+          changed_index=0
+          while [[ "${changed_index}" -lt "${#changed_entries[@]}" ]]; do
+            changed_status="${changed_entries[changed_index]}"
+            changed_index=$((changed_index + 1))
+            if [[ "${changed_index}" -ge "${#changed_entries[@]}" ]]; then
+              break
+            fi
+            changed_path="${changed_entries[changed_index]}"
+            changed_index=$((changed_index + 1))
+            if [[ "${changed_status}" == R* || "${changed_status}" == C* ]]; then
+              if [[ "${changed_index}" -ge "${#changed_entries[@]}" ]]; then
+                break
+              fi
+              changed_path="${changed_entries[changed_index]}"
+              changed_index=$((changed_index + 1))
+            fi
             if [[ "${changed_path}" == ${REQUIRED_PATH_PREFIX}* ]]; then
-              inbox_paths+=("${changed_path}")
+              if [[ "${changed_status}" == D* ]]; then
+                inbox_cleanup_paths+=("${changed_path}")
+              else
+                inbox_paths+=("${changed_path}")
+              fi
             elif [[ "${changed_path}" == docs/* ]] \
               || [[ "${changed_path}" == tests/* ]] \
               || [[ "${changed_path}" == wiki/pages/* ]] \
@@ -140,19 +160,28 @@ jobs:
             fi
           done
 
-          if [[ "${#inbox_paths[@]}" -eq 0 ]]; then
+          cleanup_only="false"
+          if [[ "${#inbox_paths[@]}" -eq 0 ]] && [[ "${#inbox_cleanup_paths[@]}" -gt 0 ]] && [[ "${#benign_non_inbox[@]}" -eq 0 ]] && [[ "${#sensitive_non_inbox[@]}" -eq 0 ]]; then
+            cleanup_only="true"
+          fi
+
+          if [[ "${cleanup_only}" == "true" ]]; then
+            echo "::notice::CI-1 observed deletion-only raw/inbox cleanup; no handoff required."
+          fi
+
+          if [[ "${#inbox_paths[@]}" -eq 0 ]] && [[ "${#inbox_cleanup_paths[@]}" -eq 0 ]]; then
             reason_list+=("reject:path_filter:no_inbox_paths_after_filter")
             prereq_trusted_trigger_model="FAIL"
           fi
 
-          if [[ "${#sensitive_non_inbox[@]}" -gt 0 ]]; then
+          if [[ "${cleanup_only}" != "true" ]] && [[ "${#sensitive_non_inbox[@]}" -gt 0 ]]; then
             for p in "${sensitive_non_inbox[@]}"; do
               reason_list+=("reject:path_filter:sensitive_control_plane_path:${p}")
             done
             prereq_trusted_trigger_model="FAIL"
           fi
 
-          if [[ "${#benign_non_inbox[@]}" -gt 0 ]]; then
+          if [[ "${cleanup_only}" != "true" ]] && [[ "${#benign_non_inbox[@]}" -gt 0 ]]; then
             echo "::notice::CI-1 ignoring ${#benign_non_inbox[@]} benign non-inbox paths (covered by other CI workflows)."
             for p in "${benign_non_inbox[@]}"; do
               echo "  skipped: ${p}"
@@ -200,14 +229,23 @@ jobs:
             echo "permissions_scope=${prereq_permissions_scope}"
             echo "concurrency_guard=${prereq_concurrency_guard}"
             echo "fallback_manual_path=${prereq_fallback_manual_path}"
-            echo "changed_paths_count=${#changed_paths[@]}"
+            echo "changed_entries_count=${#changed_entries[@]}"
             echo "inbox_paths_count=${#inbox_paths[@]}"
+            echo "inbox_cleanup_paths_count=${#inbox_cleanup_paths[@]}"
             echo "benign_non_inbox_count=${#benign_non_inbox[@]}"
             echo "sensitive_non_inbox_count=${#sensitive_non_inbox[@]}"
+            echo "cleanup_only=${cleanup_only}"
             for changed_path in "${changed_paths[@]}"; do
               echo "inbox_path=${changed_path}"
             done
+            for changed_path in "${inbox_cleanup_paths[@]}"; do
+              echo "inbox_cleanup_path=${changed_path}"
+            done
           } | tee preflight/preflight-summary.log
+
+          if [[ "${cleanup_only}" == "true" ]]; then
+            touch preflight/cleanup-only.flag
+          fi
 
           if [[ "${#reason_list[@]}" -gt 0 ]]; then
             for reason in "${reason_list[@]}"; do
@@ -248,7 +286,11 @@ jobs:
       - name: Record CI-1 handoff status (no CI-3 execution)
         run: |
           set -euo pipefail
-          echo "CI-1 handoff gate passed for raw/inbox/**."
+          if [[ -f preflight/cleanup-only.flag ]]; then
+            echo "CI-1 observed deletion-only raw/inbox cleanup; no handoff required."
+          else
+            echo "CI-1 handoff gate passed for raw/inbox/**."
+          fi
           echo "CI-3 PR-producing behavior is intentionally out of scope for this workflow."
 
       - name: Upload CI-1 preflight artifacts
