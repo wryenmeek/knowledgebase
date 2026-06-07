@@ -7,9 +7,9 @@
 
 > **Baseline report — point-in-time snapshot (2026-06-04).** This
 > document captures the codebase state **before PR1 of the C-prime 4-PR
-> plan landed**. Items 1 and 2 in the Headline ("Documentation cascade
-> items never landed" and "Trigger-model drift between ADR-026 and the
-> idea doc") were resolved by PR #184 (this PR). The findings below
+> plan landed**. Items 1 and 2 in the Headline ("Trigger-model drift
+> between ADR-026 and the idea doc" and "Documentation cascade items
+> never landed") were resolved by PR #184 (this PR). The findings below
 > remain accurate as historical evidence for *why* the cascade work was
 > scoped; they should not be read as a description of current state.
 > See `docs/ideas/wiki-processing-checkpoint-registry.md` § Implementation

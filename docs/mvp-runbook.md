@@ -378,9 +378,9 @@ CI-3 run. First, list active CI-3 runs:
 gh run list --workflow=ci-3-pr-producer.yml --status in_progress
 ```
 
-If no run is active and the lock is stale (no in-progress CI-3 job),
-remove the lock file and retry. If a run is active, wait for it to
-complete (lock is typically held for ~1 second per batch under the
+Once PR4 lands: if no run is active and the lock is stale (no in-progress
+CI-3 job), remove the lock file and retry. If a run is active, wait for it
+to complete (lock is typically held for ~1 second per batch under the
 single-lock-hold-long pattern; see `synthesize_combined.py` precedent).
 The repo-wide convention for holder-PID tracking is filed as backlog
 issue [#183](https://github.com/wryenmeek/knowledgebase/issues/183).

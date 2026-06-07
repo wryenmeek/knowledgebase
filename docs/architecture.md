@@ -291,18 +291,18 @@ require documented rationale.
 The wiki processing pipeline *will* maintain a governed checkpoint registry
 under `raw/` so partial fail-closed runs can resume and changed outputs can
 be re-evaluated without storing workflow state in topical wiki content. The
-registry is observational — no checkpoint entry can authorize a write that
-governance would otherwise block.
+registry will be observational — no checkpoint entry will be able to
+authorize a write that governance would otherwise block.
 
 | Aspect | Value |
 |---|---|
 | Registry artifact | `raw/wiki-processing/wiki-processing-checkpoint-registry.json` |
 | Schema contract | `schema/wiki-processing-checkpoint-registry-contract.md` (authored in PR2) |
 | Runtime entrypoint | `scripts/kb/checkpoint_registry.py` (authored in PR3) |
-| Dedicated lock | `raw/.wiki-processing-checkpoint.lock` |
-| Lock order with wiki writes | `wiki/.kb_write.lock` first, then the checkpoint lock |
+| Dedicated lock | `raw/.wiki-processing-checkpoint.lock` (lands PR3) |
+| Lock order with wiki writes | `wiki/.kb_write.lock` first, then the checkpoint lock (enforced in PR3 runtime) |
 | Operator snapshot | `wiki/status.md` via `sync-knowledgebase-state` (publisher exists; checkpoint payload lands PR3) |
-| Trigger model | `intake_driven`, `infrastructure_revalidation`, `manual_rescan` (ADR-027) |
+| Trigger model | `intake_driven`, `infrastructure_revalidation`, `manual_rescan` (declared in ADR-027; runtime PR3) |
 
 The registry tracks both batch-level state (`batch_id`, `trigger`,
 `started_at`, `finished_at`, `status`, `input_fingerprint`,
