@@ -1,8 +1,26 @@
 # Wiki processing checkpoint registry
 
-**Status:** In Progress — ADR-026 is published and tracked in docs/decisions/README.md; registry implementation remains pending (2026-06-04)
+**Status:** In Progress — Design decisions resolved via grilling session 2026-06-07; ADR-026 and ADR-027 published; canonical 6-PR implementation plan defined; runtime implementation, schema contract, and remaining documentation cascade items pending.
 
 This proposal adds a governed checkpoint registry under `raw/` for wiki processing. The registry tracks generated wiki artifacts/pages at item and batch granularity so partial fail-closed runs can resume and changed outputs can be re-evaluated without storing workflow state in topical wiki content.
+
+## Design status
+
+Design decisions for this feature were resolved in a `grill-with-docs` session on 2026-06-07. The session walked 16 decision branches across 58 sub-decisions, grounded in primary-source evidence from the codebase, ADR history, and empirical CI-3 run telemetry. Validation findings are recorded in `docs/research/wiki-processing-checkpoint-registry-implementation-status.md`.
+
+Key resolved decisions:
+
+- **Trigger enum reconciled.** ADR-026 was published before ADR-027 introduced the three-value trigger split; PR1 of the implementation plan amends ADR-026 in place per the repo's ADR-evolution rule (`Status: Accepted — extended by ADR-027` plus an `## Amendment` section codifying the lowercase snake_case spelling).
+- **Schema contract structure.** Fresh skeleton (not a 1:1 mirror of `schema/drive-source-registry-contract.md`) because the checkpoint registry's two-scope state model (batch + item), `source_fingerprints` map, and trigger-typed transitions don't fit the per-source-entry shape of the existing registry contracts.
+- **Trigger × transition matrix.** Three triggers (`intake_driven`, `infrastructure_revalidation`, `manual_rescan`) crossed against the six item states. `infrastructure_revalidation` reacts to `dependency_fingerprint` changes; `intake_driven` reacts to `source_fingerprint` changes; only `manual_rescan` can retire (`skipped`) or un-retire items.
+- **Lock strategy: lock-once, hold-long.** Matches `synthesize_combined.py` (PR #115) precedent. Empirical CI-3 data (5 successful runs) shows wiki-lock-held duration is ~1 second per batch today; projected ~1.2-1.5 seconds under the checkpoint orchestrator.
+- **Six-PR implementation layout.** Each PR on its own branch off `main` (named `checkpoint/0N-<slug>`); strict linear merge order; full pre-commit, post-commit, and pre-merge validation per PR.
+
+Three repo-wide backlog issues were filed during the session as side-effect findings (none block the checkpoint feature):
+
+- [#181](https://github.com/wryenmeek/knowledgebase/issues/181) — Formalize pytest as canonical test framework + CI ratchet for unittest→pytest migration.
+- [#182](https://github.com/wryenmeek/knowledgebase/issues/182) — Reconsider `--approval` flag pattern (codify, rename, or replace).
+- [#183](https://github.com/wryenmeek/knowledgebase/issues/183) — Add holder-PID tracking to write lock files for better lock-unavailable UX.
 
 ## Goals
 
@@ -39,7 +57,9 @@ This proposal adds a governed checkpoint registry under `raw/` for wiki processi
 
 If a run updates both wiki artifacts and checkpoint state, lock ordering is deterministic: acquire `wiki/.kb_write.lock` first, then `raw/.wiki-processing-checkpoint.lock`.
 
-## Registry model (draft)
+## Registry model
+
+> The fields below are the operative contract surface. The canonical, normative schema is authored in `schema/wiki-processing-checkpoint-registry-contract.md` (PR3 of the implementation plan), which also defines the top-level `source_fingerprints` map (path → sha256) referenced by `item.source_fingerprint`.
 
 ### Batch-level fields
 
@@ -72,12 +92,15 @@ If a run updates both wiki artifacts and checkpoint state, lock ordering is dete
 - `failed` is reserved for hard processing errors.
 - `skipped` is reserved for intentionally retired or out-of-scope items.
 
-## Identity and collision rules (draft)
+## Identity and collision rules
+
+> Per-artifact-type derivation rules and excluded-artifact-type rationale are codified in the schema contract. The summary below captures the design intent.
 
 - Canonical identity is `item_key`; paths are mutable projections.
-- For wiki entity/concept pages, derive `item_key` from the repository's canonical identity contract (`entity_id` when present, otherwise normalized canonical slug).
-- For analysis/index-derived artifacts, derive `item_key` from a stable tuple of artifact type plus source/query fingerprint.
-- Rename/move: keep `item_key`, update `output_path`, append previous path to `path_aliases`.
+- For wiki entity pages, derive `item_key` from `entity_id` when present in frontmatter, otherwise the normalized canonical slug per `schema/ontology-entity-contract.md`. Concept pages use the normalized canonical slug (concepts do not carry `entity_id`).
+- For analysis pages (`wiki/analyses/<slug>-<fp16>.md`), `item_key` is the filename stem; the fingerprint is already computed by `persist_query._analysis_relative_path` and is extracted into a public `analysis_fingerprint()` helper in PR2.
+- `wiki/sources/**`, governed fixed-path artifacts (`wiki/index.md`, `wiki/log.md`, `wiki/status.md`, `wiki/open-questions.md`, `wiki/backlog.md`), and `wiki/reports/**` are explicit-excluded from registry items. Sources' content hashes still appear in the top-level `source_fingerprints` map so downstream items can detect source-change-driven staleness; the other excluded surfaces have their own governance.
+- Rename/move: keep `item_key`, update `output_path`, append previous path to `path_aliases`. Meaningful only for entities and concepts; analyses cannot be renamed without changing identity (filename includes the fingerprint).
 - One-source-to-many-output and many-source-to-one-output cases must be represented explicitly through dependency fingerprints.
 - On key collision or ambiguous mapping, fail closed and require manual resolution before advancing state.
 
@@ -88,34 +111,67 @@ If a run updates both wiki artifacts and checkpoint state, lock ordering is dete
 - Leave ambiguous or contradictory cases out of the bootstrap set and flag them for manual resolution.
 - This keeps the registry trustworthy while still letting the next run resume from the latest proven stage.
 
-## Phases
+## Implementation plan
 
-1. Draft ADR and contract together: decision, alternatives, migration, rollback, and operational consequences. Document infrastructure_revalidation trigger model and its interaction with checkpoint state.
-2. Define checkpoint schema, identity model, lock ordering, and legal state transitions. Account for runs triggered by different sources (intake_driven vs. infrastructure_revalidation) and their fingerprint contexts.
-3. Add write-surface matrix entries and runtime guardrails for checkpoint read/write paths. Define allowed writers per trigger type and phase.
-4. Bootstrap current generated artifacts into the registry (dry-run + apply) with explicit reconciliation reporting.
-5. Wire resume and revalidation logic (intake_driven automatic run + infrastructure_revalidation trigger + manual_rescan). Ensure each trigger type correctly classifies stale items and skips non-applicable recovery steps.
-6. Add operator-facing progress summary in governed status/report artifacts only.
-7. Land tests and docs before enabling checkpoint writes in CI.
+The canonical implementation plan is six PRs in strict linear merge order, each on its own branch off `main`. Every PR must pass pre-commit hooks, post-commit CI checks (including the `--cov-fail-under=90` gate), and pre-merge cross-functional review before merge.
 
-## Verification plan (required for implementation)
+1. **PR1 — `checkpoint/01-adr-reconciliation`.** Amend ADR-026 in place to reflect the three-value trigger enum and reference ADR-027 (Status → `Accepted — extended by ADR-027`; new `## Amendment`, `## Migration`, and `## Rollback` sections); update `docs/decisions/README.md` row; land the previously-missing `docs/architecture.md` and `docs/mvp-runbook.md` cascade items called out by the research validation report.
+2. **PR2 — `checkpoint/02-extract-analysis-fingerprint`.** Refactor `scripts/kb/persist_query._analysis_relative_path` to call a new public `analysis_fingerprint()` helper. Pure extraction; no behavior change. Provides the canonical identifier formula the checkpoint code reuses for `wiki/analyses/` items.
+3. **PR3 — `checkpoint/03-schema-contract`.** Author `schema/wiki-processing-checkpoint-registry-contract.md` with the full normative schema (per-artifact-type identity table, `source_fingerprints` map, batch + item state machines, trigger × transition matrix, bootstrap classification rules, retention thresholds, embedded operator-snapshot rendering section).
+4. **PR4 — `checkpoint/04-contracts-and-enums`.** Add `CHECKPOINT_REGISTRY_LOCK_PATH`, `wiki-processing-checkpoint-registry` `GovernedArtifactContract` entry, `TriggerType`/`ArtifactType` enums, `DEPENDENCY_FINGERPRINT_SOURCES` map, and `CheckpointRetentionThresholds` dataclass to `scripts/kb/contracts.py`. Triggers the contract-test cascades in `tests/kb/test_contracts.py` and a new partial `test_checkpoint_contract_alignment.py`.
+5. **PR5 — `checkpoint/05-runtime-and-governance`.** Implement `scripts/kb/checkpoint_registry.py` (bootstrap + mutate + verify modes) and `scripts/kb/checkpoint_status_render.py`; refactor `synthesize_combined.run()` to accept `lock_already_held: bool = False`; add 4 new test files (`test_checkpoint_registry.py`, `test_checkpoint_bootstrap.py`, `test_checkpoint_status_render.py`, `test_checkpoint_contract_alignment.py`); add 3 write-surface matrix rows + amend `sync-knowledgebase-state` row in `AGENTS.md`; update `docs/ideas/wiki-curation-agent-framework.md` FRAMEWORK_BOUNDARY_DOCS entrypoint list verbatim; add `scripts/hooks/check_checkpoint_registry_json.py` pre-commit hook.
+6. **PR6 — `checkpoint/06-ci-wiring-and-bootstrap`.** Wire CI-3 to invoke `checkpoint_registry.py --mutate` and `checkpoint_status_render.py` per batch; required runbook sequence: dry-run bootstrap → review reconciliation report → operator confirmation → `--bootstrap --apply --approval approved`; commit initial registry JSON.
+
+PR1-PR2 are doc/refactor PRs (low risk, single reviewer + `documentation-engineer`). PR3 requires `documentation-engineer` review. PR4 requires `code-reviewer` + `test-engineer` + `documentation-engineer` review. PR5 and PR6 additionally require `security-auditor` review per the repo's post-implementation rule.
+
+## Verification plan
+
+Per-PR baseline (runs unchanged from existing CI):
 
 - `python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py`
-- `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_skill_wrappers`
-- `python3 -m pytest tests/kb/`
+- `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_framework_write_surface_matrix tests.kb.test_skill_wrappers`
+- `python3 -m pytest tests/kb/ -q --cov=scripts/kb --cov-fail-under=90`
 
-Implementation acceptance must include explicit tests for:
+Test files added in PR5 (pytest style per adjacent `tests/drive_monitor/` and `tests/github_monitor/` precedent):
 
-- interrupted-run resume behavior
-- stage-by-stage bootstrap classification against expected outputs/fingerprints
-- stale-item revalidation detection
-- lock contention/failure fail-closed behavior
-- rename/move continuity via `item_key` + `path_aliases`
-- bootstrap idempotency and replay safety
+- `tests/kb/test_checkpoint_registry.py` — interrupted-run resume; stale-item revalidation; lock contention/fail-closed; rename/move continuity via `item_key` + `path_aliases`; 1-hour stale timeout; atomic-replace rollback; legal/illegal transitions per the trigger × transition matrix.
+- `tests/kb/test_checkpoint_bootstrap.py` — per-artifact-type classification; bootstrap idempotency and replay safety; canonical JSON output; collision detection; `--force-rebootstrap` lock guard; reconciliation report shape; `--dry-run-report` drift detection.
+- `tests/kb/test_checkpoint_status_render.py` — renderer determinism (snapshot tests); frontmatter machine-fields; rollup table correctness; bounded recent-batches list; empty-registry rendering; threshold-breach annotations.
+- `tests/kb/test_checkpoint_contract_alignment.py` — governed-artifact entry present; lock in `GOVERNANCE_LOCK_FILES`; matrix rows declared; `DEPENDENCY_FINGERPRINT_SOURCES` symmetric with CI-3 push-trigger allowlist; trigger and artifact-type enum completeness; retention-threshold sync between contract doc and code.
+
+Test files amended in PR4/PR5 (contract-test cascades):
+
+- `tests/kb/test_contracts.py` — `GOVERNED_ARTIFACT_IDS` and `GOVERNED_ARTIFACT_PATHS` expected tuples must include the checkpoint registry entry.
+- `tests/kb/test_framework_write_surface_matrix.py` — `EXPECTED_WRITE_SURFACE_MATRIX_ROWS` dict must include three new rows (bootstrap, mutate, status renderer).
+- `tests/kb/test_framework_contracts.py` — `test_boundary_docs_list_same_execution_surface` must include the new `scripts/kb/checkpoint_*.py` entrypoints verbatim in `docs/ideas/wiki-curation-agent-framework.md`.
 
 ## Documentation cascade (implementation checklist)
 
-- Add/update the relevant row(s) in `AGENTS.md` write-surface matrix.
-- Add ADR in `docs/decisions/ADR-*.md` and update `docs/decisions/README.md`.
-- Update `docs/architecture.md` for checkpoint lifecycle and lock ordering.
-- Update `docs/mvp-runbook.md` operator runbooks for manual rescan and checkpoint recovery.
+ADR work (PR1):
+
+- [x] ADR-026 published (2026-05-31).
+- [x] ADR-027 published (2026-06-02) — documents `infrastructure_revalidation` trigger model.
+- [x] `docs/decisions/README.md` indexes both ADRs.
+- [ ] ADR-026 amended in place: `Status: Accepted — extended by ADR-027` plus `## Amendment` section codifying the three-value trigger enum (`intake_driven`, `infrastructure_revalidation`, `manual_rescan` — lowercase snake_case JSON strings; `StrEnum` Python representation per `scripts/kb/contracts.py` precedent).
+- [ ] ADR-026 gains `## Migration` and `## Rollback` headings to match ADR-027 structure and the original Phase 1 ADR requirement.
+- [ ] `docs/decisions/README.md` row for ADR-026 updated to match new status (enforced by pre-commit hook `check_adr_cross_ref.py`).
+
+Architecture and runbook cascade items (PR1, identified by the research validation report as missing):
+
+- [ ] `docs/architecture.md` updated to document checkpoint lifecycle and lock ordering.
+- [ ] `docs/mvp-runbook.md` updated with: manual rescan procedure, checkpoint recovery procedure (per the rollback-scenarios decision), required bootstrap dry-run-then-apply sequence, and `gh run list --workflow=ci-3-pr-producer.yml --status in_progress` reference for the lock-unavailable case.
+
+Schema and surface cascade (PR3-PR5):
+
+- [ ] `schema/wiki-processing-checkpoint-registry-contract.md` authored (PR3).
+- [ ] `schema/CONTEXT.md` File Roles list adds the new contract; `last_updated` bumped.
+- [ ] `scripts/kb/CONTEXT.md` `last_updated` bumped when checkpoint modules land in `scripts/kb/`.
+- [ ] 3 new rows added to `AGENTS.md` write-surface matrix: `scripts/kb/checkpoint_registry.py` bootstrap mode, mutate mode, and `scripts/kb/checkpoint_status_render.py` (PR5).
+- [ ] `sync-knowledgebase-state` matrix row's Schema/artifact owners column extended to cite the new contract (PR5).
+- [ ] `docs/ideas/wiki-curation-agent-framework.md` FRAMEWORK_BOUNDARY_DOCS entrypoint list extended verbatim with the new `scripts/kb/checkpoint_*.py` entrypoints — required by `tests/kb/test_framework_contracts.py::test_boundary_docs_list_same_execution_surface` (literal `assertIn`).
+
+Related repo-wide backlog (not blocking this feature):
+
+- [#181](https://github.com/wryenmeek/knowledgebase/issues/181) — pytest framework formalization + CI ratchet.
+- [#182](https://github.com/wryenmeek/knowledgebase/issues/182) — `--approval` flag pattern reconsideration.
+- [#183](https://github.com/wryenmeek/knowledgebase/issues/183) — lock holder-PID tracking for better lock-unavailable UX.
