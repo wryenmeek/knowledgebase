@@ -150,14 +150,14 @@ ADR work (PR1):
 - [x] ADR-026 published (2026-05-31).
 - [x] ADR-027 published (2026-06-02) — documents `infrastructure_revalidation` trigger model.
 - [x] `docs/decisions/README.md` indexes both ADRs.
-- [ ] ADR-026 amended in place: `Status: Accepted — extended by ADR-027` plus `## Amendment` section codifying the three-value trigger enum (`intake_driven`, `infrastructure_revalidation`, `manual_rescan` — lowercase snake_case JSON strings; `StrEnum` Python representation per `scripts/kb/contracts.py` precedent).
-- [ ] ADR-026 gains `## Migration` and `## Rollback` headings to match ADR-027 structure and the original Phase 1 ADR requirement.
-- [ ] `docs/decisions/README.md` row for ADR-026 updated to match new status (enforced by pre-commit hook `check_adr_cross_ref.py`).
+- [x] ADR-026 amended in place: `Status: Accepted — extended by ADR-027` plus `## Amendment` section codifying the three-value trigger enum (`intake_driven`, `infrastructure_revalidation`, `manual_rescan` — lowercase snake_case JSON strings; `StrEnum` Python representation per `scripts/kb/contracts.py` precedent).
+- [x] ADR-026 gains `## Migration` and `## Rollback` headings to match ADR-027 structure and the original Phase 1 ADR requirement.
+- [x] `docs/decisions/README.md` row for ADR-026 updated to match new status (enforced by pre-commit hook `check_adr_cross_ref.py`).
 
 Architecture and runbook cascade items (PR1, identified by the research validation report as missing):
 
-- [ ] `docs/architecture.md` updated to document checkpoint lifecycle and lock ordering.
-- [ ] `docs/mvp-runbook.md` updated with: manual rescan procedure, checkpoint recovery procedure (per the rollback-scenarios decision), required bootstrap dry-run-then-apply sequence, and `gh run list --workflow=ci-3-pr-producer.yml --status in_progress` reference for the lock-unavailable case.
+- [x] `docs/architecture.md` updated to document checkpoint lifecycle and lock ordering (forward-looking until PR2/PR3 land).
+- [x] `docs/mvp-runbook.md` updated with: manual rescan procedure, checkpoint recovery procedure (per the rollback-scenarios decision), required bootstrap dry-run-then-apply sequence, and `gh run list --workflow=ci-3-pr-producer.yml --status in_progress` reference for the lock-unavailable case (all sub-procedures marked forward-looking until PR3/PR4 land).
 
 Schema and surface cascade (PR2-PR3):
 

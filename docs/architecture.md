@@ -254,13 +254,15 @@ Operators can validate the landed framework with these repo-local entrypoints:
 - Raw immutability: `raw/processed/**` must not be mutated after ingest.
 - Ingest-time SourceRefs may use provisional placeholder git SHAs; only reconciled commit-bound SourceRefs whose `git_sha` resolves to a real revision containing the cited artifact bytes count as authoritative provenance.
 - Concurrency guard: workflow-level concurrency group plus local lock file (`wiki/.kb_write.lock`).
-- Checkpoint registry lock: `raw/.wiki-processing-checkpoint.lock` guards
-  writes to `raw/wiki-processing/wiki-processing-checkpoint-registry.json`
-  (ADR-026). Fails closed on contention or acquisition failure.
-- Checkpoint lock ordering: any run that updates both wiki content and
-  checkpoint state acquires `wiki/.kb_write.lock` first, then
-  `raw/.wiki-processing-checkpoint.lock`. Reverse order is a deadlock
-  hazard and is rejected by the deterministic execution surface.
+- Checkpoint registry lock (forward-looking — runtime lands with PR3):
+  `raw/.wiki-processing-checkpoint.lock` *will* guard writes to
+  `raw/wiki-processing/wiki-processing-checkpoint-registry.json` (ADR-026).
+  Failure mode is fail-closed on contention or acquisition failure.
+- Checkpoint lock ordering (forward-looking — runtime lands with PR3): any
+  run that updates both wiki content and checkpoint state *will* acquire
+  `wiki/.kb_write.lock` first, then `raw/.wiki-processing-checkpoint.lock`.
+  Reverse order is a deadlock hazard and *will be* rejected by the
+  deterministic execution surface.
 - **`wiki/log.md` append-only guardrail:** all governed surfaces must append-only; the sole declared exception is `scripts/init.py --fresh`, which performs a full overwrite as part of a clean-slate template reset. This exception is documented in `AGENTS.md` and is intentional.
 - Fail-closed behavior: missing prerequisites, permission mismatches, or lock contention stop writes.
 - Policy-gated query persistence: write only when `auto_persist_when_high_value` criteria pass.
@@ -281,9 +283,14 @@ require documented rationale.
 
 ## Wiki processing checkpoint registry
 
-The wiki processing pipeline maintains a governed checkpoint registry under
-`raw/` so partial fail-closed runs can resume and changed outputs can be
-re-evaluated without storing workflow state in topical wiki content. The
+> **Forward-looking.** The schema contract (PR2) and runtime (PR3) are not
+> yet on disk. The table below identifies which surfaces exist today and
+> which are deferred to PR2/PR3. Operators reading this section should
+> treat any present-tense description as the post-PR3 target state.
+
+The wiki processing pipeline *will* maintain a governed checkpoint registry
+under `raw/` so partial fail-closed runs can resume and changed outputs can
+be re-evaluated without storing workflow state in topical wiki content. The
 registry is observational — no checkpoint entry can authorize a write that
 governance would otherwise block.
 
@@ -294,7 +301,7 @@ governance would otherwise block.
 | Runtime entrypoint | `scripts/kb/checkpoint_registry.py` (authored in PR3) |
 | Dedicated lock | `raw/.wiki-processing-checkpoint.lock` |
 | Lock order with wiki writes | `wiki/.kb_write.lock` first, then the checkpoint lock |
-| Operator snapshot | `wiki/status.md` via `sync-knowledgebase-state` |
+| Operator snapshot | `wiki/status.md` via `sync-knowledgebase-state` (publisher exists; checkpoint payload lands PR3) |
 | Trigger model | `intake_driven`, `infrastructure_revalidation`, `manual_rescan` (ADR-027) |
 
 The registry tracks both batch-level state (`batch_id`, `trigger`,

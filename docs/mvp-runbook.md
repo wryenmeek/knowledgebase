@@ -322,14 +322,15 @@ sequence:
    `sync-knowledgebase-state` publisher gains checkpoint fields
    (`batch_id`, `status`, `trigger`, `error_summary`) in PR3; today's
    `wiki/status.md` does not carry them yet.
-2. Inspect the raw registry at
+2. (PR3+) Inspect the raw registry at
    `raw/wiki-processing/wiki-processing-checkpoint-registry.json` for
    the failing item's `last_error`, `status`, and `last_attempted_at`
-   fields.
+   fields. The registry file does not exist until PR3 lands.
 3. Resolve the underlying cause (validator failure, write denial, schema
    mismatch, lock contention).
-4. Run a manual rescan (above) — `stale` and `failed` items are
+4. (PR3+) Run a manual rescan (above) — `stale` and `failed` items are
    re-claimed by the next batch under deterministic transition rules.
+   Requires `scripts/kb/checkpoint_registry.py` (PR3).
 
 The registry is the source of truth; `wiki/status.md` is a derived
 snapshot.
@@ -341,6 +342,9 @@ sequence is dry-run, review the reconciliation report, operator
 confirmation, then apply:
 
 ```bash
+# PR3 entrypoint (forward-looking) — scripts/kb/checkpoint_registry.py
+# does not yet exist; bootstrap is exercisable only after PR3 lands.
+
 # 1. Dry-run bootstrap — emits the reconciliation report without writing
 python3 scripts/kb/checkpoint_registry.py --bootstrap --dry-run
 
@@ -358,7 +362,11 @@ Ambiguous or contradictory items are left out of the bootstrap set and
 require manual resolution before they can be tracked. See ADR-026 §
 Bootstrap and recovery.
 
-### Lock-unavailable: `raw/.wiki-processing-checkpoint.lock`
+### Lock-unavailable: `raw/.wiki-processing-checkpoint.lock` (PR4+)
+
+> **Forward-looking.** The lock first becomes observable when CI-3 wiring
+> lands in PR4. Today the lock file does not exist and no script attempts
+> to acquire it.
 
 If the checkpoint script reports
 `reason_code=lock_unavailable` for `raw/.wiki-processing-checkpoint.lock`,
@@ -366,6 +374,7 @@ do **not** remove the lock blindly. The lock may be held by an active
 CI-3 run. First, list active CI-3 runs:
 
 ```bash
+# PR4+ runbook step — CI-3 invokes the checkpoint runtime starting in PR4.
 gh run list --workflow=ci-3-pr-producer.yml --status in_progress
 ```
 
