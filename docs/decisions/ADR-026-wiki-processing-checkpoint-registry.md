@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted — extended by ADR-027
 
 ## Date
 
@@ -61,7 +61,7 @@ The registry tracks both batch-level and item-level recovery state.
 Batch fields:
 
 - `batch_id`
-- `trigger` (`automatic` or `manual_rescan`)
+- `trigger` (`automatic` or `manual_rescan`) — superseded; see § Amendment for the authoritative three-value enum
 - `started_at`
 - `finished_at`
 - `status` (`running`, `completed`, `failed`, `partial`)
@@ -217,6 +217,53 @@ Item fields:
   canonical identity rules.
 - Batch records are retained indefinitely unless a later ADR defines a separate
   archival policy.
+
+## Amendment
+
+- Date: 2026-06-07.
+- What changed: the original Decision `### State model` lists `trigger`
+  values as `(automatic or manual_rescan)`. ADR-027 introduced a third
+  trigger value, `infrastructure_revalidation`, and renamed `automatic` to
+  `intake_driven`. The authoritative trigger enum is now the three-value set:
+  `intake_driven`, `infrastructure_revalidation`, and `manual_rescan`, written
+  as lowercase snake_case strings in JSON and represented as a `StrEnum` in
+  Python per the precedent in `scripts/kb/contracts.py`.
+- What did not change: the rest of the State model, including batch and item
+  fields, item-level state transitions, identity rules, locking decisions, the
+  retention rule, and the operator snapshot via `wiki/status.md`. In
+  `### State transitions`, the descriptor "automatic run" now refers to any
+  non-manual trigger (`intake_driven` or `infrastructure_revalidation`); the
+  transition graph itself is unchanged.
+- Cross-reference: see ADR-027 for the trigger model rationale and CI-3 trigger
+  paths.
+
+## Migration
+
+- New batch records written by `scripts/kb/checkpoint_registry.py` in PR3 use
+  the three-value enum from initial bootstrap.
+- No legacy registry records exist today because the registry artifact has not
+  been written yet, so no rewrite of historical batch JSON is required.
+- If any pre-amendment batch records ever appear, for example from a vendored
+  snapshot, bootstrap performs a one-shot rewrite from `trigger: automatic` to
+  `trigger: intake_driven`. The bootstrap reconciliation report must list every
+  normalized record before any registry write.
+- The CI-3 workflow's path-filter allowlist for `infrastructure_revalidation`
+  runs is the authoritative dependency set. ADR-027 documents these paths, and
+  the schema contract in PR2 cross-references the same allowlist via
+  `DEPENDENCY_FINGERPRINT_SOURCES`.
+
+## Rollback
+
+- Remove the `infrastructure_revalidation` value from `scripts/kb/contracts.py`
+  `TriggerType`, then rename `intake_driven` back to `automatic` in code and in
+  the schema contract.
+- Revert the CI-3 `push:` trigger added by ADR-027, specifically the `push:`
+  section in `.github/workflows/ci-3-pr-producer.yml`.
+- Rewrite registry records with `trigger: intake_driven` to
+  `trigger: automatic`. Reject records with `trigger: infrastructure_revalidation`
+  for manual triage because the two-value enum has no equivalent.
+- Rollback impact: infrastructure changes lose end-to-end auto-validation;
+  manual `workflow_dispatch` remains the recovery path.
 
 ## References
 
