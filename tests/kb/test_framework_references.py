@@ -87,6 +87,23 @@ OPTIONAL_GOVERNED_ARTIFACT_TARGETS = {
     "wiki/backlog.md",
     "wiki/status.md",
 }
+# Narrow allowlist of paths that audited docs intentionally reference forward
+# during a multi-PR rollout. Each entry MUST be removed once the PR that lands
+# the file is merged; the self-cleanup guard test below fails as soon as the
+# allowlisted path appears on disk, forcing the entry to be removed in the same
+# PR that creates the file.
+FORWARD_REFERENCED_PATHS: frozenset[str] = frozenset(
+    {
+        # Lands in PR2 of the wiki-processing checkpoint registry rollout
+        # (issue #186). docs/architecture.md cites this contract path in PR1.
+        "schema/wiki-processing-checkpoint-registry-contract.md",
+        # Lands in PR3 of the wiki-processing checkpoint registry rollout
+        # (issue #187). docs/architecture.md and docs/mvp-runbook.md cite this
+        # runtime entrypoint (both as a backticked path and in example
+        # python3 commands) in PR1.
+        "scripts/kb/checkpoint_registry.py",
+    }
+)
 
 
 class FrameworkReferenceAuditTests(unittest.TestCase):
@@ -109,6 +126,8 @@ class FrameworkReferenceAuditTests(unittest.TestCase):
                     continue
                 if target in OPTIONAL_GOVERNED_ARTIFACT_TARGETS:
                     continue
+                if target in FORWARD_REFERENCED_PATHS:
+                    continue
                 if target not in {"AGENTS.md", "README.md"} and Path(target).suffix not in {
                     ".md",
                     ".py",
@@ -121,6 +140,8 @@ class FrameworkReferenceAuditTests(unittest.TestCase):
         for path in MARKDOWN_FILES:
             text = path.read_text(encoding="utf-8")
             for command_target in PYTHON_COMMAND_RE.findall(text):
+                if command_target in FORWARD_REFERENCED_PATHS:
+                    continue
                 resolved = self._resolve_command_target(command_target)
                 with self.subTest(
                     file=path.relative_to(REPO_ROOT).as_posix(),
@@ -166,6 +187,26 @@ class FrameworkReferenceAuditTests(unittest.TestCase):
                 self.assertNotIn("raw/inbox/SPEC.md", text)
                 if "SPEC.md" in text:
                     self.assertIn("raw/processed/SPEC.md", text)
+
+    def test_forward_referenced_paths_have_not_landed_yet(self) -> None:
+        """Force cleanup of FORWARD_REFERENCED_PATHS entries once their files land.
+
+        Each entry in FORWARD_REFERENCED_PATHS exists to skip the resolution
+        checks above for paths that are documented in PR1 but authored in a
+        later PR. When the later PR lands the file, the allowlist entry must
+        be removed in the same PR — otherwise the entry becomes dead code that
+        silently hides future broken references at the same path.
+        """
+        for forward_path in FORWARD_REFERENCED_PATHS:
+            with self.subTest(forward_path=forward_path):
+                self.assertFalse(
+                    (REPO_ROOT / forward_path).exists(),
+                    msg=(
+                        f"{forward_path} now exists on disk. Remove it from "
+                        "FORWARD_REFERENCED_PATHS in tests/kb/test_framework_references.py "
+                        "so the normal resolution checks audit it like any other path."
+                    ),
+                )
 
     def _resolve_doc_target(self, source_path: Path, target: str) -> Path:
         if target.startswith("/"):
