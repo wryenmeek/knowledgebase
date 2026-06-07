@@ -5,6 +5,16 @@
 **Subject:** `docs/ideas/wiki-processing-checkpoint-registry.md`
 **Method:** primary-source verification with four parallel explore subagents (ADR/doc cascade, runtime/code, schema/matrix, tests/CI) plus direct inspection of ADR-026, ADR-027, README, and the CI-3 workflow.
 
+> **Baseline report — point-in-time snapshot (2026-06-04).** This
+> document captures the codebase state **before PR1 of the C-prime 4-PR
+> plan landed**. Items 1 and 2 in the Headline ("Documentation cascade
+> items never landed" and "Trigger-model drift between ADR-026 and the
+> idea doc") were resolved by PR #184 (this PR). The findings below
+> remain accurate as historical evidence for *why* the cascade work was
+> scoped; they should not be read as a description of current state.
+> See `docs/ideas/wiki-processing-checkpoint-registry.md` § Implementation
+> plan for what PR1 closed and what PR2/PR3/PR4 still address.
+
 ---
 
 ## Headline
