@@ -317,8 +317,11 @@ python3 scripts/kb/checkpoint_registry.py --mutate \
 After a CI-3 partial-failure or fail-closed run, recover with this
 sequence:
 
-1. Inspect the operator snapshot at `wiki/status.md` for the most
-   recent batch's `status` and `error_summary`.
+1. (PR3+) Inspect the operator snapshot at `wiki/status.md` for the
+   most recent batch's `status` and `error_summary`. The
+   `sync-knowledgebase-state` publisher gains checkpoint fields
+   (`batch_id`, `status`, `trigger`, `error_summary`) in PR3; today's
+   `wiki/status.md` does not carry them yet.
 2. Inspect the raw registry at
    `raw/wiki-processing/wiki-processing-checkpoint-registry.json` for
    the failing item's `last_error`, `status`, and `last_attempted_at`

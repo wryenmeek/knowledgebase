@@ -61,7 +61,7 @@ The registry tracks both batch-level and item-level recovery state.
 Batch fields:
 
 - `batch_id`
-- `trigger` (`automatic` or `manual_rescan`)
+- `trigger` (`automatic` or `manual_rescan`) — superseded; see § Amendment for the authoritative three-value enum
 - `started_at`
 - `finished_at`
 - `status` (`running`, `completed`, `failed`, `partial`)
@@ -230,7 +230,10 @@ Item fields:
   Python per the precedent in `scripts/kb/contracts.py`.
 - What did not change: the rest of the State model, including batch and item
   fields, item-level state transitions, identity rules, locking decisions, the
-  retention rule, and the operator snapshot via `wiki/status.md`.
+  retention rule, and the operator snapshot via `wiki/status.md`. In
+  `### State transitions`, the descriptor "automatic run" now refers to any
+  non-manual trigger (`intake_driven` or `infrastructure_revalidation`); the
+  transition graph itself is unchanged.
 - Cross-reference: see ADR-027 for the trigger model rationale and CI-3 trigger
   paths.
 

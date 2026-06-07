@@ -59,7 +59,7 @@ If a run updates both wiki artifacts and checkpoint state, lock ordering is dete
 
 ## Registry model
 
-> The fields below are the operative contract surface. The canonical, normative schema is authored in `schema/wiki-processing-checkpoint-registry-contract.md` (PR3 of the implementation plan), which also defines the top-level `source_fingerprints` map (path → sha256) referenced by `item.source_fingerprint`.
+> The fields below are the operative contract surface. The canonical, normative schema is authored in `schema/wiki-processing-checkpoint-registry-contract.md` (PR2 of the implementation plan), which also defines the top-level `source_fingerprints` map (path → sha256) referenced by `item.source_fingerprint`.
 
 ### Batch-level fields
 
