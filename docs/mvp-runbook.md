@@ -288,6 +288,91 @@ approved, keep these existing MVP suites green:
 - Broad regression suite:
   `python3 -m pytest tests/ -q`
 
+## Wiki processing checkpoint registry (forward-looking)
+
+The wiki processing checkpoint registry (ADR-026, ADR-027) lands across
+four PRs per the Path C-prime plan in
+[`docs/ideas/wiki-processing-checkpoint-registry.md`](ideas/wiki-processing-checkpoint-registry.md).
+The runtime script `scripts/kb/checkpoint_registry.py` lands in PR3 and
+CI-3 wiring lands in PR4. The procedures below document the operator
+path that those PRs enable; they are not yet executable today.
+
+### Manual rescan
+
+A manual rescan recomputes item state and reruns failed/stale entries
+under operator control. Run from the repo root:
+
+```bash
+# PR3 entrypoint (forward-looking)
+python3 scripts/kb/checkpoint_registry.py --mutate \
+  --trigger manual_rescan \
+  --approval approved
+```
+
+`manual_rescan` is the only trigger that can move items between
+`skipped` and `pending`. See ADR-026 § State transitions.
+
+### Checkpoint recovery procedure
+
+After a CI-3 partial-failure or fail-closed run, recover with this
+sequence:
+
+1. Inspect the operator snapshot at `wiki/status.md` for the most
+   recent batch's `status` and `error_summary`.
+2. Inspect the raw registry at
+   `raw/wiki-processing/wiki-processing-checkpoint-registry.json` for
+   the failing item's `last_error`, `status`, and `last_attempted_at`
+   fields.
+3. Resolve the underlying cause (validator failure, write denial, schema
+   mismatch, lock contention).
+4. Run a manual rescan (above) — `stale` and `failed` items are
+   re-claimed by the next batch under deterministic transition rules.
+
+The registry is the source of truth; `wiki/status.md` is a derived
+snapshot.
+
+### Bootstrap dry-run-then-apply sequence
+
+Bootstrap is an explicit mode (never auto-on-first-write). The required
+sequence is dry-run, review the reconciliation report, operator
+confirmation, then apply:
+
+```bash
+# 1. Dry-run bootstrap — emits the reconciliation report without writing
+python3 scripts/kb/checkpoint_registry.py --bootstrap --dry-run
+
+# 2. Review the reconciliation report (item-by-item classification plus
+#    any ambiguous cases) printed to stdout.
+
+# 3. Operator confirms the report is correct.
+
+# 4. Apply bootstrap with explicit approval
+python3 scripts/kb/checkpoint_registry.py --bootstrap --apply \
+  --approval approved
+```
+
+Ambiguous or contradictory items are left out of the bootstrap set and
+require manual resolution before they can be tracked. See ADR-026 §
+Bootstrap and recovery.
+
+### Lock-unavailable: `raw/.wiki-processing-checkpoint.lock`
+
+If the checkpoint script reports
+`reason_code=lock_unavailable` for `raw/.wiki-processing-checkpoint.lock`,
+do **not** remove the lock blindly. The lock may be held by an active
+CI-3 run. First, list active CI-3 runs:
+
+```bash
+gh run list --workflow=ci-3-pr-producer.yml --status in_progress
+```
+
+If no run is active and the lock is stale (no in-progress CI-3 job),
+remove the lock file and retry. If a run is active, wait for it to
+complete (lock is typically held for ~1 second per batch under the
+single-lock-hold-long pattern; see `synthesize_combined.py` precedent).
+The repo-wide convention for holder-PID tracking is filed as backlog
+issue [#183](https://github.com/wryenmeek/knowledgebase/issues/183).
+
 ## Exit semantics and failure handling
 
 - **Fail-closed default:** any non-zero exit from preflight/index/lint/tests is a stop signal.
