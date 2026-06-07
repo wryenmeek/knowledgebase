@@ -254,6 +254,13 @@ Operators can validate the landed framework with these repo-local entrypoints:
 - Raw immutability: `raw/processed/**` must not be mutated after ingest.
 - Ingest-time SourceRefs may use provisional placeholder git SHAs; only reconciled commit-bound SourceRefs whose `git_sha` resolves to a real revision containing the cited artifact bytes count as authoritative provenance.
 - Concurrency guard: workflow-level concurrency group plus local lock file (`wiki/.kb_write.lock`).
+- Checkpoint registry lock: `raw/.wiki-processing-checkpoint.lock` guards
+  writes to `raw/wiki-processing/wiki-processing-checkpoint-registry.json`
+  (ADR-026). Fails closed on contention or acquisition failure.
+- Checkpoint lock ordering: any run that updates both wiki content and
+  checkpoint state acquires `wiki/.kb_write.lock` first, then
+  `raw/.wiki-processing-checkpoint.lock`. Reverse order is a deadlock
+  hazard and is rejected by the deterministic execution surface.
 - **`wiki/log.md` append-only guardrail:** all governed surfaces must append-only; the sole declared exception is `scripts/init.py --fresh`, which performs a full overwrite as part of a clean-slate template reset. This exception is documented in `AGENTS.md` and is intentional.
 - Fail-closed behavior: missing prerequisites, permission mismatches, or lock contention stop writes.
 - Policy-gated query persistence: write only when `auto_persist_when_high_value` criteria pass.
@@ -271,6 +278,39 @@ require documented rationale.
 | `freshness_stale_days` | 90 | `check_doc_freshness.py --max-age-days`, `wiki-freshness.yml` | Pages not updated in 90+ days are flagged for review. Aligns with quarterly review cadence. |
 | `freshness_afk_threshold_days` | 180 | `classify_stale.py --afk-threshold-days`, `wiki-freshness.yml` | Pages stale 90–179 days likely need only metadata refresh (AFK-candidate). Pages ≥180 days may need content review and re-sourcing (HITL). The gap between 90 and 180 catches pages that are stale enough to notice but may still need editorial judgment. |
 | `missing_data_default_days` | 999 | `classify_stale.py` | Pages with missing `last_updated` frontmatter default to 999 days stale, classifying as HITL (deny-by-default). |
+
+## Wiki processing checkpoint registry
+
+The wiki processing pipeline maintains a governed checkpoint registry under
+`raw/` so partial fail-closed runs can resume and changed outputs can be
+re-evaluated without storing workflow state in topical wiki content. The
+registry is observational — no checkpoint entry can authorize a write that
+governance would otherwise block.
+
+| Aspect | Value |
+|---|---|
+| Registry artifact | `raw/wiki-processing/wiki-processing-checkpoint-registry.json` |
+| Schema contract | `schema/wiki-processing-checkpoint-registry-contract.md` (authored in PR2) |
+| Runtime entrypoint | `scripts/kb/checkpoint_registry.py` (authored in PR3) |
+| Dedicated lock | `raw/.wiki-processing-checkpoint.lock` |
+| Lock order with wiki writes | `wiki/.kb_write.lock` first, then the checkpoint lock |
+| Operator snapshot | `wiki/status.md` via `sync-knowledgebase-state` |
+| Trigger model | `intake_driven`, `infrastructure_revalidation`, `manual_rescan` (ADR-027) |
+
+The registry tracks both batch-level state (`batch_id`, `trigger`,
+`started_at`, `finished_at`, `status`, `input_fingerprint`,
+`error_summary`) and item-level state (`item_key`, `output_path`,
+`path_aliases`, `artifact_type`, `source_fingerprint`,
+`dependency_fingerprint`, `status`, `last_attempted_at`,
+`last_succeeded_at`, `last_error`, `last_successful_batch_id`). Identity
+keys follow the repository's canonical-identity rules (ADR-009); paths
+are mutable projections recorded in `path_aliases` on rename or move.
+
+Bootstrap is an explicit mode (never auto-on-first-write) and emits a
+reconciliation report before any registry write. See
+[`docs/ideas/wiki-processing-checkpoint-registry.md`](ideas/wiki-processing-checkpoint-registry.md)
+for the full Path C-prime implementation plan and ADR-026/ADR-027 for
+the canonical decisions.
 
 ## Decision records
 
@@ -301,3 +341,5 @@ Key architecture decisions are captured in ADRs:
 - [`ADR-023`](decisions/ADR-023-batch-query-persistence-design.md): batch query persistence design (single lock, partial failure, and size limits)
 - [`ADR-024`](decisions/ADR-024-synthesis-curator-stage-design.md): CI-3 synthesis curator stage design for entity/concept draft generation
 - [`ADR-025`](decisions/ADR-025-runtime-budget-contract-scope.md): runtime-budget contract scope and schema/workflow parity requirements
+- [`ADR-026`](decisions/ADR-026-wiki-processing-checkpoint-registry.md): wiki processing checkpoint registry for resumed and revalidated synthesis
+- [`ADR-027`](decisions/ADR-027-infrastructure-validation-trigger-model.md): infrastructure validation trigger model for CI-3
