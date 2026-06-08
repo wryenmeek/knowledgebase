@@ -196,6 +196,31 @@ class PersistQueryCliTests(RuntimeWorkspaceTestCase):
             persisted_fingerprint,
         )
 
+    def test_analysis_fingerprint_is_stable_under_source_reordering(self) -> None:
+        """analysis_fingerprint() must depend only on the source *set*.
+
+        The checkpoint registry derives wiki_analysis_page item identity from
+        this fingerprint, so two callers with the same query and the same
+        source set in different orders (or with duplicate entries) must
+        derive the same analysis page identity. This regression guards
+        against accidental reintroduction of caller-order dependence.
+        """
+        source_a = self._source("source-a", "a")
+        source_b = self._source("source-b", "b")
+        source_c = self._source("source-c", "c")
+        query = "which plans cover dialysis?"
+
+        ordered = persist_query.analysis_fingerprint(query, (source_a, source_b, source_c))
+        reversed_order = persist_query.analysis_fingerprint(
+            query, (source_c, source_b, source_a)
+        )
+        with_duplicates = persist_query.analysis_fingerprint(
+            query, (source_b, source_a, source_b, source_c, source_a)
+        )
+
+        self.assertEqual(ordered, reversed_order)
+        self.assertEqual(ordered, with_duplicates)
+
     def test_policy_miss_returns_no_write_policy_and_makes_no_changes(self) -> None:
         source_a = self._source("source-a", "a")
         before = self.snapshot_workspace()

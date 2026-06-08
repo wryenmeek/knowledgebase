@@ -94,9 +94,6 @@ OPTIONAL_GOVERNED_ARTIFACT_TARGETS = {
 # PR that creates the file.
 FORWARD_REFERENCED_PATHS: frozenset[str] = frozenset(
     {
-        # Lands in PR2 of the wiki-processing checkpoint registry rollout
-        # (issue #186). docs/architecture.md cites this contract path in PR1.
-        "schema/wiki-processing-checkpoint-registry-contract.md",
         # Lands in PR3 of the wiki-processing checkpoint registry rollout
         # (issue #187). docs/architecture.md and docs/mvp-runbook.md cite this
         # runtime entrypoint (both as a backticked path and in example

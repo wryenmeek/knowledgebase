@@ -74,7 +74,7 @@ map even when they are excluded from checkpoint `items`.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `batch_id` | string | Yes | Stable run identifier. Must be unique within `batches`. |
-| `trigger` | string enum | Yes | One of `intake_driven`, `infrastructure_revalidation`, or `manual_rescan`. |
+| `trigger` | string enum | Yes | One of `intake_driven`, `infrastructure_revalidation`, or `manual_rescan`. This three-value enum is the authoritative trigger vocabulary per ADR-026 § Amendment and ADR-027; the original ADR-026 Decision text listing `automatic` is superseded. |
 | `triggered_by` | string | Yes | Commit SHA, workflow run identifier, or operator-supplied trigger source for diagnostics. |
 | `started_at` | ISO 8601 string | Yes | Timestamp when the batch started. |
 | `finished_at` | ISO 8601 string or null | Yes | Timestamp when the batch reached a terminal batch status. `null` while running. |
@@ -95,7 +95,7 @@ map even when they are excluded from checkpoint `items`.
 | `status` | string enum | Yes | Item state. See Item state machine. |
 | `last_attempted_at` | ISO 8601 string or null | Yes | Last time a batch attempted this item. |
 | `last_succeeded_at` | ISO 8601 string or null | Yes | Last time the item completed successfully. |
-| `last_error` | string or null | Yes | Most recent processing error or manual retirement rationale. |
+| `last_error` | string or null | Yes | Most recent processing error or manual retirement rationale. Only the most recent error is retained; older errors are overwritten on each new attempt. |
 | `last_successful_batch_id` | string or null | Yes | Batch ID that last moved the item to `completed`. |
 
 ## Artifact identity
@@ -124,12 +124,13 @@ closed and require manual resolution before advancing affected item state.
 | `running` | `completed` | Every planned item reached a terminal successful or intentionally skipped state and no batch-level failure occurred. |
 | `running` | `partial` | At least one item completed, but at least one planned item remains non-terminal or failed. |
 | `running` | `failed` | Batch-level prerequisite, lock, schema, parse, provenance, or write failure prevents reliable continuation. |
-| `partial` | `running` | A later batch resumes remaining non-terminal items. |
-| `failed` | `running` | A later explicit retry starts from validated registry state. |
-| `completed` | `running` | A later batch starts because source or dependency fingerprints changed, or because an operator requested `manual_rescan`. |
 
-No runtime may silently rewrite a terminal batch record. Later work creates a new batch
-record and updates item state.
+`completed`, `partial`, and `failed` are terminal for the batch record they describe.
+No runtime may silently rewrite a terminal batch record, and no in-place transition
+back to `running` is permitted. Retry, resume, and rescan are represented by
+appending a new batch record with `status: running` (linked to prior batches via
+`triggered_by` or `error_summary` diagnostic text where useful) and updating only
+item-level state.
 
 ## Item state machine
 
@@ -141,7 +142,7 @@ record and updates item state.
 | `in_progress` | `failed` | Hard processing error, write denial, schema mismatch, deterministic validator failure, or rollback failure. |
 | `completed` | `stale` | Source or dependency fingerprints changed. |
 | `stale` | `in_progress` | A new automatic run or manual rescan takes over the item. |
-| `failed` | `in_progress` | A later retry explicitly attempts the item and preserves prior error history. |
+| `failed` | `in_progress` | A later retry explicitly attempts the item. The `last_error` field is overwritten with the new attempt's error (or cleared on success); only the most recent error is retained. |
 | `pending` | `skipped` | Manual policy or bootstrap classification marks the item intentionally retired or out of scope. |
 | `stale` | `skipped` | Manual policy marks the stale item intentionally retired or replaced. |
 | `skipped` | `pending` | Only `manual_rescan` may un-retire an item after operator review. |

@@ -155,8 +155,18 @@ def _slugify(normalized_query: str) -> str:
 
 
 def analysis_fingerprint(normalized_query: str, sources: Sequence[str]) -> str:
-    """Return the stable 16-character query analysis fingerprint."""
-    fingerprint_payload = "\n".join((normalized_query, *sources))
+    """Return the stable 16-character query analysis fingerprint.
+
+    Sources are sorted and deduplicated inside this function so that the
+    resulting fingerprint depends only on the *set* of source citations,
+    not on caller ordering or duplicate entries. The checkpoint registry
+    (``schema/wiki-processing-checkpoint-registry-contract.md``) ties
+    ``wiki_analysis_page`` item identity to this fingerprint, so two
+    callers passing the same query and the same source set in different
+    orders must derive the same analysis page identity.
+    """
+    normalized_sources = sorted(set(sources))
+    fingerprint_payload = "\n".join((normalized_query, *normalized_sources))
     return hashlib.sha256(fingerprint_payload.encode("utf-8")).hexdigest()[:16]
 
 
