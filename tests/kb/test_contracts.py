@@ -21,6 +21,7 @@ class SharedContractsTests(unittest.TestCase):
                 "github-source-registry",
                 "external-asset",
                 "rejection-record",
+                "wiki-processing-checkpoint-registry",
             ),
         )
         self.assertEqual(
@@ -36,7 +37,38 @@ class SharedContractsTests(unittest.TestCase):
                 "raw/github-sources",
                 "raw/assets",
                 "raw/rejected",
+                "raw/wiki-processing/wiki-processing-checkpoint-registry.json",
             ),
+        )
+
+    def test_checkpoint_registry_contract_and_lock_are_declared(self) -> None:
+        self.assertEqual(
+            contracts.CHECKPOINT_REGISTRY_LOCK_PATH,
+            "raw/.wiki-processing-checkpoint.lock",
+        )
+        self.assertIn(
+            ".wiki-processing-checkpoint.lock",
+            contracts.GOVERNANCE_LOCK_FILES,
+        )
+
+        contract = contracts.governed_artifact_contract(
+            "raw/wiki-processing/wiki-processing-checkpoint-registry.json"
+        )
+        self.assertIsNotNone(contract)
+        assert contract is not None
+        self.assertEqual(contract.artifact_id, "wiki-processing-checkpoint-registry")
+        self.assertEqual(
+            contract.schema_owner,
+            "schema/wiki-processing-checkpoint-registry-contract.md",
+        )
+        self.assertEqual(contract.lock_path, contracts.CHECKPOINT_REGISTRY_LOCK_PATH)
+        self.assertEqual(
+            contract.mutability,
+            contracts.ArtifactMutability.MUTABLE.value,
+        )
+        self.assertEqual(
+            contract.write_strategy,
+            contracts.ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK.value,
         )
 
     def test_governed_artifact_contract_by_pattern_matches_registry_files(self) -> None:
@@ -179,6 +211,10 @@ class SharedContractsTests(unittest.TestCase):
         self.assertEqual(
             contracts.REJECTION_REGISTRY_LOCK_PATH,
             "raw/.rejection-registry.lock",
+        )
+        self.assertEqual(
+            contracts.CHECKPOINT_REGISTRY_LOCK_PATH,
+            "raw/.wiki-processing-checkpoint.lock",
         )
 
     def test_reason_codes_include_spec_required_values(self) -> None:

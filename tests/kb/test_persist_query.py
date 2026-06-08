@@ -170,6 +170,32 @@ class PersistQueryCliTests(RuntimeWorkspaceTestCase):
         analysis_pages = list((self.wiki_root / "analyses").glob("*.md"))
         self.assertEqual(len(analysis_pages), 1)
 
+    def test_analysis_fingerprint_matches_persisted_path_fingerprint(self) -> None:
+        source_a = self._source("source-a", "a")
+        source_b = self._source("source-b", "b")
+        request = persist_query.PersistRequest(
+            normalized_query="which plans cover dialysis?",
+            summary="Dialysis coverage varies by plan and service context.",
+            confidence=4,
+            sources=tuple(sorted([source_a, source_b])),
+            unresolved_contradiction=False,
+            min_confidence=4,
+            min_sources=2,
+            updated_at="1970-01-01T00:00:00Z",
+            sensitivity="internal",
+            wiki_root=self.wiki_root,
+        )
+
+        analysis_path = persist_query._analysis_relative_path(request, self.workspace)  # noqa: SLF001
+        persisted_fingerprint = analysis_path.stem.rsplit("-", 1)[1]
+        self.assertEqual(
+            persist_query.analysis_fingerprint(
+                request.normalized_query,
+                request.sources,
+            ),
+            persisted_fingerprint,
+        )
+
     def test_policy_miss_returns_no_write_policy_and_makes_no_changes(self) -> None:
         source_a = self._source("source-a", "a")
         before = self.snapshot_workspace()
