@@ -75,6 +75,8 @@ WRITE_LOCK_PATH = "wiki/.kb_write.lock"
 GITHUB_SOURCES_LOCK_PATH = "raw/.github-sources.lock"
 REJECTION_REGISTRY_LOCK_PATH = "raw/.rejection-registry.lock"
 DRIVE_SOURCES_LOCK_PATH = "raw/.drive-sources.lock"
+# ADR-028 (pending) — instruction-locality ladder; sibling pattern per ADR-005 / ADR-013.
+CUSTOMIZATIONS_LOCK_PATH = ".github/.customizations.lock"
 
 # Exact basenames of all governance lock files. Derived from the path constants
 # above so that this frozenset stays in sync automatically (ADR-011: single
@@ -85,6 +87,7 @@ GOVERNANCE_LOCK_FILES: frozenset[str] = frozenset({
     _os.path.basename(GITHUB_SOURCES_LOCK_PATH),
     _os.path.basename(REJECTION_REGISTRY_LOCK_PATH),
     _os.path.basename(DRIVE_SOURCES_LOCK_PATH),
+    _os.path.basename(CUSTOMIZATIONS_LOCK_PATH),
 })
 
 class ArtifactMutability(StrEnum):
@@ -360,6 +363,7 @@ __all__ = [
     "TOKEN_PROFILE_IDS",
     "WRITE_ALLOWLIST_PATHS",
     "GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS",
+    "CUSTOMIZATIONS_LOCK_PATH",
     "GITHUB_SOURCES_LOCK_PATH",
     "DRIVE_SOURCES_LOCK_PATH",
     "DRIVE_MONITOR_WRITE_ALLOWLIST_PATHS",
