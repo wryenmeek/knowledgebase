@@ -46,7 +46,7 @@ FRAMEWORK_SKILLS: dict[str, dict[str, object]] = {
     "validate-wiki-governance": {"logic": True},
     "sync-knowledgebase-state": {"logic": True},
     "review-wiki-plan": {"logic": False, "classification": "Doc-only workflow"},
-    "audit-knowledgebase-workspace": {"logic": False, "classification": "Doc-only workflow"},
+    "audit-knowledgebase-workspace": {"logic": True, "classification": "Read-only scaffold"},
     "extract-entities-and-claims": {"logic": True, "classification": "read-only only"},
     "retrieve-from-index": {"logic": False, "classification": "Doc-only workflow"},
     "synthesize-cited-answer": {"logic": False, "classification": "Doc-only workflow"},
@@ -129,6 +129,17 @@ class FrameworkSkillTests(unittest.TestCase):
             with self.subTest(skill=skill_name):
                 self.assertEqual(frontmatter.get("name"), skill_name)
                 self.assertIn("Use when", frontmatter.get("description", ""))
+
+    def test_skill_category_frontmatter_uses_declared_values_when_present(self) -> None:
+        allowed_categories = {"kb-workflow", "dev-support"}
+        for skill_path in SKILLS_ROOT.glob("*/SKILL.md"):
+            frontmatter = parse_frontmatter_fields(
+                skill_path.read_text(encoding="utf-8"), subject="Skill file"
+            )
+            if "category" not in frontmatter:
+                continue
+            with self.subTest(skill=skill_path.parent.name):
+                self.assertIn(frontmatter["category"], allowed_categories)
 
     def test_skill_docs_include_overview_and_when_to_use_sections(self) -> None:
         for skill_name in FRAMEWORK_SKILLS:

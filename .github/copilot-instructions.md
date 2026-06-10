@@ -111,6 +111,7 @@ For heavy skills, enforce a delta-first retry rule:
 - Issue triage / classification → `triage-issue`
 - Research / comparative analysis / investigation → `verified-research`
 - Architecture improvement → `improve-codebase-architecture`
+- Workspace/framework audit or customization drift → `audit-knowledgebase-workspace`
 
 ## Quality and safety
 

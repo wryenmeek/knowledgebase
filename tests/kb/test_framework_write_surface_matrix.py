@@ -45,6 +45,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("schema/page-template.md", ".github/agents/quality-analyst.md"),
         "Hard-fail behavior": ("path escape", "invalid wiki path", "fail closed"),
     },
+    ".github/skills/audit-knowledgebase-workspace/logic/**": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "writes are forbidden"),
+        "Read-only / prerequisite paths": (".github/copilot-instructions.md", "AGENTS.md", ".github/skills/**", ".github/agents/**", ".github/hooks/**", "tests/kb/**"),
+        "Lock requirements": ("None", "forbidden", ".github/.customizations.lock"),
+        "Artifact / schema owners": (".github/skills/audit-knowledgebase-workspace/SKILL.md", "scripts/_optional_surface_common.py", "ADR-028"),
+        "Hard-fail behavior": ("unsupported mode", "unsupported approval", "missing repo root", "write attempt", "fail closed"),
+    },
     ".github/skills/context-engineering/logic/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None",),
