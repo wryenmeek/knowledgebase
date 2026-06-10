@@ -266,14 +266,46 @@ def test_instruction_path_with_backslash_component_exits_1(tmp_path: Path) -> No
     assert "invalid .github/instructions path" in result.stderr
 
 
-def test_matching_instruction_path_missing_from_index_exits_1(tmp_path: Path) -> None:
+def test_matching_instruction_path_missing_from_index_exits_0(tmp_path: Path) -> None:
+    """A path not in the git index represents a staged deletion (or an
+    invocation outside of pre-commit). gh PR #219 review: skip instead of
+    blocking, so ``git rm`` can complete on instruction files."""
     repo = _init_repo(tmp_path)
     rel_path = ".github/instructions/missing.instructions.md"
 
     result = _run_hook(repo, rel_path)
 
-    assert result.returncode == 1
-    assert "cannot read staged content" in result.stderr
+    assert result.returncode == 0
+    assert "cannot read staged content" not in result.stderr
+
+
+def test_staged_deletion_of_instruction_file_exits_0(tmp_path: Path) -> None:
+    """Regression for gh PR #219 review: staging a deletion of an instruction
+    file must not block the commit. The hook should skip deletions because
+    ``git show :<path>`` fails for a path that is no longer in the index."""
+    repo = _init_repo(tmp_path)
+    rel_path = ".github/instructions/to-delete.instructions.md"
+
+    # First commit the file with a valid applyTo so the initial state is clean.
+    valid = textwrap.dedent(
+        """\
+        ---
+        applyTo: "src/**"
+        ---
+        body
+        """
+    )
+    _stage_file(repo, rel_path, valid)
+    _run_git(repo, "commit", "-m", "initial: add instruction file")
+
+    # Now stage its deletion.
+    _run_git(repo, "rm", rel_path)
+
+    # The hook must skip the deletion rather than fail.
+    result = _run_hook(repo, rel_path)
+
+    assert result.returncode == 0
+    assert "cannot read staged content" not in result.stderr
 
 
 @pytest.mark.parametrize("applyto_value", ["[]", "null", "Null", "NULL", "~", "# comment"])
@@ -399,6 +431,41 @@ def test_quoted_applyto_hash_character_with_inline_comment_exits_0(
     result = _run_hook(repo, rel_path)
 
     assert result.returncode == 0
+    assert result.stderr == ""
+
+
+def test_quoted_applyto_with_escaped_quote_and_comment_exits_0(
+    tmp_path: Path,
+) -> None:
+    """Regression for gh PR #219 review: ``_strip_unquoted_inline_comment``
+    must respect ``\\\"`` escaped quotes inside double-quoted strings so the
+    quote-tracker does not desync and prematurely truncate the value.
+
+    Without the escape fix, the parser sees the ``\\\"`` as a closing quote,
+    treats the rest of the line as outside-quote, and strips at the ``#``,
+    yielding an empty string and incorrectly flagging the file as empty.
+    """
+    repo = _init_repo(tmp_path)
+    rel_path = ".github/instructions/escaped-quote.instructions.md"
+    # The value contains an escaped quote followed by a ``#`` that must
+    # remain inside the quoted scalar, then a real inline comment.
+    _stage_file(
+        repo,
+        rel_path,
+        textwrap.dedent(
+            """\
+            ---
+            applyTo: "docs/\\"odd\\"/#draft/**" # real comment
+            ---
+
+            # Escaped quotes in applyTo value
+            """
+        ),
+    )
+
+    result = _run_hook(repo, rel_path)
+
+    assert result.returncode == 0, f"unexpected stderr: {result.stderr}"
     assert result.stderr == ""
 
 

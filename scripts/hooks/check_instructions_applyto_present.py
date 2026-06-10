@@ -70,7 +70,14 @@ def _is_quoted_scalar(value: str) -> bool:
 
 def _strip_unquoted_inline_comment(value: str) -> str:
     quote: str | None = None
+    escaped = False
     for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and quote == '"':
+            escaped = True
+            continue
         if char in {'"', "'"}:
             if quote == char:
                 quote = None
@@ -119,6 +126,20 @@ def _validate_applyto(path: str, content: str) -> str | None:
     return None
 
 
+def _is_path_in_index(path: str) -> bool:
+    """Return True if ``path`` exists in the git index.
+
+    For staged deletions, ``git show :<path>`` fails because the file is no
+    longer in the index. ``git ls-files -- <path>`` returns an empty result
+    in that case. Distinguishing a staged deletion from an unreadable file
+    lets the hook skip deletions instead of blocking the commit.
+    """
+    result = subprocess.run(
+        ["git", "ls-files", "--", path], capture_output=True, text=True
+    )
+    return bool(result.stdout.strip())
+
+
 def main(argv: list[str] | None = None) -> int:
     files = sys.argv[1:] if argv is None else argv
     instruction_files, failures = _get_instruction_paths(files)
@@ -128,6 +149,10 @@ def main(argv: list[str] | None = None) -> int:
     for path in instruction_files:
         content = _get_staged_content(path)
         if content is None:
+            # Staged deletion: file no longer in the index. Skip rather than
+            # block the commit.
+            if not _is_path_in_index(path):
+                continue
             failures.append(f"{path}: cannot read staged content via git show :{path}")
             continue
 
