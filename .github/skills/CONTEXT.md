@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2026-05-31
+last_updated: 2026-06-10
 ---
 
 # CONTEXT — .github/skills/
