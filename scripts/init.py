@@ -335,8 +335,13 @@ def main(argv: list[str] | None = None) -> int:
     # 2. Remove stale lock files
     for rel in LOCK_FILES:
         p = REPO_ROOT / rel
-        check_no_symlink_path(p)
-        if p.exists():
+        # Validate the lock file's parent (not the lock file itself) so that
+        # a stale symlink at the lock path can still be unlinked rather than
+        # crashing the symlink guard.
+        check_no_symlink_path(p.parent)
+        # `p.exists()` is False for broken symlinks; OR with `is_symlink()`
+        # so cleanup also removes broken symlinks left over from prior runs.
+        if p.exists() or p.is_symlink():
             p.unlink()
             print(f"  ✓  removed lock file {rel}")
 
