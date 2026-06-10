@@ -48,9 +48,8 @@ Use this skill to self-audit the framework layer as the skill and agent surface 
 
 ## Procedure
 
-1. Run the default structural lint flow with the framework test commands below:
-   repo-local links, command examples, wrapper allowlists, and attached-tool references.
-2. When requested, run the logic surface in `--mode improve --dry-run`; this scaffold returns
+1. Run the default structural lint flow with the framework test commands below, which audit repo-local links, command examples, wrapper allowlists, and attached-tool references.
+2. When requested, run the logic surface in `--mode improve`; this scaffold returns
    an empty findings list and records `writes_attempted: 0`.
 3. Route failures to the owning skill or `review-wiki-plan`; route broader
    integration work through governed planning instead of invisible fixes.
@@ -58,7 +57,7 @@ Use this skill to self-audit the framework layer as the skill and agent surface 
 ## Commands
 
 ```bash
-python3 .github/skills/audit-knowledgebase-workspace/logic/audit_workspace.py --mode improve --dry-run
+python3 .github/skills/audit-knowledgebase-workspace/logic/audit_workspace.py --mode improve
 python3 -m unittest tests.kb.test_framework_references tests.kb.test_skill_wrappers
 python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents
 python3 -m pytest tests/kb/test_doc_cascade_completeness.py tests/kb/test_docs_ideas_archival.py -v

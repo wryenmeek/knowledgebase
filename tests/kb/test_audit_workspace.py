@@ -49,7 +49,7 @@ class AuditWorkspaceScaffoldTests(TestCase):
         )
         with ExitStack() as stack:
             mocks = [stack.enter_context(patch(call)) for call in guarded_calls]
-            result = module.audit(repo_root=REPO_ROOT, mode=mode, dry_run=True)
+            result = module.audit(repo_root=REPO_ROOT, mode=mode)
             for mocked_call in mocks:
                 mocked_call.assert_not_called()
             return result
@@ -114,13 +114,33 @@ class AuditWorkspaceScaffoldTests(TestCase):
         module = self._module()
         output = io.StringIO()
         exit_code = module.run_cli(
-            ["--repo-root", str(REPO_ROOT), "--mode", "improve", "--dry-run"],
+            ["--repo-root", str(REPO_ROOT), "--mode", "improve"],
             output_stream=output,
         )
 
         self.assertEqual(exit_code, 0)
         self.assertIn('"findings": []', output.getvalue())
         self.assertIn('"writes_attempted": 0', output.getvalue())
+
+    def test_dry_run_flag_is_not_a_cli_argument(self) -> None:
+        """Regression: gh PR #218 review removed the always-True --dry-run flag.
+
+        The scaffold is unconditionally read-only; exposing a CLI flag that
+        cannot be disabled was misleading. Argparse must reject --dry-run.
+        """
+        module = self._module()
+        output = io.StringIO()
+        exit_code = module.run_cli(
+            ["--repo-root", str(REPO_ROOT), "--mode", "improve", "--dry-run"],
+            output_stream=output,
+        )
+        self.assertNotEqual(exit_code, 0)
+
+    def test_dry_run_kwarg_is_not_accepted_by_audit(self) -> None:
+        """Regression: gh PR #218 review removed the always-True dry_run kwarg."""
+        module = self._module()
+        with self.assertRaises(TypeError):
+            module.audit(repo_root=REPO_ROOT, mode="improve", dry_run=True)
 
 
 if __name__ == "__main__":

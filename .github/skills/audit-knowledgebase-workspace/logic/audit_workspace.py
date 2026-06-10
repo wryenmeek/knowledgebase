@@ -62,12 +62,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default="default",
         help="default: compatibility scaffold; improve: dry-run scaffold with empty findings.",
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=True,
-        help="Reserved dry-run flag; this scaffold is always read-only.",
-    )
     parser.add_argument("--repo-root", default=".", help="Repository root path.")
     parser.add_argument(
         "--approval",
@@ -82,7 +76,6 @@ def audit(
     *,
     repo_root: str | Path = ".",
     mode: str = "default",
-    dry_run: bool = True,
     approval: str = APPROVAL_NONE,
 ) -> SurfaceResult:
     """Return an empty read-only audit result with zero writes attempted."""
@@ -136,7 +129,7 @@ def audit(
             "findings": [],
             "finding_count": 0,
             "writes_attempted": 0,
-            "dry_run": bool(dry_run),
+            "dry_run": True,
             "read_only": True,
             "structural_lint_executed": False,
         },
@@ -153,7 +146,6 @@ def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.st
         args_to_kwargs=lambda a: {
             "repo_root": a.repo_root,
             "mode": a.mode,
-            "dry_run": a.dry_run,
             "approval": a.approval,
         },
         output_stream=output_stream,

@@ -359,7 +359,7 @@ class FrameworkContractAlignmentTests(unittest.TestCase):
             architecture_text,
         )
         self.assertIn(
-            "`verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace`",
+            "`verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`",
             architecture_text,
         )
         self.assertIn(
@@ -376,7 +376,7 @@ class FrameworkContractAlignmentTests(unittest.TestCase):
             framework_idea,
         )
         self.assertIn(
-            "| **Active doc-only workflow skills** | `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace` |",
+            "| **Active doc-only workflow skills** | `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan` |",
             framework_idea,
         )
         self.assertIn(
