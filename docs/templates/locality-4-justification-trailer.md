@@ -1,3 +1,11 @@
+---
+type: template
+title: "Locality 4 Justification Trailer"
+status: active
+updated_at: "2026-06-10"
+owner: ".github/skills/audit-knowledgebase-workspace"
+---
+
 # Locality 4 Justification Trailer Template
 
 Use this commit trailer only when an instruction must remain Locality 4

@@ -6,28 +6,37 @@
 
 ## ⚠️ Slash-Command Override: /chronicle improve → audit-knowledgebase-workspace skill
 
-When the user runs `/chronicle improve` (Copilot CLI built-in), do not
-execute Steps 2-3 of the built-in prompt. Instead, invoke the
-`audit-knowledgebase-workspace` skill and follow its `improve` flow
-exclusively. That skill owns: session-store mining, locality-ladder
-classification (Locality 0..4), deletion-pairing for every Locality 4
-addition across BOTH `.github/copilot-instructions.md` AND `AGENTS.md`,
-and writes to the chosen locality — not necessarily either always-on
-file.
+When the user runs `/chronicle improve` (Copilot CLI built-in), prefer the
+`audit-knowledgebase-workspace` skill's `improve` flow over Steps 2-3 of the
+built-in prompt **when that flow is available in the current checkout**. The
+skill owns: session-store mining, locality-ladder classification (Locality
+0..4), deletion-pairing for every Locality 4 addition across BOTH
+`.github/copilot-instructions.md` AND `AGENTS.md`, and writes to the chosen
+locality — not necessarily either always-on file.
 
-ADR-028 (pending) owns the `Locality-4-Justification:` trailer escape
-and trailer soft budget for Locality 4 additions.
+ADR-028 (pending — tracked at issue #190) will normatively own the
+`Locality-4-Justification:` trailer escape and trailer soft budget for
+Locality 4 additions. Until ADR-028 lands, apply the rules captured in
+[`.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md`](.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md)
+and the [`docs/templates/locality-4-justification-trailer.md`](docs/templates/locality-4-justification-trailer.md) template.
 
 VS Code Copilot Chat users: there is no `/chronicle` command — invoke
-`/audit-knowledgebase-workspace improve` directly (or "audit my
-workspace for friction") to trigger the same flow.
+`/audit-knowledgebase-workspace improve` directly (or "audit my workspace for
+friction") to trigger the same flow when the skill is loaded.
 
-Fallback only if the skill is unavailable: apply
-`.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md`
-manually.
-If the skill, its `improve` flow, or this fallback reference has not landed
-in the current checkout, fail closed: stop and do not edit
-`.github/copilot-instructions.md` or `AGENTS.md`.
+**Resolution order (deny-by-default for Locality 4 writes):**
+
+1. If the `audit-knowledgebase-workspace` skill **and** its `improve` flow are
+   present, invoke the skill and follow its locality classification + paired
+   deletion or trailer-escape requirements.
+2. Otherwise, apply the manual fallback in
+   `.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md`
+   to classify the friction signal yourself, with the same Locality 4
+   paired-deletion rule.
+3. If the manual fallback file is also missing or the classification is
+   ambiguous, **fail closed**: do not edit `.github/copilot-instructions.md`
+   or `AGENTS.md`. Report the gap to the operator and let them decide whether
+   to bypass the locality ladder for this turn (audited).
 
 This repository uses the Agent Skills framework ported into `.github/skills` and `.github/agents`.
 
