@@ -254,6 +254,15 @@ Operators can validate the landed framework with these repo-local entrypoints:
 - Raw immutability: `raw/processed/**` must not be mutated after ingest.
 - Ingest-time SourceRefs may use provisional placeholder git SHAs; only reconciled commit-bound SourceRefs whose `git_sha` resolves to a real revision containing the cited artifact bytes count as authoritative provenance.
 - Concurrency guard: workflow-level concurrency group plus local lock file (`wiki/.kb_write.lock`).
+- Sibling governance locks (domain-scoped, not shared with `wiki/.kb_write.lock`):
+  `raw/.github-sources.lock` (GitHub source registry writes, ADR-012),
+  `raw/.drive-sources.lock` (Drive source registry writes, ADR-021),
+  `raw/.rejection-registry.lock` (rejection registry writes, ADR-013),
+  and `.github/.customizations.lock` (locality-ladder customization writes,
+  this issue). Each lock guards a single registry/zone; lock-ordering rules
+  for any surface that touches both `wiki/**` and a sibling registry are
+  documented in that surface's row in the AGENTS.md write-surface matrix
+  (acquire `wiki/.kb_write.lock` first when both are needed).
 - Checkpoint registry lock (forward-looking — runtime lands with PR3):
   `raw/.wiki-processing-checkpoint.lock` *will* guard writes to
   `raw/wiki-processing/wiki-processing-checkpoint-registry.json` (ADR-026).
