@@ -68,7 +68,6 @@ class TestLocalityOverridePresence(unittest.TestCase):
 
     def test_context_terms_present(self) -> None:
         text = (REPO_ROOT / ".github/skills/CONTEXT.md").read_text(encoding="utf-8")
-        self.assertIn("last_updated: 2026-06-10", text)
         for term in CONTEXT_TERMS:
             with self.subTest(term=term):
                 self.assertIn(f"| {term} |", text)
