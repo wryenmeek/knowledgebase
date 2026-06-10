@@ -51,6 +51,14 @@ repos:
         files: 'CONTEXT\.md$'
         pass_filenames: true
 
+      - id: instructions-applyto-present
+        name: .github/instructions files require applyTo frontmatter
+        language: python
+        entry: python -m scripts.hooks.check_instructions_applyto_present
+        files: '^\.github/instructions/.*\.instructions\.md$'
+        types: [markdown]
+        pass_filenames: true
+
       - id: write-surface-matrix-lint
         name: Write-surface matrix coverage lint
         language: python
