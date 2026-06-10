@@ -18,6 +18,7 @@ import sys
 
 from scripts.kb.page_template_utils import (
     extract_frontmatter,
+    extract_yaml_list,
     parse_frontmatter,
     strip_quotes,
 )
@@ -104,7 +105,15 @@ def _validate_applyto(path: str, content: str) -> str | None:
     if "applyTo" not in frontmatter:
         return f"{path}: missing required non-empty applyTo: frontmatter field"
 
-    if _is_empty_applyto(frontmatter["applyTo"]):
+    raw_value = frontmatter["applyTo"]
+
+    if not raw_value.strip():
+        items = extract_yaml_list(frontmatter_text, "applyTo")
+        if any(item.strip() for item in items):
+            return None
+        return f"{path}: empty applyTo: frontmatter field"
+
+    if _is_empty_applyto(raw_value):
         return f"{path}: empty applyTo: frontmatter field"
 
     return None

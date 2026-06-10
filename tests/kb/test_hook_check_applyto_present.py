@@ -410,3 +410,83 @@ def test_pre_commit_config_registers_applyto_hook() -> None:
     assert "files: '^\\.github/instructions/.*\\.instructions\\.md$'" in config
     assert "types: [markdown]" in config
     assert "pass_filenames: true" in config
+
+
+def test_multiline_yaml_list_applyto_with_one_item_exits_0(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    rel_path = ".github/instructions/multiline-one.instructions.md"
+    _stage_file(
+        repo,
+        rel_path,
+        textwrap.dedent(
+            """\
+            ---
+            applyTo:
+              - "scripts/**/*.py"
+            ---
+
+            # Multi-line list applyTo
+            """
+        ),
+    )
+
+    result = _run_hook(repo, rel_path)
+
+    assert result.returncode == 0, (
+        f"expected exit 0 for multi-line applyTo: list; got {result.returncode}, "
+        f"stderr={result.stderr!r}"
+    )
+    assert result.stderr == ""
+
+
+def test_multiline_yaml_list_applyto_with_multiple_items_exits_0(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    rel_path = ".github/instructions/multiline-multi.instructions.md"
+    _stage_file(
+        repo,
+        rel_path,
+        textwrap.dedent(
+            """\
+            ---
+            applyTo:
+              - "scripts/**/*.py"
+              - "tests/**/*.py"
+            ---
+
+            # Multi-item list applyTo
+            """
+        ),
+    )
+
+    result = _run_hook(repo, rel_path)
+
+    assert result.returncode == 0, (
+        f"expected exit 0 for multi-item applyTo: list; got {result.returncode}, "
+        f"stderr={result.stderr!r}"
+    )
+    assert result.stderr == ""
+
+
+def test_multiline_yaml_list_applyto_with_empty_items_exits_1(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    rel_path = ".github/instructions/multiline-empty.instructions.md"
+    _stage_file(
+        repo,
+        rel_path,
+        textwrap.dedent(
+            """\
+            ---
+            applyTo:
+              - ""
+              - ""
+            ---
+
+            # Multi-line list with empty strings
+            """
+        ),
+    )
+
+    result = _run_hook(repo, rel_path)
+
+    assert result.returncode == 1
+    assert "empty applyTo" in result.stderr
