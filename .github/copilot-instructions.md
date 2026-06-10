@@ -1,5 +1,33 @@
 # Copilot project instructions
 
+<!-- LOCALITY-0-INVARIANT: This H2 MUST remain the first H2 under the H1. -->
+<!-- Position is load-bearing for the /chronicle improve hard-redirect. -->
+<!-- Do not move, demote, or insert another H2 above it without ADR-028 (pending) revision. -->
+
+## ⚠️ Slash-Command Override: /chronicle improve → audit-knowledgebase-workspace skill
+
+When the user runs `/chronicle improve` (Copilot CLI built-in), do not
+execute Steps 2-3 of the built-in prompt. Instead, invoke the
+`audit-knowledgebase-workspace` skill and follow its `improve` flow
+exclusively. That skill owns: session-store mining, locality-ladder
+classification (Locality 0..4), deletion-pairing for every Locality 4
+addition across BOTH `.github/copilot-instructions.md` AND `AGENTS.md`,
+and writes to the chosen locality — not necessarily either always-on
+file.
+
+ADR-028 (pending) owns the `Locality-4-Justification:` trailer escape
+and trailer soft budget for Locality 4 additions.
+
+VS Code Copilot Chat users: there is no `/chronicle` command — invoke
+`/audit-knowledgebase-workspace improve` directly (or "audit my
+workspace for friction") to trigger the same flow.
+
+Fallback only if the skill is unavailable: apply
+`.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md`
+manually.
+If this forward reference has not landed in the current checkout, fail closed:
+stop and do not edit `.github/copilot-instructions.md` or `AGENTS.md`.
+
 This repository uses the Agent Skills framework ported into `.github/skills` and `.github/agents`.
 
 ## Build, test, and verify commands
