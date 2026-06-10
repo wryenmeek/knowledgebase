@@ -221,6 +221,8 @@ tests/kb/.runtime_skill_wrappers/
 .kb_write.lock
 .github-sources.lock
 .rejection-registry.lock
+.drive-sources.lock
+.customizations.lock
 
 .qmd/
 ci3-synthesis/

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import unittest
 
+from scripts import init as init_script
 from scripts.kb import contracts
 
 
@@ -180,6 +181,15 @@ class SharedContractsTests(unittest.TestCase):
             contracts.REJECTION_REGISTRY_LOCK_PATH,
             "raw/.rejection-registry.lock",
         )
+
+    def test_customizations_lock_path_is_declared_and_exported(self) -> None:
+        self.assertEqual(
+            contracts.CUSTOMIZATIONS_LOCK_PATH,
+            ".github/.customizations.lock",
+        )
+        self.assertIn("CUSTOMIZATIONS_LOCK_PATH", contracts.__all__)
+        self.assertIn(".customizations.lock", contracts.GOVERNANCE_LOCK_FILES)
+        self.assertIn(contracts.CUSTOMIZATIONS_LOCK_PATH, init_script.LOCK_FILES)
 
     def test_reason_codes_include_spec_required_values(self) -> None:
         self.assertIn("lock_unavailable", contracts.REASON_CODES)
