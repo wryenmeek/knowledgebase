@@ -25,8 +25,9 @@ workspace for friction") to trigger the same flow.
 Fallback only if the skill is unavailable: apply
 `.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md`
 manually.
-If this forward reference has not landed in the current checkout, fail closed:
-stop and do not edit `.github/copilot-instructions.md` or `AGENTS.md`.
+If the skill, its `improve` flow, or this fallback reference has not landed
+in the current checkout, fail closed: stop and do not edit
+`.github/copilot-instructions.md` or `AGENTS.md`.
 
 Repository-level operational rules for maintaining the knowledgebase.
 
