@@ -21,6 +21,10 @@ Vocabulary for the skill and agent persona layer. `AGENTS.md` takes precedence o
 | synthesis combined entrypoint | `.github/skills/synthesize-entity-page/logic/synthesize_combined.py` — CI-3 entrypoint that synthesizes entity + concept pages in one critical section under a single `wiki/.kb_write.lock` acquisition. |
 | `parents[4]` import pattern | The canonical way to import from `scripts.kb` inside skill logic files: `sys.path.insert(0, str(Path(__file__).resolve().parents[4]))`. Resolves 4 levels up from `logic/<file>.py` to the repo root. |
 | skill-first execution | When a task matches a skill, invoke and follow that skill workflow. Do not quick-implement around an applicable skill. |
+| instruction ratchet | The pattern where always-on instruction files such as `.github/copilot-instructions.md` grow monotonically add-only, decoupled from customization-surface growth. Measured by net line change in a window where skill count is flat. |
+| Locality | A trigger-frequency ordinal for instruction destinations (Locality 0–4); frequency increases monotonically. Locality 4 = every turn (always-on); Locality 0 = only when a single file is read. See ADR-028 (pending). |
+| trailer soft budget | The rolling-window cap on `Locality-4-Justification:` git trailers (default 1 per 10 commits to global rules sections) that prevents the escape hatch from normalizing into bypass. ADR-028 (pending) owns the final enforcement details. |
+| customizations lock | The planned file `.github/.customizations.lock` — concurrency guard for approved `--apply` mode writes to `.github/**` introduced by ADR-028 (pending). Sibling to `wiki/.kb_write.lock` and `raw/.rejection-registry.lock`; never held simultaneously with either once implemented. |
 
 ## Invariants
 

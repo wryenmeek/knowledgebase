@@ -81,5 +81,6 @@ python3 -m pytest tests/kb/test_doc_cascade_completeness.py tests/kb/test_docs_i
 - [`docs/decisions/ADR-007-control-plane-layering-and-packaging.md`](../../../docs/decisions/ADR-007-control-plane-layering-and-packaging.md)
 - [`docs/ideas/wiki-curation-agent-framework.md`](../../../docs/ideas/wiki-curation-agent-framework.md)
 - Phase 4 classifier/apply work (issues #202–#211)
+- [`references/locality-ladder.md`](references/locality-ladder.md)
 - [`tests/kb/test_framework_references.py`](../../../tests/kb/test_framework_references.py)
 - [`tests/kb/test_skill_wrappers.py`](../../../tests/kb/test_skill_wrappers.py)
