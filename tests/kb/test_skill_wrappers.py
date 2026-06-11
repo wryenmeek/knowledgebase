@@ -363,7 +363,16 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
             module.WRITE_INDEX_COMMAND.script_relative_path,
             "scripts/kb/update_index.py",
         )
-        self.assertEqual(module.SUPPORTED_ARTIFACTS, module.contracts.GOVERNED_ARTIFACT_PATHS)
+        self.assertEqual(
+            module.SUPPORTED_ARTIFACTS,
+            (
+                "wiki/index.md",
+                "wiki/log.md",
+                "wiki/open-questions.md",
+                "wiki/backlog.md",
+                "wiki/status.md",
+            ),
+        )
 
     def test_check_only_mode_stays_read_only(self) -> None:
         module = _load_module("sync_knowledgebase_state_check", SYNC_WRAPPER_PATH)
@@ -415,6 +424,74 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
         exit_code = module.main(["--check-only", "--artifact", "wiki/entities/example.md"])
 
         self.assertEqual(exit_code, 1)
+
+    def test_check_only_rejects_governed_artifacts_outside_wrapper_ownership(self) -> None:
+        """CLI-level regression: paths formerly accepted via the broad
+        ``contracts.GOVERNED_ARTIFACT_PATHS`` allowlist must be rejected
+        with ``SyncReasonCode.UNSUPPORTED_ARTIFACT`` after the wrapper's
+        ``SUPPORTED_ARTIFACTS`` was narrowed to the five wiki state
+        artifacts it actually owns. Each path below was a member of
+        ``contracts.GOVERNED_ARTIFACT_PATHS`` before this PR and must not
+        regress past the narrowed boundary.
+
+        The test also pins the exact ``unsupported governed artifact``
+        diagnostic message so that a future refactor cannot silently
+        route unknown paths through a different error branch (for
+        example, a symlink check that returns exit 1 for a different
+        reason) while still satisfying the exit-code assertion.
+        """
+        for non_owned_path in (
+            "raw/wiki-processing/wiki-processing-checkpoint-registry.json",
+            "raw/github-sources",
+            "raw/assets",
+            "raw/rejected",
+        ):
+            with self.subTest(path=non_owned_path):
+                module = _load_module(
+                    f"sync_knowledgebase_state_reject_{non_owned_path.replace('/', '_')}",
+                    SYNC_WRAPPER_PATH,
+                )
+                with patch.object(module.subprocess, "run") as run_mock, patch.object(
+                    module, "print"
+                ) as print_mock:
+                    exit_code = module.main(
+                        ["--check-only", "--artifact", non_owned_path]
+                    )
+                self.assertEqual(exit_code, 1)
+                run_mock.assert_not_called()
+                print_mock.assert_called_once()
+                printed = print_mock.call_args.args[0]
+                self.assertIn("unsupported governed artifact", printed)
+                self.assertIn(non_owned_path, printed)
+
+    def test_check_only_accepts_every_supported_wiki_artifact(self) -> None:
+        """Positive-branch coverage: every owned wiki artifact other than
+        ``wiki/index.md`` must pass ``--check-only`` without invoking the
+        write scripts. ``wiki/index.md`` runs the full read-only precheck
+        chain and is exercised separately by
+        ``test_check_only_invokes_allowlisted_scripts_in_order`` and
+        ``test_check_only_does_not_write_index``. Previously only
+        ``wiki/status.md`` was exercised here, so future drift in the
+        explicit tuple could silently regress the other three early-exit
+        artifacts.
+        """
+        for supported_path in (
+            "wiki/log.md",
+            "wiki/open-questions.md",
+            "wiki/backlog.md",
+            "wiki/status.md",
+        ):
+            with self.subTest(path=supported_path):
+                module = _load_module(
+                    f"sync_knowledgebase_state_accept_{supported_path.replace('/', '_').replace('.', '_')}",
+                    SYNC_WRAPPER_PATH,
+                )
+                with patch.object(module.subprocess, "run") as run_mock:
+                    exit_code = module.main(
+                        ["--check-only", "--artifact", supported_path]
+                    )
+                self.assertEqual(exit_code, 0)
+                run_mock.assert_not_called()
 
     def test_check_only_accepts_supported_non_index_artifact_without_running_scripts(self) -> None:
         module = _load_module("sync_knowledgebase_state_non_index_check", SYNC_WRAPPER_PATH)

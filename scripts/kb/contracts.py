@@ -75,6 +75,9 @@ WRITE_LOCK_PATH = "wiki/.kb_write.lock"
 GITHUB_SOURCES_LOCK_PATH = "raw/.github-sources.lock"
 REJECTION_REGISTRY_LOCK_PATH = "raw/.rejection-registry.lock"
 DRIVE_SOURCES_LOCK_PATH = "raw/.drive-sources.lock"
+CHECKPOINT_REGISTRY_LOCK_PATH = "raw/.wiki-processing-checkpoint.lock"
+# ADR-028 (pending) — instruction-locality ladder; sibling pattern per ADR-005 / ADR-013.
+CUSTOMIZATIONS_LOCK_PATH = ".github/.customizations.lock"
 
 # Exact basenames of all governance lock files. Derived from the path constants
 # above so that this frozenset stays in sync automatically (ADR-011: single
@@ -85,7 +88,39 @@ GOVERNANCE_LOCK_FILES: frozenset[str] = frozenset({
     _os.path.basename(GITHUB_SOURCES_LOCK_PATH),
     _os.path.basename(REJECTION_REGISTRY_LOCK_PATH),
     _os.path.basename(DRIVE_SOURCES_LOCK_PATH),
+    _os.path.basename(CHECKPOINT_REGISTRY_LOCK_PATH),
+    _os.path.basename(CUSTOMIZATIONS_LOCK_PATH),
 })
+
+CHECKPOINT_REGISTRY_SIZE_WARN_BYTES = 5 * 1024 * 1024
+CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES = 10 * 1024 * 1024
+
+
+class TriggerType(StrEnum):
+    """Checkpoint registry trigger types from ADR-026/ADR-027."""
+
+    INTAKE_DRIVEN = "intake_driven"
+    INFRASTRUCTURE_REVALIDATION = "infrastructure_revalidation"
+    MANUAL_RESCAN = "manual_rescan"
+
+
+class ArtifactType(StrEnum):
+    """Wiki artifact types tracked by the checkpoint registry."""
+
+    WIKI_ENTITY_PAGE = "wiki_entity_page"
+    WIKI_CONCEPT_PAGE = "wiki_concept_page"
+    WIKI_ANALYSIS_PAGE = "wiki_analysis_page"
+
+
+DEPENDENCY_FINGERPRINT_SOURCES: dict[str, tuple[str, ...]] = {
+    TriggerType.INFRASTRUCTURE_REVALIDATION.value: (
+        ".github/workflows/ci-3-pr-producer.yml",
+        ".github/skills/extract-entities-and-claims/**",
+        ".github/skills/validate-wiki-governance/**",
+        ".github/skills/synthesize-entity-page/**",
+        ".github/skills/synthesize-concept-page/**",
+    ),
+}
 
 class ArtifactMutability(StrEnum):
     """Allowed mutation modes for governed state artifacts."""
@@ -203,6 +238,14 @@ GOVERNED_ARTIFACT_CONTRACTS: tuple[GovernedArtifactContract, ...] = (
         write_strategy=ArtifactWriteStrategy.EXCLUSIVE_CREATE_WRITE_ONCE,
         lock_path=REJECTION_REGISTRY_LOCK_PATH,
         path_pattern="raw/rejected/*.rejection.md",
+    ),
+    GovernedArtifactContract(
+        artifact_id="wiki-processing-checkpoint-registry",
+        path="raw/wiki-processing/wiki-processing-checkpoint-registry.json",
+        schema_owner="schema/wiki-processing-checkpoint-registry-contract.md",
+        mutability=ArtifactMutability.MUTABLE,
+        write_strategy=ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK,
+        lock_path=CHECKPOINT_REGISTRY_LOCK_PATH,
     ),
 )
 GOVERNED_ARTIFACT_IDS: tuple[str, ...] = tuple(
@@ -360,7 +403,12 @@ __all__ = [
     "TOKEN_PROFILE_IDS",
     "WRITE_ALLOWLIST_PATHS",
     "GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS",
+    "CUSTOMIZATIONS_LOCK_PATH",
     "GITHUB_SOURCES_LOCK_PATH",
+    "CHECKPOINT_REGISTRY_LOCK_PATH",
+    "CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES",
+    "CHECKPOINT_REGISTRY_SIZE_WARN_BYTES",
+    "DEPENDENCY_FINGERPRINT_SOURCES",
     "DRIVE_SOURCES_LOCK_PATH",
     "DRIVE_MONITOR_WRITE_ALLOWLIST_PATHS",
     "GOVERNANCE_LOCK_FILES",
@@ -373,9 +421,11 @@ __all__ = [
     "RESULT_ENVELOPE_KEYS",
     "ArtifactMutability",
     "ArtifactWriteStrategy",
+    "ArtifactType",
     "GovernedArtifactContract",
     "PolicyId",
     "TokenProfileId",
+    "TriggerType",
     "ResultStatus",
     "ReasonCode",
     "GitHubMonitorReasonCode",

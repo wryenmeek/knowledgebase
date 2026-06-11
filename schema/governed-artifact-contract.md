@@ -65,6 +65,22 @@ Path rules for `wiki/reports/**`:
 |---|---|---|---|---|---|---|
 | `rejection-record` | `raw/rejected/*.rejection.md` | `schema/rejection-registry-contract.md` | Write-once metadata record for rejected intake sources. | Write-once (`exclusive_create_write_once`); immutable post-write except `reconsidered_date` (manual operator update under lock). | `raw/.rejection-registry.lock` (separate from `wiki/.kb_write.lock`; sequential acquisition, never held simultaneously). | `O_CREAT \| O_EXCL`; sha256 dedupe before write. |
 
+## Wiki-processing checkpoint registry
+
+`raw/wiki-processing/wiki-processing-checkpoint-registry.json` is a governed mutable
+state artifact for batch- and item-level wiki processing recovery state, introduced by
+ADR-026 and extended by ADR-027. It lives outside `wiki/` because it records
+operational recovery state, not curated knowledge content.
+
+| Artifact ID | Path | Schema owner | Purpose | Mutation semantics | Lock requirement | Atomic write expectation |
+|---|---|---|---|---|---|---|
+| `wiki-processing-checkpoint-registry` | `raw/wiki-processing/wiki-processing-checkpoint-registry.json` | `schema/wiki-processing-checkpoint-registry-contract.md` | Batch- and item-level recovery state for generated wiki processing artifacts (entities, concepts, analyses). | Mutable; writers read the full registry, mutate state under the lock, and atomically replace the whole file. In-place patching is forbidden. | `raw/.wiki-processing-checkpoint.lock`. When a run updates both wiki content and checkpoint state, acquire `wiki/.kb_write.lock` first, then `raw/.wiki-processing-checkpoint.lock`. | Read full JSON under lock → mutate → atomic same-directory replace → release lock. |
+
+Declaring this artifact here does not by itself authorize writes. PR3 of the
+checkpoint registry rollout (issue #187) lands the runtime entrypoint and adds the
+corresponding AGENTS.md write-surface matrix row. Until that row exists, writes to
+this path remain deny-by-default.
+
 ## Path ownership rules
 
 1. Reserved governed artifacts live at fixed root-level `wiki/*.md` paths in MVP.

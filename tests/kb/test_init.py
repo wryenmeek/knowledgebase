@@ -350,6 +350,47 @@ class TestLockFiles(unittest.TestCase):
         rc = _run_fresh(self.workspace)
         self.assertEqual(rc, 0)
 
+    def test_broken_symlink_lock_files_removed(self) -> None:
+        """Broken symlinks at lock paths must be cleaned up (gh PR #217 review)."""
+        for rel in init_module.LOCK_FILES:
+            p = self.workspace / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            # Create a symlink pointing at a nonexistent target — `p.exists()`
+            # returns False for a broken symlink, but cleanup must still unlink.
+            p.symlink_to(self.workspace / "does-not-exist")
+            self.assertTrue(p.is_symlink())
+            self.assertFalse(p.exists())
+
+        _run_fresh(self.workspace)
+
+        for rel in init_module.LOCK_FILES:
+            p = self.workspace / rel
+            self.assertFalse(p.exists(), f"broken symlink not removed: {rel}")
+            self.assertFalse(p.is_symlink(), f"broken symlink still present: {rel}")
+
+    def test_symlink_lock_files_removed(self) -> None:
+        """Valid symlinks at lock paths must be cleaned up without crashing the
+        symlink guard (gh PR #217 review)."""
+        # Create a real target the symlinks can point at.
+        target = self.workspace / "real-lock-target"
+        target.write_text("lock-target", encoding="utf-8")
+
+        for rel in init_module.LOCK_FILES:
+            p = self.workspace / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.symlink_to(target)
+            self.assertTrue(p.is_symlink())
+            self.assertTrue(p.exists())
+
+        _run_fresh(self.workspace)
+
+        for rel in init_module.LOCK_FILES:
+            p = self.workspace / rel
+            self.assertFalse(p.exists(), f"symlink lock not removed: {rel}")
+            self.assertFalse(p.is_symlink(), f"symlink still present: {rel}")
+        # The symlink target itself must remain — only the symlink is unlinked.
+        self.assertTrue(target.exists())
+
     def test_held_wiki_write_lock_blocks_init(self) -> None:
         """If wiki/.kb_write.lock exists, init must refuse to run (another process active)."""
         lock = self.workspace / "wiki" / ".kb_write.lock"

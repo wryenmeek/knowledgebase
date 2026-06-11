@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2026-05-22
+last_updated: 2026-06-08
 ---
 
 # CONTEXT — schema/
@@ -24,6 +24,7 @@ Vocabulary for the schema and contract layer. `AGENTS.md` takes precedence on an
 | github-source-registry-contract | `schema/github-source-registry-contract.md` — defines the JSON schema for `*.source-registry.json` files in `raw/github-sources/`. |
 | drive-source-registry-contract | `schema/drive-source-registry-contract.md` — defines the JSON schema for `*.source-registry.json` files in `raw/drive-sources/`. |
 | rejection-registry-contract | `schema/rejection-registry-contract.md` — defines the contract for write-once rejection records in `raw/rejected/`. Governs `log-intake-rejection` skill. |
+| wiki-processing-checkpoint-registry-contract | `schema/wiki-processing-checkpoint-registry-contract.md` — defines the JSON schema, identity rules, state machines, retention constants, and lock contract for the wiki-processing checkpoint registry. |
 
 ## Invariants
 
@@ -49,3 +50,4 @@ Vocabulary for the schema and contract layer. `AGENTS.md` takes precedence on an
 | `github-source-registry-contract.md` | JSON schema for GitHub source registry files. |
 | `drive-source-registry-contract.md` | JSON schema for Drive source registry files. |
 | `rejection-registry-contract.md` | Contract for write-once rejection records (ADR-013). |
+| `wiki-processing-checkpoint-registry-contract.md` | Contract for the governed wiki-processing checkpoint registry under `raw/wiki-processing/` (ADR-026/ADR-027). |

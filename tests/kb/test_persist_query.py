@@ -170,6 +170,93 @@ class PersistQueryCliTests(RuntimeWorkspaceTestCase):
         analysis_pages = list((self.wiki_root / "analyses").glob("*.md"))
         self.assertEqual(len(analysis_pages), 1)
 
+    def test_analysis_fingerprint_matches_persisted_path_fingerprint(self) -> None:
+        source_a = self._source("source-a", "a")
+        source_b = self._source("source-b", "b")
+        request = persist_query.PersistRequest(
+            normalized_query="which plans cover dialysis?",
+            summary="Dialysis coverage varies by plan and service context.",
+            confidence=4,
+            sources=tuple(sorted([source_a, source_b])),
+            unresolved_contradiction=False,
+            min_confidence=4,
+            min_sources=2,
+            updated_at="1970-01-01T00:00:00Z",
+            sensitivity="internal",
+            wiki_root=self.wiki_root,
+        )
+
+        analysis_path = persist_query._analysis_relative_path(request, self.workspace)  # noqa: SLF001
+        persisted_fingerprint = analysis_path.stem.rsplit("-", 1)[1]
+        self.assertEqual(
+            persist_query.analysis_fingerprint(
+                request.normalized_query,
+                request.sources,
+            ),
+            persisted_fingerprint,
+        )
+
+    def test_analysis_fingerprint_is_stable_under_source_reordering(self) -> None:
+        """analysis_fingerprint() must depend only on the source *set*.
+
+        The checkpoint registry derives wiki_analysis_page item identity from
+        this fingerprint, so two callers with the same query and the same
+        source set in different orders (or with duplicate entries) must
+        derive the same analysis page identity. This regression guards
+        against accidental reintroduction of caller-order dependence.
+        """
+        source_a = self._source("source-a", "a")
+        source_b = self._source("source-b", "b")
+        source_c = self._source("source-c", "c")
+        query = "which plans cover dialysis?"
+
+        ordered = persist_query.analysis_fingerprint(query, (source_a, source_b, source_c))
+        reversed_order = persist_query.analysis_fingerprint(
+            query, (source_c, source_b, source_a)
+        )
+        with_duplicates = persist_query.analysis_fingerprint(
+            query, (source_b, source_a, source_b, source_c, source_a)
+        )
+
+        self.assertEqual(ordered, reversed_order)
+        self.assertEqual(ordered, with_duplicates)
+
+    def test_analysis_fingerprint_discriminates_different_inputs(self) -> None:
+        """analysis_fingerprint() must produce distinct outputs for distinct inputs.
+
+        Equivalence tests alone (reorder, dedup, round-trip) would still
+        pass if a degenerate implementation returned a constant string.
+        Pin three independent discriminators so that any future change
+        that collapses identity (for example, dropping the query from
+        the hash input, or canonicalizing source paths to a constant)
+        fails this test.
+        """
+        source_a = self._source("source-a", "a")
+        source_b = self._source("source-b", "b")
+        source_c = self._source("source-c", "c")
+
+        # Same sources, different queries -> different fingerprints.
+        fp_query_1 = persist_query.analysis_fingerprint(
+            "which plans cover dialysis?", (source_a, source_b)
+        )
+        fp_query_2 = persist_query.analysis_fingerprint(
+            "which plans cover transplants?", (source_a, source_b)
+        )
+        self.assertNotEqual(fp_query_1, fp_query_2)
+
+        # Same query, different source sets -> different fingerprints.
+        query = "which plans cover dialysis?"
+        fp_sources_1 = persist_query.analysis_fingerprint(query, (source_a, source_b))
+        fp_sources_2 = persist_query.analysis_fingerprint(query, (source_a, source_c))
+        self.assertNotEqual(fp_sources_1, fp_sources_2)
+
+        # Same query, source superset vs subset -> different fingerprints.
+        fp_two_sources = persist_query.analysis_fingerprint(query, (source_a, source_b))
+        fp_three_sources = persist_query.analysis_fingerprint(
+            query, (source_a, source_b, source_c)
+        )
+        self.assertNotEqual(fp_two_sources, fp_three_sources)
+
     def test_policy_miss_returns_no_write_policy_and_makes_no_changes(self) -> None:
         source_a = self._source("source-a", "a")
         before = self.snapshot_workspace()

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — extended by ADR-027
+Accepted — extended by ADR-027; amended in-place: last_error single-slot semantics (2026-06-10, see § Amendment 2026-06-10)
 
 ## Date
 
@@ -236,6 +236,27 @@ Item fields:
   transition graph itself is unchanged.
 - Cross-reference: see ADR-027 for the trigger model rationale and CI-3 trigger
   paths.
+
+### Amendment 2026-06-10 (PR2 schema clarifications)
+
+- Date: 2026-06-10.
+- What changed: the `last_error` field uses single-slot semantics — only the
+  most recent error is retained, and older errors are overwritten on each new
+  attempt. This supersedes the prior `### State transitions` clause that said
+  "retries must retain prior `last_error` history" on the `failed -> in_progress`
+  edge. Cross-batch error provenance is preserved through the immutable batch
+  records (each batch's `error_summary` plus its `started_at`/`finished_at`
+  window) plus the per-item `last_attempted_at` and `last_successful_batch_id`
+  fields, so historical errors remain recoverable from the registry without
+  per-item error arrays. The schema contract at
+  `schema/wiki-processing-checkpoint-registry-contract.md` is the authoritative
+  source for this field's semantics and pins the supersession explicitly.
+- What did not change: the `failed -> in_progress` edge itself, the requirement
+  to update `last_attempted_at` on every retry, the immutability of completed
+  batch records, and every other field and state machine rule.
+- Cross-reference: see `schema/wiki-processing-checkpoint-registry-contract.md`
+  § Item fields (`last_error` row) and § Item state machine
+  (`failed -> in_progress` row) for the authoritative wording.
 
 ## Migration
 

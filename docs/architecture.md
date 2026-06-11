@@ -206,9 +206,9 @@ prevents ADR-007 drift into a second runtime.
 
 | Skill slice | Status in MVP | Repo-local examples |
 |---|---|---|
-| Governance workflows + landed wrappers | Active, wrapper-backed | `validate-wiki-governance`, `sync-knowledgebase-state`, `validate-inbox-source`, `append-log-entry`, `check-link-topology`, `compute-kpis`, `analyze-missed-queries`, `context-engineering`, `documentation-and-adrs`, `enforce-page-template`, `enforce-repository-boundaries`, `run-deterministic-validators`, `write-sourceref-citations`, `log-intake-rejection`, `manage-redirects-and-anchors`, `suggest-backlinks` (all have `logic/` Python wrappers) |
+| Governance workflows + landed wrappers | Active, wrapper-backed | `validate-wiki-governance`, `sync-knowledgebase-state`, `validate-inbox-source`, `append-log-entry`, `check-link-topology`, `compute-kpis`, `analyze-missed-queries`, `context-engineering`, `documentation-and-adrs`, `enforce-page-template`, `enforce-repository-boundaries`, `run-deterministic-validators`, `write-sourceref-citations`, `log-intake-rejection`, `manage-redirects-and-anchors`, `suggest-backlinks`, `audit-knowledgebase-workspace` (read-only scaffold) (all have `logic/` Python wrappers) |
 | Knowledge-structure contracts | Active, doc-only | `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, `knowledge-schema-and-metadata-governance`, `entity-resolution-and-canonicalization`, `search-and-discovery-optimization` |
-| Policy/evidence/self-audit workflows | Active, doc-only | `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan`, `audit-knowledgebase-workspace` |
+| Policy/evidence/self-audit workflows | Active, doc-only | `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan` |
 | Ingest and query persistence wrappers | Active, doc-only | `run-ingest`, `persist-query-result` |
 | Intake provenance workflows | Active, doc-only | `register-source-provenance`, `checksum-asset`, `create-intake-manifest`, `log-ingest-event` |
 | Synthesis workflows | Active, mixed | `extract-entities-and-claims` (has `logic/`; calls GitHub Models API, read-only extraction bundle), `synthesize-entity-page` (has `logic/`; writes `wiki/entities/**` drafts via CI-3), `synthesize-concept-page` (has `logic/`; writes `wiki/concepts/**` drafts via CI-3), `claim-inventory` (doc-only) |
@@ -254,11 +254,20 @@ Operators can validate the landed framework with these repo-local entrypoints:
 - Raw immutability: `raw/processed/**` must not be mutated after ingest.
 - Ingest-time SourceRefs may use provisional placeholder git SHAs; only reconciled commit-bound SourceRefs whose `git_sha` resolves to a real revision containing the cited artifact bytes count as authoritative provenance.
 - Concurrency guard: workflow-level concurrency group plus local lock file (`wiki/.kb_write.lock`).
-- Checkpoint registry lock (forward-looking — runtime lands with PR3):
+- Sibling governance locks (domain-scoped, not shared with `wiki/.kb_write.lock`):
+  `raw/.github-sources.lock` (GitHub source registry writes, ADR-012),
+  `raw/.drive-sources.lock` (Drive source registry writes, ADR-021),
+  `raw/.rejection-registry.lock` (rejection registry writes, ADR-013),
+  and `.github/.customizations.lock` (locality-ladder customization writes,
+  this issue). Each lock guards a single registry/zone; lock-ordering rules
+  for any surface that touches both `wiki/**` and a sibling registry are
+  documented in that surface's row in the AGENTS.md write-surface matrix
+  (acquire `wiki/.kb_write.lock` first when both are needed).
+- Checkpoint registry lock (forward-looking):
   `raw/.wiki-processing-checkpoint.lock` *will* guard writes to
   `raw/wiki-processing/wiki-processing-checkpoint-registry.json` (ADR-026).
   Failure mode is fail-closed on contention or acquisition failure.
-- Checkpoint lock ordering (forward-looking — runtime lands with PR3): any
+- Checkpoint lock ordering (forward-looking): any
   run that updates both wiki content and checkpoint state *will* acquire
   `wiki/.kb_write.lock` first, then `raw/.wiki-processing-checkpoint.lock`.
   Reverse order is a deadlock hazard and *will be* rejected by the
@@ -283,10 +292,15 @@ require documented rationale.
 
 ## Wiki processing checkpoint registry
 
-> **Forward-looking.** The schema contract (PR2) and runtime (PR3) are not
-> yet on disk. The table below identifies which surfaces exist today and
-> which are deferred to PR2/PR3. Operators reading this section should
-> treat any present-tense description as the post-PR3 target state.
+> **Runtime forward-looking; schema landed.** The PR2 schema contract,
+> `scripts/kb/contracts.py` constants (lock path, trigger and artifact
+> enums, dependency-fingerprint dict, retention thresholds), and the
+> `analysis_fingerprint()` helper landed in PR #213. The PR3 runtime
+> (`scripts/kb/checkpoint_registry.py`) and PR4 CI-3 wiring are not yet
+> on disk. The table below identifies which surfaces exist today and
+> which are deferred to PR3/PR4. Operators reading this section should
+> treat any present-tense description of the runtime entrypoint as the
+> post-PR3 target state.
 
 The wiki processing pipeline *will* maintain a governed checkpoint registry
 under `raw/` so partial fail-closed runs can resume and changed outputs can
@@ -297,12 +311,12 @@ authorize a write that governance would otherwise block.
 | Aspect | Value |
 |---|---|
 | Registry artifact | `raw/wiki-processing/wiki-processing-checkpoint-registry.json` |
-| Schema contract | `schema/wiki-processing-checkpoint-registry-contract.md` (authored in PR2) |
-| Runtime entrypoint | `scripts/kb/checkpoint_registry.py` (authored in PR3) |
-| Dedicated lock | `raw/.wiki-processing-checkpoint.lock` (lands PR3) |
-| Lock order with wiki writes | `wiki/.kb_write.lock` first, then the checkpoint lock (enforced in PR3 runtime) |
-| Operator snapshot | `wiki/status.md` via `sync-knowledgebase-state` (publisher exists; checkpoint payload lands PR3) |
-| Trigger model | `intake_driven`, `infrastructure_revalidation`, `manual_rescan` (declared in ADR-027; runtime PR3) |
+| Schema contract | `schema/wiki-processing-checkpoint-registry-contract.md` |
+| Runtime entrypoint | `scripts/kb/checkpoint_registry.py` |
+| Dedicated lock | `raw/.wiki-processing-checkpoint.lock` |
+| Lock order with wiki writes | `wiki/.kb_write.lock` first, then the checkpoint lock (enforced by checkpoint registry runtime) |
+| Operator snapshot | `wiki/status.md` via `sync-knowledgebase-state` |
+| Trigger model | `intake_driven`, `infrastructure_revalidation`, `manual_rescan` (declared in ADR-027) |
 
 The registry tracks both batch-level state (`batch_id`, `trigger`,
 `started_at`, `finished_at`, `status`, `input_fingerprint`,
