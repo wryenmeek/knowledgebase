@@ -292,10 +292,15 @@ require documented rationale.
 
 ## Wiki processing checkpoint registry
 
-> **Forward-looking.** The PR2 schema contract and PR3 runtime are not
-> yet on disk. The table below identifies which surfaces exist today and
-> which are deferred to PR2/PR3. Operators reading this section should
-> treat any present-tense description as the post-PR3 target state.
+> **Runtime forward-looking; schema landed.** The PR2 schema contract,
+> `scripts/kb/contracts.py` constants (lock path, trigger and artifact
+> enums, dependency-fingerprint dict, retention thresholds), and the
+> `analysis_fingerprint()` helper landed in PR #213. The PR3 runtime
+> (`scripts/kb/checkpoint_registry.py`) and PR4 CI-3 wiring are not yet
+> on disk. The table below identifies which surfaces exist today and
+> which are deferred to PR3/PR4. Operators reading this section should
+> treat any present-tense description of the runtime entrypoint as the
+> post-PR3 target state.
 
 The wiki processing pipeline *will* maintain a governed checkpoint registry
 under `raw/` so partial fail-closed runs can resume and changed outputs can

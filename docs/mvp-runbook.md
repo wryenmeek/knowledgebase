@@ -288,8 +288,11 @@ approved, keep these existing MVP suites green:
 - Broad regression suite:
   `python3 -m pytest tests/ -q`
 
-## Wiki processing checkpoint registry (forward-looking)
+## Wiki processing checkpoint registry (runtime forward-looking; schema landed)
 
+Schema contract, `scripts/kb/contracts.py` constants, and the
+`analysis_fingerprint()` helper are on disk as of PR2 (PR #213,
+2026-06-11).
 The wiki processing checkpoint registry (ADR-026, ADR-027) lands across
 four PRs per the Path C-prime plan in
 [`docs/ideas/wiki-processing-checkpoint-registry.md`](ideas/wiki-processing-checkpoint-registry.md).
