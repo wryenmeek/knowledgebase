@@ -163,6 +163,28 @@ commit-time and reduces avoidable CI-1 handoff failures.
 still bypasses local hooks, and hooks remain read-only scripts under
 `scripts/hooks/`.
 
+### Amendment 4 — Instruction applyTo pre-commit guard (2026-06-10)
+
+**Date:** 2026-06-10
+
+**What changed:** A new hook was added to `.pre-commit-config.yaml`:
+
+1. **`check_instructions_applyto_present.py` (id: `instructions-applyto-present`)** —
+   requires staged `.github/instructions/*.instructions.md` files to include
+   non-empty `applyTo:` frontmatter. The hook reads staged content via
+   `git show :<path>`, skips non-matching paths, and fails closed on missing
+   frontmatter, missing `applyTo:`, empty `applyTo:`, unreadable staged content,
+   or invalid instruction paths.
+
+**Why:** Copilot CLI treats instruction files without `applyTo:` as
+always-loaded context. Future locality-ladder governance may document the
+broader invariant; until then, this hook prevents frontmatter-less instruction
+files from silently ratcheting into every-turn context.
+
+**What didn't change:** CI-2 remains the authoritative gate, `--no-verify`
+still bypasses local hooks, and hooks remain read-only scripts under
+`scripts/hooks/`.
+
 ## References
 
 - `scripts/hooks/` — hook implementation scripts

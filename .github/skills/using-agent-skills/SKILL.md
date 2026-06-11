@@ -342,7 +342,7 @@ See the Route column in the Quick Reference table for a per-skill label.
 | Meta | request-refactor-plan | Direct | Structure refactoring proposals as GitHub Issues |
 | Meta | triage-issue | Direct | Classify and prioritize GitHub Issues |
 | Meta | improve-codebase-architecture | Direct | Identify and propose architecture improvements |
-| Meta | audit-knowledgebase-workspace | Direct | Verify skills, agents, tests, and wrappers point at real surfaces |
+| Meta | audit-knowledgebase-workspace | Direct | Verify skills, agents, tests, wrappers, and read-only improve dry-runs point at real surfaces |
 | Meta | jules-session-triage | Direct | Triage Jules sessions and route review feedback to stuck sessions |
 | Research | verified-research | Direct | 7-phase research with built-in adversarial verification per claim |
 | KB / Governance | information-architecture-and-taxonomy | Direct | Govern wiki namespace placement, browse paths, and tags |

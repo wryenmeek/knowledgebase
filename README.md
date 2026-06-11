@@ -55,6 +55,8 @@ Hooks enforce:
   staged `docs/decisions/README.md` update)
 - `docs/ideas/` archive-pointer validation (`Archived to ...` target must exist
   in `raw/inbox/` or `wiki/sources/`)
+- `.github/instructions/*.instructions.md` staged-content validation requiring
+  non-empty `applyTo:` frontmatter
 
 For full operational flow (including qmd and query-persist behavior), see
 [`docs/mvp-runbook.md`](docs/mvp-runbook.md).

@@ -27,6 +27,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts.kb.contracts import (
+    CUSTOMIZATIONS_LOCK_PATH,
+    DRIVE_SOURCES_LOCK_PATH,
+    GITHUB_SOURCES_LOCK_PATH,
+    REJECTION_REGISTRY_LOCK_PATH,
+)
 from scripts.kb.write_utils import (
     check_no_symlink_path,
     write_text_capturing_previous_safe,
@@ -52,13 +58,14 @@ CONTENT_DIRS = [
     "raw/drive-sources",
 ]
 
-# Stale lock files under raw/ that are auto-removed on fresh init.
+# Stale sibling lock files that are auto-removed on fresh init.
 # wiki/.kb_write.lock is intentionally excluded — its presence means another
 # process may be actively writing and must be investigated before wiping.
 LOCK_FILES = [
-    "raw/.rejection-registry.lock",
-    "raw/.github-sources.lock",
-    "raw/.drive-sources.lock",
+    REJECTION_REGISTRY_LOCK_PATH,
+    GITHUB_SOURCES_LOCK_PATH,
+    DRIVE_SOURCES_LOCK_PATH,
+    CUSTOMIZATIONS_LOCK_PATH,
 ]
 
 _LOG_STUB = """\
@@ -328,7 +335,13 @@ def main(argv: list[str] | None = None) -> int:
     # 2. Remove stale lock files
     for rel in LOCK_FILES:
         p = REPO_ROOT / rel
-        if p.exists():
+        # Validate the lock file's parent (not the lock file itself) so that
+        # a stale symlink at the lock path can still be unlinked rather than
+        # crashing the symlink guard.
+        check_no_symlink_path(p.parent)
+        # `p.exists()` is False for broken symlinks; OR with `is_symlink()`
+        # so cleanup also removes broken symlinks left over from prior runs.
+        if p.exists() or p.is_symlink():
             p.unlink()
             print(f"  ✓  removed lock file {rel}")
 

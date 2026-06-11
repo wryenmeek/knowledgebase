@@ -293,9 +293,9 @@ approved, keep these existing MVP suites green:
 The wiki processing checkpoint registry (ADR-026, ADR-027) lands across
 four PRs per the Path C-prime plan in
 [`docs/ideas/wiki-processing-checkpoint-registry.md`](ideas/wiki-processing-checkpoint-registry.md).
-The runtime script `scripts/kb/checkpoint_registry.py` lands in PR3 and
-CI-3 wiring lands in PR4. The procedures below document the operator
-path that those PRs enable; they are not yet executable today.
+The runtime script `scripts/kb/checkpoint_registry.py` and CI-3 wiring
+are forward-looking. The procedures below document the operator path
+that those PRs enable; they are not yet executable today.
 
 ### Manual rescan
 
@@ -303,7 +303,7 @@ A manual rescan recomputes item state and reruns failed/stale entries
 under operator control. Run from the repo root:
 
 ```bash
-# PR3 entrypoint (forward-looking)
+# Forward-looking entrypoint
 python3 scripts/kb/checkpoint_registry.py --mutate \
   --trigger manual_rescan \
   --approval approved
@@ -317,20 +317,22 @@ python3 scripts/kb/checkpoint_registry.py --mutate \
 After a CI-3 partial-failure or fail-closed run, recover with this
 sequence:
 
-1. (PR3+) Inspect the operator snapshot at `wiki/status.md` for the
-   most recent batch's `status` and `error_summary`. The
+1. (forward-looking) Inspect the operator snapshot at `wiki/status.md`
+   for the most recent batch's `status` and `error_summary`. The
    `sync-knowledgebase-state` publisher gains checkpoint fields
-   (`batch_id`, `status`, `trigger`, `error_summary`) in PR3; today's
-   `wiki/status.md` does not carry them yet.
-2. (PR3+) Inspect the raw registry at
+   (`batch_id`, `status`, `trigger`, `error_summary`) once the
+   checkpoint runtime lands; today's `wiki/status.md` does not carry
+   them yet.
+2. (forward-looking) Inspect the raw registry at
    `raw/wiki-processing/wiki-processing-checkpoint-registry.json` for
    the failing item's `last_error`, `status`, and `last_attempted_at`
-   fields. The registry file does not exist until PR3 lands.
+   fields. The registry file does not exist until the checkpoint
+   runtime lands.
 3. Resolve the underlying cause (validator failure, write denial, schema
    mismatch, lock contention).
-4. (PR3+) Run a manual rescan (above) — `stale` and `failed` items are
-   re-claimed by the next batch under deterministic transition rules.
-   Requires `scripts/kb/checkpoint_registry.py` (PR3).
+4. (forward-looking) Run a manual rescan (above) — `stale` and `failed`
+   items are re-claimed by the next batch under deterministic transition
+   rules. Requires `scripts/kb/checkpoint_registry.py`.
 
 The registry is the source of truth; `wiki/status.md` is a derived
 snapshot.
@@ -342,8 +344,8 @@ sequence is dry-run, review the reconciliation report, operator
 confirmation, then apply:
 
 ```bash
-# PR3 entrypoint (forward-looking) — scripts/kb/checkpoint_registry.py
-# does not yet exist; bootstrap is exercisable only after PR3 lands.
+# Forward-looking entrypoint — scripts/kb/checkpoint_registry.py does
+# not yet exist; bootstrap is exercisable only after the runtime lands.
 
 # 1. Dry-run bootstrap — emits the reconciliation report without writing
 python3 scripts/kb/checkpoint_registry.py --bootstrap --dry-run
@@ -362,10 +364,10 @@ Ambiguous or contradictory items are left out of the bootstrap set and
 require manual resolution before they can be tracked. See ADR-026 §
 Bootstrap and recovery.
 
-### Lock-unavailable: `raw/.wiki-processing-checkpoint.lock` (PR4+)
+### Lock-unavailable: `raw/.wiki-processing-checkpoint.lock` (forward-looking)
 
 > **Forward-looking.** The lock first becomes observable when CI-3 wiring
-> lands in PR4. Today the lock file does not exist and no script attempts
+> lands. Today the lock file does not exist and no script attempts
 > to acquire it.
 
 If the checkpoint script reports
@@ -374,14 +376,16 @@ do **not** remove the lock blindly. The lock may be held by an active
 CI-3 run. First, list active CI-3 runs:
 
 ```bash
-# PR4+ runbook step — CI-3 invokes the checkpoint runtime starting in PR4.
+# Forward-looking runbook step — CI-3 invokes the checkpoint runtime
+# once the wiring lands.
 gh run list --workflow=ci-3-pr-producer.yml --status in_progress
 ```
 
-Once PR4 lands: if no run is active and the lock is stale (no in-progress
-CI-3 job), remove the lock file and retry. If a run is active, wait for it
-to complete (lock is typically held for ~1 second per batch under the
-single-lock-hold-long pattern; see `synthesize_combined.py` precedent).
+Once the CI-3 wiring lands: if no run is active and the lock is stale
+(no in-progress CI-3 job), remove the lock file and retry. If a run is
+active, wait for it to complete (lock is typically held for ~1 second
+per batch under the single-lock-hold-long pattern; see
+`synthesize_combined.py` precedent).
 The repo-wide convention for holder-PID tracking is filed as backlog
 issue [#183](https://github.com/wryenmeek/knowledgebase/issues/183).
 
