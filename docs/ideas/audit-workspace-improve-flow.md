@@ -45,7 +45,7 @@ As of 2026-06-10 the 23 vertical-slice issues (#190–#212) tracking this plan h
 
 ## Overview
 
-`.github/copilot-instructions.md` has grown to **674 lines (+2398/−77 in 6 months — a 31:1 add:delete ratchet across 42 commits)**. The CLI built-in `/chronicle improve` is a primary driver — its hardcoded prompt always writes to the always-on global file, always produces "3-5 recommendations," and has zero locality logic. Sixteen-plus chronicle-themed commits land roughly every 2–3 weeks; many add multi-paragraph sections rather than tightening existing ones. The remaining growth comes from non-`/chronicle` agent-initiated and human-initiated edits with the same shape.
+`.github/copilot-instructions.md` has grown to **713 lines (+811/−98 in 6 months — an ~8.3:1 add:delete ratchet across 47 commits)**. The CLI built-in `/chronicle improve` is a primary driver — its hardcoded prompt always writes to the always-on global file, always produces "3-5 recommendations," and has zero locality logic. Roughly 14 chronicle-themed commits land every 2–3 weeks; many add multi-paragraph sections rather than tightening existing ones. The remaining growth comes from non-`/chronicle` agent-initiated and human-initiated edits with the same shape. *(Note: the May→June clean-window analysis below — `copilot-instructions.md` growing while skill count is flat — is the load-bearing observation; the 6-month aggregate is context.)*
 
 This plan:
 
@@ -78,7 +78,7 @@ The original framing ("+2398 / −77 in 6 months") conflated **proportional grow
 
 | Window | Skills | `copilot-instructions.md` | `AGENTS.md` | Interpretation |
 |---|---|---|---|---|
-| 2026-04-15 → 2026-05-15 | 21 → 102 (**+385%**) | 73 → 473 (**+548%**) | (mass matrix-row landing for new script families) | **Roughly proportional growth** — not a ratchet, just keeping up with the customization-surface explosion |
+| 2026-04-15 → 2026-05-15 | 21 → 102 (**+385%**) | 73 → 473 (**+548%**) | not segmented (delta dominated by mass write-surface matrix-row landing for new script families) | **Roughly proportional growth** — not a ratchet, just keeping up with the customization-surface explosion |
 | 2026-05-15 → 2026-06-07 | 102 → 102 (**0%**) | 473 → 674 (**+42.5%**) | net **+3** lines | **`copilot-instructions.md` is the only file ratcheting** |
 
 The May→June window is the clean signal: instruction file grew 201 lines with **zero** customization-surface growth to justify it. `AGENTS.md` is flat in the same window (the +1716 over 6 months was almost entirely write-surface matrix rows landing alongside new script families — proportional and exempt from the ratchet gate by design).
@@ -189,7 +189,7 @@ This repo has **two** always-on top-level instruction files: `.github/copilot-in
 - `.github/copilot-instructions.md` is Copilot-CLI-specific; observable ratchet evidence in this repo is dominated by this file.
 - `AGENTS.md` is consumed by multiple agent tools (Antigravity IDE, Gemini CLI, Aider, etc.). The "+3 line clean window" in this repo only measures Copilot-CLI-driven growth; other consumers can drive their own growth patterns via different channels. Lower urgency would create a blind spot.
 
-The Phase 5 override block lives in `copilot-instructions.md` only (it's the file the CLI prompt forces the Copilot-CLI agent to read first; override-block mechanism is Copilot-CLI-specific). Phase 6's pre-commit gate covers both files at the same urgency tier.
+The Phase 5 override block ships to **both** `.github/copilot-instructions.md` and `AGENTS.md` (slice 2 / #192 landed both copies; verified by the Locality 0 invariant comment now sitting as the first H2 in each file). HSI-validated effectiveness applies specifically to Copilot CLI reading `copilot-instructions.md`; the `AGENTS.md` placement is precautionary multi-consumer coverage mirroring Decision Q3 — agent-compliance for Antigravity IDE, Gemini CLI, and other `AGENTS.md` consumers is unverified and treated as belt-and-suspenders. Phase 6's pre-commit gate covers both files at the same urgency tier regardless.
 
 The write-surface matrix table body in `AGENTS.md` is **exempt** from the ratchet check — it grows as the codebase grows, by design. Phase 6's gate must allowlist the matrix table. (Decision Q3 in Appendix A.)
 
@@ -202,7 +202,7 @@ The check is **not** "prove this CAN'T live anywhere lower before promoting it t
     - Bar: "no glob currently exists" is **not** sufficient. Bar is "no glob *could* be authored that targets the affected files." If a glob could exist, author it — even a brand-new `.github/instructions/<name>.instructions.md` file is cheaper than a Locality 4 entry (~1 row metadata per turn vs full file body).
     - **Locality-2-equivalent compliance:** Locality 1 requires agent compliance with the read-on-demand prompt. Token-cost advantage real; determinism advantage illusory (see Locality 2 compliance equivalence subsection). Classifier flags this in `compliance_risk`.
     - **Sub-context awareness.** Friction concentrated in one of this repo's known surfaces — `scripts/kb/**`, `scripts/fleet/**`, `scripts/github_monitor/**`, `scripts/drive_monitor/**`, `scripts/ingest/**`, `scripts/validation/**`, `scripts/reporting/**`, `scripts/maintenance/**`, `scripts/context/**`, `scripts/hooks/**`, `.github/skills/**`, `.github/agents/**`, `wiki/**`, `schema/**`, `docs/decisions/**`, `tests/kb/**` — MUST be considered for a per-context Locality 1 glob even though `.github/instructions/` is empty today.
-3. **Is it a discrete multi-step workflow (Locality 2)?** Fits "user invokes; agent runs steps." Note: 104 skills already exist; the bar is "could this be a skill or a `references/` checklist under an existing skill?" 0 tokens-per-turn; full body cost only when invoked.
+3. **Is it a discrete multi-step workflow (Locality 2)?** Fits "user invokes; agent runs steps." Note: 102 skills already exist; the bar is "could this be a skill or a `references/` checklist under an existing skill?" 0 tokens-per-turn; full body cost only when invoked.
 4. **Can a hook event fire it (Locality 3a–3e)?** 0 tokens-per-turn; injected context paid only on triggering event.
     - Triggered by a tool call → `PreToolUse` injection (3a) or gate (3b)
     - Triggered by a file edit → `PostToolUse` injection (3c)
@@ -222,7 +222,7 @@ Two classes, hybrid detection (see Phase 4):
     - Superseded by an ADR — walk `docs/decisions/` for `## Status` "amended" / "extended" / numbered supersession references
 2. **Redundant-up-the-ladder** — *LLM-judgment with mandatory citation:*
     - Locality 4 bullet duplicating a Locality 3 hook's enforcement
-    - Locality 4 bullet duplicating a Locality 2 skill's procedure (high-risk in this repo: 104 skills mean many candidate covers exist)
+    - Locality 4 bullet duplicating a Locality 2 skill's procedure (high-risk in this repo: 102 skills mean many candidate covers exist)
     - Locality 4 bullet duplicating a Locality 1 scoped instruction's guidance
     - **Citation requirement:** every "redundant" claim MUST cite the lower-locality artifact path *and* the snippet from that artifact that allegedly covers the candidate. Uncited claims are dropped.
 
@@ -344,7 +344,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
     - The 9-locality table.
     - The 5-step disqualification chain for Locality 4 promotion.
     - The two deletion-candidate classes.
-    - The `Locality-4-Justification:` trailer escape and its **soft budget** (Decision Q10): max 1 trailer per 10 commits to global rules sections within a rolling window; beyond that, the gate hard-fails until a paired deletion lands. **Trailer validation is a `commit-msg` stage concern, not pre-commit** — document the two-stage hook split (Phase 6 spec): pre-commit checks `net_section_delta = additions − deletions ≤ 0` inside non-exempt regions; commit-msg parses the trailer via `git interpret-trailers --parse` and enforces the soft budget. Both must be wired via `pre-commit install --hook-type pre-commit --hook-type commit-msg`.
+    - The `Locality-4-Justification:` trailer escape and its **soft budget** (Decision Q10): max 1 trailer per 10 commits to global rules sections within a rolling window; beyond that, the gate hard-fails until a paired deletion lands. **Trailer validation is a `commit-msg` stage concern, not pre-commit** — document the two-stage hook split (Phase 6 spec): pre-commit checks `net_section_delta = additions − deletions ≤ 0` inside non-exempt regions; commit-msg parses the trailer via `git interpret-trailers --parse` and enforces the soft budget. Both must be wired via `pre-commit install --hook-type pre-commit --hook-type commit-msg`. **Canonical trailer text-of-record:** `docs/templates/locality-4-justification-trailer.md` (shipped in slice 2 / #192); contributors should copy-paste from that template rather than freehand the trailer.
     - The two-file scope with **blocking urgency on both files** (Decision Q3, revised per multi-consumer reality): `copilot-instructions.md` AND `AGENTS.md` both gated at blocking; `AGENTS.md` has a write-surface matrix table carve-out.
     - **K13 resolved (Decision Q7):** new lock `.github/.customizations.lock` follows the sibling pattern established by `wiki/.kb_write.lock` (ADR-005) and `raw/.rejection-registry.lock` (ADR-013). No ordering relationship with either; never held simultaneously. Lock-file cleanup pattern added to `scripts/init.py --fresh` mode.
     - Verified surface matrix from Phase 1.5 (CLI agent-compliance rate per surface).
@@ -388,7 +388,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
       ]
     }
     ```
-    Phase 3's stub classifier MUST emit all six required fields (the stub finding is hardcoded; values may be placeholder but the keys are mandatory) so the JSON schema validator in Phase 3 acceptance is exercised against the same shape Phase 4 / Phase 7 will rely on.
+    Phase 3's stub classifier MUST emit all seven always-required fields (`source_file`, `source_section`, `proposed_destination`, `rationale`, `compliance_risk`, `expected_token_efficiency_rank`, `cache_strategy`) — the two conditionally-nullable fields (`deletion_candidate`, `citation`) may be `null` when not applicable. Stub findings are hardcoded; values may be placeholder but the seven required keys are mandatory so the JSON schema validator in Phase 3 acceptance is exercised against the same shape Phase 4 / Phase 7 will rely on.
 - [ ] Progressive disclosure: Phase B / `--apply` mechanics live in `logic/` scripts loaded only when the flow is requested. SKILL.md root stays small.
 - [ ] **CONTEXT.md cascade:** bump `last_updated` in `.github/skills/CONTEXT.md`.
 - [ ] **Cascade-test rows** updated where required (write-surface matrix test, framework-skills test).
@@ -398,7 +398,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
 
 - [ ] Replace the Phase 3 stub with the real classifier:
     - `session_store_sql` query templates for friction signals (chronicle commits, repeated user prompts, repeated context loads, hook bypasses, retry loops).
-    - **10-bin classifier** (input: friction signal; output: one of `Delete | Locality 0 | Locality 1 | Locality 2 | Locality 3a | Locality 3b | Locality 3c | Locality 3d | Locality 3e | Locality 4` + rationale + `compliance_risk` field + `expected_token_efficiency_rank` field + `cache_strategy` field + suggested artifact path). Output schema matches the Phase 3 canonical JSON block. **Optimization objective (Decision Q5 revised):** for each finding, propose the tier that **minimizes expected token waste across the rule's actual usage pattern**, computed as `(estimated trigger frequency × per-fire cost)`. Not "find the lowest locality number" — find the cheapest *for this rule's expected trigger pattern*. The `compliance_risk` field (Decision Q4 revised) is `"deterministic"` (Locality 0 + Locality 3a/3b/3c/3d) or `"agent-dependent"` (Locality 1, Locality 2, Locality 3e, Locality 4 mechanism-A). Locality 1 demotions inherit Locality-2-equivalent compliance shape — dry-run report MUST surface this for every Locality 1 finding so the reviewer can decide whether the token-cost advantage justifies the compliance dependency. The `cache_strategy` field (Decision Q11) records which skill-corpus indexing strategy generated the finding (`"mtime_first_para"` baseline; `"hybrid_signature"` if Phase 7 retro escalates per K15 upgrade trigger) so successive runs can be diffed to detect late-caught false-negatives. **Locality 1 destination availability assumes CLI behavior verified by reading `app.js`** (no separate gating on Phase 1.5 — that spike measures agent compliance rate, not feature presence). Prompt MUST mention per-context Locality 1 globs (`scripts/kb/**`, `scripts/fleet/**`, `scripts/github_monitor/**`, `scripts/drive_monitor/**`, `scripts/ingest/**`, `scripts/validation/**`, `scripts/reporting/**`, `scripts/maintenance/**`, `scripts/context/**`, `scripts/hooks/**`, `.github/skills/**`, `.github/agents/**`, `wiki/**`, `schema/**`, `docs/decisions/**`, `tests/kb/**`) as **viable destinations the classifier may propose lazily** — but **do not pre-create empty instruction files** (Decision Q8).
+    - **11-bin classifier** (input: friction signal; output: one of `Delete | Locality 0 | Locality 1 | Locality 2 | Locality 3a | Locality 3b | Locality 3c | Locality 3d | Locality 3e | Locality 4 | OutOfBand` + rationale + `compliance_risk` field + `expected_token_efficiency_rank` field + `cache_strategy` field + suggested artifact path). Output schema matches the Phase 3 canonical JSON block (the `OutOfBand` value is the cross-skill handoff route described below). **Optimization objective (Decision Q5 revised):** for each finding, propose the tier that **minimizes expected token waste across the rule's actual usage pattern**, computed as `(estimated trigger frequency × per-fire cost)`. Not "find the lowest locality number" — find the cheapest *for this rule's expected trigger pattern*. The `compliance_risk` field (Decision Q4 revised) is `"deterministic"` (Locality 0 + Locality 3a/3b/3c/3d) or `"agent-dependent"` (Locality 1, Locality 2, Locality 3e, Locality 4 mechanism-A). Locality 1 demotions inherit Locality-2-equivalent compliance shape — dry-run report MUST surface this for every Locality 1 finding so the reviewer can decide whether the token-cost advantage justifies the compliance dependency. The `cache_strategy` field (Decision Q11) records which skill-corpus indexing strategy generated the finding (`"mtime_first_para"` baseline; `"hybrid_signature"` if Phase 7 retro escalates per K15 upgrade trigger) so successive runs can be diffed to detect late-caught false-negatives. **Locality 1 destination availability assumes CLI behavior verified by reading `app.js`** (no separate gating on Phase 1.5 — that spike measures agent compliance rate, not feature presence). Prompt MUST mention per-context Locality 1 globs (`scripts/kb/**`, `scripts/fleet/**`, `scripts/github_monitor/**`, `scripts/drive_monitor/**`, `scripts/ingest/**`, `scripts/validation/**`, `scripts/reporting/**`, `scripts/maintenance/**`, `scripts/context/**`, `scripts/hooks/**`, `.github/skills/**`, `.github/agents/**`, `wiki/**`, `schema/**`, `docs/decisions/**`, `tests/kb/**`) as **viable destinations the classifier may propose lazily** — but **do not pre-create empty instruction files** (Decision Q8).
     - **Hybrid deletion-candidate generator:**
         - **Stale (deterministic):** path/symbol extraction → `git ls-files` / `rg` check; issue ref extraction → `gh issue view --json state`; ADR-supersession walker over `docs/decisions/`.
         - **Redundant-up-the-ladder (LLM judgment with mandatory citation):** loads every lower-locality artifact as comparison corpus; emits redundancy claims only with cited artifact path + snippet. Uncited claims are dropped.
@@ -416,12 +416,12 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
 - [ ] Unit tests in `tests/kb/test_improve_workspace_classifier.py` covering: each locality bin, the stale detector, the citation-required gate dropping uncited redundancy claims, the schema validator, the OutOfBand routing for cross-skill suggestions, the cross-skill-write hard-fail in `--apply` mode.
 - [ ] **Acceptance:** Running the classifier produces the expected locality and artifact path; every "redundant" finding includes a citation; uncited findings dropped; cross-skill suggestions emit OutOfBand and `--apply` refuses cross-skill writes; skill-corpus index keeps a typical run under per-call token budget.
 
-### Phase 5 — Override block in `copilot-instructions.md`
+### Phase 5 — Override block in `copilot-instructions.md` AND `AGENTS.md`
 
-- [ ] Insert the override block as the **first H2 under the H1 title**, before any other content section. Required structure:
+- [ ] Insert the override block as the **first H2 under the H1 title**, before any other content section, in **both** `.github/copilot-instructions.md` and `AGENTS.md`. (Slice 2 / #192 has already landed both copies; this Phase 5 entry now governs the position invariant going forward.) Required structure (showing `copilot-instructions.md`; substitute `# AGENTS` for the AGENTS.md copy):
 
     ```markdown
-    # GitHub Copilot Instructions
+    # Copilot project instructions
 
     <!-- LOCALITY-0-INVARIANT: This H2 MUST remain the first H2 under the H1. -->
     <!-- Position is load-bearing for the /chronicle improve hard-redirect. -->
@@ -449,9 +449,9 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
     ## <existing first content section>
     ```
 
-- [ ] **Pre-commit hook to enforce Locality 0 invariant:** add `scripts/hooks/check_override_block_position.py` that verifies the override block is the first H2 in `copilot-instructions.md` whenever that file is staged. Wire into `.pre-commit-config.yaml`.
+- [ ] **Pre-commit hook to enforce Locality 0 invariant:** add `scripts/hooks/check_override_block_position.py` that verifies the override block is the first H2 in **both** `copilot-instructions.md` and `AGENTS.md` whenever either file is staged. Wire into `.pre-commit-config.yaml`.
 - [ ] **Write-surface matrix row** for the new hook (`read-only only`; standard hook hard-fail behavior).
-- [ ] **Acceptance:** The override block is the first H2 (verifiable via `grep -n '^## ' .github/copilot-instructions.md | head -1`), the ⚠️ emoji prefix is present, the Locality 0 invariant comment block sits immediately above it, and the pre-commit hook blocks any reordering attempt.
+- [ ] **Acceptance:** The override block is the first H2 in both files (verifiable via `grep -n '^## ' .github/copilot-instructions.md AGENTS.md | grep ':1:' | head -2`, which should report the H2 line per file), the ⚠️ emoji prefix is present, the Locality 0 invariant comment block sits immediately above it, and the pre-commit hook blocks any reordering attempt in either file.
 
 ### Phase 6 — Close the non-`/chronicle` growth channel
 
@@ -469,7 +469,7 @@ The redirect intercepts only the explicit `/chronicle improve` invocation. The r
     - Block the commit unless EITHER:
         - The Stage 1 `net_section_delta = additions − deletions` *inside global rules sections* is `≤ 0` (any addition paired with at least an equivalent deletion of stale or redundant-up-the-ladder content; a net-negative replacement passes even when additions > 0), OR
         - The Stage 2 commit-msg hook confirms a `Locality-4-Justification: <reason>` trailer is present — **subject to the soft budget below**.
-    - **Trailer soft budget (Decision Q10):** the commit-msg hook runs `git log --grep "Locality-4-Justification" --since="<rolling-window>"` over the last 10 commits to global rules sections. If 1 trailer is already present in that window, the commit-msg gate hard-fails until a paired-deletion commit lands. Numerically tunable; document the default ratio (1-in-10) in ADR-028. Budget is **per-file** (separate counts for `copilot-instructions.md` and `AGENTS.md`) so a noisy week on one file doesn't starve the other.
+    - **Trailer soft budget (Decision Q10):** the commit-msg hook runs `git log --grep "Locality-4-Justification" --since="<rolling-window>"` over the last 10 commits to global rules sections. If 1 trailer is already present in that window, the commit-msg gate hard-fails until a paired-deletion commit lands. Numerically tunable; document the default ratio (1-in-10) in ADR-028. Budget is **per-file** (separate counts for `copilot-instructions.md` and `AGENTS.md`) so a noisy week on one file doesn't starve the other. Contributors should paste the trailer text from `docs/templates/locality-4-justification-trailer.md` (shipped in slice 2 / #192) to ensure the format matches what `git interpret-trailers --parse` will accept.
     - On block, both hooks print locality-ladder demotion candidates from `improve --dry-run` so the author can choose to demote, pair, or justify.
     - Implementation: `scripts/hooks/check_locality_ratchet.py` (pre-commit; read-only matrix row; `net_section_delta` computation on either file's non-exempt regions) **plus** `scripts/hooks/check_locality_justification_trailer.py` (commit-msg; read-only matrix row; trailer parse via `git interpret-trailers --parse` and soft-budget check via `git log`). Add a write-surface matrix row for each new hook.
 - [ ] **Locality 3c PostToolUse advisory** on `edit` tool filtered to `.github/copilot-instructions.md` or `AGENTS.md`:
@@ -544,7 +544,7 @@ The plan is **complete** when:
 
 - **Replacing other `/chronicle` subcommands** (`tips`, `cost-tips`). They are advisory/read-only; their deterministic-flow tightening already lives in `copilot-instructions.md` and stays put.
 - **The `audit-knowledgebase-workspace` default flow's existing behavior.** Default flow is byte-identical to today; only the new `improve` flow is added.
-- **Refactoring the 104-skill surface.** The classifier *reads* skills as a comparison corpus; it does not propose splitting, merging, or deleting skills (that's a separate concern owned by `skill-size-refactoring.md` and framework-engineer reviews).
+- **Refactoring the 102-skill surface.** The classifier *reads* skills as a comparison corpus; it does not propose splitting, merging, or deleting skills (that's a separate concern owned by `skill-size-refactoring.md` and framework-engineer reviews).
 - **CI workflow changes beyond `github-customizations-freshness` path additions.** No new workflows; no token-profile additions.
 - **Wiki content rules.** This plan touches `.github/**` and root-level `AGENTS.md` only. `wiki/**` governance is unchanged.
 
@@ -555,7 +555,7 @@ The plan is **complete** when:
 | Agent fails to honor hard-redirect meta-rule | **Mechanism A is HSI-validated in production**, so this risk is empirically retired. If Mechanism B also passes its Phase 0 spike, hook serves as belt-and-suspenders. Override block is first H2 (load-bearing placement; pre-commit invariant check in Phase 5) |
 | `PostToolUse` payload format differs between surfaces | The `tool_input.files` field is documented for both; hook script normalizes by reading from stdin JSON or env vars |
 | Classifier mis-tiers a signal | Dry-run is read-only + per-item user approval; `--apply` only mutates accepted items; redundancy claims require mandatory citations. Mistakes are reviewable before commit; Phase 6 gate blocks regressions |
-| Classifier prompt cost blows up against 104-skill corpus | Phase 4 uses a cached frontmatter+first-paragraph index, not full bodies. Index refresh is one-shot per `.github/skills/` change |
+| Classifier prompt cost blows up against 102-skill corpus | Phase 4 uses a cached frontmatter+first-paragraph index, not full bodies. Index refresh is one-shot per `.github/skills/` change |
 | Locality 1 demotions create false sense of determinism | **Decision Q4 (revised):** CLI `applyTo:` is metadata-table-only; agent must `view` on demand. Phase 4 classifier emits `compliance_risk: "agent-dependent"` on every Locality 1 finding. Locality 0 (file comment) is the only deterministic demotion target |
 | Frontmatter-less file in `.github/instructions/` becomes silent Locality 4 ratchet | Phase 1 pre-commit hook `check_instructions_applyto_present.py` blocks staging of any `.github/instructions/*.instructions.md` file missing `applyTo:` frontmatter |
 | Pre-commit gate over-blocks legitimate edits | Escape hatch is the `Locality-4-Justification:` trailer; auditable so it doesn't normalize into a bypass |
@@ -568,8 +568,8 @@ The plan is **complete** when:
 ## See Also
 
 - `.github/skills/audit-knowledgebase-workspace/SKILL.md` — the skill being extended
-- `.github/copilot-instructions.md` — primary always-on file (674 lines, ratcheting)
-- `AGENTS.md` — secondary always-on file (110 lines, includes write-surface matrix; clean-window growth +3)
+- `.github/copilot-instructions.md` — primary always-on file (674 lines at 2026-06-07 baseline; ratcheting — current size will exceed this as slices land)
+- `AGENTS.md` — secondary always-on file (110 lines at 2026-06-07 baseline; includes write-surface matrix; clean-window growth +3 before slice-2 override block landed)
 - `docs/ideas/github-customizations-governance.md` — Implemented; established CONTEXT.md parity and freshness CI for `.github/**` (this plan builds on that scaffold but solves a different problem)
 - `docs/ideas/skill-size-refactoring.md` — adjacent concern (skill bloat, not instruction bloat)
 - `scripts/kb/github_customizations_graph.py` + `scripts/kb/github_customizations_freshness.py` — existing customization-surface tooling
@@ -618,9 +618,9 @@ This plan was revised via the `grill-with-docs` skill in autopilot mode. The use
 - Phase 1.5 outcome dictates Locality 1's availability across surfaces. Cannot pre-decide.
 - Exact rolling-window definition for the trailer budget (commits-touching-target-files vs all commits) — tune during Phase 6 implementation based on observed false-positive rate.
 
-### CONTEXT.md term additions (deferred to ADR-028 acceptance)
+### CONTEXT.md term additions (landed early in slice 2 / #192 with `ADR-028 (pending)` hedges)
 
-The grilling pass surfaced four new repo-specific terms that should enter `CONTEXT.md` once ADR-028 is `Accepted`. Adding them while the plan is still `Proposed` would reference an unaccepted ADR, which is inconsistent with existing CONTEXT.md conventions (every existing entry references accepted ADRs only). On Phase 2 ADR-028 acceptance:
+The grilling pass surfaced four new repo-specific terms that have **already been added** to `.github/skills/CONTEXT.md` as part of slice 2 / #192, with each entry hedged as `(introduced in ADR-028 — pending issue #190)` so the cross-reference stays accurate until the ADR is `Accepted`. When ADR-028 lands in Phase 2 and the status flips to `Accepted`, the same commit must remove the `(pending)` hedges and bump `last_updated` in `CONTEXT.md`. Canonical definitions (used both for the on-disk entries and as the ADR-028 author's reference):
 
 | Term | Definition for CONTEXT.md |
 |---|---|
@@ -629,4 +629,4 @@ The grilling pass surfaced four new repo-specific terms that should enter `CONTE
 | **trailer soft budget** | The rolling-window cap on `Locality-4-Justification:` git trailers (default 1 per 10 commits to global rules sections) that prevents the escape hatch from normalizing into bypass. Enforced by `scripts/hooks/check_locality_justification_trailer.py` at the `commit-msg` stage (paired with the pre-commit `check_locality_ratchet.py` line-delta check). |
 | **customizations lock** | The file `.github/.customizations.lock` — concurrency guard for `--apply` mode writes to `.github/**` (introduced in ADR-028). Sibling to `wiki/.kb_write.lock` and `raw/.rejection-registry.lock`; never held simultaneously with either. |
 
-`last_updated` in `CONTEXT.md` must be bumped in the same commit that lands these terms.
+On Phase 2 ADR-028 acceptance, the cascade is: (a) drop `(pending)` hedges in each CONTEXT.md entry above, (b) bump `last_updated` in `.github/skills/CONTEXT.md`, (c) `tests/kb/test_adr_readme_status_sync.py` and `check_adr_cross_ref.py` will catch any forgotten hedge.
