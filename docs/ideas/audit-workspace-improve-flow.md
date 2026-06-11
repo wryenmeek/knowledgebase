@@ -273,7 +273,7 @@ Mechanism A (meta-rule override block) is already validated in the HSI deploymen
 - [ ] **B passes:** keep both. Hook is primary (mechanically deterministic); meta-rule is belt-and-suspenders. Phase 5 ships both.
 - [ ] **B fails:** drop Mechanism B silently; revert `hooks.json` and remove the hook script. Phase 5 ships A-only (HSI shape). **The plan continues uninterrupted.**
 - [ ] **Acceptance:** session-transcript evidence captured (whether B passed or failed). Drop or keep B accordingly.
-- [ ] **On Phase 0 close:** draft `docs/decisions/ADR-028-instruction-locality-ladder.md` with status `Accepted`. ADR-028 documents the Phase 0 outcome (B-pass or B-fail) and the final Phase 5 mechanism mix.
+- [ ] **On Phase 0 close:** draft `docs/decisions/ADR-028-instruction-locality-ladder.md` with status `Proposed` (**draft-only checkpoint**, not yet `Accepted`). The Phase 0 draft records the spike outcome (B-pass or B-fail) and the intended Phase 5 mechanism mix. ADR-028 is **promoted to `Accepted` in Phase 2** once the Phase 1.5 spike has captured the agent-compliance rate and the normative ladder spec is in place. This ordering prevents accepting an ADR before the evidence and normative content it cites exist.
 - [ ] **Estimated time:** ~30 minutes (single spike against B; A needs no test work).
 
 ### Phase 1 — Prerequisite: establish `.github/instructions/` convention
@@ -306,7 +306,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
 
 ### Phase 2 — Locality ladder normative spec + ADR-028 (resolves K7 + K13 + Q5)
 
-- [ ] Draft `docs/decisions/ADR-028-instruction-locality-ladder.md` covering:
+- [ ] Draft `docs/decisions/ADR-028-instruction-locality-ladder.md` covering (this is where Phase 0's draft is **promoted to status `Accepted`** — Phase 0 lands it as `Proposed`, and the spike evidence captured in Phase 1.5 is folded in before the status change):
     - **Purpose statement (Decision Q5, revised).** The ladder is a **token-efficiency hierarchy** that guides humans and agents to deliver context via the token-cheapest viable tier. Each locality is a JIT / progressive-disclosure trade-off characterized by `(trigger frequency × per-fire cost)`. The ratchet is what happens when this guidance is absent. Trigger-frequency is one input to the efficiency calculation, not the destination axis. Reading the ladder table top-to-bottom shows the trade-off explicitly: per-turn cost grows from 0 to full-body; conditional cost is paid only when triggered.
     - **CLI `applyTo:` mechanism — verbatim from the sidebar in Background.** Document that Locality 1 in CLI is a **metadata-table-only** mechanism; the agent must `view` the file on demand. Include the source-code reference paths (`app.js` function `BXo`; mirror the JS splitter snippet). Document the Phase 1.5 measured compliance rate per surface.
     - **Locality 2 compliance equivalence** (Decision Q4 revised): Locality 1 and Locality 2 share the same compliance shape (agent must read on demand). The token-cost advantage of Locality 1 is real; the determinism advantage is not. The classifier emits a `compliance_risk` field on every demotion finding so this is surfaced explicitly in dry-run reports.
@@ -316,7 +316,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
     - The 9-locality table.
     - The 5-step disqualification chain for Locality 4 promotion.
     - The two deletion-candidate classes.
-    - The `Locality-4-Justification:` trailer escape and its **soft budget** (Decision Q10): max 1 trailer per 10 commits to global rules sections within a rolling window; beyond that, the gate hard-fails until a paired deletion lands.
+    - The `Locality-4-Justification:` trailer escape and its **soft budget** (Decision Q10): max 1 trailer per 10 commits to global rules sections within a rolling window; beyond that, the gate hard-fails until a paired deletion lands. **Trailer validation is a `commit-msg` stage concern, not pre-commit** — document the two-stage hook split (Phase 6 spec): pre-commit checks `net_section_delta = additions − deletions ≤ 0` inside non-exempt regions; commit-msg parses the trailer via `git interpret-trailers --parse` and enforces the soft budget. Both must be wired via `pre-commit install --hook-type pre-commit --hook-type commit-msg`.
     - The two-file scope with **blocking urgency on both files** (Decision Q3, revised per multi-consumer reality): `copilot-instructions.md` AND `AGENTS.md` both gated at blocking; `AGENTS.md` has a write-surface matrix table carve-out.
     - **K13 resolved (Decision Q7):** new lock `.github/.customizations.lock` follows the sibling pattern established by `wiki/.kb_write.lock` (ADR-005) and `raw/.rejection-registry.lock` (ADR-013). No ordering relationship with either; never held simultaneously. Lock-file cleanup pattern added to `scripts/init.py --fresh` mode.
     - Verified surface matrix from Phase 1.5 (CLI agent-compliance rate per surface).
@@ -332,7 +332,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
     - **Default flow**: structural lint only — *byte-identical* to current behavior (the existing reference/command/wrapper integrity audit).
     - **`improve` flow**: two-mode contract:
         - **Dry-run (default):** Phase A structural audit → Phase B mine session store + classify by locality + emit dry-run report. No file mutations.
-        - **`--apply`:** consume the dry-run report; user accepts the whole report OR selects individual items; agent applies accepted items in one batch (deletions + demotions + new artifact creation), leaves changes staged for user review/commit.
+        - **`--apply` (write-capable wiring deferred to Phase 4):** In Phase 3 the flag is documented and recognized but **MUST refuse with a "matrix-row pending Phase 4" message** while the surface row remains `read-only only`. Phase 4 enables it once the narrow-write matrix-row amendment, lock acquisition, and classifier all land; behavior at that point is: consume the dry-run report; user accepts the whole report OR selects individual items; agent applies accepted items in one batch (deletions + demotions + new artifact creation), leaves changes staged for user review/commit.
 - [ ] **Ships a stub classifier** at `.github/skills/audit-knowledgebase-workspace/logic/improve_workspace.py` returning a single hardcoded placeholder finding. Keeps SKILL.md end-to-end demoable on its own; Phase 4 swaps in the real classifier without touching SKILL.md.
 - [ ] **Write-surface matrix row — Phase 3 lands as `read-only only`** (Decision Q6: split matrix-row landing across Phase 3 + Phase 4 so the matrix tracks code reality at each boundary):
     - Path: `.github/skills/audit-knowledgebase-workspace/logic/**`
@@ -342,25 +342,29 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
     - Locks: none required for read-only mode
     - Hard-fail conditions: missing dry-run input, unsupported destination, classifier output failing JSON schema validation
 - [ ] Phase 4 amends this row to add narrow write capability for `--apply` mode (see Phase 4 spec).
-- [ ] **Dry-run report schema (load-bearing for Phase 7).** Report emits BOTH human-readable markdown AND a fenced JSON block:
+- [ ] **Dry-run report schema (load-bearing for Phase 7).** Report emits BOTH human-readable markdown AND a fenced JSON block. The schema below includes the classifier fields that Phase 4 / Phase 7 acceptance depends on, so tests and consumers built against this contract from Phase 3 onward stay forward-compatible:
     ```json
     {
       "findings": [
         {
           "source_file": "string — .github/copilot-instructions.md | AGENTS.md",
           "source_section": "string — H2/H3 heading or signal identifier",
-          "proposed_destination": "one of: Delete | Locality 0 | Locality 1 | Locality 2 | Locality 3a | Locality 3b | Locality 3c | Locality 3d | Locality 3e | Locality 4",
+          "proposed_destination": "one of: Delete | Locality 0 | Locality 1 | Locality 2 | Locality 3a | Locality 3b | Locality 3c | Locality 3d | Locality 3e | Locality 4 | OutOfBand",
           "deletion_candidate": "string path+snippet | null",
           "rationale": "string",
-          "citation": "string artifact path + snippet | null (required when proposed_destination = Delete via redundant-up-the-ladder)"
+          "citation": "string artifact path + snippet | null (required when proposed_destination = Delete via redundant-up-the-ladder)",
+          "compliance_risk": "one of: deterministic | agent-dependent — required on every finding; Locality 1, Locality 2, Locality 3e, and Locality 4 mechanism-A destinations MUST report 'agent-dependent'",
+          "expected_token_efficiency_rank": "integer — relative cost rank of (estimated trigger frequency × per-fire cost) across candidate destinations; lower is cheaper; required on every finding",
+          "cache_strategy": "one of: mtime_first_para | hybrid_signature — which skill-corpus indexing strategy generated the finding; Phase 3 stub MAY emit 'mtime_first_para' as the only value; required on every finding"
         }
       ]
     }
     ```
+    Phase 3's stub classifier MUST emit all six required fields (the stub finding is hardcoded; values may be placeholder but the keys are mandatory) so the JSON schema validator in Phase 3 acceptance is exercised against the same shape Phase 4 / Phase 7 will rely on.
 - [ ] Progressive disclosure: Phase B / `--apply` mechanics live in `logic/` scripts loaded only when the flow is requested. SKILL.md root stays small.
 - [ ] **CONTEXT.md cascade:** bump `last_updated` in `.github/skills/CONTEXT.md`.
 - [ ] **Cascade-test rows** updated where required (write-surface matrix test, framework-skills test).
-- [ ] **Acceptance:** Default invocation produces no change vs today; `improve` (dry-run) produces a locality-classified report with the canonical JSON block; `improve --apply` mutates only items accepted from the report and leaves a clean staged diff. Stub classifier returns exactly one finding so end-to-end wiring is exercised without depending on Phase 4. All matrix-row, CONTEXT.md, and cascade-test obligations satisfied.
+- [ ] **Acceptance (Phase 3, read-only only — `--apply` mutation acceptance moves to Phase 4 alongside the write-capable matrix-row amendment):** Default invocation produces no change vs today; `improve` (dry-run) produces a locality-classified report with the canonical JSON block (stub returns exactly one hardcoded finding so end-to-end wiring is exercised without depending on Phase 4); the `--apply` flag is wired so it can be invoked but **MUST refuse with a clear "matrix-row pending Phase 4" exit** while the surface row remains `read-only only`. Phase 4 reasserts this acceptance with mutation enabled once the matrix row, lock requirements, and classifier all land. All matrix-row, CONTEXT.md, and cascade-test obligations satisfied.
 
 ### Phase 4 — `logic/improve_workspace.py` classifier (hybrid algorithm) + matrix-row amendment
 
@@ -425,27 +429,32 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
 
 The redirect intercepts only the explicit `/chronicle improve` invocation. The remaining growth comes from non-`/chronicle` agent-initiated and human-initiated additions. This phase plugs the remaining channels at the only persistent boundary: `git commit`.
 
-- [ ] **Locality 3d pre-commit hook** on any commit touching `.github/copilot-instructions.md` **or** `AGENTS.md` — **blocking on both files** per Decision Q3 (multi-consumer reality for `AGENTS.md`):
+- [ ] **Locality 3d gate — split across `pre-commit` and `commit-msg` stages** on any commit touching `.github/copilot-instructions.md` **or** `AGENTS.md` — **blocking on both files** per Decision Q3 (multi-consumer reality for `AGENTS.md`). The split is required because git's `pre-commit` stage runs *before* the commit message exists and only receives staged file paths, so the `Locality-4-Justification:` trailer is not visible at `pre-commit` time. `commit-msg` is the only stage that receives the finalized commit-message file path:
     - **Definition of "global rules sections" for the ratchet check:**
         - `copilot-instructions.md`: everything *below the override block* (i.e., from the second H2 onward). The override block itself is **exempt**.
         - `AGENTS.md`: everything *except* the `## Write-surface matrix` table body. Matrix rows are mandated by other rules and grow with the codebase by design.
     - **Default behavior on violation:** **blocking** (hard-fails the commit) for both files. Lowering `AGENTS.md` to advisory would create a blind spot for non-Copilot-CLI consumers (Antigravity IDE, Gemini CLI).
+    - **Stage 1 — `pre-commit` hook (`scripts/hooks/check_locality_ratchet.py`).** Read-only; receives staged file paths. Compares the staged diff against HEAD inside the non-exempt regions of each gated file and computes `net_section_delta = additions − deletions` *within the non-exempt sections only* (NOT additions-only). Passes when `net_section_delta ≤ 0`, so a net-negative replacement (e.g., a 3-line stale rule replaced by a 1-line rule: +1/−3, delta = −2) passes even though additions > 0. When `net_section_delta > 0`, the hook records a sentinel marker (e.g., emits a structured stderr line and exits 0 only if the commit-msg stage will run) and **defers the final pass/fail to the commit-msg stage** so the trailer escape can still apply.
+        - Actual deferral mechanism: when `net_section_delta > 0`, the pre-commit hook exits **non-zero with a message naming the file(s) and the required `Locality-4-Justification:` trailer**, but documents that the trailer is checked by the commit-msg stage. Operators who add the trailer get a clean pass at commit-msg; those who don't are blocked at pre-commit. (Implementations may instead write a per-repo state file the commit-msg stage consumes; the contract is "trailer-aware pass/fail end-to-end," not the specific signaling mechanism.)
+    - **Stage 2 — `commit-msg` hook (`scripts/hooks/check_locality_justification_trailer.py`).** Read-only; receives the path to the prospective commit-message file as `$1`. Reads the message file, looks for a `Locality-4-Justification: <reason>` trailer (RFC-5322 trailer format, parsed via `git interpret-trailers --parse`), and enforces the soft budget below. When the pre-commit stage signaled a positive `net_section_delta`, the commit-msg stage passes iff the trailer is present **and** within budget. When the pre-commit stage already passed on `net_section_delta ≤ 0`, the commit-msg stage is a no-op for that commit.
+    - **Wiring.** Add both hooks to `.pre-commit-config.yaml`: `check_locality_ratchet.py` with `stages: [pre-commit]`, and `check_locality_justification_trailer.py` with `stages: [commit-msg]`. Both hooks must be installed via `pre-commit install --hook-type pre-commit --hook-type commit-msg`; update the repo's setup docs to include the `--hook-type commit-msg` step.
     - Block the commit unless EITHER:
-        - The diff has a net line count of *additions inside global rules sections* ≤ 0 (any addition paired with at least an equivalent deletion of stale or redundant-up-the-ladder content), OR
-        - The commit message contains a `Locality-4-Justification: <reason>` trailer — **subject to the soft budget below**.
-    - **Trailer soft budget (Decision Q10):** scan `git log --grep "Locality-4-Justification" --since="<rolling-window>"` over the last 10 commits to global rules sections. If 1 trailer is already present, the gate hard-fails until a paired-deletion commit lands. Numerically tunable; document the default ratio (1-in-10) in ADR-028. Budget is **per-file** (separate counts for `copilot-instructions.md` and `AGENTS.md`) so a noisy week on one file doesn't starve the other.
-    - On block, print locality-ladder demotion candidates from `improve --dry-run` so the author can choose to demote, pair, or justify.
-    - Implementation: `scripts/hooks/check_locality_ratchet.py` (read-only matrix row; hard-fails on either file's non-exempt-region violation; budget check via git log).
+        - The Stage 1 `net_section_delta = additions − deletions` *inside global rules sections* is `≤ 0` (any addition paired with at least an equivalent deletion of stale or redundant-up-the-ladder content; a net-negative replacement passes even when additions > 0), OR
+        - The Stage 2 commit-msg hook confirms a `Locality-4-Justification: <reason>` trailer is present — **subject to the soft budget below**.
+    - **Trailer soft budget (Decision Q10):** the commit-msg hook runs `git log --grep "Locality-4-Justification" --since="<rolling-window>"` over the last 10 commits to global rules sections. If 1 trailer is already present in that window, the commit-msg gate hard-fails until a paired-deletion commit lands. Numerically tunable; document the default ratio (1-in-10) in ADR-028. Budget is **per-file** (separate counts for `copilot-instructions.md` and `AGENTS.md`) so a noisy week on one file doesn't starve the other.
+    - On block, both hooks print locality-ladder demotion candidates from `improve --dry-run` so the author can choose to demote, pair, or justify.
+    - Implementation: `scripts/hooks/check_locality_ratchet.py` (pre-commit; read-only matrix row; `net_section_delta` computation on either file's non-exempt regions) **plus** `scripts/hooks/check_locality_justification_trailer.py` (commit-msg; read-only matrix row; trailer parse via `git interpret-trailers --parse` and soft-budget check via `git log`). Add a write-surface matrix row for each new hook.
 - [ ] **Locality 3c PostToolUse advisory** on `edit` tool filtered to `.github/copilot-instructions.md` or `AGENTS.md`:
     - After any in-session edit, inject context: *"You just edited `<file>`. Did you classify this against the locality ladder? Consider whether this rule belongs at Locality 0, 1, 2, or 3 before committing. The pre-commit hook will require a paired deletion or `Locality-4-Justification:` trailer."*
     - Non-blocking; advisory only.
     - Implementation: extend `.github/hooks/hooks.json` PostToolUse array with a new entry; wire to a new `.github/hooks/locality-advisory.sh`.
 - [ ] **Cascade obligations:**
-    - Write-surface matrix row for both new hooks.
+    - Write-surface matrix rows for **all three** new hooks (`check_locality_ratchet.py`, `check_locality_justification_trailer.py`, and the `locality-advisory.sh` PostToolUse advisory).
+    - `.pre-commit-config.yaml` registers `check_locality_justification_trailer.py` with `stages: [commit-msg]`. Repo setup docs (`docs/mvp-runbook.md` or equivalent) updated to instruct contributors to run `pre-commit install --hook-type pre-commit --hook-type commit-msg` so the commit-msg stage actually fires locally.
     - CONTEXT.md `last_updated` bump in `.github/skills/CONTEXT.md` (covers hooks per the domain mapping).
     - `tests/kb/test_doc_cascade_completeness.py` row if a new doc-cascade obligation is introduced.
     - `tests/kb/test_ci_permission_asserts.py` does **not** apply (no new workflow).
-- [ ] **Acceptance:** A test commit that adds a line to `copilot-instructions.md` or `AGENTS.md` (outside the exempted regions) without pairing or trailer is blocked. A commit with a `Locality-4-Justification:` trailer succeeds and is grep-able via `git log --grep "Locality-4-Justification"`. PostToolUse advisory fires on edits and does not block.
+- [ ] **Acceptance:** A test commit that adds a line to `copilot-instructions.md` or `AGENTS.md` (outside the exempted regions) without pairing or trailer is blocked at the **pre-commit** stage. A net-negative replacement (e.g., +1/−3 inside non-exempt sections) passes pre-commit because `net_section_delta ≤ 0`, even though additions > 0. A commit with a `Locality-4-Justification:` trailer succeeds at the **commit-msg** stage (and is grep-able via `git log --grep "Locality-4-Justification"`), while a commit that adds the trailer beyond the rolling soft-budget hard-fails at commit-msg. PostToolUse advisory fires on edits and does not block. End-to-end test confirms that `pre-commit install --hook-type pre-commit --hook-type commit-msg` is required for the trailer-escape path to function.
 
 ### Phase 7 — First real-use exercise (validation, not feature work)
 
@@ -573,7 +582,7 @@ This plan was revised via the `grill-with-docs` skill in autopilot mode. The use
 - Existing lock files: `wiki/.kb_write.lock`, `raw/.rejection-registry.lock`. Both follow ADR-005 semantics. New `.github/.customizations.lock` follows the same pattern.
 - `scripts/init.py` REPO_ROOT sentinel includes `AGENTS.md` — confirming functional always-on status.
 - "Checkpoint from Copilot CLI" commits: **1 in 6 months.** Not a channel.
-- Pre-commit hook precedent in this repo: `scripts/hooks/check_adr_cross_ref.py`, `check_stub_archive_path.py`, `check_context_md_format.py` — `check_locality_ratchet.py` joins this family.
+- Pre-commit hook precedent in this repo: `scripts/hooks/check_adr_cross_ref.py`, `check_stub_archive_path.py`, `check_context_md_format.py` — `check_locality_ratchet.py` joins this family at the `pre-commit` stage; `check_locality_justification_trailer.py` is the first repo hook to run at the `commit-msg` stage and requires `pre-commit install --hook-type commit-msg` on contributor machines.
 
 ### Unresolved questions deferred to implementation
 
@@ -589,7 +598,7 @@ The grilling pass surfaced four new repo-specific terms that should enter `CONTE
 |---|---|
 | **instruction ratchet** | The pattern where always-on instruction files (e.g., `.github/copilot-instructions.md`) grow monotonically add-only, decoupled from customization-surface growth. Measured by net line change in a window where skill count is flat. |
 | **Locality** | A trigger-frequency ordinal for instruction destinations (Locality 0–4); frequency increases monotonically. Locality 4 = every turn (always-on); Locality 0 = only when a single file is read. See ADR-028. |
-| **trailer soft budget** | The rolling-window cap on `Locality-4-Justification:` git trailers (default 1 per 10 commits to global rules sections) that prevents the escape hatch from normalizing into bypass. Enforced by `scripts/hooks/check_locality_ratchet.py`. |
+| **trailer soft budget** | The rolling-window cap on `Locality-4-Justification:` git trailers (default 1 per 10 commits to global rules sections) that prevents the escape hatch from normalizing into bypass. Enforced by `scripts/hooks/check_locality_justification_trailer.py` at the `commit-msg` stage (paired with the pre-commit `check_locality_ratchet.py` line-delta check). |
 | **customizations lock** | The file `.github/.customizations.lock` — concurrency guard for `--apply` mode writes to `.github/**` (introduced in ADR-028). Sibling to `wiki/.kb_write.lock` and `raw/.rejection-registry.lock`; never held simultaneously with either. |
 
 `last_updated` in `CONTEXT.md` must be bumped in the same commit that lands these terms.
