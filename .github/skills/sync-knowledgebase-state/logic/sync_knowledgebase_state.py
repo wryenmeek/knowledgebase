@@ -13,7 +13,7 @@ from typing import Sequence
 
 if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-from scripts.kb import contracts, path_utils, write_utils
+from scripts.kb import path_utils, write_utils
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -26,7 +26,21 @@ LOG_ARTIFACT = "wiki/log.md"
 OPEN_QUESTIONS_ARTIFACT = "wiki/open-questions.md"
 BACKLOG_ARTIFACT = "wiki/backlog.md"
 STATUS_ARTIFACT = "wiki/status.md"
-SUPPORTED_ARTIFACTS: tuple[str, ...] = contracts.GOVERNED_ARTIFACT_PATHS
+# Restricted to the five wiki state artifacts this wrapper actually owns per
+# the AGENTS.md write-surface matrix row for
+# ``.github/skills/sync-knowledgebase-state/logic/**``. We intentionally do
+# NOT use ``contracts.GOVERNED_ARTIFACT_PATHS`` because that tuple includes
+# unrelated governed artifacts (e.g. the wiki-processing checkpoint
+# registry) whose schema, lock, and validation contract this wrapper does
+# not implement. Allowing them through ``--check-only`` would advertise
+# fail-closed validation that does not actually run.
+SUPPORTED_ARTIFACTS: tuple[str, ...] = (
+    INDEX_ARTIFACT,
+    LOG_ARTIFACT,
+    OPEN_QUESTIONS_ARTIFACT,
+    BACKLOG_ARTIFACT,
+    STATUS_ARTIFACT,
+)
 
 
 class SyncReasonCode(StrEnum):

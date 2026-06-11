@@ -1,6 +1,6 @@
 # Wiki processing checkpoint registry
 
-**Status:** In Progress — Design decisions resolved via grilling session 2026-06-07 and simplified via `improve-codebase-architecture` review on 2026-06-07 (Path C-prime, 4 PRs); ADR-026 and ADR-027 published; runtime implementation, schema contract, and remaining documentation cascade items pending.
+**Status:** In Progress — PR2 of 4 merged; ADR-026/ADR-027 published, schema contract and architecture/runbook cascades landed; PR3 runtime implementation (issue #187) and PR4 CI wiring/bootstrap remain. Design decisions resolved via grilling session 2026-06-07 and simplified via `improve-codebase-architecture` review on 2026-06-07 (Path C-prime, 4 PRs).
 
 This proposal adds a governed checkpoint registry under `raw/` for wiki processing. The registry tracks generated wiki artifacts/pages at item and batch granularity so partial fail-closed runs can resume and changed outputs can be re-evaluated without storing workflow state in topical wiki content.
 
@@ -161,8 +161,8 @@ Architecture and runbook cascade items (PR1, identified by the research validati
 
 Schema and surface cascade (PR2-PR3):
 
-- [ ] `schema/wiki-processing-checkpoint-registry-contract.md` authored (PR2).
-- [ ] `schema/CONTEXT.md` File Roles list adds the new contract; `last_updated` bumped (PR2).
+- [x] `schema/wiki-processing-checkpoint-registry-contract.md` authored (PR2).
+- [x] `schema/CONTEXT.md` File Roles list adds the new contract; `last_updated` bumped (PR2).
 - [ ] `scripts/kb/CONTEXT.md` `last_updated` bumped when `checkpoint_registry.py` lands (PR3).
 - [ ] 1 new row added to `AGENTS.md` write-surface matrix: `scripts/kb/checkpoint_registry.py` (single entrypoint with all three modes documented in the row) (PR3).
 - [ ] `sync-knowledgebase-state` matrix row's Schema/artifact owners column extended to cite the new contract (PR3).

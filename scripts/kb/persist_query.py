@@ -154,6 +154,22 @@ def _slugify(normalized_query: str) -> str:
     return collapsed[:80].rstrip("-")
 
 
+def analysis_fingerprint(normalized_query: str, sources: Sequence[str]) -> str:
+    """Return the stable 16-character query analysis fingerprint.
+
+    Sources are sorted and deduplicated inside this function so that the
+    resulting fingerprint depends only on the *set* of source citations,
+    not on caller ordering or duplicate entries. The checkpoint registry
+    (``schema/wiki-processing-checkpoint-registry-contract.md``) ties
+    ``wiki_analysis_page`` item identity to this fingerprint, so two
+    callers passing the same query and the same source set in different
+    orders must derive the same analysis page identity.
+    """
+    normalized_sources = sorted(set(sources))
+    fingerprint_payload = "\n".join((normalized_query, *normalized_sources))
+    return hashlib.sha256(fingerprint_payload.encode("utf-8")).hexdigest()[:16]
+
+
 def _validate_request(args: argparse.Namespace, repo_root: Path) -> PersistRequest:
     normalized_query = _normalize_query(args.query)
     if not normalized_query:
@@ -221,8 +237,7 @@ def _evaluate_policy(request: PersistRequest) -> tuple[bool, str]:
 
 
 def _analysis_relative_path(request: PersistRequest, repo_root: Path) -> Path:
-    fingerprint_payload = "\n".join((request.normalized_query, *request.sources))
-    fingerprint = hashlib.sha256(fingerprint_payload.encode("utf-8")).hexdigest()[:16]
+    fingerprint = analysis_fingerprint(request.normalized_query, request.sources)
     file_name = f"{_slugify(request.normalized_query)}-{fingerprint}.md"
     return request.wiki_root.relative_to(repo_root) / "analyses" / file_name
 
@@ -435,6 +450,15 @@ def run_cli(
 
 def main(argv: Sequence[str] | None = None) -> int:
     return run_cli(argv=argv)
+
+
+__all__ = [
+    "PersistQueryInputError",
+    "PersistRequest",
+    "analysis_fingerprint",
+    "main",
+    "run_cli",
+]
 
 
 if __name__ == "__main__":
