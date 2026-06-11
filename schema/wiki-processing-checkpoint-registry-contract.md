@@ -30,7 +30,7 @@ architecture.
     {
       "batch_id": "2026-06-08T00:00:00Z-ci3",
       "trigger": "intake_driven",
-      "triggered_by": "93e03c0596715f73d034cf75e181cc24519fe75c",
+      "triggered_by": "commit-sha-or-workflow-run-id-placeholder",
       "started_at": "2026-06-08T00:00:00Z",
       "finished_at": null,
       "status": "running",
@@ -75,7 +75,7 @@ map even when they are excluded from checkpoint `items`.
 |---|---|---|---|
 | `batch_id` | string | Yes | Stable run identifier. Must be unique within `batches`. |
 | `trigger` | string enum | Yes | One of `intake_driven`, `infrastructure_revalidation`, or `manual_rescan`. This three-value enum is the authoritative trigger vocabulary per ADR-026 § Amendment and ADR-027; the original ADR-026 Decision text listing `automatic` is superseded. |
-| `triggered_by` | string | Yes | Commit SHA, workflow run identifier, or operator-supplied trigger source for diagnostics. |
+| `triggered_by` | string | Yes | Commit SHA, workflow run identifier, or operator-supplied trigger source for diagnostics. Introduced by this PR2 schema — the original ADR-026 `### State model` Batch-fields list did not enumerate it; this addition is non-breaking and is recorded under ADR-026 § Amendment. For batches that retry, resume, or rescan prior work, set `triggered_by` to `retry-of:<prior-batch-id>`, `resume-of:<prior-batch-id>`, or `rescan-of:<prior-batch-id>` respectively so that lineage is recoverable from diagnostic text. Structured `parent_batch_id` linkage is intentionally deferred (MVP records only `last_successful_batch_id` for items); revisit if MVP feedback shows the prose convention is insufficient. |
 | `started_at` | ISO 8601 string | Yes | Timestamp when the batch started. |
 | `finished_at` | ISO 8601 string or null | Yes | Timestamp when the batch reached a terminal batch status. `null` while running. |
 | `status` | string enum | Yes | Batch state. See Batch state machine. |
@@ -95,7 +95,7 @@ map even when they are excluded from checkpoint `items`.
 | `status` | string enum | Yes | Item state. See Item state machine. |
 | `last_attempted_at` | ISO 8601 string or null | Yes | Last time a batch attempted this item. |
 | `last_succeeded_at` | ISO 8601 string or null | Yes | Last time the item completed successfully. |
-| `last_error` | string or null | Yes | Most recent processing error or manual retirement rationale. Only the most recent error is retained; older errors are overwritten on each new attempt. |
+| `last_error` | string or null | Yes | Most recent processing error or manual retirement rationale. Only the most recent error is retained; older errors are overwritten on each new attempt. This single-slot semantic supersedes ADR-026 § State transitions ("retries must retain prior `last_error` history"). Cross-batch error provenance is preserved through the immutable batch records (each batch's `error_summary` plus its `started_at`/`finished_at` window) and the per-item `last_attempted_at`/`last_successful_batch_id` pair, so historical errors remain recoverable from the registry without per-item error arrays. |
 | `last_successful_batch_id` | string or null | Yes | Batch ID that last moved the item to `completed`. |
 
 ## Artifact identity
@@ -105,6 +105,20 @@ map even when they are excluded from checkpoint `items`.
 | `wiki_entity_page` | `wiki/entities/*.md` | Use frontmatter `entity_id` when present; otherwise use the normalized canonical slug per `schema/ontology-entity-contract.md`. Prefix the key with `wiki_entity_page:`. | Keep `item_key`, update `output_path`, append the previous path to `path_aliases`. | Ambiguous entity IDs, duplicate aliases, or unresolved split/merge candidates fail closed. |
 | `wiki_concept_page` | `wiki/concepts/*.md` | Use the normalized canonical slug. Prefix the key with `wiki_concept_page:`. | Keep `item_key`, update `output_path`, append the previous path to `path_aliases`. | Concepts do not use `entity_id`; conflicting slugs fail closed. |
 | `wiki_analysis_page` | `wiki/analyses/*.md` | Use the filename stem, including the 16-character query fingerprint produced by `scripts.kb.persist_query.analysis_fingerprint()`. Prefix the key with `wiki_analysis_page:`. | Analyses are not renamed in place; changing the filename changes identity. | Analysis paths without the required fingerprint suffix fail closed. |
+
+If the canonical identity itself changes (for example, a corrected `entity_id` or a
+re-slugged concept), do not mutate `item_key` in place. Instead:
+
+1. Create a new item under the replacement `item_key` (with its own `output_path` and
+   fingerprints) so future runs continue under the corrected identity.
+2. Mark the prior item `skipped` with `last_error` documenting the replacement key
+   (for example, `"superseded by wiki_entity_page:medicare-part-c-mapd"`).
+3. Leave the prior key in the registry as the historical alias record so orphaned
+   identities are explicit and auditable.
+
+This rule applies to identity changes; pure path renames continue to use the
+"keep `item_key`, update `output_path`, append the previous path to `path_aliases`"
+behavior in the table above.
 
 Excluded artifact families:
 
@@ -156,10 +170,18 @@ explicitly represented by a later batch.
 |---|---|---|---|
 | `intake_driven` | `source_fingerprint` changes from source intake or source projection updates. | `completed` -> `stale`, `stale` -> `in_progress`, `pending` -> `in_progress`, `failed` -> `in_progress`. | Must not move `skipped` -> `pending`; must not retire items to `skipped`. |
 | `infrastructure_revalidation` | `dependency_fingerprint` changes from CI-3 infrastructure files listed in `DEPENDENCY_FINGERPRINT_SOURCES`. | `completed` -> `stale`, `stale` -> `in_progress`, `pending` -> `in_progress`, `failed` -> `in_progress`. | Must not use source changes as its trigger; must not move `skipped` -> `pending`; must not retire items to `skipped`. |
-| `manual_rescan` | Operator-selected source and dependency set. | May claim `pending`, `stale`, or `failed`; may move `skipped` -> `pending` after operator review. | Must not bypass provenance, policy, validation, or write-surface gates. |
+| `manual_rescan` | Operator-selected source and dependency set. | May claim `pending`, `stale`, or `failed`; may move `skipped` -> `pending` after operator review; may also drive any fingerprint-driven transition (notably `completed` -> `stale` when the operator's selected source or dependency set has changed). | Must not bypass provenance, policy, validation, or write-surface gates. |
 
-`DEPENDENCY_FINGERPRINT_SOURCES` is declared in `scripts/kb/contracts.py` and must stay
-aligned with the CI-3 `push.paths` allowlist:
+Fingerprint-driven transitions (`completed` -> `stale`, `stale` -> `in_progress`,
+`failed` -> `in_progress`) are governed by the item state machine and apply across
+trigger types. The matrix above enumerates which trigger may *claim* an item; once
+claimed, the resulting state move is bounded by the item state machine, not by the
+trigger row.
+
+`DEPENDENCY_FINGERPRINT_SOURCES` is declared in `scripts/kb/contracts.py` as
+`dict[str, tuple[str, ...]]` keyed by trigger value; the `infrastructure_revalidation`
+key holds the path tuple below, which must stay aligned with the CI-3 `push.paths`
+allowlist:
 
 - `.github/workflows/ci-3-pr-producer.yml`
 - `.github/skills/extract-entities-and-claims/**`
@@ -187,6 +209,12 @@ Bootstrap is explicit; it is never triggered automatically by a missing registry
 7. Apply-mode bootstrap requires operator approval after reviewing the reconciliation
    report. The runtime sequence is dry-run bootstrap, review report, then apply with
    approval.
+
+`failed`, `stale`, and `in_progress` are not bootstrap-classifiable states; they
+emerge only from in-flight or post-claim runs. Bootstrap derives state strictly from
+expected-output existence and unambiguous identity (yielding `completed`, `pending`,
+or `skipped`). Items that would otherwise require run-derived state stay out of the
+bootstrap set and surface in the reconciliation report for operator handling.
 
 ## Retention constants
 

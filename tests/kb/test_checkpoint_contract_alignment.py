@@ -53,6 +53,16 @@ class CheckpointRegistryContractAlignmentTests(unittest.TestCase):
         compare against ``contracts.DEPENDENCY_FINGERPRINT_SOURCES`` so that
         future drift in either side fails this test instead of silently
         producing inconsistent infrastructure fingerprints.
+
+        This test also pins the key-set of ``DEPENDENCY_FINGERPRINT_SOURCES``
+        to exactly ``{"infrastructure_revalidation"}``. The schema contract
+        explicitly states that ``intake_driven`` is driven by
+        ``source_fingerprint`` and ``manual_rescan`` by an operator-selected
+        set — neither belongs in ``DEPENDENCY_FINGERPRINT_SOURCES``. Without
+        this key-set pin, a future addition like
+        ``intake_driven: (...)`` would pass silently and contradict the
+        schema. The lookup is performed through the ``TriggerType`` enum so
+        a rename of the enum value without updating the dict key also fails.
         """
         with CI3_WORKFLOW_PATH.open("r", encoding="utf-8") as handle:
             workflow = yaml.safe_load(handle)
@@ -63,9 +73,21 @@ class CheckpointRegistryContractAlignmentTests(unittest.TestCase):
         on_section = workflow.get("on", workflow.get(True))
         self.assertIsNotNone(on_section, "CI-3 workflow has no on: section")
         push_paths = tuple(on_section["push"]["paths"])
+        # Look up through the TriggerType enum so a future rename of the
+        # enum value without a matching dict-key update fails this test.
         self.assertEqual(
-            contracts.DEPENDENCY_FINGERPRINT_SOURCES["infrastructure_revalidation"],
+            contracts.DEPENDENCY_FINGERPRINT_SOURCES[
+                contracts.TriggerType.INFRASTRUCTURE_REVALIDATION
+            ],
             push_paths,
+        )
+        # Pin the key-set so an accidental addition of another trigger
+        # (which the schema forbids — intake_driven is source-driven and
+        # manual_rescan is operator-driven) fails this test rather than
+        # silently widening the dict.
+        self.assertEqual(
+            set(contracts.DEPENDENCY_FINGERPRINT_SOURCES.keys()),
+            {contracts.TriggerType.INFRASTRUCTURE_REVALIDATION.value},
         )
 
     def test_schema_contract_mentions_public_constants_and_state_machines(self) -> None:

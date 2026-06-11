@@ -221,6 +221,42 @@ class PersistQueryCliTests(RuntimeWorkspaceTestCase):
         self.assertEqual(ordered, reversed_order)
         self.assertEqual(ordered, with_duplicates)
 
+    def test_analysis_fingerprint_discriminates_different_inputs(self) -> None:
+        """analysis_fingerprint() must produce distinct outputs for distinct inputs.
+
+        Equivalence tests alone (reorder, dedup, round-trip) would still
+        pass if a degenerate implementation returned a constant string.
+        Pin three independent discriminators so that any future change
+        that collapses identity (for example, dropping the query from
+        the hash input, or canonicalizing source paths to a constant)
+        fails this test.
+        """
+        source_a = self._source("source-a", "a")
+        source_b = self._source("source-b", "b")
+        source_c = self._source("source-c", "c")
+
+        # Same sources, different queries -> different fingerprints.
+        fp_query_1 = persist_query.analysis_fingerprint(
+            "which plans cover dialysis?", (source_a, source_b)
+        )
+        fp_query_2 = persist_query.analysis_fingerprint(
+            "which plans cover transplants?", (source_a, source_b)
+        )
+        self.assertNotEqual(fp_query_1, fp_query_2)
+
+        # Same query, different source sets -> different fingerprints.
+        query = "which plans cover dialysis?"
+        fp_sources_1 = persist_query.analysis_fingerprint(query, (source_a, source_b))
+        fp_sources_2 = persist_query.analysis_fingerprint(query, (source_a, source_c))
+        self.assertNotEqual(fp_sources_1, fp_sources_2)
+
+        # Same query, source superset vs subset -> different fingerprints.
+        fp_two_sources = persist_query.analysis_fingerprint(query, (source_a, source_b))
+        fp_three_sources = persist_query.analysis_fingerprint(
+            query, (source_a, source_b, source_c)
+        )
+        self.assertNotEqual(fp_two_sources, fp_three_sources)
+
     def test_policy_miss_returns_no_write_policy_and_makes_no_changes(self) -> None:
         source_a = self._source("source-a", "a")
         before = self.snapshot_workspace()
