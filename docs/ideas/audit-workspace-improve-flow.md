@@ -1,6 +1,6 @@
 # Audit-Workspace `improve` Flow + Instruction Locality Ladder
 
-**Status:** Proposed — revised 2026-06-07 via `grill-with-docs` pass; see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode
+**Status:** In Progress — 4 of 23 slices landed (Phase 0 Mechanism A #192, Phase 1 applyTo precommit #193, Phase 2 .github/.customizations.lock declaration #191, Phase 3 read-only scaffold #197); ADR-028 #190 pending. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
 **Origin:** Adapted from HSI's `docs/planned-work/audit-workspace-improve-flow.md` (2026-06-06), retargeted for this repo's customization surface
 
 | Field | Value |
@@ -12,6 +12,34 @@
 | Vocabulary | "Locality N" = **trigger-frequency ordinal** (when the agent pays the prompt cost), not a destination taxonomy |
 | Cross-surface targets | Copilot CLI 1.0.60 + VS Code Copilot Chat |
 | Lock surface introduced | `.github/.customizations.lock` (sibling pattern to `wiki/.kb_write.lock` and `raw/.rejection-registry.lock`; never held simultaneously with either) |
+
+---
+
+## Slice progress (live)
+
+As of 2026-06-10 the 23 vertical-slice issues (#190–#212) tracking this plan have the following state. This block is the authoritative status snapshot for the document body below — when individual phases are partially complete, the per-checkbox marks reflect what is on `main`, not what was originally proposed.
+
+| Slice | Phase | Issue | State | Artifact on main |
+|---|---|---|---|---|
+| 1a | Phase 2 | [#190](https://github.com/wryenmeek/knowledgebase/issues/190) | **OPEN** (HITL, ready-for-human) | ADR-028 not yet drafted |
+| 1b | Phase 2 | [#191](https://github.com/wryenmeek/knowledgebase/issues/191) | ✅ CLOSED | `CUSTOMIZATIONS_LOCK_PATH` declared in `scripts/kb/contracts.py`; runtime acquisition deferred to slice 9b / #209 |
+| 2 | Phase 0/5 (Mechanism A) | [#192](https://github.com/wryenmeek/knowledgebase/issues/192) | ✅ CLOSED | Meta-rule override block, `Locality-4-Justification:` trailer template, CONTEXT.md terms — in `.github/copilot-instructions.md`, `AGENTS.md`, `docs/templates/locality-4-justification-trailer.md` |
+| 3 | Phase 1 | [#193](https://github.com/wryenmeek/knowledgebase/issues/193) | ✅ CLOSED | `scripts/hooks/check_instructions_applyto_present.py` + matrix row |
+| 4 | Phase 0 (Mechanism B spike) | [#194](https://github.com/wryenmeek/knowledgebase/issues/194) | OPEN (HITL) | Pending |
+| 5a | Phase 6 | [#199](https://github.com/wryenmeek/knowledgebase/issues/199) | OPEN | Pending — superseded planning: the original "single pre-commit hook" is now split into pre-commit + commit-msg per the Phase 6 spec below |
+| 5b | Phase 6 (soft budget) | [#200](https://github.com/wryenmeek/knowledgebase/issues/200) | OPEN | Pending — commit-msg-stage enforcement per the Phase 6 spec below |
+| 5c | Phase 6 (advisory) | [#195](https://github.com/wryenmeek/knowledgebase/issues/195) | OPEN | Pending |
+| 6 | Phase 3 (scaffold) | [#197](https://github.com/wryenmeek/knowledgebase/issues/197) | ✅ CLOSED | `.github/skills/audit-knowledgebase-workspace/{SKILL.md, logic/audit_workspace.py, references/locality-ladder.md}` |
+| 7 | Phase 1.5 spike | [#196](https://github.com/wryenmeek/knowledgebase/issues/196) | OPEN (HITL) | Pending |
+| 8a–8e | Phase 4 (classifier) | [#202](https://github.com/wryenmeek/knowledgebase/issues/202)–[#206](https://github.com/wryenmeek/knowledgebase/issues/206) | OPEN | Pending |
+| 9a–9c | Phase 4 (`--apply`) | [#208](https://github.com/wryenmeek/knowledgebase/issues/208)–[#210](https://github.com/wryenmeek/knowledgebase/issues/210) | OPEN | Pending |
+| 10 | Phase 7 (real-use) | [#212](https://github.com/wryenmeek/knowledgebase/issues/212) | OPEN (HITL) | Pending |
+| qa-ab | QA gate | [#198](https://github.com/wryenmeek/knowledgebase/issues/198) | OPEN (HITL) | Pending |
+| qa-d | QA gate | [#201](https://github.com/wryenmeek/knowledgebase/issues/201) | OPEN | Pending |
+| qa-f | QA gate | [#207](https://github.com/wryenmeek/knowledgebase/issues/207) | OPEN (HITL) | Pending |
+| qa-g | QA gate | [#211](https://github.com/wryenmeek/knowledgebase/issues/211) | OPEN | Pending |
+
+**Rollup:** 4 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each is independently buildable; the remaining slices still depend on #190 landing first. ADR-028 (#190) remains the lead artifact for the in-flight Phase 2 normative spec.
 
 ---
 
@@ -254,9 +282,9 @@ This is illustrative — Phase 4's real classifier produces the binding output.
 
 Mechanism A (meta-rule override block) is already validated in the HSI deployment and ships unconditionally as Phase 5 work. Phase 0's purpose is narrower: empirically verify whether Mechanism B (UserPromptSubmit hook) actually intercepts `/chronicle improve` in Copilot CLI 1.0.60. If yes, B is adopted as primary and A becomes belt-and-suspenders. If no, B is dropped silently and Phase 5 ships A-only (matching HSI shape).
 
-**Mechanism A: meta-rule override block (HSI-validated; no spike needed)**
+**Mechanism A: meta-rule override block (HSI-validated; no spike needed) — ✅ landed via slice 2 (#192)**
 
-- [ ] No Phase 0 work required for A. It ships in Phase 5 unconditionally per HSI precedent.
+- [x] No Phase 0 work required for A. It ships in Phase 5 unconditionally per HSI precedent. *(Override block now present in `.github/copilot-instructions.md` and `AGENTS.md`; Locality 0 invariant comment guards its position.)*
 - [ ] Test stub deferred to Phase 7 (real-use validation), not gated here.
 
 **Mechanism B: `UserPromptSubmit` hook (Locality 3e) — Phase 0 spike**
@@ -276,15 +304,15 @@ Mechanism A (meta-rule override block) is already validated in the HSI deploymen
 - [ ] **On Phase 0 close:** draft `docs/decisions/ADR-028-instruction-locality-ladder.md` with status `Proposed` (**draft-only checkpoint**, not yet `Accepted`). The Phase 0 draft records the spike outcome (B-pass or B-fail) and the intended Phase 5 mechanism mix. ADR-028 is **promoted to `Accepted` in Phase 2** once the Phase 1.5 spike has captured the agent-compliance rate and the normative ladder spec is in place. This ordering prevents accepting an ADR before the evidence and normative content it cites exist.
 - [ ] **Estimated time:** ~30 minutes (single spike against B; A needs no test work).
 
-### Phase 1 — Prerequisite: establish `.github/instructions/` convention
+### Phase 1 — Prerequisite: establish `.github/instructions/` convention *(partially landed via slice 3 / #193)*
 
-The repo has no `.github/instructions/` directory today. Locality 1 mechanism needs one before it can be used.
+The repo has no `.github/instructions/` directory today. Locality 1 mechanism needs one before it can be used. **Status:** the pre-commit guard (`scripts/hooks/check_instructions_applyto_present.py`) is on main; the `.github/instructions/` directory itself, its `README.md` convention doc, freshness-workflow path addition, and write-surface matrix row are still pending.
 
 - [ ] Create `.github/instructions/` with a `README.md` describing the convention: filename pattern (`<scope>.instructions.md`), **required frontmatter** (`applyTo:` glob — **non-optional**; `description:` optional), CLI behavior note ("metadata-only injection; agent must `view` file when paths match"), VS Code compatibility note.
 - [ ] Add cascade-test row in `tests/kb/test_doc_cascade_completeness.py`: "When a new `.github/instructions/*.instructions.md` is added, bump `last_updated` in `.github/skills/CONTEXT.md`" (treat instructions as part of the customization surface).
 - [ ] Add `.github/instructions/` to the `github-customizations-freshness` workflow's monitored paths.
 - [ ] Add write-surface matrix row for `.github/instructions/**` in `AGENTS.md` (`read-only only`; no logic).
-- [ ] **Hidden-ratchet pre-commit guard.** Add `scripts/hooks/check_instructions_applyto_present.py` that fails commit when any staged `.github/instructions/*.instructions.md` file is missing `applyTo:` frontmatter. Justified by the CLI source-code finding: a frontmatter-less file is loaded fully every turn (silent Locality 4). Wire into `.pre-commit-config.yaml`. Add a write-surface matrix row for the new hook (`read-only only`).
+- [x] **Hidden-ratchet pre-commit guard.** Add `scripts/hooks/check_instructions_applyto_present.py` that fails commit when any staged `.github/instructions/*.instructions.md` file is missing `applyTo:` frontmatter. Justified by the CLI source-code finding: a frontmatter-less file is loaded fully every turn (silent Locality 4). Wire into `.pre-commit-config.yaml`. Add a write-surface matrix row for the new hook (`read-only only`). *(Landed via slice 3 / #193 with write-surface matrix row in `AGENTS.md`.)*
 - [ ] **Do NOT pre-create instruction files for the 16 sub-context globs.** Per Decision Q8: lazy creation only. Empty instruction files are themselves Locality 1 ratchet shape.
 - [ ] **Acceptance:** Directory exists, convention documented (with required-`applyTo:` rule), freshness CI picks up new files, pre-commit hook fails on frontmatter-less files, no test failures.
 
@@ -323,7 +351,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
 - [ ] Create `.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md` mirroring the ADR's normative tables with worked examples (use the "illustrative" table above as a seed).
 - [ ] Symlink or include from the SKILL.md so it loads only when the skill is invoked (progressive disclosure).
 - [ ] Update `docs/decisions/README.md` index with the new ADR row (enforced by `tests/kb/test_adr_readme_status_sync.py` and the pre-commit `check_adr_cross_ref.py` hook).
-- [ ] Add `.github/.customizations.lock` to `GOVERNANCE_LOCK_FILES` in `scripts/kb/contracts.py` (the pre-commit `check_governance_lock_files.py`-style hook prevents accidental staging).
+- [x] Add `.github/.customizations.lock` to `GOVERNANCE_LOCK_FILES` in `scripts/kb/contracts.py` (the pre-commit `check_governance_lock_files.py`-style hook prevents accidental staging). *(Landed via slice 1b / #191: path constant `CUSTOMIZATIONS_LOCK_PATH` registered in `scripts/kb/contracts.py`; runtime lock-file acquisition is deferred to slice 9b / #209 when `--apply` write-capability lands.)*
 - [ ] **Acceptance:** ADR-028 is `Accepted`, README index updated, `references/locality-ladder.md` is the single source of truth, lock constant registered, trigger-frequency framing explicit in the ADR's opening section.
 
 ### Phase 3 — Extend `audit-knowledgebase-workspace` SKILL.md with `improve` flow
@@ -333,7 +361,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
     - **`improve` flow**: two-mode contract:
         - **Dry-run (default):** Phase A structural audit → Phase B mine session store + classify by locality + emit dry-run report. No file mutations.
         - **`--apply` (write-capable wiring deferred to Phase 4):** In Phase 3 the flag is documented and recognized but **MUST refuse with a "matrix-row pending Phase 4" message** while the surface row remains `read-only only`. Phase 4 enables it once the narrow-write matrix-row amendment, lock acquisition, and classifier all land; behavior at that point is: consume the dry-run report; user accepts the whole report OR selects individual items; agent applies accepted items in one batch (deletions + demotions + new artifact creation), leaves changes staged for user review/commit.
-- [ ] **Ships a stub classifier** at `.github/skills/audit-knowledgebase-workspace/logic/improve_workspace.py` returning a single hardcoded placeholder finding. Keeps SKILL.md end-to-end demoable on its own; Phase 4 swaps in the real classifier without touching SKILL.md.
+- [x] **Ships a stub classifier** at `.github/skills/audit-knowledgebase-workspace/logic/audit_workspace.py` returning an empty findings list. Keeps SKILL.md end-to-end demoable on its own; Phase 4 swaps in the real classifier without touching SKILL.md. *(Landed via slice 6 / #197 — note the filename is `audit_workspace.py`, not `improve_workspace.py` as earlier drafts of this plan said; Phase 4 work below targets the same file.)*
 - [ ] **Write-surface matrix row — Phase 3 lands as `read-only only`** (Decision Q6: split matrix-row landing across Phase 3 + Phase 4 so the matrix tracks code reality at each boundary):
     - Path: `.github/skills/audit-knowledgebase-workspace/logic/**`
     - Runtime mode: `read-only only` (stub classifier returns one hardcoded finding; no writes)
@@ -366,7 +394,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
 - [ ] **Cascade-test rows** updated where required (write-surface matrix test, framework-skills test).
 - [ ] **Acceptance (Phase 3, read-only only — `--apply` mutation acceptance moves to Phase 4 alongside the write-capable matrix-row amendment):** Default invocation produces no change vs today; `improve` (dry-run) produces a locality-classified report with the canonical JSON block (stub returns exactly one hardcoded finding so end-to-end wiring is exercised without depending on Phase 4); the `--apply` flag is wired so it can be invoked but **MUST refuse with a clear "matrix-row pending Phase 4" exit** while the surface row remains `read-only only`. Phase 4 reasserts this acceptance with mutation enabled once the matrix row, lock requirements, and classifier all land. All matrix-row, CONTEXT.md, and cascade-test obligations satisfied.
 
-### Phase 4 — `logic/improve_workspace.py` classifier (hybrid algorithm) + matrix-row amendment
+### Phase 4 — `logic/audit_workspace.py` classifier (hybrid algorithm) + matrix-row amendment
 
 - [ ] Replace the Phase 3 stub with the real classifier:
     - `session_store_sql` query templates for friction signals (chronicle commits, repeated user prompts, repeated context loads, hook bypasses, retry loops).
