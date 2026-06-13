@@ -92,15 +92,7 @@ OPTIONAL_GOVERNED_ARTIFACT_TARGETS = {
 # the file is merged; the self-cleanup guard test below fails as soon as the
 # allowlisted path appears on disk, forcing the entry to be removed in the same
 # PR that creates the file.
-FORWARD_REFERENCED_PATHS: frozenset[str] = frozenset(
-    {
-        # Lands in PR3 of the wiki-processing checkpoint registry rollout
-        # (issue #187). docs/architecture.md and docs/mvp-runbook.md cite this
-        # runtime entrypoint (both as a backticked path and in example
-        # python3 commands) in PR1.
-        "scripts/kb/checkpoint_registry.py",
-    }
-)
+FORWARD_REFERENCED_PATHS: frozenset[str] = frozenset()
 
 
 class FrameworkReferenceAuditTests(unittest.TestCase):

@@ -76,10 +76,11 @@ operational recovery state, not curated knowledge content.
 |---|---|---|---|---|---|---|
 | `wiki-processing-checkpoint-registry` | `raw/wiki-processing/wiki-processing-checkpoint-registry.json` | `schema/wiki-processing-checkpoint-registry-contract.md` | Batch- and item-level recovery state for generated wiki processing artifacts (entities, concepts, analyses). | Mutable; writers read the full registry, mutate state under the lock, and atomically replace the whole file. In-place patching is forbidden. | `raw/.wiki-processing-checkpoint.lock`. When a run updates both wiki content and checkpoint state, acquire `wiki/.kb_write.lock` first, then `raw/.wiki-processing-checkpoint.lock`. | Read full JSON under lock → mutate → atomic same-directory replace → release lock. |
 
-Declaring this artifact here does not by itself authorize writes. PR3 of the
-checkpoint registry rollout (issue #187) lands the runtime entrypoint and adds the
-corresponding AGENTS.md write-surface matrix row. Until that row exists, writes to
-this path remain deny-by-default.
+Declaring this artifact here does not by itself authorize writes. The checkpoint
+runtime and corresponding `AGENTS.md` write-surface matrix row are declared for
+`scripts/kb/checkpoint_registry.py`; only that documented entrypoint may write
+this artifact through its approved modes. Any undeclared writer for this path
+remains deny-by-default.
 
 ## Path ownership rules
 

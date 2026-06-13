@@ -1,6 +1,6 @@
 ---
 scope: module
-last_updated: 2026-05-19
+last_updated: 2026-06-13
 ---
 
 # CONTEXT — scripts/kb/
@@ -29,6 +29,7 @@ Vocabulary for the canonical utility module layer. All agent context for work in
 | github_customizations_freshness | Module for detecting drift in `.github/` customization files and producing structured drift reports. Used by the `github-customizations-freshness.yml` workflow. |
 | ingest_render | Module for rendering ingest artifacts (processed markdown and metadata). Used by `ingest.py`. |
 | rejection_validators | Module for validating rejection registry records. Used by the `log-intake-rejection` skill and `raw/rejected/` writes (ADR-013). |
+| checkpoint_registry | Runtime for the wiki-processing checkpoint registry (`--bootstrap`, `--mutate`, `--verify`) governed by ADR-026 and `schema/wiki-processing-checkpoint-registry-contract.md`. |
 
 ## Invariants
 
@@ -57,3 +58,4 @@ Vocabulary for the canonical utility module layer. All agent context for work in
 | `github_customizations_freshness.py` | Drift detection for `.github/` customization files. Powers the freshness CI workflow. |
 | `ingest_render.py` | Ingest artifact rendering: processed markdown and companion `.meta.json` output. |
 | `rejection_validators.py` | Rejection registry record validation for `raw/rejected/` writes. |
+| `checkpoint_registry.py` | Bootstrap, mutate, and verify runtime for `raw/wiki-processing/wiki-processing-checkpoint-registry.json`; uses `CHECKPOINT_REGISTRY_LOCK_PATH` and atomic replace semantics. |

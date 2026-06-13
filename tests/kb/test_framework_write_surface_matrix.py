@@ -100,7 +100,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Runtime mode": ("read-only only", "blocking-only"),
         "Writable paths": ("wiki/index.md", "wiki/log.md", "wiki/open-questions.md", "wiki/backlog.md", "wiki/status.md"),
         "Lock requirements": ("wiki/.kb_write.lock", "ADR-005", "stale unlocked lock files"),
-        "Artifact / schema owners": ("scripts/kb/update_index.py", "scripts/kb/write_utils.py", "schema/taxonomy-contract.md", "schema/governed-artifact-contract.md"),
+        "Artifact / schema owners": ("scripts/kb/update_index.py", "scripts/kb/write_utils.py", "schema/taxonomy-contract.md", "schema/governed-artifact-contract.md", "schema/wiki-processing-checkpoint-registry-contract.md"),
         "Hard-fail behavior": ("lock contention", "unsupported artifact", "postcheck", "fail closed"),
     },
     ".github/skills/validate-inbox-source/logic/**": {
@@ -137,6 +137,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Lock requirements": ("wiki/.kb_write.lock", "append-only"),
         "Artifact / schema owners": ("raw/processed/SPEC.md", "schema/**"),
         "Hard-fail behavior": ("permission mismatch", "partial validator result", "undeclared writes"),
+    },
+    "scripts/kb/checkpoint_registry.py": {
+        "Runtime mode": ("--verify", "read-only only", "--verify --log-warnings", "--bootstrap --apply", "--mutate", "blocking-only"),
+        "Writable paths": ("raw/wiki-processing/wiki-processing-checkpoint-registry.json", "wiki/log.md", "append-only", "--log-warnings"),
+        "Read-only / prerequisite paths": ("wiki/entities/**", "wiki/concepts/**", "wiki/analyses/**", "wiki/sources/**", "docs/staged/**", "schema/wiki-processing-checkpoint-registry-contract.md"),
+        "Lock requirements": ("raw/.wiki-processing-checkpoint.lock", "CHECKPOINT_REGISTRY_LOCK_PATH", "wiki/.kb_write.lock", "--approval approved"),
+        "Artifact / schema owners": ("scripts/kb/contracts.py", "scripts/kb/write_utils.py", "scripts/kb/page_template_utils.py", "scripts/_optional_surface_common.py", "schema/wiki-processing-checkpoint-registry-contract.md"),
+        "Hard-fail behavior": ("lock unavailable", "schema-invalid", "docs/staged/**", "illegal transition", "stale timeout", "atomic-replace failure", "fail closed"),
     },
     "scripts/kb/batch_persist_query.py` — `apply` mode": {
         "Runtime mode": ("blocking-only",),
@@ -488,6 +496,17 @@ class FrameworkWriteSurfaceMatrixTests(unittest.TestCase):
         agents_text = AGENTS_PATH.read_text(encoding="utf-8")
         matrix_rows = _parse_markdown_table(
             _extract_markdown_section(agents_text, WRITE_SURFACE_MATRIX_HEADING)
+        )
+        surfaces = [row["Surface"] for row in matrix_rows]
+        self.assertEqual(
+            len(surfaces),
+            len(set(surfaces)),
+            "AGENTS.md write-surface matrix must not contain duplicate Surface rows",
+        )
+        self.assertEqual(
+            surfaces.count("scripts/kb/checkpoint_registry.py"),
+            1,
+            "AGENTS.md must declare exactly one row for scripts/kb/checkpoint_registry.py",
         )
         rows_by_surface = {row["Surface"]: row for row in matrix_rows}
 

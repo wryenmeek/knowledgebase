@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import unittest
 
 import yaml
@@ -13,9 +14,18 @@ from scripts.kb import contracts
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = REPO_ROOT / "schema" / "wiki-processing-checkpoint-registry-contract.md"
 CI3_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "ci-3-pr-producer.yml"
+AGENTS_PATH = REPO_ROOT / "AGENTS.md"
 
 
 class CheckpointRegistryContractAlignmentTests(unittest.TestCase):
+    """Pin checkpoint registry contract alignment across docs, code, and CI.
+
+    These tests keep the AGENTS write-surface matrix, dependency fingerprint
+    sources, trigger/artifact enums, and retention constants synchronized with
+    the schema contract. They intentionally fail when any one surface drifts
+    from the others so PR3 runtime semantics remain governance-aligned.
+    """
+
     def test_governed_contract_entry_and_lock_registration_are_declared(self) -> None:
         contract = contracts.governed_artifact_contract(
             "raw/wiki-processing/wiki-processing-checkpoint-registry.json"
@@ -27,6 +37,7 @@ class CheckpointRegistryContractAlignmentTests(unittest.TestCase):
         self.assertIn(".wiki-processing-checkpoint.lock", contracts.GOVERNANCE_LOCK_FILES)
 
     def test_trigger_and_artifact_type_enums_match_checkpoint_scope(self) -> None:
+        contract_text = CONTRACT_PATH.read_text(encoding="utf-8")
         self.assertEqual(
             tuple(trigger.value for trigger in contracts.TriggerType),
             (
@@ -43,6 +54,12 @@ class CheckpointRegistryContractAlignmentTests(unittest.TestCase):
                 "wiki_analysis_page",
             ),
         )
+        for enum_value in (
+            *(trigger.value for trigger in contracts.TriggerType),
+            *(artifact.value for artifact in contracts.ArtifactType),
+        ):
+            with self.subTest(enum_value=enum_value):
+                self.assertIn(enum_value, contract_text)
 
     def test_dependency_fingerprint_sources_match_ci3_push_allowlist(self) -> None:
         """DEPENDENCY_FINGERPRINT_SOURCES must equal the CI-3 push.paths allowlist.
@@ -107,6 +124,16 @@ class CheckpointRegistryContractAlignmentTests(unittest.TestCase):
         ):
             self.assertIn(required_text, contract_text)
 
+    def test_agents_matrix_declares_checkpoint_runtime_surface(self) -> None:
+        agents_text = AGENTS_PATH.read_text(encoding="utf-8")
+        self.assertIn("| `scripts/kb/checkpoint_registry.py` |", agents_text)
+        self.assertIn("`--bootstrap --apply`", agents_text)
+        self.assertIn("`--mutate`", agents_text)
+        self.assertIn("`--verify`", agents_text)
+        self.assertIn("raw/wiki-processing/wiki-processing-checkpoint-registry.json", agents_text)
+        self.assertIn("schema/wiki-processing-checkpoint-registry-contract.md", agents_text)
+        self.assertIn("CHECKPOINT_REGISTRY_LOCK_PATH", agents_text)
+
     def test_schema_contract_pins_batch_state_machine_rewrite(self) -> None:
         """Guard the wording introduced by the PR #213 review fix.
 
@@ -151,6 +178,18 @@ class CheckpointRegistryContractAlignmentTests(unittest.TestCase):
             contracts.CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES,
             10 * 1024 * 1024,
         )
+
+    def test_retention_constants_match_schema_contract_values(self) -> None:
+        contract_text = CONTRACT_PATH.read_text(encoding="utf-8")
+        expected = {
+            "CHECKPOINT_REGISTRY_SIZE_WARN_BYTES": contracts.CHECKPOINT_REGISTRY_SIZE_WARN_BYTES,
+            "CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES": contracts.CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES,
+        }
+        for name, actual_value in expected.items():
+            match = re.search(rf"`{name} = (?P<mb>\d+) MB`", contract_text)
+            self.assertIsNotNone(match, f"{name} row missing from schema contract")
+            assert match is not None
+            self.assertEqual(actual_value, int(match.group("mb")) * 1024 * 1024)
 
     def test_schema_contract_declares_in_governed_artifact_contract(self) -> None:
         """The new artifact must be declared in schema/governed-artifact-contract.md.

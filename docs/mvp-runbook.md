@@ -288,26 +288,28 @@ approved, keep these existing MVP suites green:
 - Broad regression suite:
   `python3 -m pytest tests/ -q`
 
-## Wiki processing checkpoint registry (runtime forward-looking; schema landed)
+## Wiki processing checkpoint registry (runtime landed; CI wiring/bootstrap pending)
 
-Schema contract, `scripts/kb/contracts.py` constants, and the
-`analysis_fingerprint()` helper are on disk as of PR2 (PR #213,
-2026-06-11).
+Schema contract, `scripts/kb/contracts.py` constants, the
+`analysis_fingerprint()` helper, and the PR3 runtime entrypoint
+`scripts/kb/checkpoint_registry.py` are on disk as of the checkpoint
+runtime rollout.
 The wiki processing checkpoint registry (ADR-026, ADR-027) lands across
 four PRs per the Path C-prime plan in
 [`docs/ideas/wiki-processing-checkpoint-registry.md`](ideas/wiki-processing-checkpoint-registry.md).
-The runtime script `scripts/kb/checkpoint_registry.py` and CI-3 wiring
-are forward-looking. The procedures below document the operator path
-that those PRs enable; they are not yet executable today.
+CI-3 wiring and the initial HITL bootstrap remain PR4 work. The
+procedures below document the operator path enabled by the runtime and
+the remaining CI wiring.
 
 ### Manual rescan
 
 A manual rescan recomputes item state and reruns failed/stale entries
-under operator control. Run from the repo root:
+under operator control. After preparing a repo-local mutation JSON file
+that identifies the batch and item transitions, run from the repo root:
 
 ```bash
-# Forward-looking entrypoint
 python3 scripts/kb/checkpoint_registry.py --mutate \
+  --input docs/staged/checkpoint-mutation.json \
   --trigger manual_rescan \
   --approval approved
 ```
@@ -320,20 +322,19 @@ python3 scripts/kb/checkpoint_registry.py --mutate \
 After a CI-3 partial-failure or fail-closed run, recover with this
 sequence:
 
-1. (forward-looking) Inspect the operator snapshot at `wiki/status.md`
-   for the most recent batch's `status` and `error_summary`. The
-   `sync-knowledgebase-state` publisher gains checkpoint fields
-   (`batch_id`, `status`, `trigger`, `error_summary`) once the
-   checkpoint runtime lands; today's `wiki/status.md` does not carry
-   them yet.
-2. (forward-looking) Inspect the raw registry at
+1. Inspect the operator snapshot at `wiki/status.md`
+   for the `## Checkpoint Registry` section. Status publishing now renders
+   `Registry: not initialized` until the HITL bootstrap creates the registry;
+   after bootstrap it shows the latest `batch_id`, `trigger`, `status`,
+   `error_summary`, and item-status counts.
+2. Inspect the raw registry at
    `raw/wiki-processing/wiki-processing-checkpoint-registry.json` for
    the failing item's `last_error`, `status`, and `last_attempted_at`
-   fields. The registry file does not exist until the checkpoint
-   runtime lands.
+   fields. The registry file does not exist until the PR4 HITL bootstrap
+   step seeds it.
 3. Resolve the underlying cause (validator failure, write denial, schema
    mismatch, lock contention).
-4. (forward-looking) Run a manual rescan (above) — `stale` and `failed`
+4. Run a manual rescan (above) — `stale` and `failed`
    items are re-claimed by the next batch under deterministic transition
    rules. Requires `scripts/kb/checkpoint_registry.py`.
 
@@ -347,9 +348,6 @@ sequence is dry-run, review the reconciliation report, operator
 confirmation, then apply:
 
 ```bash
-# Forward-looking entrypoint — scripts/kb/checkpoint_registry.py does
-# not yet exist; bootstrap is exercisable only after the runtime lands.
-
 # 1. Dry-run bootstrap — emits the reconciliation report without writing
 python3 scripts/kb/checkpoint_registry.py --bootstrap --dry-run
 
@@ -367,11 +365,11 @@ Ambiguous or contradictory items are left out of the bootstrap set and
 require manual resolution before they can be tracked. See ADR-026 §
 Bootstrap and recovery.
 
-### Lock-unavailable: `raw/.wiki-processing-checkpoint.lock` (forward-looking)
+### Lock-unavailable: `raw/.wiki-processing-checkpoint.lock`
 
-> **Forward-looking.** The lock first becomes observable when CI-3 wiring
-> lands. Today the lock file does not exist and no script attempts
-> to acquire it.
+> **CI wiring pending.** The lock is used by the runtime for approved
+> bootstrap and mutation writes. CI-3 starts using it once PR4 wires the
+> runtime into the producer workflow.
 
 If the checkpoint script reports
 `reason_code=lock_unavailable` for `raw/.wiki-processing-checkpoint.lock`,

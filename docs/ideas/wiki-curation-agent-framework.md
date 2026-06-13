@@ -15,6 +15,7 @@ authoritative entrypoints remain listed verbatim:
 - `scripts/kb/lint_wiki.py`
 - `scripts/kb/qmd_preflight.py`
 - `scripts/kb/persist_query.py`
+- `scripts/kb/checkpoint_registry.py`
 
 ## Governance sequencing anchor
 

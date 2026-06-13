@@ -263,15 +263,14 @@ Operators can validate the landed framework with these repo-local entrypoints:
   for any surface that touches both `wiki/**` and a sibling registry are
   documented in that surface's row in the AGENTS.md write-surface matrix
   (acquire `wiki/.kb_write.lock` first when both are needed).
-- Checkpoint registry lock (forward-looking):
-  `raw/.wiki-processing-checkpoint.lock` *will* guard writes to
+- Checkpoint registry lock:
+  `raw/.wiki-processing-checkpoint.lock` guards writes to
   `raw/wiki-processing/wiki-processing-checkpoint-registry.json` (ADR-026).
   Failure mode is fail-closed on contention or acquisition failure.
-- Checkpoint lock ordering (forward-looking): any
-  run that updates both wiki content and checkpoint state *will* acquire
-  `wiki/.kb_write.lock` first, then `raw/.wiki-processing-checkpoint.lock`.
-  Reverse order is a deadlock hazard and *will be* rejected by the
-  deterministic execution surface.
+- Checkpoint lock ordering: any run that updates both wiki content and
+  checkpoint state acquires `wiki/.kb_write.lock` first, then
+  `raw/.wiki-processing-checkpoint.lock`. Reverse order is a deadlock hazard
+  and is rejected by the deterministic execution surface.
 - **`wiki/log.md` append-only guardrail:** all governed surfaces must append-only; the sole declared exception is `scripts/init.py --fresh`, which performs a full overwrite as part of a clean-slate template reset. This exception is documented in `AGENTS.md` and is intentional.
 - Fail-closed behavior: missing prerequisites, permission mismatches, or lock contention stop writes.
 - Policy-gated query persistence: write only when `auto_persist_when_high_value` criteria pass.
@@ -292,20 +291,17 @@ require documented rationale.
 
 ## Wiki processing checkpoint registry
 
-> **Runtime forward-looking; schema landed.** The PR2 schema contract,
+> **Runtime landed; CI wiring/bootstrap pending.** The PR2 schema contract,
 > `scripts/kb/contracts.py` constants (lock path, trigger and artifact
 > enums, dependency-fingerprint dict, retention thresholds), and the
 > `analysis_fingerprint()` helper landed in PR #213. The PR3 runtime
-> (`scripts/kb/checkpoint_registry.py`) and PR4 CI-3 wiring are not yet
-> on disk. The table below identifies which surfaces exist today and
-> which are deferred to PR3/PR4. Operators reading this section should
-> treat any present-tense description of the runtime entrypoint as the
-> post-PR3 target state.
+> (`scripts/kb/checkpoint_registry.py`) lands the bootstrap/mutate/verify
+> entrypoint. PR4 CI-3 wiring and the HITL bootstrap execution remain pending.
 
-The wiki processing pipeline *will* maintain a governed checkpoint registry
+The wiki processing pipeline maintains a governed checkpoint registry
 under `raw/` so partial fail-closed runs can resume and changed outputs can
 be re-evaluated without storing workflow state in topical wiki content. The
-registry will be observational — no checkpoint entry will be able to
+registry is observational — no checkpoint entry can
 authorize a write that governance would otherwise block.
 
 | Aspect | Value |

@@ -74,9 +74,20 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         )
 
     def test_exclusive_write_lock_uses_spec_lock_path(self) -> None:
+        self.assertFalse(write_utils.is_write_lock_held(self.workspace_root))
         with write_utils.exclusive_write_lock(self.workspace_root) as lock_path:
             self.assertEqual(lock_path, self.workspace_root / contracts.WRITE_LOCK_PATH)
             self.assertTrue(lock_path.exists())
+            self.assertTrue(write_utils.is_write_lock_held(self.workspace_root))
+        self.assertFalse(write_utils.is_write_lock_held(self.workspace_root))
+
+    def test_exclusive_write_lock_tracking_survives_nested_same_process_lock(self) -> None:
+        with write_utils.exclusive_write_lock(self.workspace_root):
+            self.assertTrue(write_utils.is_write_lock_held(self.workspace_root))
+            with write_utils.exclusive_write_lock(self.workspace_root):
+                self.assertTrue(write_utils.is_write_lock_held(self.workspace_root))
+            self.assertTrue(write_utils.is_write_lock_held(self.workspace_root))
+        self.assertFalse(write_utils.is_write_lock_held(self.workspace_root))
 
     def test_exclusive_write_lock_treats_preexisting_unlocked_file_as_stale(self) -> None:
         lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
@@ -85,6 +96,34 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
 
         with write_utils.exclusive_write_lock(self.workspace_root) as acquired_path:
             self.assertEqual(acquired_path, lock_path)
+
+    def test_exclusive_write_lock_rejects_symlinked_lock_file(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        target = self.workspace_root / "redirect.lock"
+        target.write_text("", encoding="utf-8")
+        try:
+            os.symlink(target, lock_path)
+        except OSError as exc:
+            self.skipTest(f"symlink creation unavailable: {exc}")
+
+        with self.assertRaises(write_utils.LockUnavailableError):
+            with write_utils.exclusive_write_lock(self.workspace_root):
+                pass
+
+    def test_exclusive_write_lock_rejects_symlinked_lock_parent(self) -> None:
+        wiki_path = self.workspace_root / "wiki"
+        wiki_path.rmdir()
+        target = self.workspace_root / "redirect-wiki"
+        target.mkdir()
+        try:
+            os.symlink(target, wiki_path)
+        except OSError as exc:
+            self.skipTest(f"symlink creation unavailable: {exc}")
+
+        with self.assertRaises(write_utils.LockUnavailableError):
+            with write_utils.exclusive_write_lock(self.workspace_root):
+                pass
 
     def test_exclusive_write_lock_contention_returns_lock_unavailable_reason(self) -> None:
         with write_utils.exclusive_write_lock(self.workspace_root):
@@ -183,6 +222,39 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertFalse(appended)
         self.assertFalse(log_path.exists())
 
+    def test_append_log_only_state_changes_rejects_symlinked_log_file(self) -> None:
+        log_path = self.workspace_root / "wiki" / "log.md"
+        target = self.workspace_root / "redirect-log.md"
+        target.write_text("", encoding="utf-8")
+        try:
+            os.symlink(target, log_path)
+        except OSError as exc:
+            self.skipTest(f"symlink creation unavailable: {exc}")
+
+        with self.assertRaises(OSError):
+            write_utils.append_log_only_state_changes(
+                self.workspace_root,
+                "- state changed",
+                state_changed=True,
+            )
+
+    def test_append_log_only_state_changes_rejects_symlinked_log_parent(self) -> None:
+        wiki_path = self.workspace_root / "wiki"
+        wiki_path.rmdir()
+        target = self.workspace_root / "redirect-wiki"
+        target.mkdir()
+        try:
+            os.symlink(target, wiki_path)
+        except OSError as exc:
+            self.skipTest(f"symlink creation unavailable: {exc}")
+
+        with self.assertRaises(OSError):
+            write_utils.append_log_only_state_changes(
+                self.workspace_root,
+                "- state changed",
+                state_changed=True,
+            )
+
     def test_atomic_replace_governed_artifact_rewrites_supported_snapshot(self) -> None:
         target_path = self.workspace_root / "wiki" / "status.md"
         target_path.write_text("before\n", encoding="utf-8")
@@ -237,6 +309,30 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertEqual(written_path, target_path)
         self.assertEqual(target_path.read_text(encoding="utf-8"), "after\n")
         self.assertFalse(temp_path.exists())
+
+    def test_atomic_replace_governed_artifact_rejects_symlinked_parent(self) -> None:
+        shutil_target = self.workspace_root / "redirect-target"
+        shutil_target.mkdir()
+        wiki_path = self.workspace_root / "wiki"
+        for child in wiki_path.iterdir():
+            if child.is_dir():
+                for grandchild in child.iterdir():
+                    grandchild.unlink()
+                child.rmdir()
+            else:
+                child.unlink()
+        wiki_path.rmdir()
+        try:
+            os.symlink(shutil_target, wiki_path)
+        except OSError as exc:
+            self.skipTest(f"symlink creation unavailable: {exc}")
+
+        with self.assertRaises(OSError):
+            write_utils.atomic_replace_governed_artifact(
+                self.workspace_root,
+                "wiki/status.md",
+                "after\n",
+            )
 
 
 class CheckNoSymlinkPathTests(unittest.TestCase):
