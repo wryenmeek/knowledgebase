@@ -4,7 +4,7 @@
 
 ## Status
 
-Accepted
+Accepted (Phase 1.5 compliance-evidence prerequisite explicitly waived — see § Open questions).
 
 ## Purpose
 
@@ -179,6 +179,11 @@ Term placeholders for `instruction ratchet`, `Locality`, `trailer soft budget`, 
 - ADR-016: Pre-commit hooks governance
 - ADR-018: CONTEXT.md vocabulary pattern
 - ADR-022: AFK automation uses deterministic scripts; Copilot CLI reserved for HITL
+
+## Open questions
+
+- Phase 1.5 agent-compliance rate per surface remains pending. When issue #196 lands, fold the measured CLI and VS Code compliance evidence into this ADR and fill the surface compliance table expected by the source plan.
+- The trailer soft budget is accepted as 1 per 10 commits for the initial hook design, but the rolling-window definition and threshold may need adjustment after the Phase 6 hooks land and real commit history exposes false-positive or bypass patterns.
 
 ## References
 

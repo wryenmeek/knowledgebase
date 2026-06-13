@@ -34,4 +34,4 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-025](ADR-025-runtime-budget-contract-scope.md) | Runtime-budget contract scope and CI parity | Accepted — amended in-place |
 | [ADR-026](ADR-026-wiki-processing-checkpoint-registry.md) | Wiki processing checkpoint registry for resumed and revalidated synthesis | Accepted — extended by ADR-027; amended in-place |
 | [ADR-027](ADR-027-infrastructure-validation-trigger-model.md) | Infrastructure validation trigger model for CI-3 | Accepted |
-| [ADR-028](ADR-028-instruction-locality-ladder.md) | Instruction locality ladder for the knowledgebase AI ecosystem | Accepted |
+| [ADR-028](ADR-028-instruction-locality-ladder.md) | Instruction locality ladder for the knowledgebase AI ecosystem | Accepted (Phase 1.5 compliance-evidence prerequisite explicitly waived — see § Open questions). |
