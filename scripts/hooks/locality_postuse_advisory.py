@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""Warning-only PostToolUse advisory for Locality 4 instruction edits."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from collections.abc import Iterable, Mapping
+from typing import Any
+
+
+LOCALITY_4_PATHS = (".github/copilot-instructions.md", "AGENTS.md")
+PAYLOAD_ENV_VARS = (
+    "COPILOT_HOOK_EVENT_PAYLOAD",
+    "CLAUDE_HOOK_INPUT",
+    "HOOK_EVENT_PAYLOAD",
+)
+PATH_KEYS = {
+    "path",
+    "file",
+    "files",
+    "file_path",
+    "file_paths",
+    "filePath",
+    "filePaths",
+    "paths",
+    "matched_path",
+    "matched_paths",
+    "matched_file_path",
+    "matched_file_paths",
+    "edited_file",
+    "edited_files",
+    "changed_file",
+    "changed_files",
+}
+WRITE_TOOL_NAMES = {
+    "edit",
+    "write",
+    "create",
+    "multiedit",
+    "notebookedit",
+    "apply_patch",
+    "create_file",
+    "write_file",
+    "edit_file",
+    "replace_string_in_file",
+    "editfiles",
+}
+FAILURE_STATUSES = {
+    "cancelled",
+    "canceled",
+    "error",
+    "failed",
+    "failure",
+    "rejected",
+    "timeout",
+}
+SUCCESS_STATUSES = {"completed", "ok", "passed", "success", "succeeded"}
+
+
+def _read_payload_text() -> str:
+    if not sys.stdin.isatty():
+        stdin_text = sys.stdin.read()
+        if stdin_text.strip():
+            return stdin_text
+    for env_var in PAYLOAD_ENV_VARS:
+        value = os.environ.get(env_var)
+        if value:
+            return value
+    return "{}"
+
+
+def _parse_payload(text: str) -> dict[str, Any]:
+    if not text.strip():
+        return {}
+    data = json.loads(text)
+    return data if isinstance(data, dict) else {}
+
+
+def _flatten_path_value(value: Any) -> Iterable[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        yield from _collect_paths(value)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _flatten_path_value(item)
+
+
+def _collect_paths(mapping: Mapping[str, Any]) -> Iterable[str]:
+    for key, value in mapping.items():
+        if key in PATH_KEYS:
+            yield from _flatten_path_value(value)
+        elif isinstance(value, Mapping):
+            yield from _collect_paths(value)
+        elif isinstance(value, list | tuple):
+            for item in value:
+                if isinstance(item, Mapping):
+                    yield from _collect_paths(item)
+
+
+def _payload_paths(payload: Mapping[str, Any]) -> list[str]:
+    return list(_collect_paths(payload))
+
+
+def _normalize_cwd(cwd: object) -> str:
+    if not isinstance(cwd, str):
+        return ""
+    return cwd.strip().replace("\\", "/").rstrip("/")
+
+
+def _normalize_path(raw_path: str, cwd: str) -> str:
+    path = raw_path.strip().replace("\\", "/")
+    if path.startswith("file://"):
+        path = path.removeprefix("file://")
+
+    effective_cwd = cwd or os.getcwd().replace("\\", "/").rstrip("/")
+    if path == effective_cwd or path.startswith(f"{effective_cwd}/"):
+        path = path[len(effective_cwd):].lstrip("/")
+
+    while path.startswith("./"):
+        path = path[2:]
+
+    parts: list[str] = []
+    for part in path.split("/"):
+        if part in {"", "."}:
+            continue
+        if part == ".." and parts:
+            parts.pop()
+        elif part == "..":
+            parts.append(part)
+        else:
+            parts.append(part)
+    return "/".join(parts)
+
+
+def _matched_locality4_paths(paths: Iterable[str], cwd: str) -> list[str]:
+    matched: list[str] = []
+    for raw_path in paths:
+        normalized = _normalize_path(raw_path, cwd)
+        if normalized in LOCALITY_4_PATHS and normalized not in matched:
+            matched.append(normalized)
+    return matched
+
+
+def _explicit_success(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value == 0
+    if isinstance(value, str):
+        return value.strip().lower() in SUCCESS_STATUSES
+    if not isinstance(value, Mapping):
+        return False
+
+    for key in ("success", "ok", "succeeded"):
+        if key in value:
+            return bool(value[key])
+    for key in ("failed", "failure", "is_error"):
+        if bool(value.get(key)):
+            return False
+    for key in ("error", "exception", "traceback"):
+        if value.get(key):
+            return False
+    for key in ("returncode", "return_code", "exit_code", "status_code"):
+        code = value.get(key)
+        if isinstance(code, int):
+            return code == 0
+    for key in ("status", "outcome", "state"):
+        status = value.get(key)
+        if not isinstance(status, str):
+            continue
+        normalized = status.strip().lower()
+        if normalized in FAILURE_STATUSES:
+            return False
+        if normalized in SUCCESS_STATUSES:
+            return True
+    return False
+
+
+def _tool_result_succeeded(payload: Mapping[str, Any]) -> bool:
+    for key in ("tool_result", "tool_response", "result"):
+        if key in payload:
+            return _explicit_success(payload.get(key))
+    return False
+
+
+def _is_post_tool_use(payload: Mapping[str, Any]) -> bool:
+    event_name = payload.get("hookEventName") or payload.get("hook_event_name")
+    return not isinstance(event_name, str) or event_name == "PostToolUse"
+
+
+def _is_write_tool(payload: Mapping[str, Any]) -> bool:
+    tool_name = payload.get("tool_name")
+    if not isinstance(tool_name, str):
+        return False
+    return tool_name.strip().lower() in WRITE_TOOL_NAMES
+
+
+def _warning_record(path: str) -> dict[str, object]:
+    rationale = "Edits to this file load every turn — see ADR-028 for locality ladder guidance."
+    redirect = (
+        "Use `/chronicle improve` to route through `audit-knowledgebase-workspace` "
+        "skill for paired-deletion or trailer-escape."
+    )
+    message = f"Locality 4 edit advisory for `{path}`. {rationale} {redirect}"
+    return {
+        "level": "warning",
+        "code": "locality_4_edit_advisory",
+        "path": path,
+        "locality": "Locality 4",
+        "adr": "ADR-028",
+        "rationale": rationale,
+        "redirect": redirect,
+        "message": message,
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": message,
+        },
+    }
+
+
+def main() -> int:
+    try:
+        payload = _parse_payload(_read_payload_text())
+        if (
+            not _is_post_tool_use(payload)
+            or not _is_write_tool(payload)
+            or not _tool_result_succeeded(payload)
+        ):
+            return 0
+
+        cwd = _normalize_cwd(payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR", ""))
+        for path in _matched_locality4_paths(_payload_paths(payload), cwd):
+            print(json.dumps(_warning_record(path), sort_keys=True))
+    except Exception:
+        return 0
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

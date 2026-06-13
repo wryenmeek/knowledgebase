@@ -399,6 +399,19 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("docs/ideas",),
         "Hard-fail behavior": ("stub", "raw/inbox", "wiki/sources", "fail closed"),
     },
+    "scripts/hooks/locality_postuse_advisory.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Read-only / prerequisite paths": (
+            "PostToolUse",
+            "tool_result",
+            ".github/copilot-instructions.md",
+            "AGENTS.md",
+        ),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("ADR-028", ".github/hooks/hooks.json"),
+        "Hard-fail behavior": ("exit 0", "no warning", "stdout advisory", "never block"),
+    },
     "scripts/drive_monitor/**": {
         "Runtime mode": ("read-only only", "blocking-only"),
         "Writable paths": ("raw/assets/gdrive/**", "raw/drive-sources/**", "wiki/**"),
