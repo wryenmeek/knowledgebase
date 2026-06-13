@@ -16,6 +16,11 @@
       {
         "type": "command",
         "command": "bash .github/hooks/simplify-ignore.sh"
+      },
+      {
+        "type": "command",
+        "matcher": "Edit|Write|MultiEdit|edit|create|apply_patch|create_file|write_file|edit_file|replace_string_in_file|editFiles|notebookedit|notebookEdit|multiedit|editfiles",
+        "command": "python3 scripts/hooks/locality_postuse_advisory.py"
       }
     ],
     "Stop": [
