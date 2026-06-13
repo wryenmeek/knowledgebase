@@ -61,6 +61,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("docs/ideas/audit-workspace-improve-flow.md", "scripts/kb/page_template_utils.py", "scripts/kb/write_utils.py"),
         "Hard-fail behavior": ("path escape", "missing skill root", "outside the skill-local", "governed-path", "fail closed"),
     },
+    ".github/skills/audit-knowledgebase-workspace/logic/friction_queries.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Read-only / prerequisite paths": ("session_store_sql", "chronicle_commits", "repeated_user_prompts", "session_refs", "events", "tool_requests"),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("docs/ideas/audit-workspace-improve-flow.md", "finding.schema.json", "two-pass session_store query strategy"),
+        "Hard-fail behavior": ("invalid repo", "invalid days", "fallback sentinel", "limited-evidence", "telemetry-gap", "fail closed"),
+    },
     ".github/skills/context-engineering/logic/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None",),
