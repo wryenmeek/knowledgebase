@@ -69,6 +69,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("docs/ideas/audit-workspace-improve-flow.md", "finding.schema.json", "two-pass session_store query strategy"),
         "Hard-fail behavior": ("invalid repo", "invalid days", "fallback sentinel", "limited-evidence", "telemetry-gap", "fail closed"),
     },
+    ".github/skills/audit-knowledgebase-workspace/logic/redundancy_generator.py": {
+        "Runtime mode": ("read-only only", "LLM-judgment", "GitHub Models"),
+        "Writable paths": ("None", "writes are forbidden", "transient cache writes"),
+        "Read-only / prerequisite paths": ("--source-file", ".github/skills/audit-knowledgebase-workspace/.cache/skill-corpus.json", ".github/skills/*/SKILL.md", "frontmatter plus first prose paragraph", ".github/instructions/**/*.md", ".github/hooks/**/*.json", ".github/hooks/**/*.py", "lower-locality cited artifacts", "exact snippet validation"),
+        "Lock requirements": ("None", "no governed lock"),
+        "Artifact / schema owners": ("docs/ideas/audit-workspace-improve-flow.md", "finding.schema.json", "skill_corpus_cache.py"),
+        "Hard-fail behavior": ("Disallowed endpoint hostname", "models.inference.ai.azure.com", "before token use", "missing or escaping", "--source-file", "missing or malformed skill-corpus cache", "soft-skip", "uncited claims", "missing cited artifacts", "self-citations", "arbitrary repo-file citations", "path escapes", "non-matching snippets", "fail closed"),
+    },
     ".github/skills/context-engineering/logic/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None",),
