@@ -1,4 +1,24 @@
-"""Deterministic stale deletion-candidate generator for audit-workspace improve."""
+"""Deterministic stale deletion-candidate generator for the audit improve flow.
+
+Implements `docs/ideas/audit-workspace-improve-flow.md` § Phase 4 (issue #205;
+the GitHub issue title names slice 8d): the Hybrid deletion-candidate
+generator's "Stale (deterministic)" bullet. Four deterministic detection paths
+— missing repo-relative paths
+(`git ls-files`), missing Python symbols (`rg --type python` over
+`git ls-files -- "*.py"`, with a tracked-file text fallback when `rg` is
+unavailable), closed GitHub issues (`gh issue view --json state`), and
+superseded ADRs (parsed from `docs/decisions/ADR-*.md` H2/H3 `Status`
+headings). LLM is NOT used on any path. Findings conform to
+`.github/skills/audit-knowledgebase-workspace/schema/finding.schema.json`
+(`proposed_destination: "Delete"`; `compliance_risk: "deterministic"`;
+`cache_strategy` propagated by the caller, defaulting to mtime_first_para per
+Q11 with hybrid_signature reserved per K15). Decision Q8 (lazy creation only)
+is honored trivially — this module never writes. ADR-028 owns the
+locality-ladder context this generator feeds. Repository reads are limited to
+`scripts/kb/contracts.py` lock-path constants, ADR status files, tracked Python
+fallback/AST validation, and the bounded `git`/`gh`/`rg` subprocess probes
+above; repository writes are never performed.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +33,14 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from scripts.kb.contracts import (
+    CHECKPOINT_REGISTRY_LOCK_PATH,
+    CUSTOMIZATIONS_LOCK_PATH,
+    DRIVE_SOURCES_LOCK_PATH,
+    GITHUB_SOURCES_LOCK_PATH,
+    REJECTION_REGISTRY_LOCK_PATH,
+    WRITE_LOCK_PATH,
+)
 from skill_corpus_cache import CACHE_STRATEGY
 
 
@@ -22,14 +50,27 @@ MAX_INSTRUCTION_CHARS = 50_000
 MAX_REFERENCES_PER_KIND = 100
 MAX_TOTAL_PROBES = 200
 VALID_CACHE_STRATEGIES = (CACHE_STRATEGY, "hybrid_signature")
+GOVERNANCE_LOCK_PATHS = frozenset(
+    {
+        CHECKPOINT_REGISTRY_LOCK_PATH,
+        CUSTOMIZATIONS_LOCK_PATH,
+        DRIVE_SOURCES_LOCK_PATH,
+        GITHUB_SOURCES_LOCK_PATH,
+        REJECTION_REGISTRY_LOCK_PATH,
+        WRITE_LOCK_PATH,
+    }
+)
 PATH_REFERENCE_RE = re.compile(
     r"(?<![A-Za-z0-9_/.-])"
     r"([A-Za-z0-9_/.-]+\."
     r"(?:py|md|json|ya?ml|sh|js|ts|toml|txt|lock|cfg|ini|example|baseline|gitkeep)"
-    r"|\.gitkeep)\b"
+    r"|\.gitkeep)\b",
+    re.IGNORECASE,
 )
 ISSUE_REFERENCE_RE = re.compile(r"(?<![A-Za-z0-9])#([0-9]{1,5})\b")
 ADR_REFERENCE_RE = re.compile(r"\bADR-([0-9]{1,4})\b", re.IGNORECASE)
+STATUS_HEADING_RE = re.compile(r"^#{2,3}\s+status\b", re.IGNORECASE)
+SCHEMELESS_URL_PATH_RE = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/")
 SYMBOL_BACKTICK_REFERENCE_RE = re.compile(
     r"\b(?:function|func|method|class|symbol|helper)\s+`([A-Za-z_][A-Za-z0-9_]*)`(?:\(\))?",
     re.IGNORECASE,
@@ -161,10 +202,17 @@ def generate_stale_findings(
 def extract_path_references(instruction_text: str) -> tuple[str, ...]:
     """Extract unique, validated repo-relative file references from instruction text."""
 
-    paths = {
-        _validate_repo_relative_path(match.group(1), "instruction path reference")
-        for match in PATH_REFERENCE_RE.finditer(instruction_text)
-    }
+    paths: set[str] = set()
+    for match in PATH_REFERENCE_RE.finditer(instruction_text):
+        try:
+            normalized_path = _validate_repo_relative_path(match.group(1), "instruction path reference")
+        except ValueError:
+            continue
+        if SCHEMELESS_URL_PATH_RE.match(normalized_path):
+            continue
+        if normalized_path in GOVERNANCE_LOCK_PATHS:
+            continue
+        paths.add(normalized_path)
     return tuple(sorted(paths))
 
 
@@ -190,8 +238,10 @@ def extract_issue_references(instruction_text: str) -> tuple[str, ...]:
     """Extract unique GitHub issue numbers from instruction text."""
 
     issue_numbers = {
-        match.group(1).lstrip("0") or "0"
+        normalized
         for match in ISSUE_REFERENCE_RE.finditer(instruction_text)
+        if (normalized := match.group(1).lstrip("0")) != ""
+        and int(normalized) > 0
     }
     return tuple(str(number) for number in sorted(int(issue_number) for issue_number in issue_numbers))
 
@@ -494,7 +544,8 @@ def _adr_id_for_path(adr_path: Path) -> str | None:
 def _extract_status_line(markdown_text: str) -> str | None:
     lines = markdown_text.splitlines()
     for index, line in enumerate(lines):
-        if line.strip().lower() != "## status":
+        # Historical ADRs use H2/H3 Status headings and some include a trailing colon.
+        if not STATUS_HEADING_RE.match(line.strip().rstrip(":")):
             continue
         for status_line in lines[index + 1 :]:
             stripped = status_line.strip()
@@ -507,7 +558,7 @@ def _extract_status_line(markdown_text: str) -> str | None:
 
 
 def _status_indicates_supersession(status: str) -> bool:
-    return "superseded" in status.lower()
+    return status.lower().lstrip("-• ").startswith("superseded")
 
 
 def _command_error_message(command_name: str, result: subprocess.CompletedProcess[str]) -> str:

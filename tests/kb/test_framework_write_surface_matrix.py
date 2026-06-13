@@ -80,10 +80,10 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     ".github/skills/audit-knowledgebase-workspace/logic/stale_generator.py": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "forbidden"),
-        "Read-only / prerequisite paths": ("docs/decisions/ADR-*.md", "## Status", "superseded", "git ls-files", "tracked-file-only", "rg", "fallback", "gh issue view", "--json state"),
+        "Read-only / prerequisite paths": ("scripts/kb/contracts.py", "docs/decisions/ADR-*.md", "H2/H3", "Status", "superseded", "git ls-files", "tracked-file-only", "rg", "fallback", "gh issue view", "--json state"),
         "Lock requirements": ("None", "read-only probes"),
-        "Artifact / schema owners": ("docs/ideas/audit-workspace-improve-flow.md", "finding.schema.json", "skill_corpus_cache.py"),
-        "Hard-fail behavior": ("unsafe extracted path", "cache strategy", "too many references", "subprocess timeout", "unsupported issue state", "fail closed"),
+        "Artifact / schema owners": ("docs/ideas/audit-workspace-improve-flow.md", "finding.schema.json", "skill_corpus_cache.py", "scripts/kb/contracts.py"),
+        "Hard-fail behavior": ("unsafe output-side extracted path", "canonical governance lock paths are skipped", "unsafe instruction-side path candidates are skipped", "cache strategy", "too many references", "subprocess timeout", "unsupported issue state", "fail closed"),
     },
     ".github/skills/context-engineering/logic/**": {
         "Runtime mode": ("read-only only",),

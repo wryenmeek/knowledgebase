@@ -74,6 +74,42 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
             ["git", "ls-files", "--", "docs/present-runbook.md"],
         )
 
+    def test_url_in_instruction_text_is_skipped_not_fail_closed(self) -> None:
+        instruction = (
+            "See https://github.com/wryenmeek/knowledgebase/blob/main/README.md "
+            "or github.com/wryenmeek/knowledgebase/blob/main/docs/README.md "
+            "for details. Also note missing-file.py here."
+        )
+
+        with patch.object(self.module.subprocess, "run") as run:
+            run.return_value = self._completed(["git"], stdout="")
+            findings = self.module.generate_stale_findings(
+                instruction,
+                source_file="some/file.md",
+                source_section="## References",
+                repo_root=self.workspace_root,
+            )
+
+        self.assertGreater(len(findings), 0)
+        self.assertFalse(any("github.com" in finding["rationale"] for finding in findings))
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(run.call_args.args[0], ["git", "ls-files", "--", "missing-file.py"])
+
+    def test_path_reference_extension_matching_is_case_insensitive(self) -> None:
+        instruction = "When changing docs, check README.MD first."
+
+        with patch.object(self.module.subprocess, "run") as run:
+            run.return_value = self._completed(["git"], stdout="README.MD\n")
+            findings = self.module.generate_stale_findings(
+                instruction,
+                source_file="AGENTS.md",
+                source_section="## Guardrails",
+                repo_root=self.workspace_root,
+            )
+
+        self.assertEqual(findings, ())
+        self.assertEqual(run.call_args.args[0], ["git", "ls-files", "--", "README.MD"])
+
     def test_instruction_mentions_missing_non_markdown_file_emits_stale_finding(self) -> None:
         instruction = "Check requirements-pages.txt before adding page dependencies."
 
@@ -123,6 +159,24 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
         self.assertIn("missing file reference: .env.example", deletion_candidates)
         self.assertIn("missing file reference: .secrets.baseline", deletion_candidates)
         self.assertIn("missing file reference: .gitkeep", deletion_candidates)
+
+    def test_governance_lock_paths_are_skipped_not_reported_stale(self) -> None:
+        instruction = (
+            "Respect wiki/.kb_write.lock, raw/.rejection-registry.lock, "
+            "raw/.github-sources.lock, raw/.drive-sources.lock, "
+            "raw/.wiki-processing-checkpoint.lock, and .github/.customizations.lock."
+        )
+
+        with patch.object(self.module.subprocess, "run") as run:
+            findings = self.module.generate_stale_findings(
+                instruction,
+                source_file="AGENTS.md",
+                source_section="## Guardrails",
+                repo_root=self.workspace_root,
+            )
+
+        self.assertEqual(findings, ())
+        run.assert_not_called()
 
     def test_instruction_references_missing_symbol_emits_stale_finding(self) -> None:
         instruction = "Use symbol `missing_symbol` before changing the runtime."
@@ -409,6 +463,20 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
             ["gh", "issue", "view", "206", "--json", "state", "--jq", ".state"],
         )
 
+    def test_issue_zero_reference_is_ignored_before_gh_probe(self) -> None:
+        instruction = "Do not treat #0 as a real GitHub issue reference."
+
+        with patch.object(self.module.subprocess, "run") as run:
+            findings = self.module.generate_stale_findings(
+                instruction,
+                source_file=".github/copilot-instructions.md",
+                source_section="## Operational patterns",
+                repo_root=self.workspace_root,
+            )
+
+        self.assertEqual(findings, ())
+        run.assert_not_called()
+
     def test_instruction_cites_superseded_adr_emits_stale_finding(self) -> None:
         self.write_file(
             "docs/decisions/ADR-007-example.md",
@@ -429,12 +497,46 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
         self.assertIn("ADR-007", finding["deletion_candidate"])
         self.assertIn("superseded", finding["rationale"].lower())
 
+    def test_instruction_cites_superseded_adr_with_h3_status_colon(self) -> None:
+        self.write_file(
+            "docs/decisions/ADR-008-example.md",
+            "# ADR-008: Old decision\n\n### Status:\nSuperseded by ADR-009\n\n## Decision\nOld.\n",
+        )
+        instruction = "Follow ADR-008 for write-surface decisions."
+
+        findings = self.module.generate_stale_findings(
+            instruction,
+            source_file="AGENTS.md",
+            source_section="## Guardrails",
+            repo_root=self.workspace_root,
+        )
+
+        self.assertEqual(len(findings), 1)
+        self.assert_schema_valid(findings[0])
+        self.assertIn("ADR-008", findings[0]["deletion_candidate"])
+
     def test_instruction_cites_extended_adr_does_not_emit_stale_finding(self) -> None:
         self.write_file(
             "docs/decisions/ADR-015-example.md",
             "# ADR-015: Old decision\n\n## Status\nAccepted — extended by ADR-021\n\n",
         )
         instruction = "Follow ADR-015 for write-surface decisions."
+
+        findings = self.module.generate_stale_findings(
+            instruction,
+            source_file="AGENTS.md",
+            source_section="## Guardrails",
+            repo_root=self.workspace_root,
+        )
+
+        self.assertEqual(findings, ())
+
+    def test_instruction_cites_reinstated_adr_does_not_emit_stale_finding(self) -> None:
+        self.write_file(
+            "docs/decisions/ADR-016-example.md",
+            "# ADR-016: Current decision\n\n## Status\nReinstated after being superseded in 2024\n\n",
+        )
+        instruction = "Follow ADR-016 for write-surface decisions."
 
         findings = self.module.generate_stale_findings(
             instruction,
@@ -508,6 +610,23 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
                     repo_root=self.workspace_root,
                 )
 
+    def test_adversarial_path_in_instruction_fails_closed_on_subprocess(self) -> None:
+        instruction = "Ignore ../etc/passwd.md and still check docs/missing-runbook.md."
+
+        with patch.object(self.module.subprocess, "run") as run:
+            run.return_value = self._completed(["git"], stdout="")
+            findings = self.module.generate_stale_findings(
+                instruction,
+                source_file="AGENTS.md",
+                source_section="## Operational patterns",
+                repo_root=self.workspace_root,
+            )
+
+        self.assertEqual(len(findings), 1)
+        self.assertIn("docs/missing-runbook.md", findings[0]["deletion_candidate"])
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(run.call_args.args[0], ["git", "ls-files", "--", "docs/missing-runbook.md"])
+
     def test_rg_unexpected_error_fails_closed(self) -> None:
         instruction = "Use symbol `missing_symbol` before changing runtime."
 
@@ -517,6 +636,22 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
                 self._completed(["rg"], stdout="", stderr="regex error", returncode=2),
             )
             with self.assertRaisesRegex(RuntimeError, "rg failed"):
+                self.module.generate_stale_findings(
+                    instruction,
+                    source_file="AGENTS.md",
+                    source_section="## Operational patterns",
+                    repo_root=self.workspace_root,
+                )
+
+    def test_adversarial_rg_stdout_fails_closed(self) -> None:
+        instruction = "Use symbol `missing_symbol` before changing runtime."
+
+        with patch.object(self.module.subprocess, "run") as run:
+            run.side_effect = (
+                self._completed(["git"], stdout="scripts/kb/present.py\n"),
+                self._completed(["rg"], stdout="../etc/passwd\n"),
+            )
+            with self.assertRaisesRegex(ValueError, "unsafe rg match path"):
                 self.module.generate_stale_findings(
                     instruction,
                     source_file="AGENTS.md",
@@ -562,6 +697,88 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
                     source_section="## Operational patterns",
                     repo_root=self.workspace_root,
                 )
+
+    def test_command_timeout_values_locked_in(self) -> None:
+        instruction = "Read docs/missing-runbook.md, use symbol `missing_symbol`, and wait for #205."
+        calls: list[tuple[list[str], int]] = []
+
+        def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            timeout = kwargs.get("timeout")
+            self.assertIsInstance(timeout, int)
+            calls.append((argv, timeout))
+            if argv == ["git", "ls-files", "--", "docs/missing-runbook.md"]:
+                return self._completed(argv, stdout="")
+            if argv == ["git", "ls-files", "--", "*.py"]:
+                return self._completed(argv, stdout="scripts/kb/present.py\n")
+            if argv[:6] == ["rg", "-l", "--fixed-strings", "--type", "python", "--"]:
+                return self._completed(argv, stdout="", returncode=1)
+            if argv == ["gh", "issue", "view", "205", "--json", "state", "--jq", ".state"]:
+                return self._completed(argv, stdout="open\n")
+            raise AssertionError(f"unexpected subprocess call: {argv}")
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake_run):
+            findings = self.module.generate_stale_findings(
+                instruction,
+                source_file="AGENTS.md",
+                source_section="## Operational patterns",
+                repo_root=self.workspace_root,
+            )
+
+        self.assertEqual(len(findings), 2)
+        self.assertEqual(
+            calls,
+            [
+                (["git", "ls-files", "--", "docs/missing-runbook.md"], 10),
+                (["git", "ls-files", "--", "*.py"], 10),
+                (
+                    [
+                        "rg",
+                        "-l",
+                        "--fixed-strings",
+                        "--type",
+                        "python",
+                        "--",
+                        "missing_symbol",
+                        "scripts/kb/present.py",
+                    ],
+                    10,
+                ),
+                (["gh", "issue", "view", "205", "--json", "state", "--jq", ".state"], 5),
+            ],
+        )
+
+    def test_oversized_instruction_text_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "instruction_text exceeds"):
+            self.module.generate_stale_findings(
+                "x" * (self.module.MAX_INSTRUCTION_CHARS + 1),
+                source_file="AGENTS.md",
+                source_section="## Operational patterns",
+                repo_root=self.workspace_root,
+            )
+
+    def test_command_runner_injection_used_when_provided(self) -> None:
+        captured: list[tuple[list[str], Path, int]] = []
+
+        def fake_runner(
+            argv: list[str],
+            repo_root: Path,
+            timeout_seconds: int,
+        ) -> subprocess.CompletedProcess[str]:
+            captured.append((argv, repo_root, timeout_seconds))
+            return self._completed(argv, stdout="")
+
+        findings = self.module.generate_stale_findings(
+            "Read docs/missing-runbook.md.",
+            source_file="AGENTS.md",
+            source_section="## Operational patterns",
+            repo_root=self.workspace_root,
+            command_runner=fake_runner,
+        )
+
+        self.assertEqual(len(findings), 1)
+        self.assertTrue(captured, "command_runner not invoked")
+        self.assertEqual(captured[0][0], ["git", "ls-files", "--", "docs/missing-runbook.md"])
+        self.assertEqual(captured[0][2], 10)
 
     def assert_schema_valid(self, finding: dict[str, object]) -> None:
         _finding_schema.AuditWorkspaceFindingSchemaTests._validate_with_schema(
