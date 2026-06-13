@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "repo://wryenmeek/knowledgebase/.github/skills/audit-knowledgebase-workspace/schema/finding.schema.json",
   "title": "Audit workspace improve classifier finding",
-  "description": "JSON Schema for a single audit-knowledgebase-workspace improve dry-run classifier finding. Implements the ADR-028 instruction-locality ladder contract tracked by issue #190 and slice 8b issue #203. The destination enum is the 10-bin output contract: Delete, Locality 0, Locality 1, Locality 2, Locality 3a, Locality 3b, Locality 3c, Locality 3d, Locality 3e, and Locality 4. compliance_risk is required on every finding: deterministic applies to Locality 0 and mechanically enforced Locality 3a/3b/3c/3d destinations; agent-dependent applies to Locality 1, Locality 2, Locality 3e, and Locality 4 mechanism-A. Delete findings may use the risk class appropriate to their proof path. The schema intentionally documents but does not enforce the destination-to-compliance_risk mapping; classifier logic owns that cross-field validation. expected_token_efficiency_rank is the integer rank derived from ADR-028's token-efficiency rule: estimated trigger frequency multiplied by per-fire cost, with lower ranks being cheaper. cache_strategy identifies the skill-corpus indexing strategy that generated the finding; mtime_first_para is the slice 8a baseline and hybrid_signature is the documented upgrade path, so the field remains an open string with non-empty content rather than an enum.",
+  "description": "JSON Schema for a single audit-knowledgebase-workspace improve dry-run classifier finding. Implements the ADR-028 instruction-locality ladder contract tracked by issue #190 and slice 8b issue #203. The proposed_destination enum is the 10-bin output contract: Delete, Locality 0, Locality 1, Locality 2, Locality 3a, Locality 3b, Locality 3c, Locality 3d, Locality 3e, and Locality 4. compliance_risk is required on every finding: deterministic applies to Locality 0 and mechanically enforced Locality 3a/3b/3c/3d destinations; agent-dependent applies to Locality 1, Locality 2, Locality 3e, and Locality 4 mechanism-A. Delete findings may use the risk class appropriate to their proof path. The schema intentionally documents but does not enforce the proposed_destination-to-compliance_risk mapping; classifier logic owns that cross-field validation. expected_token_efficiency_rank is the integer rank derived from ADR-028's token-efficiency rule: estimated trigger frequency multiplied by per-fire cost, with lower ranks being cheaper. cache_strategy identifies the skill-corpus indexing strategy that generated the finding and is closed to the Phase 4/Q11 values mtime_first_para and hybrid_signature. suggested_artifact_path remains required because Phase 4 classifier prose includes the suggested artifact path in each finding output.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "source_file",
     "source_section",
-    "destination",
+    "proposed_destination",
     "rationale",
     "compliance_risk",
     "expected_token_efficiency_rank",
@@ -27,7 +27,7 @@
       "minLength": 1,
       "description": "Heading, subsection, or signal identifier within source_file."
     },
-    "destination": {
+    "proposed_destination": {
       "type": "string",
       "enum": [
         "Delete",
@@ -58,18 +58,22 @@
     },
     "expected_token_efficiency_rank": {
       "type": "integer",
-      "description": "Relative integer rank of estimated trigger frequency multiplied by per-fire cost across candidate destinations; lower ranks are cheaper."
+      "minimum": 0,
+      "description": "Relative non-negative integer rank of estimated trigger frequency multiplied by per-fire cost across candidate destinations; lower ranks are cheaper."
     },
     "cache_strategy": {
       "type": "string",
-      "minLength": 1,
-      "description": "Skill-corpus cache strategy that generated the finding. Known values include mtime_first_para and the documented future hybrid_signature upgrade path; future strategies remain schema-compatible."
+      "enum": [
+        "mtime_first_para",
+        "hybrid_signature"
+      ],
+      "description": "Skill-corpus cache strategy that generated the finding. Closed to mtime_first_para and the documented hybrid_signature upgrade path so typos do not break Phase 7 cache-strategy tallies."
     },
     "suggested_artifact_path": {
       "type": "string",
       "minLength": 1,
       "pattern": "^(?!.*[\\s\\x00-\\x1F\\x7F])(?!/)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*(?:^|/)\\.\\.?($|/))[A-Za-z0-9._@+-]+(?:/[A-Za-z0-9._@+-]+)*$",
-      "description": "Repo-relative target artifact path for the proposed destination. Absolute paths, URI schemes, parent-directory segments, empty path segments, whitespace, shell metacharacters, and control characters are rejected."
+      "description": "Repo-relative target artifact path for the proposed destination. Required per Phase 4 classifier prose even though the Phase 3 seven-key enumeration omitted it. Absolute paths, URI schemes, parent-directory segments, empty path segments, whitespace, shell metacharacters, and control characters are rejected."
     },
     "deletion_candidate": {
       "type": [
