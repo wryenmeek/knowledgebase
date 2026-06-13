@@ -23,7 +23,7 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-014](ADR-014-hitl-afk-work-classification.md) | HITL/AFK work classification for wiki curation | Accepted |
 | [ADR-015](ADR-015-extended-ci-trust-model.md) | Extend CI governance with framework-writer (CI-4) and GitHub-monitor (CI-5) | Accepted |
 | [ADR-016](ADR-016-pre-commit-hooks-governance.md) | Use `pre-commit` framework for local governance hooks *(amended — reversed from raw git hooks)* | Accepted — amended in-place |
-| [ADR-017](ADR-017-agent-persona-category-taxonomy.md) | Two-category agent persona taxonomy (kb-workflow / dev-support) | Accepted |
+| [ADR-017](ADR-017-agent-persona-category-taxonomy.md) | Two-category agent persona taxonomy (kb-workflow / dev-support) | Accepted — amended in-place |
 | [ADR-018](ADR-018-context-md-vocabulary-pattern.md) | CONTEXT.md files as structured agent-vocabulary artifacts | Accepted |
 | [ADR-019](ADR-019-fleet-jules-orchestration.md) | Jules-based fleet orchestration for parallel issue-to-PR dispatch | Accepted — amended in-place: Phase 3 merge trigger and security hardening |
 | [ADR-020](ADR-020-post-mvp-package-family-criteria.md) | Criteria for approving post-MVP script package families | Accepted |

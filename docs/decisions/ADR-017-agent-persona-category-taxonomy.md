@@ -1,7 +1,7 @@
 # ADR-017: Two-category agent persona taxonomy (kb-workflow / dev-support)
 
 ## Status
-Accepted
+Accepted — amended in-place: extended category field to skills scope (see § Amendment)
 
 ## Date
 2026-04-27
@@ -99,6 +99,16 @@ enforced by `tests/kb/test_framework_agents.py`.
   vocabulary, `tests/kb/test_framework_agents.py` assertions, and this ADR.
 - The `category` field does not affect runtime behavior — it is metadata for
   documentation, testing, and operator routing only.
+
+## Amendment
+
+**Date:** 2026-06-13
+
+**What changed:** The `category` frontmatter field is now permitted on `.github/skills/**/SKILL.md` files with the same allowed-value set as agent personas (`kb-workflow`, `dev-support`).
+
+**Why:** Structural lint and the future `audit-knowledgebase-workspace` improve flow need to distinguish pipeline-governance skills from development-support skills without hardcoded name lists. Extending the existing field rather than introducing a parallel mechanism keeps the discovery surface uniform.
+
+**What didn't change:** Enforcement remains advisory — no test currently gates `category` presence on skills. The allowed-value set, the canonical meanings (`kb-workflow` for KB pipeline governance, `dev-support` for engineering tooling), and the optional nature of the field are unchanged.
 
 ## References
 
