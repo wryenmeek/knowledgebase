@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import sys
 import types
 import unittest
@@ -1265,6 +1266,55 @@ class TestCombinedSynthesisRun(unittest.TestCase):
                         self._combined_mod.run(str(bundle), "wiki", repo_root=tdp)
 
             self.assertEqual(len(lock_call_count), 1, "exclusive_write_lock must be acquired exactly once")
+
+    def test_combined_lock_already_held_skips_nested_lock(self) -> None:
+        """Checkpoint orchestration can call combined synthesis while holding the lock."""
+        runtime_root = Path("tests/kb/.runtime/synthesize_combined_lock_already_held")
+        if runtime_root.exists():
+            shutil.rmtree(runtime_root)
+        try:
+            runtime_root.mkdir(parents=True)
+            self._make_wiki(runtime_root)
+            bundle = self._make_bundle(runtime_root)
+            ok_result = {"created": [], "updated": [], "skipped": [], "errors": []}
+            with self._combined_mod.exclusive_write_lock(runtime_root), patch.object(
+                self._combined_mod,
+                "_write_entity_drafts",
+                return_value=ok_result,
+            ), patch.object(
+                self._combined_mod,
+                "_write_concept_drafts",
+                return_value=ok_result,
+            ):
+                rc = self._combined_mod.run(
+                    str(bundle),
+                    "wiki",
+                    repo_root=runtime_root,
+                    lock_already_held=True,
+                )
+        finally:
+            if runtime_root.exists():
+                shutil.rmtree(runtime_root)
+        self.assertEqual(rc, 0)
+
+    def test_combined_lock_already_held_requires_process_lock(self) -> None:
+        runtime_root = Path("tests/kb/.runtime/synthesize_combined_lock_required")
+        if runtime_root.exists():
+            shutil.rmtree(runtime_root)
+        try:
+            runtime_root.mkdir(parents=True)
+            self._make_wiki(runtime_root)
+            bundle = self._make_bundle(runtime_root)
+            rc = self._combined_mod.run(
+                str(bundle),
+                "wiki",
+                repo_root=runtime_root,
+                lock_already_held=True,
+            )
+        finally:
+            if runtime_root.exists():
+                shutil.rmtree(runtime_root)
+        self.assertEqual(rc, 1)
 
     def test_combined_entity_only_bundle(self) -> None:
         """A bundle with entities but no concepts must succeed and create entity pages."""

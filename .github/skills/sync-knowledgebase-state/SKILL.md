@@ -50,6 +50,7 @@ The wrapper uses fixed repo-root execution and only these allowlisted entrypoint
 - `scripts/kb/update_index.py`
 - `scripts/kb/lint_wiki.py`
 - `scripts/kb/write_utils.py`
+- `scripts/kb/checkpoint_registry.py` (registry constants for inline status rendering)
 
 Read-only prechecks use `python3 scripts/kb/update_index.py --wiki-root wiki --check`
 so stale `wiki/index.md` fails closed in `--check-only` mode.
@@ -65,6 +66,8 @@ Other write-capable modes are fixed to governed artifacts only:
 - `wiki/open-questions.md` atomic replace under `wiki/.kb_write.lock`
 - `wiki/backlog.md` atomic replace under `wiki/.kb_write.lock`
 - `wiki/status.md` atomic replace under `wiki/.kb_write.lock`
+  - status publishing appends an inline checkpoint registry summary from
+    `raw/wiki-processing/wiki-processing-checkpoint-registry.json`
 - unsupported artifact targets are rejected
 
 ## Execution boundaries

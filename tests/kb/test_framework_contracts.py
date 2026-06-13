@@ -28,6 +28,7 @@ EXECUTION_SURFACE = (
     "scripts/kb/lint_wiki.py",
     "scripts/kb/qmd_preflight.py",
     "scripts/kb/persist_query.py",
+    "scripts/kb/checkpoint_registry.py",
 )
 SKILL_REFERENCE_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "context-engineering": (

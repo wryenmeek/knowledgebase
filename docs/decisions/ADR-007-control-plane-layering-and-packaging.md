@@ -73,9 +73,10 @@ The framework MVP includes:
   narrow, deterministic, and justified by the MVP boundary. At present, the
   landed wrappers cover governance validation and index/state synchronization,
   while `scripts/kb/ingest.py`, `scripts/kb/update_index.py`,
-  `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, and
-  `scripts/kb/persist_query.py` remain the authoritative deterministic
-  execution surface, with ingest and query persistence still used directly as
+  `scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`,
+  `scripts/kb/persist_query.py`, and `scripts/kb/checkpoint_registry.py`
+  remain the authoritative deterministic execution surface, with ingest,
+  query persistence, and checkpoint recovery still used directly as
   operator/runtime entrypoints.
 
 ### Deferred beyond MVP
@@ -109,9 +110,10 @@ The repository boundary is widened for post-MVP implementation work at:
 
 These are approved packaging locations, not blanket runtime write
 authorization. `scripts/kb/ingest.py`, `scripts/kb/update_index.py`,
-`scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`, and
-`scripts/kb/persist_query.py` remain the authoritative deterministic execution
-surface for the currently landed system.
+`scripts/kb/lint_wiki.py`, `scripts/kb/qmd_preflight.py`,
+`scripts/kb/persist_query.py`, and `scripts/kb/checkpoint_registry.py`
+remain the authoritative deterministic execution surface for the currently
+landed system.
 
 ### Preserved invariants
 

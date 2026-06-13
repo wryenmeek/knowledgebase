@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
 from scripts.kb.write_utils import (
     LockUnavailableError,
     exclusive_write_lock,
+    is_write_lock_held,
 )
 
 # Import inner write functions from their respective skill logic modules.
@@ -62,6 +63,7 @@ def run(
     wiki_root: str,
     *,
     repo_root: Path | None = None,
+    lock_already_held: bool = False,
 ) -> int:
     """Synthesize entity and concept pages under a single lock. Returns 0 on success."""
     if repo_root is None:
@@ -88,9 +90,15 @@ def run(
         return 0
 
     try:
-        with exclusive_write_lock(repo_root):
+        if lock_already_held:
+            if not is_write_lock_held(repo_root):
+                raise RuntimeError("lock_already_held=True requires this process to hold wiki/.kb_write.lock")
             entity_results = _write_entity_drafts(entities, wiki_root_path, source_ref)
             concept_results = _write_concept_drafts(concepts, wiki_root_path, source_ref)
+        else:
+            with exclusive_write_lock(repo_root):
+                entity_results = _write_entity_drafts(entities, wiki_root_path, source_ref)
+                concept_results = _write_concept_drafts(concepts, wiki_root_path, source_ref)
     except LockUnavailableError as exc:
         print(f"error: lock unavailable: {exc}", file=sys.stderr)
         return 1

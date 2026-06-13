@@ -17,6 +17,7 @@ from . import path_utils
 
 
 LOG_PATH = Path("wiki/log.md")
+_HELD_LOCK_COUNTS: dict[Path, int] = {}
 
 def governed_artifact_contract_for_path(
     path: str | PathLike[str],
@@ -55,6 +56,25 @@ def lock_unavailable_reason(lock_path: str = contracts.WRITE_LOCK_PATH) -> str:
     return f"{contracts.ReasonCode.LOCK_UNAVAILABLE.value}:{lock_path}"
 
 
+def _check_no_symlink_path_within_root(repo_root: Path, path: Path) -> None:
+    """Reject symlink components below *repo_root* without following system-level symlinks."""
+
+    root = repo_root.resolve(strict=False)
+    candidate = path if path.is_absolute() else root / path
+    resolved_candidate = candidate.resolve(strict=False)
+    if not resolved_candidate.is_relative_to(root):
+        raise OSError(f"path escapes repository root: {path}")
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError as exc:
+        raise OSError(f"path is not under repository root: {path}") from exc
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise OSError(f"symlinked path component is not allowed: {current}")
+
+
 class LockUnavailableError(RuntimeError):
     """Raised when the write lock cannot be acquired."""
 
@@ -83,11 +103,32 @@ def exclusive_write_lock(
     A pre-existing unlocked lock file is treated as stale metadata and does not
     block acquisition; only an active advisory lock fails closed.
     """
-    abs_lock = Path(repo_root) / lock_path
-    abs_lock.parent.mkdir(parents=True, exist_ok=True)
+    root = Path(repo_root).resolve(strict=False)
+    abs_lock = root / lock_path
+    resolved_lock = abs_lock.resolve(strict=False)
+    if resolved_lock in _HELD_LOCK_COUNTS:
+        _HELD_LOCK_COUNTS[resolved_lock] += 1
+        try:
+            yield abs_lock
+        finally:
+            remaining = _HELD_LOCK_COUNTS.get(resolved_lock, 0) - 1
+            if remaining > 0:
+                _HELD_LOCK_COUNTS[resolved_lock] = remaining
+            else:
+                _HELD_LOCK_COUNTS.pop(resolved_lock, None)
+        return
 
     try:
-        lock_file = abs_lock.open("a+", encoding="utf-8")
+        _check_no_symlink_path_within_root(root, abs_lock)
+        if not resolved_lock.is_relative_to(root):
+            raise OSError(f"lock path escapes repository root: {lock_path}")
+        abs_lock.parent.mkdir(parents=True, exist_ok=True)
+        _check_no_symlink_path_within_root(root, abs_lock)
+        flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(abs_lock, flags, 0o600)
+        lock_file = os.fdopen(fd, "a+", encoding="utf-8")
     except OSError as exc:
         raise LockUnavailableError(lock_path) from exc
 
@@ -98,9 +139,24 @@ def exclusive_write_lock(
             raise LockUnavailableError(lock_path) from exc
 
         try:
+            _HELD_LOCK_COUNTS[resolved_lock] = _HELD_LOCK_COUNTS.get(resolved_lock, 0) + 1
             yield abs_lock
         finally:
+            remaining = _HELD_LOCK_COUNTS.get(resolved_lock, 0) - 1
+            if remaining > 0:
+                _HELD_LOCK_COUNTS[resolved_lock] = remaining
+            else:
+                _HELD_LOCK_COUNTS.pop(resolved_lock, None)
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def is_write_lock_held(
+    repo_root: str | Path = ".",
+    lock_path: str = contracts.WRITE_LOCK_PATH,
+) -> bool:
+    """Return whether this process currently holds *lock_path* via this module."""
+
+    return (Path(repo_root) / lock_path).resolve(strict=False) in _HELD_LOCK_COUNTS
 
 
 def atomic_replace_governed_artifact(
@@ -115,7 +171,12 @@ def atomic_replace_governed_artifact(
     if contract.write_strategy != contracts.ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK.value:
         raise ValueError(f"artifact does not support atomic replace: {contract.path}")
 
-    target_path = Path(repo_root) / contract.path
+    root = Path(repo_root).resolve(strict=False)
+    target_path = root / contract.path
+    _check_no_symlink_path_within_root(root, target_path)
+    resolved_target = target_path.resolve(strict=False)
+    if not resolved_target.is_relative_to(root):
+        raise ValueError(f"artifact path escapes repository root: {contract.path}")
     temp_path = target_path.with_name(f".{target_path.name}.kbtmp")
     target_path.parent.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(FileNotFoundError):
@@ -161,11 +222,21 @@ def append_log_only_state_changes(
     if not state_changed:
         return False
 
-    log_path = Path(repo_root) / LOG_PATH
+    root = Path(repo_root).resolve(strict=False)
+    log_path = root / LOG_PATH
+    resolved_log = log_path.resolve(strict=False)
+    _check_no_symlink_path_within_root(root, log_path)
+    if not resolved_log.is_relative_to(root):
+        raise OSError(f"log path escapes repository root: {LOG_PATH}")
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    _check_no_symlink_path_within_root(root, log_path)
     normalized_entry = entry.rstrip("\n") + "\n"
 
-    with log_path.open("a", encoding="utf-8") as log_file:
+    flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(log_path, flags, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as log_file:
         log_file.write(normalized_entry)
 
     return True
@@ -376,6 +447,7 @@ __all__ = [
     "governed_artifact_contract_for_path",
     "governed_artifact_requires_atomic_replace",
     "governed_artifact_requires_lock",
+    "is_write_lock_held",
     "lock_unavailable_reason",
     "open_atomic_temp_file",
     "append_log_only_state_changes",

@@ -13,7 +13,7 @@ from typing import Sequence
 
 if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-from scripts.kb import path_utils, write_utils
+from scripts.kb import checkpoint_registry, path_utils, write_utils
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -266,6 +266,22 @@ def _read_staged_repo_file(path: str) -> str:
     return staged_path.read_text(encoding="utf-8")
 
 
+def render_checkpoint_status() -> str:
+    return checkpoint_registry.render_checkpoint_status(REPO_ROOT)
+
+
+def _with_checkpoint_status(content: str) -> str:
+    section = render_checkpoint_status().rstrip()
+    pattern = r"(?ms)^## Checkpoint Registry\n.*?(?=^## |\Z)"
+    if re.search(pattern, content):
+        def replacement(match: re.Match[str]) -> str:
+            return section + ("\n\n" if match.end() < len(content) else "\n")
+
+        return re.sub(pattern, replacement, content).rstrip() + "\n"
+    base = content.rstrip()
+    return f"{base}\n\n{section}\n" if base else f"{section}\n"
+
+
 def append_log_entry(entry: str, *, state_changed: bool) -> bool:
     try:
         normalized_entry = write_utils.validate_log_entry(entry)
@@ -284,6 +300,8 @@ def append_log_entry(entry: str, *, state_changed: bool) -> bool:
 def publish_snapshot_artifact(*, artifact_path: str, staged_source_path: str) -> Path:
     supported_artifact = _validate_supported_artifact(artifact_path)
     content = _read_staged_repo_file(staged_source_path)
+    if supported_artifact == STATUS_ARTIFACT:
+        content = _with_checkpoint_status(content)
     with write_utils.exclusive_write_lock(REPO_ROOT):
         return write_utils.atomic_replace_governed_artifact(
             REPO_ROOT,

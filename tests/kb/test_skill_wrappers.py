@@ -678,7 +678,31 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
         self.assertEqual(exit_code, 0)
         read_mock.assert_called_once_with("wiki/status.next.md")
         lock_mock.assert_called_once_with(module.REPO_ROOT)
-        replace_mock.assert_called_once_with(module.REPO_ROOT, "wiki/status.md", "next\n")
+        replace_mock.assert_called_once_with(
+            module.REPO_ROOT,
+            "wiki/status.md",
+            "next\n\n## Checkpoint Registry\n\n- Registry: not initialized\n",
+        )
+
+    def test_snapshot_write_mode_replaces_existing_checkpoint_section(self) -> None:
+        module = _load_module("sync_knowledgebase_state_status_replace_checkpoint", SYNC_WRAPPER_PATH)
+        staged = "next\n\n## Checkpoint Registry\n\n- stale\n"
+        with patch.object(module, "_read_staged_repo_file", return_value=staged), patch.object(
+            module.write_utils,
+            "exclusive_write_lock",
+            return_value=_DummyLock(REPO_ROOT / "wiki" / ".kb_write.lock"),
+        ), patch.object(
+            module.write_utils,
+            "atomic_replace_governed_artifact",
+            return_value=REPO_ROOT / "wiki" / "status.md",
+        ) as replace_mock:
+            exit_code = module.main(["--write-status-from", "wiki/status.next.md"])
+
+        self.assertEqual(exit_code, 0)
+        content = replace_mock.call_args.args[2]
+        self.assertEqual(content.count("## Checkpoint Registry"), 1)
+        self.assertIn("- Registry: not initialized", content)
+        self.assertNotIn("- stale", content)
 
     def test_snapshot_write_mode_fails_closed_on_lock_contention(self) -> None:
         module = _load_module("sync_knowledgebase_state_status_lock", SYNC_WRAPPER_PATH)

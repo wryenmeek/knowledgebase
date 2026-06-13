@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2026-06-08
+last_updated: 2026-06-13
 ---
 
 # CONTEXT — schema/
