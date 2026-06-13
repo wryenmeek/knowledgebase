@@ -53,6 +53,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": (".github/skills/audit-knowledgebase-workspace/SKILL.md", "scripts/_optional_surface_common.py", "ADR-028"),
         "Hard-fail behavior": ("unsupported mode", "unsupported approval", "missing repo root", "write attempt", "fail closed"),
     },
+    ".github/skills/audit-knowledgebase-workspace/logic/skill_corpus_cache.py": {
+        "Runtime mode": ("blocking-only", "transient skill-local cache"),
+        "Writable paths": (".github/skills/audit-knowledgebase-workspace/.cache/skill-corpus.json", "transient runtime cache", "not governed"),
+        "Read-only / prerequisite paths": (".github/skills/*/SKILL.md", "frontmatter", "first prose paragraph"),
+        "Lock requirements": ("None", "transient skill-local cache"),
+        "Artifact / schema owners": ("docs/ideas/audit-workspace-improve-flow.md", "scripts/kb/page_template_utils.py", "scripts/kb/write_utils.py"),
+        "Hard-fail behavior": ("path escape", "missing skill root", "outside the skill-local", "governed-path", "fail closed"),
+    },
     ".github/skills/context-engineering/logic/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None",),
