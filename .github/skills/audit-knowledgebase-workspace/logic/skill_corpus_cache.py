@@ -47,7 +47,7 @@ def get_skill_corpus(
 
     cache_dir_path = _validate_cache_dir(skill_root_path, Path(cache_dir))
     cache_path = cache_dir_path / CACHE_FILENAME
-    _check_cache_path(cache_dir_path, cache_path)
+    _check_cache_path(cache_path)
 
     cached_entries = {} if force_refresh else _load_cache(cache_path)
     corpus: SkillCorpus = {}
@@ -160,12 +160,9 @@ def _write_cache(cache_path: Path, corpus: SkillCorpus) -> None:
     write_text_capturing_previous_safe(cache_path, f"{serialized}\n")
 
 
-def _check_cache_path(cache_dir: Path, cache_path: Path) -> None:
+def _check_cache_path(cache_path: Path) -> None:
     if cache_path.exists() or cache_path.is_symlink():
         check_no_symlink_path(cache_path)
-    resolved_parent = cache_path.parent.resolve(strict=False)
-    if resolved_parent != cache_dir:
-        raise ValueError(f"cache path escapes cache directory: {cache_path}")
 
 
 def _validate_cache_dir(skill_root: Path, cache_dir: Path) -> Path:

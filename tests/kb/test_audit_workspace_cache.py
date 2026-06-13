@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import time
-from unittest import TestCase
 from unittest.mock import patch
 
 from tests.kb.harnesses import RuntimeWorkspaceTestCase, load_module
@@ -198,6 +198,89 @@ class SkillCorpusCacheTests(RuntimeWorkspaceTestCase):
             "Original cached first paragraph",
         )
 
+    def test_force_refresh_reextracts_even_with_unchanged_mtime(self) -> None:
+        skill_path = self._write_skill(
+            "force-refresh",
+            self._skill_body("force-refresh", "Original first paragraph", leading_blank=True),
+        )
+        self.module.get_skill_corpus(self.skill_root, self.cache_dir)
+        original_stat = skill_path.stat()
+
+        skill_path.write_text(
+            self._skill_body("force-refresh", "Force-refreshed first paragraph", leading_blank=True),
+            encoding="utf-8",
+        )
+        os.utime(skill_path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+
+        stale = self.module.get_skill_corpus(self.skill_root, self.cache_dir)
+        self.assertEqual(self._entry_for(stale, skill_path)["first_paragraph"], "Original first paragraph")
+
+        refreshed = self.module.get_skill_corpus(self.skill_root, self.cache_dir, force_refresh=True)
+        self.assertEqual(
+            self._entry_for(refreshed, skill_path)["first_paragraph"],
+            "Force-refreshed first paragraph",
+        )
+
+    def test_corrupt_cache_json_is_recovered_silently(self) -> None:
+        skill_path = self._write_skill(
+            "corrupt-cache",
+            self._skill_body("corrupt-cache", "Recovered first paragraph", leading_blank=True),
+        )
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = self.cache_dir / self.module.CACHE_FILENAME
+        cache_path.write_text("{not valid json", encoding="utf-8")
+
+        with patch.object(
+            self.module,
+            "_extract_skill_entry",
+            wraps=self.module._extract_skill_entry,
+        ) as extract_skill_entry:
+            corpus = self.module.get_skill_corpus(self.skill_root, self.cache_dir)
+
+        extract_skill_entry.assert_called_once()
+        self.assertEqual(
+            self._entry_for(corpus, skill_path)["first_paragraph"],
+            "Recovered first paragraph",
+        )
+        persisted = json.loads(cache_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            persisted[str(skill_path.resolve())]["first_paragraph"],
+            "Recovered first paragraph",
+        )
+
+    def test_symlinked_cache_path_is_rejected(self) -> None:
+        self._write_skill(
+            "symlink-cache",
+            self._skill_body("symlink-cache", "Symlink first paragraph", leading_blank=True),
+        )
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        target = self.workspace_root / "cache-target.json"
+        target.write_text("{}", encoding="utf-8")
+        os.symlink(target, self.cache_dir / self.module.CACHE_FILENAME)
+
+        with self.assertRaises(OSError):
+            self.module.get_skill_corpus(self.skill_root, self.cache_dir)
+
+    def test_empty_or_no_frontmatter_skill_md(self) -> None:
+        cases = (
+            ("empty-skill", "", {}, ""),
+            (
+                "body-only",
+                "Body-only first paragraph\ncontinues here\n\nSecond paragraph ignored.\n",
+                {},
+                "Body-only first paragraph\ncontinues here",
+            ),
+            ("frontmatter-only", "---\nname: frontmatter-only\n---\n", {"name": "frontmatter-only"}, ""),
+        )
+        for name, content, expected_frontmatter, expected_first_paragraph in cases:
+            with self.subTest(name=name):
+                skill_path = self._write_skill(name, content)
+                corpus = self.module.get_skill_corpus(self.skill_root, self.cache_dir, force_refresh=True)
+                entry = self._entry_for(corpus, skill_path)
+                self.assertEqual(entry["frontmatter"], expected_frontmatter)
+                self.assertEqual(entry["first_paragraph"], expected_first_paragraph)
+                self.assertEqual(entry["cache_strategy"], "mtime_first_para")
+
     def test_cache_dir_outside_skill_local_cache_fails_closed(self) -> None:
         self.skill_root.mkdir(parents=True, exist_ok=True)
 
@@ -211,10 +294,11 @@ class SkillCorpusCacheTests(RuntimeWorkspaceTestCase):
             self.module.get_skill_corpus(self.skill_root, self.workspace_root / "docs" / ".cache")
 
 
-class SkillCorpusCacheBoundaryTests(TestCase):
+class SkillCorpusCacheBoundaryTests(RuntimeWorkspaceTestCase):
     def test_missing_skill_root_fails_closed(self) -> None:
         module = load_module("skill_corpus_cache_boundary", SKILL_CORPUS_CACHE_PATH)
-        missing_root = REPO_ROOT / ".github" / "skills" / "missing-skill-root"
+        missing_root = self.workspace_root / ".github" / "skills" / "missing-skill-root"
+        cache_dir = self.workspace_root / ".github" / "skills" / "audit-knowledgebase-workspace" / ".cache"
 
         with self.assertRaises(FileNotFoundError):
-            module.get_skill_corpus(missing_root, REPO_ROOT / ".cache")
+            module.get_skill_corpus(missing_root, cache_dir)
