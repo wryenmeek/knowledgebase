@@ -6,6 +6,9 @@ Supports three explicit modes:
   seeds ``raw/wiki-processing/wiki-processing-checkpoint-registry.json``.
 * ``--mutate`` applies a lock-protected batch of item state transitions.
 * ``--verify`` validates the registry and emits retention/parse/schema signals.
+
+Governance: ADR-026 (decision), ADR-027 (amendment),
+schema/wiki-processing-checkpoint-registry-contract.md (schema), issue #187 (PR3).
 """
 
 from __future__ import annotations
@@ -598,6 +601,14 @@ def bootstrap_registry(
     apply: bool = False,
     approval: str = APPROVAL_NONE,
 ) -> SurfaceResult:
+    """Classify existing wiki artifacts and optionally seed the registry.
+
+    Dry-run emits a reconciliation report without writes. Approved apply mode
+    requires ``--approval approved``, acquires ``CHECKPOINT_REGISTRY_LOCK_PATH``,
+    and writes only the initial registry JSON. Primary failures include
+    ``approval_required``, ``invalid_input``, ``schema_validation_failed``,
+    ``registry_exists``, and ``lock_unavailable``.
+    """
     mode = "bootstrap"
     root = Path(repo_root).resolve()
     if not looks_like_repo_root(root):
@@ -691,6 +702,15 @@ def mutate_registry(
     now: str | None = None,
     trigger: str | None = None,
 ) -> SurfaceResult:
+    """Apply one approved batch of checkpoint item transitions.
+
+    Requires ``--approval approved`` and ``--input`` from ``docs/staged/**`` or
+    stdin. Holds ``CHECKPOINT_REGISTRY_LOCK_PATH`` while loading, validating,
+    mutating, and atomically replacing the registry. Primary failures include
+    ``approval_required``, ``invalid_input``, ``json_parse_failed``,
+    ``schema_validation_failed``, ``lock_unavailable``, ``illegal_transition``,
+    and ``stale_timeout``.
+    """
     mode = "mutate"
     root = Path(repo_root).resolve()
     if approval != APPROVAL_APPROVED:
@@ -706,7 +726,9 @@ def mutate_registry(
         now_dt = _parse_timestamp(now_iso)
         if now_dt is None:
             raise ValueError("now must be non-null")
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except json.JSONDecodeError as exc:
+        return _result(mode=mode, status=STATUS_FAIL, reason_code="json_parse_failed", message=str(exc), approval=approval, lock_required=True)
+    except (OSError, ValueError) as exc:
         return _result(mode=mode, status=STATUS_FAIL, reason_code=REASON_CODE_INVALID_INPUT, message=str(exc), approval=approval, lock_required=True)
     try:
         with write_utils.exclusive_write_lock(root, lock_path=contracts.CHECKPOINT_REGISTRY_LOCK_PATH):
@@ -723,7 +745,9 @@ def mutate_registry(
         return _result(mode=mode, status=STATUS_FAIL, reason_code="lock_unavailable", message=str(exc), approval=approval, lock_required=True)
     except OSError as exc:
         return _result(mode=mode, status=STATUS_FAIL, reason_code="write_failed", message=str(exc), approval=approval, lock_required=True)
-    except (ValueError, json.JSONDecodeError) as exc:
+    except json.JSONDecodeError as exc:
+        return _result(mode=mode, status=STATUS_FAIL, reason_code="json_parse_failed", message=str(exc), approval=approval, lock_required=True)
+    except ValueError as exc:
         return _result(mode=mode, status=STATUS_FAIL, reason_code=getattr(exc, "reason_code", "invalid_transition"), message=str(exc), approval=approval, lock_required=True)
     summary = {
         "registry_path": REGISTRY_PATH,
@@ -1055,6 +1079,15 @@ def verify_registry(
     log_warnings: bool = False,
     approval: str = APPROVAL_NONE,
 ) -> SurfaceResult:
+    """Validate registry parse, schema, size, and item-count telemetry.
+
+    Default verify is read-only and acquires no checkpoint lock; ``warn_only``
+    controls strict exit semantics. ``--log-warnings`` requires approval and
+    appends only warning telemetry to ``wiki/log.md`` under ``wiki/.kb_write.lock``.
+    Primary failures include ``invalid_input``, ``json_parse_failed``,
+    ``schema_validation_failed``, ``approval_required``, ``lock_unavailable``,
+    and ``write_failed``.
+    """
     mode = "verify"
     root = Path(repo_root).resolve()
     try:
@@ -1208,16 +1241,28 @@ def render_checkpoint_status(repo_root: str | Path = ".") -> str:
 def _build_parser() -> argparse.ArgumentParser:
     parser = JsonArgumentParser(description="Manage the wiki-processing checkpoint registry.")
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--bootstrap", action="store_true")
-    mode.add_argument("--mutate", action="store_true")
-    mode.add_argument("--verify", action="store_true")
-    parser.add_argument("--repo-root", default=".")
-    parser.add_argument("--registry", default=REGISTRY_PATH)
+    mode.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="Classify existing wiki artifacts and emit reconciliation report; with --apply --approval approved, seed the initial registry.",
+    )
+    mode.add_argument(
+        "--mutate",
+        action="store_true",
+        help="Apply a per-batch state transition from --input JSON; requires --approval approved.",
+    )
+    mode.add_argument(
+        "--verify",
+        action="store_true",
+        help="Read-only schema validation of the registry; --warn-only returns exit 0 even on warnings.",
+    )
+    parser.add_argument("--repo-root", default=".", help="Repository root path (must satisfy looks_like_repo_root).")
+    parser.add_argument("--registry", default=REGISTRY_PATH, help="Registry JSON path (defaults to raw/wiki-processing/wiki-processing-checkpoint-registry.json).")
     parser.add_argument("--apply", action="store_true", help="Write bootstrap output after approval.")
     parser.add_argument("--dry-run", action="store_true", help="Compatibility flag; bootstrap defaults to dry-run unless --apply is set.")
     parser.add_argument("--input", help="Repo-local mutation input JSON path, or '-' for stdin.")
     parser.add_argument("--trigger", choices=tuple(trigger.value for trigger in contracts.TriggerType), help="Override the mutation input batch trigger.")
-    parser.add_argument("--approval", choices=(APPROVAL_NONE, APPROVAL_APPROVED), default=APPROVAL_NONE)
+    parser.add_argument("--approval", choices=(APPROVAL_NONE, APPROVAL_APPROVED), default=APPROVAL_NONE, help="Approval gate: 'approved' required for any write-capable mode.")
     parser.add_argument("--warn-only", action="store_true", help="Return exit 0 for verify warnings/failures.")
     parser.add_argument("--log-warnings", action="store_true", help="Append verify warning telemetry to wiki/log.md; requires --approval approved.")
     parser.add_argument("--now", help="Deterministic ISO timestamp for mutation tests.")
@@ -1226,6 +1271,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def run_checkpoint_registry(args: argparse.Namespace) -> SurfaceResult:
+    """Dispatch parsed CLI arguments to bootstrap, mutate, or verify mode.
+
+    Each mode enforces its own approval and lock contract: bootstrap/mutate write
+    the registry under ``CHECKPOINT_REGISTRY_LOCK_PATH``; verify is read-only
+    unless approved warning logging appends to ``wiki/log.md``. Dispatch-level
+    failures include ``invalid_input`` for ``--mutate`` without ``--input``;
+    mode functions return their own failure reason codes.
+    """
     if args.bootstrap:
         return bootstrap_registry(
             repo_root=args.repo_root,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import fcntl
 import inspect
 import importlib.util
 import json
@@ -261,6 +262,37 @@ def test_main_bootstrap_and_mutate_argument_errors(repo_root: Path) -> None:
     assert json.loads(mutate_stream.getvalue())["message"] == "--mutate requires --input"
     assert parse_exit == 1
     assert json.loads(parse_stream.getvalue())["mode"] == "unknown"
+
+
+def test_main_dispatches_mutate_with_valid_input(repo_root: Path) -> None:
+    _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
+    mutation = _write_mutation(
+        repo_root,
+        _mutation_payload(items=[{"item_key": "wiki_entity_page:alpha", "target_status": "in_progress"}]),
+        "test-mutation.json",
+    )
+    output_stream = io.StringIO()
+
+    exit_code = checkpoint_registry.main(
+        [
+            "--mutate",
+            "--repo-root",
+            str(repo_root),
+            "--input",
+            mutation,
+            "--approval",
+            "approved",
+            "--now",
+            NOW,
+        ],
+        output_stream=output_stream,
+    )
+
+    result = json.loads(output_stream.getvalue())
+    assert exit_code == 0
+    assert result["mode"] == "mutate"
+    assert result["reason_code"] == "ok"
+    assert _read_registry(repo_root)["items"][0]["status"] == "in_progress"
 
 
 def test_bootstrap_apply_requires_approval_then_replays_idempotently(
@@ -583,6 +615,24 @@ def test_mutate_fails_closed_on_lock_contention(repo_root: Path, monkeypatch: py
     assert _read_registry(repo_root)["items"][0]["status"] == "pending"
 
 
+def test_mutate_reports_json_parse_failed_on_corrupt_registry(repo_root: Path) -> None:
+    _registry_path(repo_root).write_text("{not json", encoding="utf-8")
+    mutation = _write_mutation(
+        repo_root,
+        _mutation_payload(items=[{"item_key": "wiki_entity_page:alpha", "target_status": "in_progress"}]),
+    )
+
+    result = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path=mutation,
+        approval="approved",
+        now=NOW,
+    )
+
+    assert result.status == "fail"
+    assert result.reason_code == "json_parse_failed"
+
+
 def test_mutate_uses_checkpoint_lock_path(repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     mutation = _write_mutation(
@@ -632,6 +682,50 @@ def test_mutate_preserves_identity_across_rename_with_path_alias(repo_root: Path
     assert item["item_key"] == "wiki_entity_page:alpha"
     assert item["output_path"] == "wiki/entities/alpha-renamed.md"
     assert item["path_aliases"] == ["wiki/entities/alpha.md"]
+
+
+def test_mutate_rejects_analysis_page_rename(repo_root: Path) -> None:
+    _write_registry(
+        repo_root,
+        _base_registry(
+            items=[
+                _item(
+                    key="wiki_analysis_page:query-1234567890abcdef",
+                    output_path="wiki/analyses/query-1234567890abcdef.md",
+                    artifact_type="wiki_analysis_page",
+                    status="completed",
+                    last_succeeded_at=RECENT,
+                )
+            ]
+        ),
+    )
+    before = _registry_path(repo_root).read_text(encoding="utf-8")
+    mutation = _write_mutation(
+        repo_root,
+        _mutation_payload(
+            items=[
+                {
+                    "item_key": "wiki_analysis_page:query-1234567890abcdef",
+                    "target_status": "completed",
+                    "output_path": "wiki/analyses/query-fedcba0987654321.md",
+                    "source_fingerprint": HASH_A,
+                    "dependency_fingerprint": HASH_B,
+                }
+            ]
+        ),
+        "analysis-rename.json",
+    )
+
+    result = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path=mutation,
+        approval="approved",
+        now=NOW,
+    )
+
+    assert result.status == "fail"
+    assert result.reason_code == "illegal_transition"
+    assert _registry_path(repo_root).read_text(encoding="utf-8") == before
 
 
 def test_mutate_enforces_one_hour_stale_timeout_and_rolls_back(repo_root: Path) -> None:
@@ -1098,6 +1192,84 @@ def test_mutate_allows_partial_batch_only_with_mixed_item_outcomes(repo_root: Pa
         "wiki_concept_page:beta": "failed",
     }
 
+    _write_page(repo_root, "wiki/concepts/beta.md", page_type="concept", title="Beta")
+    _write_registry(
+        repo_root,
+        _base_registry(
+            items=[
+                _item(status="in_progress", last_attempted_at=RECENT),
+                _item(
+                    key="wiki_concept_page:beta",
+                    output_path="wiki/concepts/beta.md",
+                    artifact_type="wiki_concept_page",
+                    status="in_progress",
+                    last_attempted_at=RECENT,
+                ),
+            ]
+        ),
+    )
+    all_success_partial = _write_mutation(
+        repo_root,
+        _mutation_payload(
+            batch_id="batch-2",
+            status="partial",
+            error_summary="expected mixed outcomes",
+            items=[
+                {
+                    "item_key": "wiki_entity_page:alpha",
+                    "target_status": "completed",
+                    "source_fingerprint": HASH_A,
+                    "dependency_fingerprint": HASH_B,
+                },
+                {
+                    "item_key": "wiki_concept_page:beta",
+                    "target_status": "completed",
+                    "source_fingerprint": HASH_A,
+                    "dependency_fingerprint": HASH_B,
+                },
+            ],
+        ),
+        "partial-all-success.json",
+    )
+    partial_result = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path=all_success_partial,
+        approval="approved",
+        now=NOW,
+    )
+    assert partial_result.status == "fail"
+    assert partial_result.reason_code == "illegal_transition"
+
+    _write_registry(
+        repo_root,
+        _base_registry(items=[_item(status="in_progress", last_attempted_at=RECENT)]),
+    )
+    all_success_failed = _write_mutation(
+        repo_root,
+        _mutation_payload(
+            batch_id="batch-3",
+            status="failed",
+            error_summary="expected failure outcome",
+            items=[
+                {
+                    "item_key": "wiki_entity_page:alpha",
+                    "target_status": "completed",
+                    "source_fingerprint": HASH_A,
+                    "dependency_fingerprint": HASH_B,
+                }
+            ],
+        ),
+        "failed-all-success.json",
+    )
+    failed_result = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path=all_success_failed,
+        approval="approved",
+        now=NOW,
+    )
+    assert failed_result.status == "fail"
+    assert failed_result.reason_code == "illegal_transition"
+
 
 @pytest.mark.parametrize(
     ("trigger", "start_status", "target_status", "operation_extra", "expected_status", "expected_reason"),
@@ -1180,6 +1352,69 @@ def test_mutate_enforces_trigger_transition_matrix(
     assert result.reason_code == expected_reason
 
 
+@pytest.mark.parametrize(
+    ("trigger", "start_status", "target_status", "operation_extra"),
+    [
+        (
+            "intake_driven",
+            "pending",
+            "completed",
+            {"source_fingerprint": HASH_A, "dependency_fingerprint": HASH_B},
+        ),
+        ("intake_driven", "completed", "failed", {"last_error": "x"}),
+        (
+            "manual_rescan",
+            "skipped",
+            "completed",
+            {"source_fingerprint": HASH_A, "dependency_fingerprint": HASH_B},
+        ),
+    ],
+)
+def test_mutate_rejects_truly_forbidden_pairs(
+    repo_root: Path,
+    trigger: str,
+    start_status: str,
+    target_status: str,
+    operation_extra: dict[str, Any],
+) -> None:
+    _write_registry(
+        repo_root,
+        _base_registry(
+            items=[
+                _item(
+                    status=start_status,
+                    last_succeeded_at=RECENT if start_status == "completed" else None,
+                    last_error="retired" if start_status == "skipped" else None,
+                )
+            ]
+        ),
+    )
+    mutation = _write_mutation(
+        repo_root,
+        _mutation_payload(
+            trigger=trigger,
+            items=[
+                {
+                    "item_key": "wiki_entity_page:alpha",
+                    "target_status": target_status,
+                    **operation_extra,
+                }
+            ],
+        ),
+        f"forbidden-{start_status}-{target_status}.json",
+    )
+
+    result = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path=mutation,
+        approval="approved",
+        now=NOW,
+    )
+
+    assert result.status == "fail"
+    assert result.reason_code == "illegal_transition"
+
+
 def test_verify_reports_file_size_item_count_and_preserves_registry(repo_root: Path) -> None:
     registry = _base_registry(items=[_item(status="pending"), _item(key="wiki_concept_page:beta", output_path="wiki/concepts/beta.md", artifact_type="wiki_concept_page")])
     _write_registry(repo_root, registry)
@@ -1194,6 +1429,22 @@ def test_verify_reports_file_size_item_count_and_preserves_registry(repo_root: P
     assert result.summary["json_parse_pass"] is True
     assert result.summary["schema_check_pass"] is True
     assert _registry_path(repo_root).read_text(encoding="utf-8") == before
+
+
+def test_verify_proceeds_when_checkpoint_lock_is_held(repo_root: Path) -> None:
+    _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
+    lock_path = repo_root / contracts.CHECKPOINT_REGISTRY_LOCK_PATH
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            result = checkpoint_registry.verify_registry(repo_root=repo_root)
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    assert result.status == "pass"
+    assert result.reason_code == "ok"
 
 
 def test_verify_detects_schema_failure_and_warn_only_exit_semantics(repo_root: Path) -> None:

@@ -41,6 +41,10 @@ from synthesize_concept_page import _write_concept_drafts  # type: ignore[import
 from synthesize_entity_page import _write_entity_drafts  # type: ignore[import]
 
 
+class LockContractViolationError(RuntimeError):
+    """Raised when lock_already_held kwarg is used without holding the lock."""
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Synthesize entity and concept pages in a single lock acquisition."
@@ -92,7 +96,7 @@ def run(
     try:
         if lock_already_held:
             if not is_write_lock_held(repo_root):
-                raise RuntimeError("lock_already_held=True requires this process to hold wiki/.kb_write.lock")
+                raise LockContractViolationError("lock_already_held=True requires this process to hold wiki/.kb_write.lock")
             entity_results = _write_entity_drafts(entities, wiki_root_path, source_ref)
             concept_results = _write_concept_drafts(concepts, wiki_root_path, source_ref)
         else:
@@ -102,7 +106,7 @@ def run(
     except LockUnavailableError as exc:
         print(f"error: lock unavailable: {exc}", file=sys.stderr)
         return 1
-    except RuntimeError as exc:
+    except LockContractViolationError as exc:
         print(f"error: synthesis structural violation: {exc}", file=sys.stderr)
         return 1
 

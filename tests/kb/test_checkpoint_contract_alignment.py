@@ -18,6 +18,14 @@ AGENTS_PATH = REPO_ROOT / "AGENTS.md"
 
 
 class CheckpointRegistryContractAlignmentTests(unittest.TestCase):
+    """Pin checkpoint registry contract alignment across docs, code, and CI.
+
+    These tests keep the AGENTS write-surface matrix, dependency fingerprint
+    sources, trigger/artifact enums, and retention constants synchronized with
+    the schema contract. They intentionally fail when any one surface drifts
+    from the others so PR3 runtime semantics remain governance-aligned.
+    """
+
     def test_governed_contract_entry_and_lock_registration_are_declared(self) -> None:
         contract = contracts.governed_artifact_contract(
             "raw/wiki-processing/wiki-processing-checkpoint-registry.json"

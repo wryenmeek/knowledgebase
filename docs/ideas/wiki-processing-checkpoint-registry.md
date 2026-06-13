@@ -1,6 +1,6 @@
 # Wiki processing checkpoint registry
 
-**Status:** In Progress — PR3 of 4 implemented in `checkpoint/03-runtime`; ADR-026/ADR-027, schema contract, runtime, tests, and architecture/runbook cascades landed or are landing; PR4 CI wiring/bootstrap remains. Design decisions resolved via grilling session 2026-06-07 and simplified via `improve-codebase-architecture` review on 2026-06-07 (Path C-prime, 4 PRs).
+**Status:** Implemented (Phase 3) — PR3 of 4 implemented in `checkpoint/03-runtime`; PR4 CI wiring/bootstrap remains. ADR-026/ADR-027, schema contract, runtime, tests, and architecture/runbook cascades landed or are landing. Design decisions resolved via grilling session 2026-06-07 and simplified via `improve-codebase-architecture` review on 2026-06-07 (Path C-prime, 4 PRs).
 
 This proposal adds a governed checkpoint registry under `raw/` for wiki processing. The registry tracks generated wiki artifacts/pages at item and batch granularity so partial fail-closed runs can resume and changed outputs can be re-evaluated without storing workflow state in topical wiki content.
 
