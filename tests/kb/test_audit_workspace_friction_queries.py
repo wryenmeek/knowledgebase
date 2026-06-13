@@ -64,6 +64,14 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
     def test_sql_templates_follow_session_store_safety_rules(self) -> None:
         module = self._module()
+        ilike_exact_match_anchors = {
+            "chronicle_commits": ("sr.ref_type = 'commit'",),
+            "hook_bypasses": (
+                "sr.ref_type = 'commit'",
+                "e.type = 'tool.execution_complete'",
+                "e.tool_start_name = 'bash'",
+            ),
+        }
 
         for friction_class, template in self._templates(module).items():
             for pass_name in ("primary", "broader"):
@@ -84,10 +92,13 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                     else:
                         self.assertNotIn("s.repository =", sql)
                     if " ilike " in lowered:
-                        self.assertTrue(
-                            "sr.ref_type = 'commit'" in lowered
-                            or "e.type = 'tool.execution_complete'" in lowered
-                        )
+                        for anchor in ilike_exact_match_anchors[friction_class]:
+                            self.assertIn(anchor, lowered)
+
+        days_30_template = module.retry_loops_query(repo=REPO, days=30)
+        with self.subTest(friction_class="retry_loops", days=30):
+            self.assertIn("now() - INTERVAL '30 days'", days_30_template["primary"])
+            self.assertIn("now() - INTERVAL '30 days'", days_30_template["broader"])
 
     def test_sql_templates_include_friction_specific_predicates(self) -> None:
         module = self._module()
@@ -124,7 +135,11 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             with self.subTest(friction_class=friction_class):
                 query_log: list[str] = []
                 db = self._build_session_store_fixture(repository=REPO)
-                query_runner = self._sqlite_query_runner(query_log=query_log, db=db)
+                query_runner = self._sqlite_query_runner(
+                    query_log=query_log,
+                    db=db,
+                    retry_window_minutes=module.RETRY_WINDOW_MINUTES,
+                )
 
                 result = module.run_two_pass(template, query_runner)
 
@@ -161,7 +176,11 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             with self.subTest(friction_class=friction_class):
                 query_log: list[str] = []
                 db = self._build_session_store_fixture(repository="other/repo")
-                query_runner = self._sqlite_query_runner(query_log=query_log, db=db)
+                query_runner = self._sqlite_query_runner(
+                    query_log=query_log,
+                    db=db,
+                    retry_window_minutes=module.RETRY_WINDOW_MINUTES,
+                )
 
                 result = module.run_two_pass(template, query_runner)
 
@@ -189,7 +208,11 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
         result = module.run_two_pass(
             template,
-            self._sqlite_query_runner(query_log=query_log, db=db),
+            self._sqlite_query_runner(
+                query_log=query_log,
+                db=db,
+                retry_window_minutes=module.RETRY_WINDOW_MINUTES,
+            ),
         )
 
         self.assertEqual(result["row_count"], 1)
@@ -209,7 +232,11 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
         result = module.run_two_pass(
             template,
-            self._sqlite_query_runner(query_log=query_log, db=db),
+            self._sqlite_query_runner(
+                query_log=query_log,
+                db=db,
+                retry_window_minutes=module.RETRY_WINDOW_MINUTES,
+            ),
         )
 
         self.assertEqual(result["row_count"], 1)
@@ -246,8 +273,26 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                 )
                 self.assertEqual(query_log, [template["primary"], template["broader"]])
 
+    def test_run_two_pass_rejects_malformed_templates(self) -> None:
+        module = self._module()
+
+        with self.assertRaises(ValueError):
+            module.run_two_pass(
+                {"primary": "SELECT 1", "broader": "SELECT 1", "fallback": "bogus"},
+                lambda sql: (),
+            )
+        with self.assertRaises(ValueError):
+            module.run_two_pass(
+                {"primary": "", "broader": "", "fallback": module.LIMITED_EVIDENCE_SENTINEL},
+                lambda sql: (),
+            )
+
     def test_query_inputs_reject_injection_and_invalid_windows(self) -> None:
         module = self._module()
+
+        for valid_days in (1, 365):
+            with self.subTest(valid_days=valid_days):
+                self.assertEqual(module._validate_days(valid_days), valid_days)
 
         for factory in (
             module.chronicle_commits_query,
@@ -291,25 +336,37 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                     if isinstance(value, str):
                         self.assertNotEqual(value, "")
 
-    def _sqlite_query_runner(self, *, query_log: list[str], db: sqlite3.Connection):
+    def _sqlite_query_runner(
+        self,
+        *,
+        query_log: list[str],
+        db: sqlite3.Connection,
+        retry_window_minutes: int,
+    ):
         def query_runner(sql: str):
             query_log.append(sql)
-            cursor = db.execute(self._sqlite_compatible_sql(sql))
+            cursor = db.execute(
+                self._sqlite_compatible_sql(
+                    sql,
+                    retry_window_minutes=retry_window_minutes,
+                )
+            )
             return tuple(dict(row) for row in cursor.fetchall())
 
         return query_runner
 
     @staticmethod
-    def _sqlite_compatible_sql(sql: str) -> str:
+    def _sqlite_compatible_sql(sql: str, *, retry_window_minutes: int) -> str:
         converted = re.sub(
             r"now\(\) - INTERVAL '\d+ days'",
             "'2026-06-06 00:00:00'",
             sql,
             flags=re.IGNORECASE,
         )
-        converted = converted.replace(
-            "f.failed_at + INTERVAL '15 minutes'",
-            "datetime(f.failed_at, '+15 minutes')",
+        converted = re.sub(
+            rf"f\.failed_at \+ INTERVAL '{retry_window_minutes} minutes'",
+            f"datetime(f.failed_at, '+{retry_window_minutes} minutes')",
+            converted,
         )
         converted = re.sub(r"\bILIKE\b", "LIKE", converted, flags=re.IGNORECASE)
         return converted

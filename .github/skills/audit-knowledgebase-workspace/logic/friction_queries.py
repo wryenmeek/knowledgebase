@@ -1,9 +1,17 @@
-"""Friction-signal session_store_sql query templates for audit improve.
+"""Friction-signal session_store_sql query templates for the audit improve flow.
 
-The templates are read-only strings intended for Copilot CLI's
-``session_store_sql`` tool. Each friction class exposes the repository-scoped
-primary query, the broader cross-repository query, and the limited-evidence
-fallback sentinel required by the `/chronicle` two-pass convention.
+Implements `docs/ideas/audit-workspace-improve-flow.md` § Phase 4 — Slice 8c
+(issue #204): five friction classes (chronicle_commits, repeated_user_prompts,
+repeated_context_loads, hook_bypasses, retry_loops), each emitted as a
+read-only template containing a repo-scoped `primary` query, a cross-repo
+`broader` query, and a `LIMITED_EVIDENCE` fallback sentinel. The two-pass
+execution rule (`run_two_pass`) follows the canonical strategy in
+`.github/copilot-instructions.md` § "Two-pass session_store query strategy":
+primary → broader-on-zero → limited-evidence-with-telemetry-gap acknowledgment.
+Each template's `finding` defaults conform to
+`.github/skills/audit-knowledgebase-workspace/schema/finding.schema.json`
+(Q4-revised compliance_risk mapping; Q11 cache_strategy = "mtime_first_para").
+No repository reads or writes are performed.
 """
 
 from __future__ import annotations
@@ -42,6 +50,7 @@ def chronicle_commits_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQ
 
     interval = _interval(days)
     repo_literal = _repo_literal(repo)
+    # Loose temporal coupling: any matching /chronicle improve prompt within the time window before the commit counts; not a tight cause-effect link.
     primary = f"""
 SELECT
   sr.session_id,
@@ -509,6 +518,8 @@ def _repo_literal(repo: str) -> str:
 
 
 def _skill_name_expression() -> str:
+    """Heuristic JSON key extraction; assumes well-formed skill names without escaped quotes."""
+
     return (
         "COALESCE(NULLIF(regexp_extract(COALESCE(tr.arguments_json, ''), "
         """'"skill"\\s*:\\s*"([^"]+)"', 1), ''), 'unknown')"""
