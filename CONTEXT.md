@@ -1,6 +1,6 @@
 ---
 scope: repo
-last_updated: 2026-05-12
+last_updated: 2026-06-13
 ---
 
 # CONTEXT
@@ -54,7 +54,7 @@ Shared vocabulary for the `wryenmeek/knowledgebase` repository. This file is des
 | `wiki/` | Curated knowledgebase pages, governed artifacts, and audit logs. |
 | `schema/` | Authoritative contracts for page templates, taxonomy, metadata, and ingest. Read-only for all automation. |
 | `scripts/kb/` | Canonical utility modules: `page_template_utils`, `write_utils`, `contracts`, `sourceref`. All new helpers must extend these before creating new modules (ADR-011). |
-| `scripts/hooks/` | Read-only-only pre-commit hook scripts. No governed repository writes permitted. |
+| `scripts/hooks/` | Read-only-only pre-commit + PostToolUse hook scripts. No governed repository writes permitted. |
 | `scripts/validation/` | Read-only-only validators. |
 | `scripts/reporting/` | Read-only by default; `persist` modes declare narrower write-surface rows. |
 | `scripts/ingest/` | Ingest surfaces. `apply` mode writes to `raw/processed/**` only. |

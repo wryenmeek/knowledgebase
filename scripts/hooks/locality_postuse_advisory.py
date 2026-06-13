@@ -1,5 +1,27 @@
 #!/usr/bin/env python3
-"""Warning-only PostToolUse advisory for Locality 4 instruction edits."""
+"""Warning-only PostToolUse advisory for Locality 4 instruction edits.
+
+This hook exists for issue #195: after a successful edit/create-style tool
+action touches `.github/copilot-instructions.md` or `AGENTS.md`, it reminds the
+operator that those files are always-on Locality 4 context and should be
+classified against the locality ladder before commit. The warning points to
+ADR-028, especially the "Deletion pairing and trailer escape" section and the
+Locality 3c PostToolUse advisory tier defined by the ladder.
+
+Invariant: this script is advisory only. It never exits non-zero, never blocks
+the edit, and never mutates repository state. Missing fields, malformed JSON,
+failed tool results, unsupported tools, or unmatched paths all return 0 without
+emitting a warning.
+
+Output contract: for each matched Locality 4 path, emit one JSON warning record
+to stdout. Each record includes a `hookSpecificOutput` envelope with
+`hookEventName: "PostToolUse"` and `additionalContext` so hook hosts can show the
+operator-facing advisory.
+
+Placement chosen as Python under `scripts/hooks/` rather than shell under
+`.github/hooks/` per plan — see commit message for rationale: Python provides
+safe JSON parsing without jq dependency and enables unit testing.
+"""
 
 from __future__ import annotations
 
@@ -154,9 +176,6 @@ def _explicit_success(value: Any) -> bool:
     if not isinstance(value, Mapping):
         return False
 
-    for key in ("success", "ok", "succeeded"):
-        if key in value:
-            return bool(value[key])
     for key in ("failed", "failure", "is_error"):
         if bool(value.get(key)):
             return False
@@ -165,16 +184,23 @@ def _explicit_success(value: Any) -> bool:
             return False
     for key in ("returncode", "return_code", "exit_code", "status_code"):
         code = value.get(key)
+        if isinstance(code, int) and code != 0:
+            return False
+    for key in ("status", "outcome", "state"):
+        status = value.get(key)
+        if isinstance(status, str) and status.strip().lower() in FAILURE_STATUSES:
+            return False
+
+    for key in ("success", "ok", "succeeded"):
+        if key in value:
+            return bool(value[key])
+    for key in ("returncode", "return_code", "exit_code", "status_code"):
+        code = value.get(key)
         if isinstance(code, int):
             return code == 0
     for key in ("status", "outcome", "state"):
         status = value.get(key)
-        if not isinstance(status, str):
-            continue
-        normalized = status.strip().lower()
-        if normalized in FAILURE_STATUSES:
-            return False
-        if normalized in SUCCESS_STATUSES:
+        if isinstance(status, str) and status.strip().lower() in SUCCESS_STATUSES:
             return True
     return False
 

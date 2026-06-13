@@ -405,6 +405,8 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Read-only / prerequisite paths": (
             "PostToolUse",
             "tool_result",
+            "payload-wide canonical path keys",
+            "success/failure indicators",
             ".github/copilot-instructions.md",
             "AGENTS.md",
         ),
