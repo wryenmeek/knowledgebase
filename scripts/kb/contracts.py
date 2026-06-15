@@ -76,7 +76,7 @@ GITHUB_SOURCES_LOCK_PATH = "raw/.github-sources.lock"
 REJECTION_REGISTRY_LOCK_PATH = "raw/.rejection-registry.lock"
 DRIVE_SOURCES_LOCK_PATH = "raw/.drive-sources.lock"
 CHECKPOINT_REGISTRY_LOCK_PATH = "raw/.wiki-processing-checkpoint.lock"
-# ADR-028 (pending) — instruction-locality ladder; sibling pattern per ADR-005 / ADR-013.
+# ADR-028 — instruction-locality ladder; sibling pattern per ADR-005 / ADR-013.
 CUSTOMIZATIONS_LOCK_PATH = ".github/.customizations.lock"
 
 # Exact basenames of all governance lock files. Derived from the path constants

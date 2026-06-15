@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pre-commit hook: require ``applyTo:`` on staged instruction files.
 
-# ADR-028 (pending) — required-applyTo invariant
+# ADR-028 — required-applyTo invariant
 
 Frontmatter-less ``.github/instructions/*.instructions.md`` files are a hidden
 ratchet: Copilot CLI's ``BXo`` splitter puts files without ``applyTo:`` into the

@@ -622,9 +622,9 @@ This plan was revised via the `grill-with-docs` skill in autopilot mode. The use
 - Phase 1.5 outcome dictates Locality 1's availability across surfaces. Cannot pre-decide.
 - Exact rolling-window definition for the trailer budget (commits-touching-target-files vs all commits) — tune during Phase 6 implementation based on observed false-positive rate.
 
-### CONTEXT.md term additions (landed early in slice 2 / #192 with `ADR-028 (pending)` hedges)
+### CONTEXT.md term additions (landed early in slice 2 / #192; hedges removed after ADR-028 acceptance)
 
-The grilling pass surfaced four new repo-specific terms that have **already been added** to `.github/skills/CONTEXT.md` as part of slice 2 / #192, with each entry hedged as `(introduced in ADR-028 — pending issue #190)` so the cross-reference stays accurate until the ADR is `Accepted`. When ADR-028 lands in Phase 2 and the status flips to `Accepted`, the same commit must remove the `(pending)` hedges and bump `last_updated` in `CONTEXT.md`. Canonical definitions (used both for the on-disk entries and as the ADR-028 author's reference):
+The grilling pass surfaced four new repo-specific terms that have **already been added** to `.github/skills/CONTEXT.md` as part of slice 2 / #192. The original entries were hedged as `(pending)` until ADR-028 was accepted; the hedges were removed in the PR that resolved issue #245. Canonical definitions (used both for the on-disk entries and as the ADR-028 author's reference):
 
 | Term | Definition for CONTEXT.md |
 |---|---|
@@ -633,4 +633,4 @@ The grilling pass surfaced four new repo-specific terms that have **already been
 | **trailer soft budget** | The rolling-window cap on `Locality-4-Justification:` git trailers (default 1 per 10 commits to global rules sections) that prevents the escape hatch from normalizing into bypass. Enforced by `scripts/hooks/check_locality_justification_trailer.py` at the `commit-msg` stage (paired with the pre-commit `check_locality_ratchet.py` line-delta check). |
 | **customizations lock** | The file `.github/.customizations.lock` — concurrency guard for `--apply` mode writes to `.github/**` (introduced in ADR-028). Sibling to `wiki/.kb_write.lock` and `raw/.rejection-registry.lock`; never held simultaneously with either. |
 
-On Phase 2 ADR-028 acceptance, the cascade is: (a) drop `(pending)` hedges in each CONTEXT.md entry above, (b) bump `last_updated` in `.github/skills/CONTEXT.md`, (c) `tests/kb/test_adr_readme_status_sync.py` and `check_adr_cross_ref.py` will catch any forgotten hedge.
+ADR-028 acceptance cascade completed: `(pending)` hedges dropped from CONTEXT.md entries and `last_updated` bumped in `.github/skills/CONTEXT.md`.
