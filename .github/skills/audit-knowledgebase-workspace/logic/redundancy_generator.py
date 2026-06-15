@@ -20,6 +20,7 @@ import os
 import re
 import secrets
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 from urllib import error as urllib_error
@@ -39,9 +40,14 @@ except ImportError:  # pragma: no cover - exercised when imported as a package
 
 
 MAX_ATTEMPTS = 3
+PER_ATTEMPT_TIMEOUT_SECONDS = 30
+BACKOFF_BASE_SECONDS = 0.25
+MAX_CITATION_SNIPPET_CHARS = 512
+CLI_SOFT_SKIP_EXIT_CODE = 2
 GITHUB_MODELS_ENDPOINT = "https://models.inference.ai.azure.com"
 MODEL_ID = "gpt-4o-mini"
 ALLOWED_ENDPOINT_HOSTS = frozenset({"models.inference.ai.azure.com"})
+MIXED_CACHE_STRATEGY_PRIORITY = ("mtime_first_para", "hybrid_signature")
 VALID_CACHE_STRATEGIES = frozenset({"mtime_first_para", "hybrid_signature"})
 _REPO_RELATIVE_PATH_RE = re.compile(
     r"^(?!.*[\s\x00-\x1F\x7F])(?!/)(?![A-Za-z]:)"
@@ -67,6 +73,7 @@ def generate_redundancy_findings(
     endpoint: str = GITHUB_MODELS_ENDPOINT,
     github_token: str = "",
     llm_caller: LLMCaller | None = None,
+    sleep: Callable[[float], None] | None = None,
 ) -> dict[str, object]:
     """Return schema-shaped Delete findings with valid lower-locality citations.
 
@@ -88,14 +95,15 @@ def generate_redundancy_findings(
     allowed_citations = {
         artifact["artifact_path"]: artifact["content"] for artifact in corpus_artifacts
     }
-    llm_token = (
-        github_token
-        or os.environ.get("SYNTHESIS_GITHUB_TOKEN")
-        or os.environ.get("GITHUB_TOKEN", "")
+    llm_token = github_token or (
+        _github_models_token_from_env_with_advisory()
+        if llm_caller is None
+        else os.environ.get("SYNTHESIS_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
     )
     last_error = ""
+    retry_sleep = sleep if sleep is not None else time.sleep
 
-    for _attempt in range(MAX_ATTEMPTS):
+    for attempt in range(MAX_ATTEMPTS):
         prompt = _build_prompt(
             source_file=canonical_source_file,
             source_section=source_section,
@@ -115,9 +123,13 @@ def generate_redundancy_findings(
             )
             payload = _parse_llm_json(raw_response)
             claims = _extract_claims(payload)
+        except EndpointNotAllowedError:
+            raise
         except (
             RuntimeError,
             urllib_error.URLError,
+            TimeoutError,
+            OSError,
             json.JSONDecodeError,
             ValueError,
             KeyError,
@@ -126,6 +138,8 @@ def generate_redundancy_findings(
                 f"Previous attempt failed API/parse validation: {exc}",
                 secrets=[llm_token],
             )
+            if attempt < MAX_ATTEMPTS - 1:
+                retry_sleep(BACKOFF_BASE_SECONDS * (2**attempt))
             continue
 
         findings = _postprocess_claims(
@@ -242,6 +256,7 @@ Rules:
 - Emit a claim only when a lower-locality artifact already covers the higher-locality input.
 - Every redundancy claim MUST include a citation in `(artifact_path, snippet)` format.
 - The citation snippet MUST be an exact substring of the cited artifact.
+- The citation snippet MUST be at most {MAX_CITATION_SNIPPET_CHARS} characters.
 - Uncited claims will be dropped silently.
 - Claims with a non-existent artifact path or non-matching snippet will be dropped silently.
 - Use `expected_token_efficiency_rank` as a non-negative integer where lower is cheaper.
@@ -319,7 +334,10 @@ def _call_llm(*, prompt: str, github_token: str, endpoint: str) -> str:
         },
         method="POST",
     )
-    with request.urlopen(req, timeout=90) as response:
+    with _urlopen_with_safe_redirects(
+        req,
+        timeout=PER_ATTEMPT_TIMEOUT_SECONDS,
+    ) as response:
         api_response = json.loads(response.read().decode("utf-8"))
     if not isinstance(api_response, dict):
         raise ValueError("API response root must be a JSON object")
@@ -336,6 +354,50 @@ def _call_llm(*, prompt: str, github_token: str, endpoint: str) -> str:
     if not isinstance(content, str) or not content.strip():
         raise ValueError("API response contained empty message content")
     return content
+
+
+class _AuthorizationStrippingRedirectHandler(request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> request.Request | None:
+        if not _validate_endpoint(newurl):
+            raise EndpointNotAllowedError(f"redirect endpoint hostname not allowed: {newurl!r}")
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is not None:
+            _strip_authorization_header(redirected)
+        return redirected
+
+
+def _urlopen_with_safe_redirects(req: request.Request, *, timeout: int) -> Any:
+    opener = request.build_opener(_AuthorizationStrippingRedirectHandler)
+    return opener.open(req, timeout=timeout)
+
+
+def _strip_authorization_header(req: request.Request) -> None:
+    for header_map in (req.headers, req.unredirected_hdrs):
+        for key in list(header_map):
+            if key.lower() == "authorization":
+                del header_map[key]
+
+
+def _github_models_token_from_env_with_advisory() -> str:
+    synthesis_token = os.environ.get("SYNTHESIS_GITHUB_TOKEN")
+    if synthesis_token:
+        return synthesis_token
+    github_token = os.environ.get("GITHUB_TOKEN", "")
+    if github_token:
+        print(
+            "warning: SYNTHESIS_GITHUB_TOKEN not set; falling back to GITHUB_TOKEN "
+            "for GitHub Models",
+            file=sys.stderr,
+        )
+    return github_token
 
 
 def _parse_llm_json(raw_response: str) -> Any:
@@ -368,6 +430,8 @@ def _valid_citation(
     artifact_path, snippet = citation
     if not artifact_path or not snippet:
         return None
+    if len(snippet) > MAX_CITATION_SNIPPET_CHARS:
+        return None
     if not _is_schema_safe_path(artifact_path):
         return None
     artifact = (repo_root / artifact_path).resolve()
@@ -384,6 +448,7 @@ def _valid_citation(
     if not artifact.is_file():
         return None
     try:
+        # Re-read and re-check the artifact so cached prompt text cannot mask on-disk drift.
         content = artifact.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
@@ -567,11 +632,15 @@ def _repo_relative_path(repo_root: Path, path: Path) -> str:
 
 
 def _cache_strategy_from_skill_corpus(skill_corpus: SkillCorpus) -> str:
+    strategies: set[str] = set()
     for entry in skill_corpus.values():
         if isinstance(entry, dict):
             cache_strategy = entry.get("cache_strategy")
             if isinstance(cache_strategy, str) and cache_strategy in VALID_CACHE_STRATEGIES:
-                return cache_strategy
+                strategies.add(cache_strategy)
+    for cache_strategy in reversed(MIXED_CACHE_STRATEGY_PRIORITY):
+        if cache_strategy in strategies:
+            return cache_strategy
     return CACHE_STRATEGY
 
 
@@ -600,11 +669,14 @@ def _non_negative_int(value: Any) -> int:
 
 
 def _validate_endpoint(endpoint: str) -> bool:
+    if not isinstance(endpoint, str):
+        return False
     try:
         parsed = urlparse(endpoint)
-    except Exception:
+        hostname = parsed.hostname
+    except ValueError:
         return False
-    return parsed.scheme == "https" and parsed.hostname in ALLOWED_ENDPOINT_HOSTS
+    return parsed.scheme == "https" and hostname in ALLOWED_ENDPOINT_HOSTS
 
 
 def _validate_source_file(repo_root: Path, source_file: str) -> str:
@@ -668,6 +740,8 @@ def run_cli(argv: list[str] | None = None, *, output_stream: Any = sys.stdout) -
         return 1
     output_stream.write(json.dumps(result, indent=2, sort_keys=True))
     output_stream.write("\n")
+    if result.get("soft_skipped") is True:
+        return CLI_SOFT_SKIP_EXIT_CODE
     return 0
 
 
@@ -678,7 +752,11 @@ def main(argv: list[str] | None = None) -> int:
 __all__ = [
     "ALLOWED_ENDPOINT_HOSTS",
     "GITHUB_MODELS_ENDPOINT",
+    "BACKOFF_BASE_SECONDS",
+    "CLI_SOFT_SKIP_EXIT_CODE",
     "MAX_ATTEMPTS",
+    "MAX_CITATION_SNIPPET_CHARS",
+    "PER_ATTEMPT_TIMEOUT_SECONDS",
     "EndpointNotAllowedError",
     "generate_redundancy_findings",
     "load_comparison_corpus",
