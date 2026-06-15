@@ -1,8 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "repo://wryenmeek/knowledgebase/.github/skills/audit-knowledgebase-workspace/schema/finding.schema.json",
+  "$comment": "$id intentionally uses repo:// rather than https:// because this schema is a repository-governed artifact with no canonical web publication URL; repo:// keeps identity tied to owner/repo/path while remaining an absolute URI.",
   "title": "Audit workspace improve classifier finding",
-  "description": "JSON Schema for a single audit-knowledgebase-workspace improve dry-run classifier finding. Implements the ADR-028 instruction-locality ladder contract tracked by issue #190 and slice 8b issue #203. The proposed_destination enum is the 10-bin output contract: Delete, Locality 0, Locality 1, Locality 2, Locality 3a, Locality 3b, Locality 3c, Locality 3d, Locality 3e, and Locality 4. compliance_risk is required on every finding: deterministic applies to Locality 0 and mechanically enforced Locality 3a/3b/3c/3d destinations; agent-dependent applies to Locality 1, Locality 2, Locality 3e, and Locality 4 mechanism-A. Delete findings may use the risk class appropriate to their proof path. The schema intentionally documents but does not enforce the proposed_destination-to-compliance_risk mapping; classifier logic owns that cross-field validation. expected_token_efficiency_rank is the integer rank derived from ADR-028's token-efficiency rule: estimated trigger frequency multiplied by per-fire cost, with lower ranks being cheaper. cache_strategy identifies the skill-corpus indexing strategy that generated the finding and is closed to the Phase 4/Q11 values mtime_first_para and hybrid_signature. suggested_artifact_path remains required because Phase 4 classifier prose includes the suggested artifact path in each finding output.",
+  "description": "JSON Schema for a single audit-knowledgebase-workspace improve dry-run classifier finding.\n\nIt implements the ADR-028 instruction-locality ladder contract tracked by issue #190 and slice 8b issue #203. Destination, compliance-risk, token-rank, cache-strategy, and suggested-path details live on their individual properties so validators and reviewers can reason about each contract independently.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -54,7 +55,7 @@
         "deterministic",
         "agent-dependent"
       ],
-      "description": "Risk class surfaced for reviewer judgment. ADR-028 maps Locality 0 and Locality 3a/3b/3c/3d to deterministic; Locality 1, Locality 2, Locality 3e, and Locality 4 mechanism-A to agent-dependent. This schema does not enforce that cross-field mapping."
+      "description": "Risk class surfaced for reviewer judgment. ADR-028 maps Locality 0 and mechanically enforced Locality 3a/3b/3c/3d to deterministic. Locality 1, Locality 2, Locality 3e, and Locality 4 Mechanism-A (the planning-doc label for ADR-028's trailer-escape path) are agent-dependent. This schema documents but does not enforce the cross-field mapping."
     },
     "expected_token_efficiency_rank": {
       "type": "integer",

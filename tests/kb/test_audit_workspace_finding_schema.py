@@ -9,6 +9,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+# Keep the module import: this file uses unittest.TestCase and unittest.main(),
+# matching the dominant tests/kb convention.
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = (
@@ -18,6 +20,27 @@ SCHEMA_PATH = (
     / "audit-knowledgebase-workspace"
     / "schema"
     / "finding.schema.json"
+)
+ASSERTION_KEYWORDS_SUPPORTED_BY_STDLIB_VALIDATOR = frozenset(
+    {
+        "additionalProperties",
+        "enum",
+        "minimum",
+        "minLength",
+        "pattern",
+        "properties",
+        "required",
+        "type",
+    }
+)
+ANNOTATION_KEYWORDS_IGNORED_BY_STDLIB_VALIDATOR = frozenset(
+    {
+        "$comment",
+        "$id",
+        "$schema",
+        "description",
+        "title",
+    }
 )
 
 
@@ -121,6 +144,11 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
                     expected_message,
                 )
 
+    def test_schema_accepts_integral_float_for_integer_type(self) -> None:
+        """Mirror jsonschema's integer semantics: JSON number 3.0 is integral."""
+
+        self.assert_schema_valid(self._finding(expected_token_efficiency_rank=3.0))
+
     def test_cache_strategy_enum_accepts_documented_values_and_rejects_typo(self) -> None:
         """AC #5 (issue #203): cache_strategy is the closed Phase 4/Q11 enum."""
 
@@ -165,6 +193,17 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
             with self.subTest(field_name=field_name, unsafe_path=unsafe_path):
                 finding = self._finding(**{field_name: unsafe_path})
                 self.assert_schema_rejects(finding, field_name, "pattern")
+
+    def test_validator_schema_keyword_subset_is_documented(self) -> None:
+        """The stdlib validator documents every schema keyword it supports or ignores."""
+
+        used_keywords = self._schema_keywords(self.schema)
+        documented_keywords = (
+            ASSERTION_KEYWORDS_SUPPORTED_BY_STDLIB_VALIDATOR
+            | ANNOTATION_KEYWORDS_IGNORED_BY_STDLIB_VALIDATOR
+        )
+
+        self.assertLessEqual(used_keywords, documented_keywords)
 
     def assert_schema_valid(self, finding: dict[str, Any]) -> None:
         self._validate_with_schema(deepcopy(finding), self.schema)
@@ -266,6 +305,14 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
 
     @classmethod
     def _validate_with_schema(cls, instance: Any, schema: dict[str, Any], path: str = "$") -> None:
+        """Validate with the documented stdlib subset, not full JSON Schema.
+
+        Supported assertion keywords are listed in
+        ASSERTION_KEYWORDS_SUPPORTED_BY_STDLIB_VALIDATOR. Annotation keywords in
+        ANNOTATION_KEYWORDS_IGNORED_BY_STDLIB_VALIDATOR may appear in the schema
+        and are intentionally ignored by this test-local validator.
+        """
+
         expected_type = schema.get("type")
         if expected_type is not None:
             cls._assert_type(instance, expected_type, path)
@@ -314,8 +361,13 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
                 return
             if single_type == "string" and isinstance(instance, str):
                 return
-            if single_type == "integer" and isinstance(instance, int) and not isinstance(instance, bool):
-                return
+            if single_type == "integer":
+                if isinstance(instance, bool):
+                    continue
+                if isinstance(instance, int):
+                    return
+                if isinstance(instance, float) and instance.is_integer():
+                    return
             if single_type == "number" and (
                 isinstance(instance, (int, float)) and not isinstance(instance, bool)
             ):
@@ -323,6 +375,14 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
             if single_type == "null" and instance is None:
                 return
         raise SchemaValidationError(f"{path}: expected type {expected_types!r}")
+
+    @classmethod
+    def _schema_keywords(cls, schema: dict[str, Any]) -> set[str]:
+        keywords = set(schema)
+        properties = schema.get("properties", {})
+        for property_schema in properties.values():
+            keywords.update(cls._schema_keywords(property_schema))
+        return keywords
 
 
 if __name__ == "__main__":
