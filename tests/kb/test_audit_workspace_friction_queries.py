@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
+import inspect
 import json
 from pathlib import Path
 import re
@@ -120,6 +122,42 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         self.assertIn("tool_complete_success = false", templates["retry_loops"]["primary"])
         self.assertIn("INTERVAL '15 minutes'", templates["retry_loops"]["primary"])
 
+    def test_sql_factories_use_uniform_private_helper_shape(self) -> None:
+        module = self._module()
+
+        for helper_name in (
+            "_chronicle_commits_sql",
+            "_repeated_user_prompts_sql",
+            "_repeated_context_loads_sql",
+            "_hook_bypasses_sql",
+            "_retry_loops_sql",
+        ):
+            with self.subTest(helper_name=helper_name):
+                signature = inspect.signature(getattr(module, helper_name))
+                self.assertEqual(tuple(signature.parameters), ("repo_filter", "interval"))
+                for parameter in signature.parameters.values():
+                    self.assertEqual(parameter.kind, inspect.Parameter.KEYWORD_ONLY)
+
+    def test_sql_templates_parse_under_duckdb_session_store_dialect(self) -> None:
+        if importlib.util.find_spec("duckdb") is None:
+            self.skipTest(
+                "duckdb package unavailable; SQLite fixture covers semantics, "
+                "this smoke test only checks session_store_sql dialect compatibility"
+            )
+
+        import duckdb  # type: ignore[import-not-found]
+
+        module = self._module()
+        db = duckdb.connect(database=":memory:")
+        try:
+            self._create_duckdb_session_store_schema(db)
+            for friction_class, template in self._templates(module).items():
+                for pass_name in ("primary", "broader"):
+                    with self.subTest(friction_class=friction_class, pass_name=pass_name):
+                        db.execute(template[pass_name]).fetchall()
+        finally:
+            db.close()
+
     def test_primary_query_rows_are_returned_for_each_friction_class(self) -> None:
         module = self._module()
         templates = self._templates(module)
@@ -128,7 +166,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             "repeated_user_prompts": 1,
             "repeated_context_loads": 1,
             "hook_bypasses": 1,
-            "retry_loops": 1,
+            "retry_loops": 2,
         }
 
         for friction_class, template in templates.items():
@@ -159,7 +197,9 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                         "2026-06-12 09:10:00",
                     )
                 if friction_class == "retry_loops":
-                    self.assertEqual(result["rows"][0]["retry_count"], 1)
+                    rows_by_tool = {row["tool_name"]: row for row in result["rows"]}
+                    self.assertEqual(rows_by_tool["bash"]["retry_count"], 1)
+                    self.assertEqual(rows_by_tool["view"]["retry_count"], 1)
 
     def test_broader_query_runs_when_primary_returns_zero_rows(self) -> None:
         module = self._module()
@@ -169,7 +209,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             "repeated_user_prompts": 1,
             "repeated_context_loads": 1,
             "hook_bypasses": 1,
-            "retry_loops": 1,
+            "retry_loops": 2,
         }
 
         for friction_class, template in templates.items():
@@ -239,8 +279,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(result["row_count"], 1)
-        row = result["rows"][0]
+        row = next(row for row in result["rows"] if row["tool_name"] == "bash")
         self.assertEqual(row["retry_count"], 1)
         self.assertNotIn("arguments_json", row)
         self.assertEqual(row["request_length"], len('{"command": "python3 -m pytest tests/kb/test_x.py"}'))
@@ -248,6 +287,26 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             row["request_fingerprint"],
             hashlib.md5(b'{"command": "python3 -m pytest tests/kb/test_x.py"}').hexdigest(),
         )
+
+    def test_retry_loop_window_includes_exact_boundary_and_excludes_after_boundary(self) -> None:
+        module = self._module()
+        template = module.retry_loops_query(repo=REPO)
+        query_log: list[str] = []
+        db = self._build_session_store_fixture(repository=REPO)
+
+        result = module.run_two_pass(
+            template,
+            self._sqlite_query_runner(
+                query_log=query_log,
+                db=db,
+                retry_window_minutes=module.RETRY_WINDOW_MINUTES,
+            ),
+        )
+
+        edge_row = next(row for row in result["rows"] if row["tool_name"] == "view")
+        self.assertEqual(edge_row["failed_at"], "2026-06-12 14:00:00")
+        self.assertEqual(edge_row["retried_at"], "2026-06-12 14:15:00")
+        self.assertEqual(edge_row["retry_count"], 1)
 
     def test_limited_evidence_fallback_adds_telemetry_gap_acknowledgment(self) -> None:
         module = self._module()
@@ -304,6 +363,17 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             with self.subTest(factory=factory.__name__, invalid="repo"):
                 with self.assertRaises(ValueError):
                     factory(repo="wryenmeek/knowledgebase'; DROP TABLE turns; --")
+            for invalid_repo in (
+                "./knowledgebase",
+                "../knowledgebase",
+                ".../knowledgebase",
+                "wryenmeek/.",
+                "wryenmeek/..",
+                "wryenmeek/...",
+            ):
+                with self.subTest(factory=factory.__name__, invalid_repo=invalid_repo):
+                    with self.assertRaises(ValueError):
+                        factory(repo=invalid_repo)
             for invalid_days in (0, 366, True, 7.5):
                 with self.subTest(factory=factory.__name__, invalid_days=invalid_days):
                     with self.assertRaises((TypeError, ValueError)):
@@ -335,6 +405,10 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                     value = finding[required_key]
                     if isinstance(value, str):
                         self.assertNotEqual(value, "")
+
+    def test_sqlite_regexp_extract_rejects_python_only_regex_features(self) -> None:
+        with self.assertRaises(AssertionError):
+            self._sqlite_regexp_extract("aa", r"(?<=a)a", 0)
 
     def _sqlite_query_runner(
         self,
@@ -370,6 +444,25 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         )
         converted = re.sub(r"\bILIKE\b", "LIKE", converted, flags=re.IGNORECASE)
         return converted
+
+    @staticmethod
+    def _create_duckdb_session_store_schema(db) -> None:
+        db.execute(
+            """
+            CREATE TABLE sessions (id TEXT PRIMARY KEY, repository TEXT);
+            CREATE TABLE turns (session_id TEXT, turn_index INTEGER, user_message TEXT, timestamp TIMESTAMP);
+            CREATE TABLE session_refs (session_id TEXT, ref_type TEXT, ref_value TEXT, created_at TIMESTAMP);
+            CREATE TABLE events (
+              session_id TEXT,
+              timestamp TIMESTAMP,
+              type TEXT,
+              tool_start_name TEXT,
+              tool_complete_call_id TEXT,
+              tool_complete_success BOOLEAN
+            );
+            CREATE TABLE tool_requests (session_id TEXT, tool_call_id TEXT, arguments_json TEXT);
+            """
+        )
 
     def _build_session_store_fixture(self, *, repository: str) -> sqlite3.Connection:
         db = sqlite3.connect(":memory:")
@@ -486,6 +579,9 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                 ("retry-loop", "2026-06-12 13:05:00", "tool.execution_complete", "bash", "bash-retry", 1),
                 ("retry-loop", "2026-06-12 13:07:00", "tool.execution_complete", "bash", "bash-unrelated", 1),
                 ("retry-loop", "2026-06-12 13:30:00", "tool.execution_complete", "view", "view-late", 1),
+                ("retry-loop", "2026-06-12 14:00:00", "tool.execution_complete", "view", "view-failed", 0),
+                ("retry-loop", "2026-06-12 14:15:00", "tool.execution_complete", "view", "view-retry-edge", 1),
+                ("retry-loop", "2026-06-12 14:15:01", "tool.execution_complete", "view", "view-retry-late", 1),
             ),
         )
         db.executemany(
@@ -495,6 +591,9 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                 ("retry-loop", "bash-retry", '{"command": "python3 -m pytest tests/kb/test_x.py"}'),
                 ("retry-loop", "bash-unrelated", '{"command": "git status --short"}'),
                 ("retry-loop", "view-late", '{"path": "AGENTS.md"}'),
+                ("retry-loop", "view-failed", '{"path": "wiki/index.md"}'),
+                ("retry-loop", "view-retry-edge", '{"path": "wiki/index.md"}'),
+                ("retry-loop", "view-retry-late", '{"path": "wiki/index.md"}'),
             ),
         )
 
@@ -504,6 +603,11 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
     @staticmethod
     def _sqlite_regexp_extract(value: str, pattern: str, group_index: int) -> str:
+        if re.search(r"\(\?([=!<]|P[<=])|\\[1-9]", pattern):
+            raise AssertionError(
+                "SQLite regexp_extract fixture only accepts DuckDB/RE2-compatible patterns; "
+                "use the DuckDB smoke test for dialect-specific coverage"
+            )
         match = re.search(pattern, value)
         if match is None:
             return ""

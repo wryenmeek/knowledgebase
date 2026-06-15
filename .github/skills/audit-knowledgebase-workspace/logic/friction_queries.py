@@ -38,7 +38,7 @@ TELEMETRY_GAP_ACKNOWLEDGMENT = (
 DEFAULT_LIMIT = 50
 DEFAULT_DAYS = 7
 RETRY_WINDOW_MINUTES = 15
-_REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_REPO_PATTERN = re.compile(r"^(?!\.+/)(?![^/]+/\.+$)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 FrictionQueryTemplate = dict[str, Any]
 QueryRows = Sequence[Mapping[str, Any]]
@@ -50,48 +50,8 @@ def chronicle_commits_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQ
 
     interval = _interval(days)
     repo_literal = _repo_literal(repo)
-    # Loose temporal coupling: any matching /chronicle improve prompt within the time window before the commit counts; not a tight cause-effect link.
-    primary = f"""
-SELECT
-  sr.session_id,
-  COALESCE(s.repository, '') AS repository,
-  sr.ref_value AS commit_sha,
-  sr.created_at AS commit_recorded_at,
-  MAX(t.timestamp) AS chronicle_prompt_at,
-  'chronicle_commits' AS friction_class
-FROM session_refs sr
-JOIN turns t ON t.session_id = sr.session_id
-JOIN sessions s ON s.id = sr.session_id
-WHERE s.repository = {repo_literal}
-  AND sr.ref_type = 'commit'
-  AND sr.created_at > {interval}
-  AND t.timestamp > {interval}
-  AND t.timestamp <= sr.created_at
-  AND COALESCE(t.user_message, '') ILIKE '%/chronicle improve%'
-GROUP BY sr.session_id, COALESCE(s.repository, ''), sr.ref_value, sr.created_at
-ORDER BY sr.created_at DESC
-LIMIT {DEFAULT_LIMIT}
-"""
-    broader = f"""
-SELECT
-  sr.session_id,
-  COALESCE(s.repository, '') AS repository,
-  sr.ref_value AS commit_sha,
-  sr.created_at AS commit_recorded_at,
-  MAX(t.timestamp) AS chronicle_prompt_at,
-  'chronicle_commits' AS friction_class
-FROM session_refs sr
-JOIN turns t ON t.session_id = sr.session_id
-JOIN sessions s ON s.id = sr.session_id
-WHERE sr.ref_type = 'commit'
-  AND sr.created_at > {interval}
-  AND t.timestamp > {interval}
-  AND t.timestamp <= sr.created_at
-  AND COALESCE(t.user_message, '') ILIKE '%/chronicle improve%'
-GROUP BY sr.session_id, COALESCE(s.repository, ''), sr.ref_value, sr.created_at
-ORDER BY sr.created_at DESC
-LIMIT {DEFAULT_LIMIT}
-"""
+    primary = _chronicle_commits_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
+    broader = _chronicle_commits_sql(repo_filter=None, interval=interval)
     return _template(
         "chronicle_commits",
         primary=primary,
@@ -114,45 +74,8 @@ def repeated_user_prompts_query(*, repo: str, days: int = DEFAULT_DAYS) -> Frict
 
     interval = _interval(days)
     repo_literal = _repo_literal(repo)
-    primary = f"""
-SELECT
-  t.session_id,
-  COALESCE(s.repository, '') AS repository,
-  md5(COALESCE(t.user_message, '')) AS prompt_fingerprint,
-  length(COALESCE(t.user_message, '')) AS prompt_length,
-  COUNT(*) AS repeat_count,
-  MIN(t.timestamp) AS first_prompt_at,
-  MAX(t.timestamp) AS last_prompt_at,
-  'repeated_user_prompts' AS friction_class
-FROM turns t
-JOIN sessions s ON s.id = t.session_id
-WHERE s.repository = {repo_literal}
-  AND t.timestamp > {interval}
-  AND COALESCE(t.user_message, '') <> ''
-GROUP BY t.session_id, COALESCE(s.repository, ''), COALESCE(t.user_message, '')
-HAVING COUNT(*) > 1
-ORDER BY repeat_count DESC, last_prompt_at DESC
-LIMIT {DEFAULT_LIMIT}
-"""
-    broader = f"""
-SELECT
-  t.session_id,
-  COALESCE(s.repository, '') AS repository,
-  md5(COALESCE(t.user_message, '')) AS prompt_fingerprint,
-  length(COALESCE(t.user_message, '')) AS prompt_length,
-  COUNT(*) AS repeat_count,
-  MIN(t.timestamp) AS first_prompt_at,
-  MAX(t.timestamp) AS last_prompt_at,
-  'repeated_user_prompts' AS friction_class
-FROM turns t
-JOIN sessions s ON s.id = t.session_id
-WHERE t.timestamp > {interval}
-  AND COALESCE(t.user_message, '') <> ''
-GROUP BY t.session_id, COALESCE(s.repository, ''), COALESCE(t.user_message, '')
-HAVING COUNT(*) > 1
-ORDER BY repeat_count DESC, last_prompt_at DESC
-LIMIT {DEFAULT_LIMIT}
-"""
+    primary = _repeated_user_prompts_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
+    broader = _repeated_user_prompts_sql(repo_filter=None, interval=interval)
     return _template(
         "repeated_user_prompts",
         primary=primary,
@@ -174,52 +97,8 @@ def repeated_context_loads_query(*, repo: str, days: int = DEFAULT_DAYS) -> Fric
 
     interval = _interval(days)
     repo_literal = _repo_literal(repo)
-    skill_expr = _skill_name_expression()
-    primary = f"""
-SELECT
-  e.session_id,
-  COALESCE(s.repository, '') AS repository,
-  {skill_expr} AS skill_name,
-  COUNT(*) AS invocation_count,
-  MIN(e.timestamp) AS first_invoked_at,
-  MAX(e.timestamp) AS last_invoked_at,
-  'repeated_context_loads' AS friction_class
-FROM events e
-JOIN sessions s ON s.id = e.session_id
-JOIN tool_requests tr
-  ON tr.session_id = e.session_id
- AND tr.tool_call_id = e.tool_complete_call_id
-WHERE s.repository = {repo_literal}
-  AND e.type = 'tool.execution_complete'
-  AND e.tool_start_name = 'skill'
-  AND e.timestamp > {interval}
-GROUP BY e.session_id, COALESCE(s.repository, ''), {skill_expr}
-HAVING COUNT(*) > 1
-ORDER BY invocation_count DESC, last_invoked_at DESC
-LIMIT {DEFAULT_LIMIT}
-"""
-    broader = f"""
-SELECT
-  e.session_id,
-  COALESCE(s.repository, '') AS repository,
-  {skill_expr} AS skill_name,
-  COUNT(*) AS invocation_count,
-  MIN(e.timestamp) AS first_invoked_at,
-  MAX(e.timestamp) AS last_invoked_at,
-  'repeated_context_loads' AS friction_class
-FROM events e
-JOIN sessions s ON s.id = e.session_id
-JOIN tool_requests tr
-  ON tr.session_id = e.session_id
- AND tr.tool_call_id = e.tool_complete_call_id
-WHERE e.type = 'tool.execution_complete'
-  AND e.tool_start_name = 'skill'
-  AND e.timestamp > {interval}
-GROUP BY e.session_id, COALESCE(s.repository, ''), {skill_expr}
-HAVING COUNT(*) > 1
-ORDER BY invocation_count DESC, last_invoked_at DESC
-LIMIT {DEFAULT_LIMIT}
-"""
+    primary = _repeated_context_loads_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
+    broader = _repeated_context_loads_sql(repo_filter=None, interval=interval)
     return _template(
         "repeated_context_loads",
         primary=primary,
@@ -242,8 +121,8 @@ def hook_bypasses_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQuery
 
     interval = _interval(days)
     repo_literal = _repo_literal(repo)
-    primary = _hook_bypass_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
-    broader = _hook_bypass_sql(repo_filter=None, interval=interval)
+    primary = _hook_bypasses_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
+    broader = _hook_bypasses_sql(repo_filter=None, interval=interval)
     return _template(
         "hook_bypasses",
         primary=primary,
@@ -265,8 +144,8 @@ def retry_loops_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQueryTe
 
     interval = _interval(days)
     repo_literal = _repo_literal(repo)
-    primary = _retry_loop_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
-    broader = _retry_loop_sql(repo_filter=None, interval=interval)
+    primary = _retry_loops_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
+    broader = _retry_loops_sql(repo_filter=None, interval=interval)
     return _template(
         "retry_loops",
         primary=primary,
@@ -367,8 +246,84 @@ def _template(
     }
 
 
-def _hook_bypass_sql(*, repo_filter: str | None, interval: str) -> str:
-    repo_clause = f"  AND {repo_filter}\n" if repo_filter is not None else ""
+def _chronicle_commits_sql(*, repo_filter: str | None, interval: str) -> str:
+    repo_clause = _repo_filter_clause(repo_filter)
+    # Loose temporal coupling: any matching /chronicle improve prompt within the
+    # time window before the commit counts; not a tight cause-effect link.
+    return f"""
+SELECT
+  sr.session_id,
+  COALESCE(s.repository, '') AS repository,
+  sr.ref_value AS commit_sha,
+  sr.created_at AS commit_recorded_at,
+  MAX(t.timestamp) AS chronicle_prompt_at,
+  'chronicle_commits' AS friction_class
+FROM session_refs sr
+JOIN turns t ON t.session_id = sr.session_id
+JOIN sessions s ON s.id = sr.session_id
+WHERE sr.ref_type = 'commit'
+  AND sr.created_at > {interval}
+  AND t.timestamp > {interval}
+  AND t.timestamp <= sr.created_at
+  AND COALESCE(t.user_message, '') ILIKE '%/chronicle improve%'
+{repo_clause}GROUP BY sr.session_id, COALESCE(s.repository, ''), sr.ref_value, sr.created_at
+ORDER BY sr.created_at DESC
+LIMIT {DEFAULT_LIMIT}
+"""
+
+
+def _repeated_user_prompts_sql(*, repo_filter: str | None, interval: str) -> str:
+    repo_clause = _repo_filter_clause(repo_filter)
+    return f"""
+SELECT
+  t.session_id,
+  COALESCE(s.repository, '') AS repository,
+  md5(COALESCE(t.user_message, '')) AS prompt_fingerprint,
+  length(COALESCE(t.user_message, '')) AS prompt_length,
+  COUNT(*) AS repeat_count,
+  MIN(t.timestamp) AS first_prompt_at,
+  MAX(t.timestamp) AS last_prompt_at,
+  'repeated_user_prompts' AS friction_class
+FROM turns t
+JOIN sessions s ON s.id = t.session_id
+WHERE t.timestamp > {interval}
+  AND COALESCE(t.user_message, '') <> ''
+{repo_clause}GROUP BY t.session_id, COALESCE(s.repository, ''), COALESCE(t.user_message, '')
+HAVING COUNT(*) > 1
+ORDER BY repeat_count DESC, last_prompt_at DESC
+LIMIT {DEFAULT_LIMIT}
+"""
+
+
+def _repeated_context_loads_sql(*, repo_filter: str | None, interval: str) -> str:
+    repo_clause = _repo_filter_clause(repo_filter)
+    skill_expr = _skill_name_expression()
+    return f"""
+SELECT
+  e.session_id,
+  COALESCE(s.repository, '') AS repository,
+  {skill_expr} AS skill_name,
+  COUNT(*) AS invocation_count,
+  MIN(e.timestamp) AS first_invoked_at,
+  MAX(e.timestamp) AS last_invoked_at,
+  'repeated_context_loads' AS friction_class
+FROM events e
+JOIN sessions s ON s.id = e.session_id
+JOIN tool_requests tr
+  ON tr.session_id = e.session_id
+ AND tr.tool_call_id = e.tool_complete_call_id
+WHERE e.type = 'tool.execution_complete'
+  AND e.tool_start_name = 'skill'
+  AND e.timestamp > {interval}
+{repo_clause}GROUP BY e.session_id, COALESCE(s.repository, ''), {skill_expr}
+HAVING COUNT(*) > 1
+ORDER BY invocation_count DESC, last_invoked_at DESC
+LIMIT {DEFAULT_LIMIT}
+"""
+
+
+def _hook_bypasses_sql(*, repo_filter: str | None, interval: str) -> str:
+    repo_clause = _repo_filter_clause(repo_filter)
     turn_predicate = _hook_bypass_predicate("COALESCE(t.user_message, '')")
     tool_predicate = _hook_bypass_predicate("COALESCE(tr.arguments_json, '')")
     return f"""
@@ -427,8 +382,8 @@ LIMIT {DEFAULT_LIMIT}
 """
 
 
-def _retry_loop_sql(*, repo_filter: str | None, interval: str) -> str:
-    repo_clause = f"  AND {repo_filter}\n" if repo_filter is not None else ""
+def _retry_loops_sql(*, repo_filter: str | None, interval: str) -> str:
+    repo_clause = _repo_filter_clause(repo_filter)
     return f"""
 WITH failed_tools AS (
   SELECT
@@ -487,6 +442,10 @@ LIMIT {DEFAULT_LIMIT}
 """
 
 
+def _repo_filter_clause(repo_filter: str | None) -> str:
+    return f"  AND {repo_filter}\n" if repo_filter is not None else ""
+
+
 def _required_sql(template: Mapping[str, Any], key: str) -> str:
     value = template.get(key)
     if not isinstance(value, str) or not value.strip():
@@ -495,6 +454,13 @@ def _required_sql(template: Mapping[str, Any], key: str) -> str:
 
 
 def _normalize_sql(sql: str) -> str:
+    """Normalize generated SQL without hiding its executable first token.
+
+    session_store_sql accepts a single read-only statement. Keep templates free
+    of leading comments/newlines so the normalized string visibly begins with
+    SELECT or WITH for safety tests and operator inspection.
+    """
+
     return "\n".join(line.rstrip() for line in sql.strip().splitlines())
 
 
