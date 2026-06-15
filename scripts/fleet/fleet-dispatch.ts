@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import path from "node:path";
-import { findUpSync } from "find-up";
 import { Octokit } from "octokit";
 import type { IssueAnalysis } from "./types.js";
 import { jules } from "@google/jules-sdk";
@@ -23,13 +22,16 @@ import {
   assertMutationPreflight,
   getSanitizedErrorMessage,
   MUTATION_EXECUTION_CONTRACT,
-  MutationFailureError,
   PreflightFailureError,
   resolveMutationMaxAttempts,
   runMutationWithDiagnostics,
 } from "./github/mutation-diagnostics.js";
 import { validateTaskOwnership } from "./github/task-manifest-validation.js";
-import { resolveFleetDir } from "./github/fleet-paths.js";
+import { findFleetRepoRoot, resolveFleetDir } from "./github/fleet-paths.js";
+import {
+  handleFleetFatalError,
+  logMutationAttemptFailure,
+} from "./_fleet_output.js";
 
 async function mapWithConcurrency<T, R>(
   items: T[],
@@ -104,7 +106,7 @@ export async function main(): Promise<void> {
       .format(new Date())
       .replaceAll("-", "_");
 
-  const root = path.dirname(findUpSync(".git", { type: "directory" })!);
+  const root = findFleetRepoRoot();
   let fleetDir: string;
   try {
     fleetDir = resolveFleetDir(root, date);
@@ -153,8 +155,10 @@ export async function main(): Promise<void> {
             },
           }),
         onAttemptFailure: (envelope) => {
-          console.error(`⚠️ Jules dispatch mutation attempt failed for task "${task.id}".`);
-          console.error(JSON.stringify(envelope));
+          logMutationAttemptFailure(
+            `⚠️ Jules dispatch mutation attempt failed for task "${task.id}".`,
+            envelope
+          );
         },
       });
 
@@ -201,20 +205,11 @@ export async function main(): Promise<void> {
 }
 
 export function handleFatalError(error: unknown): never {
-  if (error instanceof PreflightFailureError) {
-    console.error("❌ Fleet dispatch preflight failed.");
-    console.error(JSON.stringify(error.envelope));
-    process.exit(1);
-  }
-
-  if (error instanceof MutationFailureError) {
-    console.error("❌ Jules dispatch mutation hard-failed after bounded retries.");
-    console.error(JSON.stringify(error.terminalEnvelope));
-    process.exit(1);
-  }
-
-  console.error(`❌ Fleet dispatch failed: ${getSanitizedErrorMessage(error)}`);
-  process.exit(1);
+  return handleFleetFatalError(error, {
+    preflight: "❌ Fleet dispatch preflight failed.",
+    mutation: "❌ Jules dispatch mutation hard-failed after bounded retries.",
+    genericPrefix: "❌ Fleet dispatch failed: ",
+  });
 }
 
 if (import.meta.main) {

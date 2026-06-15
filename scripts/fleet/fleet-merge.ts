@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import path from "node:path";
-import { findUpSync } from "find-up";
 import type { IssueAnalysis, Task } from "./types.js";
 import { branchExists, getCurrentBranch, getGitRepoInfo } from "./github/git.js";
 import { jules } from "@google/jules-sdk";
@@ -22,7 +21,6 @@ import {
   assertMutationPreflight,
   getSanitizedErrorMessage,
   MUTATION_EXECUTION_CONTRACT,
-  MutationFailureError,
   PreflightFailureError,
   resolveMutationMaxAttempts,
   runMutationWithDiagnostics,
@@ -38,7 +36,11 @@ import {
   requireRedispatchAuthorLogin,
   resolveUpdateBranchFailure,
 } from "./github/merge-runtime.js";
-import { resolveFleetDir } from "./github/fleet-paths.js";
+import { findFleetRepoRoot, resolveFleetDir } from "./github/fleet-paths.js";
+import {
+  handleFleetFatalError,
+  logMutationAttemptFailure,
+} from "./_fleet_output.js";
 
 interface GitHubPR {
   number: number;
@@ -117,7 +119,7 @@ export async function main(): Promise<void> {
       .format(new Date())
       .replaceAll("-", "_");
 
-  const root = path.dirname(findUpSync(".git", { type: "directory" })!);
+  const root = findFleetRepoRoot();
   let fleetDir: string;
   try {
     fleetDir = resolveFleetDir(root, date);
@@ -187,8 +189,10 @@ export async function main(): Promise<void> {
           },
         }),
       onAttemptFailure: (envelope) => {
-        console.error(`⚠️ Jules re-dispatch mutation attempt failed for task "${task.id}".`);
-        console.error(JSON.stringify(envelope));
+        logMutationAttemptFailure(
+          `⚠️ Jules re-dispatch mutation attempt failed for task "${task.id}".`,
+          envelope
+        );
       },
     });
     console.log(`  📝 New session: ${run.id}`);
@@ -325,20 +329,11 @@ export async function main(): Promise<void> {
 }
 
 export function handleFatalError(error: unknown): never {
-  if (error instanceof PreflightFailureError) {
-    console.error("❌ Fleet merge preflight failed.");
-    console.error(JSON.stringify(error.envelope));
-    process.exit(1);
-  }
-
-  if (error instanceof MutationFailureError) {
-    console.error("❌ Jules merge re-dispatch hard-failed after bounded retries.");
-    console.error(JSON.stringify(error.terminalEnvelope));
-    process.exit(1);
-  }
-
-  console.error(`❌ Fleet merge failed: ${getSanitizedErrorMessage(error)}`);
-  process.exit(1);
+  return handleFleetFatalError(error, {
+    preflight: "❌ Fleet merge preflight failed.",
+    mutation: "❌ Jules merge re-dispatch hard-failed after bounded retries.",
+    genericPrefix: "❌ Fleet merge failed: ",
+  });
 }
 
 if (import.meta.main) {
