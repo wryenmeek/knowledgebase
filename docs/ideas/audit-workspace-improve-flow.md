@@ -1,6 +1,6 @@
 # Audit-Workspace `improve` Flow + Instruction Locality Ladder
 
-**Status:** Implemented (Phase 4) — 15 of 23 slices closed as of 2026-06-15; ADR-028 is Accepted, and remaining apply/wiring plus QA slices are open. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
+**Status:** Implemented (Phase 4) — 15 of 23 slices closed as of 2026-06-15; ADR-028 is Accepted, and remaining wiring plus QA slices are open. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
 **Origin:** Adapted from HSI's `docs/planned-work/audit-workspace-improve-flow.md` (2026-06-06), retargeted for this repo's customization surface
 
 | Field | Value |
@@ -22,7 +22,7 @@ As of 2026-06-15 the 23 vertical-slice issues (#190–#212) tracking this plan h
 | Slice | Phase | Issue | State | Artifact on main |
 |---|---|---|---|---|
 | 1a | Phase 2 | [#190](https://github.com/wryenmeek/knowledgebase/issues/190) | ✅ CLOSED | ADR-028 accepted in `docs/decisions/ADR-028-instruction-locality-ladder.md` (PR #226) |
-| 1b | Phase 2 | [#191](https://github.com/wryenmeek/knowledgebase/issues/191) | ✅ CLOSED | `CUSTOMIZATIONS_LOCK_PATH` declared in `scripts/kb/contracts.py`; runtime acquisition deferred to slice 9b / #209 |
+| 1b | Phase 2 | [#191](https://github.com/wryenmeek/knowledgebase/issues/191) | ✅ CLOSED | `CUSTOMIZATIONS_LOCK_PATH` declared in `scripts/kb/contracts.py`; runtime acquisition landed in slice 9b / #209 |
 | 2 | Phase 0/5 (Mechanism A) | [#192](https://github.com/wryenmeek/knowledgebase/issues/192) | ✅ CLOSED | Meta-rule override block, `Locality-4-Justification:` trailer template, CONTEXT.md terms — in `.github/copilot-instructions.md`, `AGENTS.md`, `docs/templates/locality-4-justification-trailer.md` |
 | 3 | Phase 1 | [#193](https://github.com/wryenmeek/knowledgebase/issues/193) | ✅ CLOSED | `scripts/hooks/check_instructions_applyto_present.py` + matrix row |
 | 4 | Phase 0 (Mechanism B spike) | [#194](https://github.com/wryenmeek/knowledgebase/issues/194) | OPEN (HITL) | Pending |
@@ -36,8 +36,8 @@ As of 2026-06-15 the 23 vertical-slice issues (#190–#212) tracking this plan h
 | 8c | Phase 4 (friction queries) | [#204](https://github.com/wryenmeek/knowledgebase/issues/204) | ✅ CLOSED | `friction_queries.py` with `tests/kb/test_audit_workspace_friction_queries.py` (PR #237) |
 | 8d | Phase 4 (stale generator) | [#205](https://github.com/wryenmeek/knowledgebase/issues/205) | ✅ CLOSED | `stale_generator.py` with `tests/kb/test_audit_workspace_stale_generator.py` (PR #242) |
 | 8e | Phase 4 (redundancy generator) | [#206](https://github.com/wryenmeek/knowledgebase/issues/206) | ✅ CLOSED | `redundancy_generator.py` with `tests/kb/test_audit_workspace_redundancy_generator.py` (PR #238) |
-| 9a | Phase 4 (`--apply` allowlist) | [#208](https://github.com/wryenmeek/knowledgebase/issues/208) | ✅ CLOSED | `--mode apply` write-path allowlist validation in `audit_workspace.py`; lock acquisition deferred to slice 9b / #209 |
-| 9b | Phase 4 (`--apply` customizations lock) | [#209](https://github.com/wryenmeek/knowledgebase/issues/209) | OPEN | Pending |
+| 9a | Phase 4 (`--apply` allowlist) | [#208](https://github.com/wryenmeek/knowledgebase/issues/208) | ✅ CLOSED | `--mode apply` write-path allowlist validation in `audit_workspace.py`; customizations lock wraps approved apply validation via slice 9b / #209 |
+| 9b | Phase 4 (`--apply` customizations lock) | [#209](https://github.com/wryenmeek/knowledgebase/issues/209) | ✅ CLOSED | `.github/.customizations.lock` acquired before `--mode apply --approval approved` target validation and released on success, validation failure, or exception |
 | 9c | Phase 4 (OutOfBand handoff routing) | [#210](https://github.com/wryenmeek/knowledgebase/issues/210) | ✅ CLOSED | `outofband_handoff.py` routes cross-skill findings to `framework-engineer` handoff records with `tests/kb/test_audit_workspace_outofband.py` |
 | 10 | Phase 7 (real-use) | [#212](https://github.com/wryenmeek/knowledgebase/issues/212) | OPEN (HITL) | Pending |
 | qa-ab | QA gate | [#198](https://github.com/wryenmeek/knowledgebase/issues/198) | OPEN (HITL) | Pending |
@@ -45,7 +45,7 @@ As of 2026-06-15 the 23 vertical-slice issues (#190–#212) tracking this plan h
 | qa-f | QA gate | [#207](https://github.com/wryenmeek/knowledgebase/issues/207) | OPEN (HITL) | Pending |
 | qa-g | QA gate | [#211](https://github.com/wryenmeek/knowledgebase/issues/211) | OPEN | Pending |
 
-**Rollup:** 15 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each was independently buildable; ADR-028 (#190) is now Accepted and anchors the remaining apply/wiring and QA slices.
+**Rollup:** 15 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each was independently buildable; ADR-028 (#190) is now Accepted and anchors the remaining wiring and QA slices.
 
 ---
 
@@ -357,7 +357,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
 - [ ] Create `.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md` mirroring the ADR's normative tables with worked examples (use the "illustrative" table above as a seed).
 - [ ] Symlink or include from the SKILL.md so it loads only when the skill is invoked (progressive disclosure).
 - [ ] Update `docs/decisions/README.md` index with the new ADR row (enforced by `tests/kb/test_adr_readme_status_sync.py` and the pre-commit `check_adr_cross_ref.py` hook).
-- [x] Add `.github/.customizations.lock` to `GOVERNANCE_LOCK_FILES` in `scripts/kb/contracts.py` (the pre-commit `check_governance_lock_files.py`-style hook prevents accidental staging). *(Landed via slice 1b / #191: path constant `CUSTOMIZATIONS_LOCK_PATH` registered in `scripts/kb/contracts.py`; runtime lock-file acquisition is deferred to slice 9b / #209 when `--apply` write-capability lands.)*
+- [x] Add `.github/.customizations.lock` to `GOVERNANCE_LOCK_FILES` in `scripts/kb/contracts.py` (the pre-commit `check_governance_lock_files.py`-style hook prevents accidental staging). *(Landed via slice 1b / #191: path constant `CUSTOMIZATIONS_LOCK_PATH` registered in `scripts/kb/contracts.py`; runtime lock-file acquisition landed in slice 9b / #209 for `--mode apply --approval approved` target validation.)*
 - [ ] **Acceptance:** ADR-028 is `Accepted`, README index updated, `references/locality-ladder.md` is the single source of truth, lock constant registered, trigger-frequency framing explicit in the ADR's opening section.
 
 ### Phase 3 — Extend `audit-knowledgebase-workspace` SKILL.md with `improve` flow
@@ -566,7 +566,7 @@ The plan is **complete** when:
 | Frontmatter-less file in `.github/instructions/` becomes silent Locality 4 ratchet | Phase 1 pre-commit hook `check_instructions_applyto_present.py` blocks staging of any `.github/instructions/*.instructions.md` file missing `applyTo:` frontmatter |
 | Pre-commit gate over-blocks legitimate edits | Escape hatch is the `Locality-4-Justification:` trailer; auditable so it doesn't normalize into a bypass |
 | Two-file scope (Phase 6) misses the AGENTS.md write-surface matrix carve-out | Phase 6 explicitly exempts the `## Write-surface matrix` table body; cascade tests already enforce matrix rows exist for new surfaces |
-| New `.github/.customizations.lock` proposal collides with future write surfaces | K13 is deferred to Phase 3 design; resolve before any `--apply` write code lands |
+| New `.github/.customizations.lock` proposal collides with future write surfaces | Resolved by ADR-028, slice 1b (`CUSTOMIZATIONS_LOCK_PATH`), and slice 9b approved-apply lock acquisition; future write surfaces must keep the sibling-lock invariant in their matrix rows and tests |
 | ADR-028 collides with an in-flight ADR proposal | Last ADR in repo is ADR-027 (`infrastructure-validation-trigger-model`); 028 is currently unclaimed. Verify at Phase 2 kickoff |
 
 ---

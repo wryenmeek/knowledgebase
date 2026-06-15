@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
+import subprocess
+import sys
 import unittest
+from unittest.mock import patch
 
+from scripts.kb import contracts, write_utils
 from tests.kb.harnesses import RuntimeWorkspaceTestCase, load_module
 
 
@@ -154,6 +159,285 @@ class AuditWorkspaceApplyAllowlistTests(RuntimeWorkspaceTestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertIn('"reason_code": "path_not_allowlisted"', output.getvalue())
+
+    def test_approved_apply_acquires_customizations_lock_before_validation(self) -> None:
+        observed_lock_states: list[bool] = []
+        original_validate = self.module.validate_apply_target_path
+
+        def observing_validate(repo_root, target_path, *, operation=None):
+            observed_lock_states.append(
+                write_utils.is_write_lock_held(
+                    repo_root,
+                    contracts.CUSTOMIZATIONS_LOCK_PATH,
+                )
+            )
+            return original_validate(repo_root, target_path, operation=operation)
+
+        with patch.object(
+            self.module,
+            "validate_apply_target_path",
+            side_effect=observing_validate,
+        ):
+            result = self.module.audit(
+                repo_root=self.workspace_root,
+                mode="apply",
+                approval="approved",
+                apply_targets=("AGENTS.md",),
+            )
+
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(observed_lock_states, [True])
+
+    def test_unapproved_apply_validates_without_customizations_lock(self) -> None:
+        observed_lock_states: list[bool] = []
+        original_validate = self.module.validate_apply_target_path
+
+        def observing_validate(repo_root, target_path, *, operation=None):
+            observed_lock_states.append(
+                write_utils.is_write_lock_held(
+                    repo_root,
+                    contracts.CUSTOMIZATIONS_LOCK_PATH,
+                )
+            )
+            return original_validate(repo_root, target_path, operation=operation)
+
+        with patch.object(
+            self.module,
+            "validate_apply_target_path",
+            side_effect=observing_validate,
+        ):
+            result = self.module.audit(
+                repo_root=self.workspace_root,
+                mode="apply",
+                apply_targets=("AGENTS.md",),
+            )
+
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(observed_lock_states, [False])
+        self.assertFalse(result.lock_required)
+        self.assertIsNone(result.lock_path)
+
+    def test_approved_apply_fails_before_customizations_lock_when_sibling_lock_held(
+        self,
+    ) -> None:
+        for sibling_lock_path in (
+            contracts.WRITE_LOCK_PATH,
+            contracts.REJECTION_REGISTRY_LOCK_PATH,
+        ):
+            with self.subTest(sibling_lock_path=sibling_lock_path):
+                with write_utils.exclusive_write_lock(
+                    self.workspace_root,
+                    lock_path=sibling_lock_path,
+                ):
+                    with patch.object(
+                        self.module.write_utils,
+                        "exclusive_write_lock",
+                        side_effect=AssertionError(
+                            "customizations lock must not be acquired"
+                        ),
+                    ):
+                        result = self.module.audit(
+                            repo_root=self.workspace_root,
+                            mode="apply",
+                            approval="approved",
+                            apply_targets=("AGENTS.md",),
+                        )
+
+                self.assertEqual(result.status, "fail")
+                self.assertEqual(result.reason_code, "lock_unavailable")
+                self.assertTrue(result.lock_required)
+                self.assertEqual(result.lock_path, contracts.CUSTOMIZATIONS_LOCK_PATH)
+                self.assertEqual(result.summary["sibling_lock_held"], sibling_lock_path)
+                self.assertFalse(result.summary["lock_acquired"])
+                self.assertEqual(result.summary["write_targets_validated"], 0)
+                self.assertFalse(
+                    write_utils.is_write_lock_held(
+                        self.workspace_root,
+                        contracts.CUSTOMIZATIONS_LOCK_PATH,
+                    )
+                )
+
+    def test_approved_apply_releases_customizations_lock_on_success(self) -> None:
+        first = self.module.audit(
+            repo_root=self.workspace_root,
+            mode="apply",
+            approval="approved",
+            apply_targets=("AGENTS.md",),
+        )
+        second = self.module.audit(
+            repo_root=self.workspace_root,
+            mode="apply",
+            approval="approved",
+            apply_targets=("AGENTS.md",),
+        )
+
+        self.assertEqual(first.status, "pass")
+        self.assertTrue(first.lock_required)
+        self.assertEqual(first.lock_path, contracts.CUSTOMIZATIONS_LOCK_PATH)
+        self.assertTrue(first.summary["lock_acquired"])
+        self.assertEqual(second.status, "pass")
+        self.assertFalse(
+            write_utils.is_write_lock_held(
+                self.workspace_root,
+                contracts.CUSTOMIZATIONS_LOCK_PATH,
+            )
+        )
+
+    def test_approved_apply_reclaims_stale_customizations_lock_file(self) -> None:
+        stale_lock_path = self.workspace_root / contracts.CUSTOMIZATIONS_LOCK_PATH
+        stale_lock_path.parent.mkdir(parents=True, exist_ok=True)
+        stale_lock_path.write_text("stale owner metadata\n", encoding="utf-8")
+
+        result = self.module.audit(
+            repo_root=self.workspace_root,
+            mode="apply",
+            approval="approved",
+            apply_targets=("AGENTS.md",),
+        )
+
+        self.assertEqual(result.status, "pass")
+        self.assertTrue(result.summary["lock_acquired"])
+        self.assertTrue(stale_lock_path.exists())
+        self.assertFalse(
+            write_utils.is_write_lock_held(
+                self.workspace_root,
+                contracts.CUSTOMIZATIONS_LOCK_PATH,
+            )
+        )
+
+    def test_approved_apply_releases_customizations_lock_on_validation_failure(self) -> None:
+        result = self.module.audit(
+            repo_root=self.workspace_root,
+            mode="apply",
+            approval="approved",
+            apply_targets=("wiki/log.md",),
+        )
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.reason_code, "path_not_allowlisted")
+        self.assertFalse(
+            write_utils.is_write_lock_held(
+                self.workspace_root,
+                contracts.CUSTOMIZATIONS_LOCK_PATH,
+            )
+        )
+
+    def test_approved_apply_releases_customizations_lock_on_exception(self) -> None:
+        with patch.object(
+            self.module,
+            "validate_apply_target_path",
+            side_effect=RuntimeError("validation crashed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "validation crashed"):
+                self.module.audit(
+                    repo_root=self.workspace_root,
+                    mode="apply",
+                    approval="approved",
+                    apply_targets=("AGENTS.md",),
+                )
+
+        self.assertFalse(
+            write_utils.is_write_lock_held(
+                self.workspace_root,
+                contracts.CUSTOMIZATIONS_LOCK_PATH,
+            )
+        )
+
+    def test_approved_apply_returns_lock_unavailable_when_customizations_lock_busy(self) -> None:
+        with patch.object(
+            self.module.write_utils,
+            "exclusive_write_lock",
+            side_effect=write_utils.LockUnavailableError(
+                contracts.CUSTOMIZATIONS_LOCK_PATH
+            ),
+        ) as lock_mock:
+            result = self.module.audit(
+                repo_root=self.workspace_root,
+                mode="apply",
+                approval="approved",
+                apply_targets=("AGENTS.md",),
+            )
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.reason_code, "lock_unavailable")
+        self.assertTrue(result.lock_required)
+        self.assertEqual(result.lock_path, contracts.CUSTOMIZATIONS_LOCK_PATH)
+        self.assertIn(contracts.CUSTOMIZATIONS_LOCK_PATH, result.message)
+        lock_mock.assert_called_once_with(
+            self.workspace_root.resolve(),
+            lock_path=contracts.CUSTOMIZATIONS_LOCK_PATH,
+        )
+
+    def test_approved_apply_cli_returns_lock_unavailable_when_live_lock_busy(self) -> None:
+        with write_utils.exclusive_write_lock(
+            self.workspace_root,
+            lock_path=contracts.CUSTOMIZATIONS_LOCK_PATH,
+        ):
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(AUDIT_WORKSPACE_PATH),
+                    "--repo-root",
+                    str(self.workspace_root),
+                    "--mode",
+                    "apply",
+                    "--approval",
+                    "approved",
+                    "--apply-target",
+                    "AGENTS.md",
+                ],
+                check=False,
+                capture_output=True,
+                cwd=REPO_ROOT,
+                text=True,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["reason_code"], "lock_unavailable")
+        self.assertEqual(payload["lock_path"], contracts.CUSTOMIZATIONS_LOCK_PATH)
+        self.assertTrue(payload["lock_required"])
+
+    def test_approved_apply_cli_returns_lock_unavailable_when_live_sibling_lock_busy(
+        self,
+    ) -> None:
+        for sibling_lock_path in (
+            contracts.WRITE_LOCK_PATH,
+            contracts.REJECTION_REGISTRY_LOCK_PATH,
+        ):
+            with self.subTest(sibling_lock_path=sibling_lock_path):
+                with write_utils.exclusive_write_lock(
+                    self.workspace_root,
+                    lock_path=sibling_lock_path,
+                ):
+                    completed = subprocess.run(
+                        [
+                            sys.executable,
+                            str(AUDIT_WORKSPACE_PATH),
+                            "--repo-root",
+                            str(self.workspace_root),
+                            "--mode",
+                            "apply",
+                            "--approval",
+                            "approved",
+                            "--apply-target",
+                            "AGENTS.md",
+                        ],
+                        check=False,
+                        capture_output=True,
+                        cwd=REPO_ROOT,
+                        text=True,
+                    )
+
+                self.assertEqual(completed.returncode, 1)
+                payload = json.loads(completed.stdout)
+                self.assertEqual(payload["reason_code"], "lock_unavailable")
+                self.assertEqual(
+                    payload["summary"]["sibling_lock_held"],
+                    sibling_lock_path,
+                )
+                self.assertEqual(payload["lock_path"], contracts.CUSTOMIZATIONS_LOCK_PATH)
+                self.assertTrue(payload["lock_required"])
 
 
 if __name__ == "__main__":
