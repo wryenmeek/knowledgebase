@@ -1,6 +1,6 @@
 # Audit-Workspace `improve` Flow + Instruction Locality Ladder
 
-**Status:** Implemented (Phase 4) — 12 of 23 slices closed as of 2026-06-15; ADR-028 is Accepted, and remaining apply/wiring plus QA slices are open. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
+**Status:** Implemented (Phase 4) — 15 of 23 slices closed as of 2026-06-15; ADR-028 is Accepted, and remaining apply/wiring plus QA slices are open. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
 **Origin:** Adapted from HSI's `docs/planned-work/audit-workspace-improve-flow.md` (2026-06-06), retargeted for this repo's customization surface
 
 | Field | Value |
@@ -41,11 +41,11 @@ As of 2026-06-15 the 23 vertical-slice issues (#190–#212) tracking this plan h
 | 9c | Phase 4 (OutOfBand handoff routing) | [#210](https://github.com/wryenmeek/knowledgebase/issues/210) | ✅ CLOSED | `outofband_handoff.py` routes cross-skill findings to `framework-engineer` handoff records with `tests/kb/test_audit_workspace_outofband.py` |
 | 10 | Phase 7 (real-use) | [#212](https://github.com/wryenmeek/knowledgebase/issues/212) | OPEN (HITL) | Pending |
 | qa-ab | QA gate | [#198](https://github.com/wryenmeek/knowledgebase/issues/198) | OPEN (HITL) | Pending |
-| qa-d | QA gate | [#201](https://github.com/wryenmeek/knowledgebase/issues/201) | OPEN | Pending |
+| qa-d | QA gate | [#201](https://github.com/wryenmeek/knowledgebase/issues/201) | ✅ CLOSED | 5a-primary adversarial composition gate in `tests/kb/test_locality_ratchet_adversarial.py`; 5b rolling-window assertions remain gated by open #200; follow-up #266 tracks the content-insensitive paired-deletion bug surfaced by the gate |
 | qa-f | QA gate | [#207](https://github.com/wryenmeek/knowledgebase/issues/207) | OPEN (HITL) | Pending |
 | qa-g | QA gate | [#211](https://github.com/wryenmeek/knowledgebase/issues/211) | OPEN | Pending |
 
-**Rollup:** 12 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each was independently buildable; ADR-028 (#190) is now Accepted and anchors the remaining apply/wiring and QA slices.
+**Rollup:** 15 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each was independently buildable; ADR-028 (#190) is now Accepted and anchors the remaining apply/wiring and QA slices.
 
 ---
 
