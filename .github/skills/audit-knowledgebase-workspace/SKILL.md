@@ -8,15 +8,15 @@ category: dev-support
 
 ## Overview
 
-Use this skill to self-audit the framework layer as the skill and agent surface grows. The default flow remains the current structural lint workflow via existing repository checks. The Phase 3 logic surface exists only to scaffold the future `improve` flow and returns empty findings until the classifier lands later.
+Use this skill to self-audit the framework layer as the skill and agent surface grows. The default flow remains the current structural lint workflow via existing repository checks. The orchestrator scaffold currently returns empty findings even though Phase 4 classifier components are landed; wiring slices remain pending.
 
 ## Classification
 
 - **Mode:** Read-only scaffold; **Category:** `dev-support`; **Status:** Active Phase 3 scaffold
 - **Boundary:** Audit and handoff only; no self-heal edits, broad crawler, or second runtime.
-- **Forward references:** ADR-028 (pending issue #190), `.github/.customizations.lock`
-  (pending issue #191; not acquired here), Phase 4 classifier/apply work (#202–#211),
-  and slice 9b lock acquisition (#209).
+- **Forward references:** `.github/.customizations.lock` (declared by ADR-028;
+  pending issue #191; not acquired here), Phase 4 apply wiring (#208–#211), and
+  slice 9b lock acquisition (#209).
 
 ## When to Use
 
@@ -43,8 +43,17 @@ Use this skill to self-audit the framework layer as the skill and agent surface 
 - Attached-tool and wrapper allowlist paths must point to real repo-local files
 - The audit fails closed on missing framework dependencies
 - The logic scaffold is `read-only only`; writable paths are none and writes are forbidden
-- The `improve` scaffold returns empty findings until the classifier phase lands
+- The `improve` scaffold returns empty findings until classifier/orchestrator wiring lands
 - Self-healing, classifier output, apply mode, and lock acquisition are deferred
+
+## Phase 4 classifier components (landed; not yet wired into orchestrator)
+
+- Slice 8a (#202): `logic/skill_corpus_cache.py` landed; covered by `tests/kb/test_audit_workspace_cache.py`.
+- Slice 8b (#203): finding schema landed at `schema/finding.schema.json`; covered by `tests/kb/test_audit_workspace_finding_schema.py`.
+- Slice 8c (#204): `logic/friction_queries.py` landed; covered by `tests/kb/test_audit_workspace_friction_queries.py`.
+- Slice 8d (#205): `logic/stale_generator.py` landed; covered by `tests/kb/test_audit_workspace_stale_generator.py`.
+- Slice 8e (#206): `logic/redundancy_generator.py` landed; covered by `tests/kb/test_audit_workspace_redundancy_generator.py`.
+- Orchestrator status: `logic/audit_workspace.py --mode improve` remains a read-only dry-run scaffold that emits empty findings until slices 5a/5b/9a/9b/9c wire classifier execution and apply behavior.
 
 ## Procedure
 
@@ -75,7 +84,7 @@ python3 -m pytest tests/kb/test_doc_cascade_completeness.py tests/kb/test_docs_i
 ## References
 
 - [`AGENTS.md`](../../../AGENTS.md)
-- ADR-028 instruction locality ladder (pending, issue #190)
+- [`docs/decisions/ADR-028-instruction-locality-ladder.md`](../../../docs/decisions/ADR-028-instruction-locality-ladder.md) (Accepted)
 - `.github/.customizations.lock` declaration (pending, issue #191)
 - [`docs/architecture.md`](../../../docs/architecture.md)
 - [`docs/decisions/ADR-007-control-plane-layering-and-packaging.md`](../../../docs/decisions/ADR-007-control-plane-layering-and-packaging.md)

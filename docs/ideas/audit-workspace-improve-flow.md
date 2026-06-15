@@ -1,11 +1,11 @@
 # Audit-Workspace `improve` Flow + Instruction Locality Ladder
 
-**Status:** In Progress — 4 of 23 slices landed (Phase 0 Mechanism A #192, Phase 1 applyTo precommit #193, Phase 2 .github/.customizations.lock declaration #191, Phase 3 read-only scaffold #197); ADR-028 #190 pending. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
+**Status:** Implemented (Phase 4) — 11 of 23 slices closed (1a #190, 1b #191, 2 #192, 3 #193, 5c #195, 6 #197, 8a #202, 8b #203, 8c #204, 8d #205, 8e #206). ADR-028 is Accepted. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
 **Origin:** Adapted from HSI's `docs/planned-work/audit-workspace-improve-flow.md` (2026-06-06), retargeted for this repo's customization surface
 
 | Field | Value |
 |---|---|
-| Proposed ADR | **ADR-028: Instruction Locality Ladder for the Knowledgebase AI Ecosystem** (drafted in Phase 2; resolves K7 + K13 + Q5 trigger-frequency framing) |
+| Normative ADR | **ADR-028: Instruction Locality Ladder for the Knowledgebase AI Ecosystem** (Accepted; resolves K7 + K13 + Q5 trigger-frequency framing) |
 | Related (informs, not supersedes) | `docs/ideas/github-customizations-governance.md` (Implemented; parity scaffolding only — does not address ratchet) |
 | Related skill | `.github/skills/audit-knowledgebase-workspace/` (existing; extended in Phase 3) |
 | Build entry point | **Phase 0 (Spike)** — Mechanism A (meta-rule override block) is validated in HSI and ships as the baseline; Mechanism B (UserPromptSubmit hook) is spike-tested and adopted as primary if it validates in CLI 1.0.60 |
@@ -17,21 +17,25 @@
 
 ## Slice progress (live)
 
-As of 2026-06-10 the 23 vertical-slice issues (#190–#212) tracking this plan have the following state. This block is the authoritative status snapshot for the document body below — when individual phases are partially complete, the per-checkbox marks reflect what is on `main`, not what was originally proposed.
+As of 2026-06-15 the 23 vertical-slice issues (#190–#212) tracking this plan have the following state. This block is the authoritative status snapshot for the document body below — when individual phases are partially complete, the per-checkbox marks reflect what is on `main`, not what was originally proposed.
 
 | Slice | Phase | Issue | State | Artifact on main |
 |---|---|---|---|---|
-| 1a | Phase 2 | [#190](https://github.com/wryenmeek/knowledgebase/issues/190) | **OPEN** (HITL, ready-for-human) | ADR-028 not yet drafted |
+| 1a | Phase 2 | [#190](https://github.com/wryenmeek/knowledgebase/issues/190) | ✅ CLOSED | ADR-028 accepted (`docs/decisions/ADR-028-instruction-locality-ladder.md`, merged via PR #226) |
 | 1b | Phase 2 | [#191](https://github.com/wryenmeek/knowledgebase/issues/191) | ✅ CLOSED | `CUSTOMIZATIONS_LOCK_PATH` declared in `scripts/kb/contracts.py`; runtime acquisition deferred to slice 9b / #209 |
 | 2 | Phase 0/5 (Mechanism A) | [#192](https://github.com/wryenmeek/knowledgebase/issues/192) | ✅ CLOSED | Meta-rule override block, `Locality-4-Justification:` trailer template, CONTEXT.md terms — in `.github/copilot-instructions.md`, `AGENTS.md`, `docs/templates/locality-4-justification-trailer.md` |
 | 3 | Phase 1 | [#193](https://github.com/wryenmeek/knowledgebase/issues/193) | ✅ CLOSED | `scripts/hooks/check_instructions_applyto_present.py` + matrix row |
 | 4 | Phase 0 (Mechanism B spike) | [#194](https://github.com/wryenmeek/knowledgebase/issues/194) | OPEN (HITL) | Pending |
 | 5a | Phase 6 | [#199](https://github.com/wryenmeek/knowledgebase/issues/199) | OPEN | Pending — superseded planning: the original "single pre-commit hook" is now split into pre-commit + commit-msg per the Phase 6 spec below |
 | 5b | Phase 6 (soft budget) | [#200](https://github.com/wryenmeek/knowledgebase/issues/200) | OPEN | Pending — commit-msg-stage enforcement per the Phase 6 spec below |
-| 5c | Phase 6 (advisory) | [#195](https://github.com/wryenmeek/knowledgebase/issues/195) | OPEN | Pending |
+| 5c | Phase 6 (advisory) | [#195](https://github.com/wryenmeek/knowledgebase/issues/195) | ✅ CLOSED | Locality 3c PostToolUse advisory landed (`scripts/hooks/locality_postuse_advisory.py`, PR #235) |
 | 6 | Phase 3 (scaffold) | [#197](https://github.com/wryenmeek/knowledgebase/issues/197) | ✅ CLOSED | `.github/skills/audit-knowledgebase-workspace/{SKILL.md, logic/audit_workspace.py, references/locality-ladder.md}` |
 | 7 | Phase 1.5 spike | [#196](https://github.com/wryenmeek/knowledgebase/issues/196) | OPEN (HITL) | Pending |
-| 8a–8e | Phase 4 (classifier) | [#202](https://github.com/wryenmeek/knowledgebase/issues/202)–[#206](https://github.com/wryenmeek/knowledgebase/issues/206) | OPEN | Pending |
+| 8a | Phase 4 (classifier) | [#202](https://github.com/wryenmeek/knowledgebase/issues/202) | ✅ CLOSED | Skill-corpus cache landed (`logic/skill_corpus_cache.py`, PR #227) |
+| 8b | Phase 4 (classifier) | [#203](https://github.com/wryenmeek/knowledgebase/issues/203) | ✅ CLOSED | Finding schema landed (`schema/finding.schema.json`, PR #231) |
+| 8c | Phase 4 (classifier) | [#204](https://github.com/wryenmeek/knowledgebase/issues/204) | ✅ CLOSED | Friction query templates landed (`logic/friction_queries.py`, PR #237) |
+| 8d | Phase 4 (classifier) | [#205](https://github.com/wryenmeek/knowledgebase/issues/205) | ✅ CLOSED | Deterministic stale generator landed (`logic/stale_generator.py`, PR #242) |
+| 8e | Phase 4 (classifier) | [#206](https://github.com/wryenmeek/knowledgebase/issues/206) | ✅ CLOSED | Redundancy generator landed (`logic/redundancy_generator.py`, PR #238) |
 | 9a–9c | Phase 4 (`--apply`) | [#208](https://github.com/wryenmeek/knowledgebase/issues/208)–[#210](https://github.com/wryenmeek/knowledgebase/issues/210) | OPEN | Pending |
 | 10 | Phase 7 (real-use) | [#212](https://github.com/wryenmeek/knowledgebase/issues/212) | OPEN (HITL) | Pending |
 | qa-ab | QA gate | [#198](https://github.com/wryenmeek/knowledgebase/issues/198) | OPEN (HITL) | Pending |
@@ -39,7 +43,7 @@ As of 2026-06-10 the 23 vertical-slice issues (#190–#212) tracking this plan h
 | qa-f | QA gate | [#207](https://github.com/wryenmeek/knowledgebase/issues/207) | OPEN (HITL) | Pending |
 | qa-g | QA gate | [#211](https://github.com/wryenmeek/knowledgebase/issues/211) | OPEN | Pending |
 
-**Rollup:** 4 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each is independently buildable; the remaining slices still depend on #190 landing first. ADR-028 (#190) remains the lead artifact for the in-flight Phase 2 normative spec.
+**Rollup:** 11 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each was independently buildable. ADR-028 (#190) is now accepted; remaining open slices focus on wiring the landed classifier components into orchestrator/apply paths and completing QA gates.
 
 ---
 
@@ -618,9 +622,9 @@ This plan was revised via the `grill-with-docs` skill in autopilot mode. The use
 - Phase 1.5 outcome dictates Locality 1's availability across surfaces. Cannot pre-decide.
 - Exact rolling-window definition for the trailer budget (commits-touching-target-files vs all commits) — tune during Phase 6 implementation based on observed false-positive rate.
 
-### CONTEXT.md term additions (landed early in slice 2 / #192 with `ADR-028 (pending)` hedges)
+### CONTEXT.md term additions (landed early in slice 2 / #192; pending hedges removed after ADR-028 acceptance)
 
-The grilling pass surfaced four new repo-specific terms that have **already been added** to `.github/skills/CONTEXT.md` as part of slice 2 / #192, with each entry hedged as `(introduced in ADR-028 — pending issue #190)` so the cross-reference stays accurate until the ADR is `Accepted`. When ADR-028 lands in Phase 2 and the status flips to `Accepted`, the same commit must remove the `(pending)` hedges and bump `last_updated` in `CONTEXT.md`. Canonical definitions (used both for the on-disk entries and as the ADR-028 author's reference):
+The grilling pass surfaced four new repo-specific terms that were added to `.github/skills/CONTEXT.md` as part of slice 2 / #192. The temporary `(pending)` hedges were removed once ADR-028 was accepted. Canonical definitions (used both for the on-disk entries and as the ADR-028 author's reference):
 
 | Term | Definition for CONTEXT.md |
 |---|---|
@@ -629,4 +633,4 @@ The grilling pass surfaced four new repo-specific terms that have **already been
 | **trailer soft budget** | The rolling-window cap on `Locality-4-Justification:` git trailers (default 1 per 10 commits to global rules sections) that prevents the escape hatch from normalizing into bypass. Enforced by `scripts/hooks/check_locality_justification_trailer.py` at the `commit-msg` stage (paired with the pre-commit `check_locality_ratchet.py` line-delta check). |
 | **customizations lock** | The file `.github/.customizations.lock` — concurrency guard for `--apply` mode writes to `.github/**` (introduced in ADR-028). Sibling to `wiki/.kb_write.lock` and `raw/.rejection-registry.lock`; never held simultaneously with either. |
 
-On Phase 2 ADR-028 acceptance, the cascade is: (a) drop `(pending)` hedges in each CONTEXT.md entry above, (b) bump `last_updated` in `.github/skills/CONTEXT.md`, (c) `tests/kb/test_adr_readme_status_sync.py` and `check_adr_cross_ref.py` will catch any forgotten hedge.
+Phase 2 ADR-028 acceptance cascade outcome: `(pending)` hedges were removed in `.github/skills/CONTEXT.md`; keep `last_updated` and related cascade checks current on future terminology updates.

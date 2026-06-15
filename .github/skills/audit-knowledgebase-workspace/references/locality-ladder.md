@@ -14,8 +14,8 @@ in `.github/copilot-instructions.md` and `AGENTS.md`. Use this only when the
 installed, logic not yet implemented, or runtime gated).
 
 The full design rationale lives in `docs/ideas/audit-workspace-improve-flow.md`
-(PR #215) and the future `ADR-028: Instruction Locality Ladder` (pending, issue
-#190). This file is the minimum operator-actionable subset.
+(PR #215) and `docs/decisions/ADR-028-instruction-locality-ladder.md`
+(Accepted). This file is the minimum operator-actionable subset.
 
 ## The Locality Ladder (Locality 0 → Locality 4)
 
@@ -78,9 +78,9 @@ must satisfy one of:
    `docs/templates/locality-4-justification-trailer.md`. Trailer usage is
    audited and rate-limited (soft budget: 1 per 10 commits to either file).
 
-The override block in both always-on files codifies this rule. Until ADR-028
-lands, enforcement is by reviewer convention plus the `audit-knowledgebase-
-workspace` skill when available.
+The override block in both always-on files codifies this rule. Enforcement is
+by reviewer convention plus the `audit-knowledgebase-workspace` skill when
+available.
 
 ## Cross-surface scope
 
@@ -103,4 +103,4 @@ escalation; this manual fallback intentionally does not.
 - [`docs/ideas/audit-workspace-improve-flow.md`](../../../../docs/ideas/audit-workspace-improve-flow.md) — full design (PR #215)
 - [`docs/templates/locality-4-justification-trailer.md`](../../../../docs/templates/locality-4-justification-trailer.md) — trailer template
 - [`scripts/hooks/check_instructions_applyto_present.py`](../../../../scripts/hooks/check_instructions_applyto_present.py) — Locality 1 invariant enforcement
-- ADR-028 (pending — tracked at issue [#190](https://github.com/wryenmeek/knowledgebase/issues/190)) — normative spec for the locality ladder and trailer governance
+- [`docs/decisions/ADR-028-instruction-locality-ladder.md`](../../../../docs/decisions/ADR-028-instruction-locality-ladder.md) — normative spec for the locality ladder and trailer governance

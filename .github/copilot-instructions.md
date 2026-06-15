@@ -2,7 +2,7 @@
 
 <!-- LOCALITY-0-INVARIANT: This H2 MUST remain the first H2 under the H1. -->
 <!-- Position is load-bearing for the /chronicle improve hard-redirect. -->
-<!-- Do not move, demote, or insert another H2 above it without ADR-028 (pending) revision. -->
+<!-- Do not move, demote, or insert another H2 above it without ADR-028 revision. -->
 
 ## ⚠️ Slash-Command Override: /chronicle improve → audit-knowledgebase-workspace skill
 
@@ -14,9 +14,9 @@ skill owns: session-store mining, locality-ladder classification (Locality
 `.github/copilot-instructions.md` AND `AGENTS.md`, and writes to the chosen
 locality — not necessarily either always-on file.
 
-ADR-028 (pending — tracked at issue #190) will normatively own the
-`Locality-4-Justification:` trailer escape and trailer soft budget for
-Locality 4 additions. Until ADR-028 lands, apply the rules captured in
+ADR-028 (`docs/decisions/ADR-028-instruction-locality-ladder.md`) normatively
+owns the `Locality-4-Justification:` trailer escape and trailer soft budget for
+Locality 4 additions. Apply the rules captured in
 [`.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md`](.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md)
 and the [`docs/templates/locality-4-justification-trailer.md`](docs/templates/locality-4-justification-trailer.md) template.
 
@@ -610,7 +610,8 @@ When a user asks **"what skills should have been used to validate these changes?
 1. Identify the applicable skills for the change types in scope
 2. Invoke `quality-pass-chain` when the change scope is non-trivial or touches code paths
 3. Dispatch the corresponding custom agents in parallel (use `@code-reviewer`, `@test-engineer`, `@security-auditor`, `@documentation-engineer` as appropriate)
-4. Collect results, present consolidated findings, and remediate P0–P2 findings before any completion signal
+4. If the scope includes `.github/**` customization changes, run `audit-knowledgebase-workspace` in the same lane and include customization-drift findings
+5. Collect results, present consolidated findings, and remediate P0–P2 findings before any completion signal
 
 Do not answer with a list and stop. The question means "run them now," and `task_complete` is blocked until that execution lane finishes.
 

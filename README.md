@@ -57,6 +57,9 @@ Hooks enforce:
   in `raw/inbox/` or `wiki/sources/`)
 - `.github/instructions/*.instructions.md` staged-content validation requiring
   non-empty `applyTo:` frontmatter
+- ADR-028 Locality-4 PostToolUse advisory and instruction `applyTo:` governance
+  checks for `.github/**` customization safety (details in
+  [`docs/mvp-runbook.md`](docs/mvp-runbook.md))
 
 For full operational flow (including qmd and query-persist behavior), see
 [`docs/mvp-runbook.md`](docs/mvp-runbook.md).
@@ -76,6 +79,7 @@ For full operational flow (including qmd and query-persist behavior), see
 | `python3 -m pytest tests/kb/test_framework_contracts.py tests/kb/test_framework_skills.py tests/kb/test_framework_agents.py tests/kb/test_framework_references.py tests/kb/test_skill_wrappers.py -v` | Run the targeted framework contracts/skills/agents/reference plus wrapper test suite. |
 | `qmd collection add wiki --name wiki && qmd embed && qmd query "<query>"` | Build/query local semantic index. |
 | `python3 scripts/kb/persist_query.py ... --result-json` | Policy-gated persistence of high-value query outputs. |
+| `python3 scripts/kb/checkpoint_registry.py --verify` | Read-only checkpoint registry verification; see [`docs/mvp-runbook.md`](docs/mvp-runbook.md) for `--bootstrap --apply` and `--mutate` operator flows. |
 | `python3 -m pytest tests/ -q` | Run repository test suite. |
 
 ## Framework operator notes
