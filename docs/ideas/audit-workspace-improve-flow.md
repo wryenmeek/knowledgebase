@@ -36,7 +36,8 @@ As of 2026-06-15 the 23 vertical-slice issues (#190–#212) tracking this plan h
 | 8c | Phase 4 (friction queries) | [#204](https://github.com/wryenmeek/knowledgebase/issues/204) | ✅ CLOSED | `friction_queries.py` with `tests/kb/test_audit_workspace_friction_queries.py` (PR #237) |
 | 8d | Phase 4 (stale generator) | [#205](https://github.com/wryenmeek/knowledgebase/issues/205) | ✅ CLOSED | `stale_generator.py` with `tests/kb/test_audit_workspace_stale_generator.py` (PR #242) |
 | 8e | Phase 4 (redundancy generator) | [#206](https://github.com/wryenmeek/knowledgebase/issues/206) | ✅ CLOSED | `redundancy_generator.py` with `tests/kb/test_audit_workspace_redundancy_generator.py` (PR #238) |
-| 9a–9b | Phase 4 (`--apply`) | [#208](https://github.com/wryenmeek/knowledgebase/issues/208)–[#209](https://github.com/wryenmeek/knowledgebase/issues/209) | OPEN | Pending — allowlist and lock acquisition remain deferred |
+| 9a | Phase 4 (`--apply` allowlist) | [#208](https://github.com/wryenmeek/knowledgebase/issues/208) | ✅ CLOSED | `--mode apply` write-path allowlist validation in `audit_workspace.py`; lock acquisition deferred to slice 9b / #209 |
+| 9b | Phase 4 (`--apply` customizations lock) | [#209](https://github.com/wryenmeek/knowledgebase/issues/209) | OPEN | Pending |
 | 9c | Phase 4 (OutOfBand handoff routing) | [#210](https://github.com/wryenmeek/knowledgebase/issues/210) | ✅ CLOSED | `outofband_handoff.py` routes cross-skill findings to `framework-engineer` handoff records with `tests/kb/test_audit_workspace_outofband.py` |
 | 10 | Phase 7 (real-use) | [#212](https://github.com/wryenmeek/knowledgebase/issues/212) | OPEN (HITL) | Pending |
 | qa-ab | QA gate | [#198](https://github.com/wryenmeek/knowledgebase/issues/198) | OPEN (HITL) | Pending |
@@ -412,7 +413,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
 - [ ] **Write-surface matrix row — amend with narrow write capability for `--apply` mode** (Decision Q12 blast-radius containment):
     - Path: `.github/skills/audit-knowledgebase-workspace/logic/**`
     - Runtime mode: `read-only only` for `--dry-run` (default); `blocking-only with narrow write capability` for `--apply`
-    - **Apply-mode CREATE paths:** `.github/instructions/<scope>.instructions.md` (new files only), `.github/hooks/*.sh` + `.github/hooks/hooks.json` updates (new hook scripts and registration entries only — never modify existing hook scripts)
+    - **Apply-mode CREATE paths:** `.github/instructions/<scope>.instructions.md` (new files only), `.github/hooks/**` (new hook files only — never modify existing hook scripts or the existing hook registry)
     - **Apply-mode MODIFY paths:** `.github/copilot-instructions.md`, `AGENTS.md` (subject to Phase 6 gate's matrix carve-out), `.github/skills/audit-knowledgebase-workspace/**` (self-owned scope only)
     - **Apply-mode FORBIDDEN paths:** any other skill's `SKILL.md` or `logic/**` or `references/**`; any agent's persona file in `.github/agents/`; any prompt template in `.github/prompts/`; anything under `wiki/`, `raw/`, `schema/`, `scripts/`, `tests/`, or `docs/` other than ADR creation for new ADRs the classifier proposes
     - Locks: `.github/.customizations.lock` (introduced in ADR-028) — acquired once for the entire batch, released after all apply-mode writes complete; never held simultaneously with `wiki/.kb_write.lock` or `raw/.rejection-registry.lock`
