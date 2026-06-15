@@ -219,3 +219,4 @@ If the Phase 6 rollout produces false positives, rollback is limited to the hook
 - `.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md`
 - `docs/templates/locality-4-justification-trailer.md`
 - `scripts/hooks/check_instructions_applyto_present.py`
+- `scripts/hooks/locality_postuse_advisory.py`

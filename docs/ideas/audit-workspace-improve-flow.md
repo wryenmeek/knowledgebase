@@ -1,11 +1,11 @@
 # Audit-Workspace `improve` Flow + Instruction Locality Ladder
 
-**Status:** In Progress — 4 of 23 slices landed (Phase 0 Mechanism A #192, Phase 1 applyTo precommit #193, Phase 2 .github/.customizations.lock declaration #191, Phase 3 read-only scaffold #197); ADR-028 #190 pending. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
+**Status:** Implemented (Phase 4) — 11 of 23 slices closed as of 2026-06-15; ADR-028 is Accepted, and remaining apply/wiring plus QA slices are open. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
 **Origin:** Adapted from HSI's `docs/planned-work/audit-workspace-improve-flow.md` (2026-06-06), retargeted for this repo's customization surface
 
 | Field | Value |
 |---|---|
-| Proposed ADR | **ADR-028: Instruction Locality Ladder for the Knowledgebase AI Ecosystem** (drafted in Phase 2; resolves K7 + K13 + Q5 trigger-frequency framing) |
+| Accepted ADR | **ADR-028: Instruction Locality Ladder for the Knowledgebase AI Ecosystem** (accepted in Phase 2; resolves K7 + K13 + Q5 trigger-frequency framing) |
 | Related (informs, not supersedes) | `docs/ideas/github-customizations-governance.md` (Implemented; parity scaffolding only — does not address ratchet) |
 | Related skill | `.github/skills/audit-knowledgebase-workspace/` (existing; extended in Phase 3) |
 | Build entry point | **Phase 0 (Spike)** — Mechanism A (meta-rule override block) is validated in HSI and ships as the baseline; Mechanism B (UserPromptSubmit hook) is spike-tested and adopted as primary if it validates in CLI 1.0.60 |
@@ -17,21 +17,25 @@
 
 ## Slice progress (live)
 
-As of 2026-06-10 the 23 vertical-slice issues (#190–#212) tracking this plan have the following state. This block is the authoritative status snapshot for the document body below — when individual phases are partially complete, the per-checkbox marks reflect what is on `main`, not what was originally proposed.
+As of 2026-06-15 the 23 vertical-slice issues (#190–#212) tracking this plan have the following state. This block is the authoritative status snapshot for the document body below; its table rows identify what is on `main` when the original phase checklist is only partially annotated.
 
 | Slice | Phase | Issue | State | Artifact on main |
 |---|---|---|---|---|
-| 1a | Phase 2 | [#190](https://github.com/wryenmeek/knowledgebase/issues/190) | **OPEN** (HITL, ready-for-human) | ADR-028 not yet drafted |
+| 1a | Phase 2 | [#190](https://github.com/wryenmeek/knowledgebase/issues/190) | ✅ CLOSED | ADR-028 accepted in `docs/decisions/ADR-028-instruction-locality-ladder.md` (PR #226) |
 | 1b | Phase 2 | [#191](https://github.com/wryenmeek/knowledgebase/issues/191) | ✅ CLOSED | `CUSTOMIZATIONS_LOCK_PATH` declared in `scripts/kb/contracts.py`; runtime acquisition deferred to slice 9b / #209 |
 | 2 | Phase 0/5 (Mechanism A) | [#192](https://github.com/wryenmeek/knowledgebase/issues/192) | ✅ CLOSED | Meta-rule override block, `Locality-4-Justification:` trailer template, CONTEXT.md terms — in `.github/copilot-instructions.md`, `AGENTS.md`, `docs/templates/locality-4-justification-trailer.md` |
 | 3 | Phase 1 | [#193](https://github.com/wryenmeek/knowledgebase/issues/193) | ✅ CLOSED | `scripts/hooks/check_instructions_applyto_present.py` + matrix row |
 | 4 | Phase 0 (Mechanism B spike) | [#194](https://github.com/wryenmeek/knowledgebase/issues/194) | OPEN (HITL) | Pending |
 | 5a | Phase 6 | [#199](https://github.com/wryenmeek/knowledgebase/issues/199) | OPEN | Pending — superseded planning: the original "single pre-commit hook" is now split into pre-commit + commit-msg per the Phase 6 spec below |
 | 5b | Phase 6 (soft budget) | [#200](https://github.com/wryenmeek/knowledgebase/issues/200) | OPEN | Pending — commit-msg-stage enforcement per the Phase 6 spec below |
-| 5c | Phase 6 (advisory) | [#195](https://github.com/wryenmeek/knowledgebase/issues/195) | OPEN | Pending |
+| 5c | Phase 6 (advisory) | [#195](https://github.com/wryenmeek/knowledgebase/issues/195) | ✅ CLOSED | PostToolUse advisory hook for Locality 4 edits (`scripts/hooks/locality_postuse_advisory.py`, `.github/hooks/hooks.json`; PR #235) |
 | 6 | Phase 3 (scaffold) | [#197](https://github.com/wryenmeek/knowledgebase/issues/197) | ✅ CLOSED | `.github/skills/audit-knowledgebase-workspace/{SKILL.md, logic/audit_workspace.py, references/locality-ladder.md}` |
 | 7 | Phase 1.5 spike | [#196](https://github.com/wryenmeek/knowledgebase/issues/196) | OPEN (HITL) | Pending |
-| 8a–8e | Phase 4 (classifier) | [#202](https://github.com/wryenmeek/knowledgebase/issues/202)–[#206](https://github.com/wryenmeek/knowledgebase/issues/206) | OPEN | Pending |
+| 8a | Phase 4 (classifier cache) | [#202](https://github.com/wryenmeek/knowledgebase/issues/202) | ✅ CLOSED | `skill_corpus_cache.py` with `tests/kb/test_audit_workspace_cache.py` (PR #227) |
+| 8b | Phase 4 (finding schema) | [#203](https://github.com/wryenmeek/knowledgebase/issues/203) | ✅ CLOSED | `schema/finding.schema.json` with `tests/kb/test_audit_workspace_finding_schema.py` (PR #231) |
+| 8c | Phase 4 (friction queries) | [#204](https://github.com/wryenmeek/knowledgebase/issues/204) | ✅ CLOSED | `friction_queries.py` with `tests/kb/test_audit_workspace_friction_queries.py` (PR #237) |
+| 8d | Phase 4 (stale generator) | [#205](https://github.com/wryenmeek/knowledgebase/issues/205) | ✅ CLOSED | `stale_generator.py` with `tests/kb/test_audit_workspace_stale_generator.py` (PR #242) |
+| 8e | Phase 4 (redundancy generator) | [#206](https://github.com/wryenmeek/knowledgebase/issues/206) | ✅ CLOSED | `redundancy_generator.py` with `tests/kb/test_audit_workspace_redundancy_generator.py` (PR #238) |
 | 9a–9c | Phase 4 (`--apply`) | [#208](https://github.com/wryenmeek/knowledgebase/issues/208)–[#210](https://github.com/wryenmeek/knowledgebase/issues/210) | OPEN | Pending |
 | 10 | Phase 7 (real-use) | [#212](https://github.com/wryenmeek/knowledgebase/issues/212) | OPEN (HITL) | Pending |
 | qa-ab | QA gate | [#198](https://github.com/wryenmeek/knowledgebase/issues/198) | OPEN (HITL) | Pending |
@@ -39,7 +43,7 @@ As of 2026-06-10 the 23 vertical-slice issues (#190–#212) tracking this plan h
 | qa-f | QA gate | [#207](https://github.com/wryenmeek/knowledgebase/issues/207) | OPEN (HITL) | Pending |
 | qa-g | QA gate | [#211](https://github.com/wryenmeek/knowledgebase/issues/211) | OPEN | Pending |
 
-**Rollup:** 4 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each is independently buildable; the remaining slices still depend on #190 landing first. ADR-028 (#190) remains the lead artifact for the in-flight Phase 2 normative spec.
+**Rollup:** 11 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each was independently buildable; ADR-028 (#190) is now Accepted and anchors the remaining apply/wiring and QA slices.
 
 ---
 
@@ -472,12 +476,12 @@ The redirect intercepts only the explicit `/chronicle improve` invocation. The r
     - **Trailer soft budget (Decision Q10):** the commit-msg hook runs `git log --grep "Locality-4-Justification" --since="<rolling-window>"` over the last 10 commits to global rules sections. If 1 trailer is already present in that window, the commit-msg gate hard-fails until a paired-deletion commit lands. Numerically tunable; document the default ratio (1-in-10) in ADR-028. Budget is **per-file** (separate counts for `copilot-instructions.md` and `AGENTS.md`) so a noisy week on one file doesn't starve the other. Contributors should paste the trailer text from `docs/templates/locality-4-justification-trailer.md` (shipped in slice 2 / #192) to ensure the format matches what `git interpret-trailers --parse` will accept.
     - On block, both hooks print locality-ladder demotion candidates from `improve --dry-run` so the author can choose to demote, pair, or justify.
     - Implementation: `scripts/hooks/check_locality_ratchet.py` (pre-commit; read-only matrix row; `net_section_delta` computation on either file's non-exempt regions) **plus** `scripts/hooks/check_locality_justification_trailer.py` (commit-msg; read-only matrix row; trailer parse via `git interpret-trailers --parse` and soft-budget check via `git log`). Add a write-surface matrix row for each new hook.
-- [ ] **Locality 3c PostToolUse advisory** on `edit` tool filtered to `.github/copilot-instructions.md` or `AGENTS.md`:
+- [x] **Locality 3c PostToolUse advisory** on edit/write tools filtered to `.github/copilot-instructions.md` or `AGENTS.md`: *(Landed via slice 5c / #195 in PR #235.)*
     - After any in-session edit, inject context: *"You just edited `<file>`. Did you classify this against the locality ladder? Consider whether this rule belongs at Locality 0, 1, 2, or 3 before committing. The pre-commit hook will require a paired deletion or `Locality-4-Justification:` trailer."*
     - Non-blocking; advisory only.
-    - Implementation: extend `.github/hooks/hooks.json` PostToolUse array with a new entry; wire to a new `.github/hooks/locality-advisory.sh`.
+    - Implementation: `.github/hooks/hooks.json` PostToolUse invokes `python3 scripts/hooks/locality_postuse_advisory.py`; no separate `.github/hooks/locality-advisory.sh` wrapper was needed.
 - [ ] **Cascade obligations:**
-    - Write-surface matrix rows for **all three** new hooks (`check_locality_ratchet.py`, `check_locality_justification_trailer.py`, and the `locality-advisory.sh` PostToolUse advisory).
+    - Write-surface matrix rows for the remaining two future hooks (`check_locality_ratchet.py`, `check_locality_justification_trailer.py`); the PostToolUse advisory row for `scripts/hooks/locality_postuse_advisory.py` landed with #195.
     - `.pre-commit-config.yaml` registers `check_locality_justification_trailer.py` with `stages: [commit-msg]`. Repo setup docs (`docs/mvp-runbook.md` or equivalent) updated to instruct contributors to run `pre-commit install --hook-type pre-commit --hook-type commit-msg` so the commit-msg stage actually fires locally.
     - CONTEXT.md `last_updated` bump in `.github/skills/CONTEXT.md` (covers hooks per the domain mapping).
     - `tests/kb/test_doc_cascade_completeness.py` row if a new doc-cascade obligation is introduced.
@@ -610,7 +614,7 @@ This plan was revised via the `grill-with-docs` skill in autopilot mode. The use
 - Existing lock files: `wiki/.kb_write.lock`, `raw/.rejection-registry.lock`. Both follow ADR-005 semantics. New `.github/.customizations.lock` follows the same pattern.
 - `scripts/init.py` REPO_ROOT sentinel includes `AGENTS.md` — confirming functional always-on status.
 - "Checkpoint from Copilot CLI" commits: **1 in 6 months.** Not a channel.
-- Pre-commit hook precedent in this repo: `scripts/hooks/check_adr_cross_ref.py`, `check_stub_archive_path.py`, `check_context_md_format.py` — `check_locality_ratchet.py` joins this family at the `pre-commit` stage; `check_locality_justification_trailer.py` is the first repo hook to run at the `commit-msg` stage and requires `pre-commit install --hook-type commit-msg` on contributor machines.
+- Pre-commit hook precedent in this repo: `scripts/hooks/check_adr_cross_ref.py`, `check_stub_archive_path.py`, `check_context_md_format.py` — `check_locality_ratchet.py` will join this family at the `pre-commit` stage when #199 lands; `check_locality_justification_trailer.py` will be the first repo hook to run at the `commit-msg` stage when #200 lands and will require `pre-commit install --hook-type commit-msg` on contributor machines.
 
 ### Unresolved questions deferred to implementation
 
@@ -618,15 +622,15 @@ This plan was revised via the `grill-with-docs` skill in autopilot mode. The use
 - Phase 1.5 outcome dictates Locality 1's availability across surfaces. Cannot pre-decide.
 - Exact rolling-window definition for the trailer budget (commits-touching-target-files vs all commits) — tune during Phase 6 implementation based on observed false-positive rate.
 
-### CONTEXT.md term additions (landed early in slice 2 / #192 with `ADR-028 (pending)` hedges)
+### CONTEXT.md term additions (landed early in slice 2 / #192; ADR-028 hedges removed after acceptance)
 
-The grilling pass surfaced four new repo-specific terms that have **already been added** to `.github/skills/CONTEXT.md` as part of slice 2 / #192, with each entry hedged as `(introduced in ADR-028 — pending issue #190)` so the cross-reference stays accurate until the ADR is `Accepted`. When ADR-028 lands in Phase 2 and the status flips to `Accepted`, the same commit must remove the `(pending)` hedges and bump `last_updated` in `CONTEXT.md`. Canonical definitions (used both for the on-disk entries and as the ADR-028 author's reference):
+The grilling pass surfaced four repo-specific terms that were added to `.github/skills/CONTEXT.md` as part of slice 2 / #192. After ADR-028 was accepted in PR #226, issue #245 removed the temporary status hedges and bumped `last_updated` in `CONTEXT.md`. Canonical definitions (used both for the on-disk entries and as the ADR-028 reference):
 
 | Term | Definition for CONTEXT.md |
 |---|---|
 | **instruction ratchet** | The pattern where always-on instruction files (e.g., `.github/copilot-instructions.md`) grow monotonically add-only, decoupled from customization-surface growth. Measured by net line change in a window where skill count is flat. |
 | **Locality** | A trigger-frequency ordinal for instruction destinations (Locality 0–4); frequency increases monotonically. Locality 4 = every turn (always-on); Locality 0 = only when a single file is read. See ADR-028. |
-| **trailer soft budget** | The rolling-window cap on `Locality-4-Justification:` git trailers (default 1 per 10 commits to global rules sections) that prevents the escape hatch from normalizing into bypass. Enforced by `scripts/hooks/check_locality_justification_trailer.py` at the `commit-msg` stage (paired with the pre-commit `check_locality_ratchet.py` line-delta check). |
+| **trailer soft budget** | The rolling-window cap on `Locality-4-Justification:` git trailers (default 1 per 10 commits to global rules sections) that prevents the escape hatch from normalizing into bypass. Planned enforcement belongs to `scripts/hooks/check_locality_justification_trailer.py` at the `commit-msg` stage (paired with the pre-commit `check_locality_ratchet.py` line-delta check) once #199/#200 land. |
 | **customizations lock** | The file `.github/.customizations.lock` — concurrency guard for `--apply` mode writes to `.github/**` (introduced in ADR-028). Sibling to `wiki/.kb_write.lock` and `raw/.rejection-registry.lock`; never held simultaneously with either. |
 
-On Phase 2 ADR-028 acceptance, the cascade is: (a) drop `(pending)` hedges in each CONTEXT.md entry above, (b) bump `last_updated` in `.github/skills/CONTEXT.md`, (c) `tests/kb/test_adr_readme_status_sync.py` and `check_adr_cross_ref.py` will catch any forgotten hedge.
+Acceptance cascade status: the temporary status hedges were removed from each CONTEXT.md entry above, `last_updated` was bumped in `.github/skills/CONTEXT.md`, and the ADR status itself remains unchanged in this downstream cleanup.

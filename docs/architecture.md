@@ -149,7 +149,7 @@ though they are not all landed today:
 | `scripts/ingest/**` | Heavyweight ingest/conversion helpers | ADR-006 still limits authoritative ingest inputs to `raw/inbox/**` plus checksummed `raw/assets/**`. |
 | `scripts/github_monitor/**` | GitHub source monitoring: drift detection, asset fetching, diff-aware wiki synthesis | ADR-012 governs the fetch-and-vendor cycle; `raw/assets/{owner}/{repo}/{sha}/**` assets are authoritative only when checksummed per ADR-006; write-capable surfaces must be declared in `AGENTS.md` before writing. |
 | `scripts/drive_monitor/**` | Google Drive source monitoring: drift detection, asset fetching, diff-aware wiki synthesis | ADR-021 governs the fetch-and-vendor cycle; `raw/assets/gdrive/{alias}/{file_id}/{version}/**` assets are authoritative only when checksummed; write-capable surfaces must be declared in `AGENTS.md` before writing. |
-| `scripts/hooks/**` | Pre-commit and CI governance hook scripts | Hooks are read-only — no repository writes. They enforce local governance guardrails (ADR-016 authorizes this family). |
+| `scripts/hooks/**` | Pre-commit, PostToolUse advisory, and CI governance hook scripts | Hooks are read-only — no repository writes. They enforce local governance guardrails (ADR-016 authorizes this family; ADR-028 governs the Locality 4 advisory). |
 | `scripts/init.py` | Operator-only fresh-instance initialization for template instances; resets all content directories and regenerates skeleton artifacts (`raw/processed/SPEC.md`, sample inbox doc, stub wiki artifacts) | Operator-use only — never invoke in CI automation on a live instance; requires `--fresh` flag; `--yes` flag requires `INIT_ALLOW_WIPE=1` env var; checks `wiki/.kb_write.lock` before any write (blocks if held); uses `check_no_symlink_path` from `write_utils`; sole declared exception to the append-only `wiki/log.md` guardrail (full overwrite on clean-slate reset). |
 
 Relay HTTP wrappers for the GitHub and Drive monitors share WSGI envelope helpers
@@ -206,7 +206,7 @@ prevents ADR-007 drift into a second runtime.
 
 | Skill slice | Status in MVP | Repo-local examples |
 |---|---|---|
-| Governance workflows + landed wrappers | Active, wrapper-backed | `validate-wiki-governance`, `sync-knowledgebase-state`, `validate-inbox-source`, `append-log-entry`, `check-link-topology`, `compute-kpis`, `analyze-missed-queries`, `context-engineering`, `documentation-and-adrs`, `enforce-page-template`, `enforce-repository-boundaries`, `run-deterministic-validators`, `write-sourceref-citations`, `log-intake-rejection`, `manage-redirects-and-anchors`, `suggest-backlinks`, `audit-knowledgebase-workspace` (read-only scaffold) (all have `logic/` Python wrappers) |
+| Governance workflows + landed wrappers | Active, wrapper-backed | `validate-wiki-governance`, `sync-knowledgebase-state`, `validate-inbox-source`, `append-log-entry`, `check-link-topology`, `compute-kpis`, `analyze-missed-queries`, `context-engineering`, `documentation-and-adrs`, `enforce-page-template`, `enforce-repository-boundaries`, `run-deterministic-validators`, `write-sourceref-citations`, `log-intake-rejection`, `manage-redirects-and-anchors`, `suggest-backlinks`, `audit-knowledgebase-workspace` (read-only orchestrator scaffold; classifier cache, friction queries, stale generator, and redundancy generator have landed under `logic/`, and the finding schema has landed under the skill-local `schema/`, but these components are not yet wired into the orchestrator) (all wrapper-backed skills here have `logic/` Python wrappers) |
 | Knowledge-structure contracts | Active, doc-only | `information-architecture-and-taxonomy`, `ontology-and-entity-modeling`, `knowledge-schema-and-metadata-governance`, `entity-resolution-and-canonicalization`, `search-and-discovery-optimization` |
 | Policy/evidence/self-audit workflows | Active, doc-only | `verify-citations`, `enforce-npov`, `record-open-questions`, `log-policy-conflict`, `review-wiki-plan` |
 | Ingest and query persistence wrappers | Active, doc-only | `run-ingest`, `persist-query-result` |
@@ -259,7 +259,7 @@ Operators can validate the landed framework with these repo-local entrypoints:
   `raw/.drive-sources.lock` (Drive source registry writes, ADR-021),
   `raw/.rejection-registry.lock` (rejection registry writes, ADR-013),
   and `.github/.customizations.lock` (locality-ladder customization writes,
-  this issue). Each lock guards a single registry/zone; lock-ordering rules
+  ADR-028). Each lock guards a single registry/zone; lock-ordering rules
   for any surface that touches both `wiki/**` and a sibling registry are
   documented in that surface's row in the AGENTS.md write-surface matrix
   (acquire `wiki/.kb_write.lock` first when both are needed).
@@ -295,8 +295,9 @@ require documented rationale.
 > `scripts/kb/contracts.py` constants (lock path, trigger and artifact
 > enums, dependency-fingerprint dict, retention thresholds), and the
 > `analysis_fingerprint()` helper landed in PR #213. The PR3 runtime
-> (`scripts/kb/checkpoint_registry.py`) lands the bootstrap/mutate/verify
-> entrypoint. PR4 CI-3 wiring and the HITL bootstrap execution remain pending.
+> (`scripts/kb/checkpoint_registry.py`) landed the bootstrap/mutate/verify
+> entrypoint in PR #233. PR4 CI-3 wiring and the HITL bootstrap execution
+> remain pending.
 
 The wiki processing pipeline maintains a governed checkpoint registry
 under `raw/` so partial fail-closed runs can resume and changed outputs can
@@ -360,3 +361,4 @@ Key architecture decisions are captured in ADRs:
 - [`ADR-025`](decisions/ADR-025-runtime-budget-contract-scope.md): runtime-budget contract scope and schema/workflow parity requirements
 - [`ADR-026`](decisions/ADR-026-wiki-processing-checkpoint-registry.md): wiki processing checkpoint registry for resumed and revalidated synthesis
 - [`ADR-027`](decisions/ADR-027-infrastructure-validation-trigger-model.md): infrastructure validation trigger model for CI-3
+- [`ADR-028`](decisions/ADR-028-instruction-locality-ladder.md): instruction locality ladder and Locality 4 trailer governance
