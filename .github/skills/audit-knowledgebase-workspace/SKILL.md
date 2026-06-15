@@ -46,6 +46,19 @@ Use this skill to self-audit the framework layer as the skill and agent surface 
 - The `improve` scaffold returns empty findings until the classifier phase lands
 - Self-healing, classifier output, apply mode, and lock acquisition are deferred
 
+### Phase 4 classifier components
+
+Landed under `logic/` (all read-only; not yet wired into the orchestrator `audit_workspace.py`):
+
+| Module | Slice | Purpose | Tests |
+|---|---|---|---|
+| `skill_corpus_cache.py` | 8a (#202) | Caches SKILL.md frontmatter + first paragraph for redundancy analysis | `tests/kb/test_audit_workspace_cache.py` |
+| `friction_queries.py` | 8b (#203) | Session-store SQL query templates for friction-signal mining | `tests/kb/test_audit_workspace_friction_queries.py` |
+| `stale_generator.py` | 8d (#205) | Deterministic stale-instruction detector (git/rg/gh probes) | `tests/kb/test_audit_workspace_stale_generator.py` |
+| `redundancy_generator.py` | 8e (#206) | LLM-judgment redundancy detector (GitHub Models endpoint) | `tests/kb/test_audit_workspace_redundancy_generator.py` |
+
+Finding schema: `.github/skills/audit-knowledgebase-workspace/schema/finding.schema.json`
+
 ## Procedure
 
 1. Run the default structural lint flow with the framework test commands below, which audit repo-local links, command examples, wrapper allowlists, and attached-tool references.

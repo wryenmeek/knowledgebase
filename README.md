@@ -57,6 +57,9 @@ Hooks enforce:
   in `raw/inbox/` or `wiki/sources/`)
 - `.github/instructions/*.instructions.md` staged-content validation requiring
   non-empty `applyTo:` frontmatter
+- Locality-4 advisory: PostToolUse hook warns when edits to always-on
+  instruction files (`.github/copilot-instructions.md`, `AGENTS.md`) lack a
+  paired deletion (ADR-028)
 
 For full operational flow (including qmd and query-persist behavior), see
 [`docs/mvp-runbook.md`](docs/mvp-runbook.md).
@@ -77,6 +80,7 @@ For full operational flow (including qmd and query-persist behavior), see
 | `qmd collection add wiki --name wiki && qmd embed && qmd query "<query>"` | Build/query local semantic index. |
 | `python3 scripts/kb/persist_query.py ... --result-json` | Policy-gated persistence of high-value query outputs. |
 | `python3 -m pytest tests/ -q` | Run repository test suite. |
+| `python3 scripts/kb/checkpoint_registry.py --verify` | Verify checkpoint registry integrity (read-only; add `--log-warnings --approval approved` for append-only warning telemetry). |
 
 ## Framework operator notes
 

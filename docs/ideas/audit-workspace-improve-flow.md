@@ -1,6 +1,6 @@
 # Audit-Workspace `improve` Flow + Instruction Locality Ladder
 
-**Status:** In Progress (Phase 4) — 11 of 23 slices closed (1a ADR-028 #190, 1b lock declaration #191, 2 Mechanism A #192, 3 applyTo precommit #193, 5c PostToolUse advisory #195, 6 read-only scaffold #197, 8a skill-corpus cache #202, 8b finding schema #203, 8c friction queries #204, 8d stale generator #205, 8e redundancy generator #206); ADR-028 Accepted. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
+**Status:** In Progress — 11 of 23 slices closed; ADR-028 Accepted
 **Origin:** Adapted from HSI's `docs/planned-work/audit-workspace-improve-flow.md` (2026-06-06), retargeted for this repo's customization surface
 
 | Field | Value |
