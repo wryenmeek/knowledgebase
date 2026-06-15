@@ -14,7 +14,7 @@ Use this skill to self-audit the framework layer as the skill and agent surface 
 
 - **Mode:** Read-only scaffold; **Category:** `dev-support`; **Status:** Active Phase 3 scaffold
 - **Boundary:** Audit and handoff only; no self-heal edits, broad crawler, or second runtime.
-- **Accepted references:** ADR-028 (instruction locality ladder), `.github/.customizations.lock`
+- **Related references:** ADR-028 (instruction locality ladder, accepted), `.github/.customizations.lock`
   (pending issue #191; not acquired here), Phase 4 classifier/apply work (#202–#211),
   and slice 9b lock acquisition (#209).
 
@@ -53,7 +53,7 @@ Landed under `logic/` (all read-only; not yet wired into the orchestrator `audit
 | Module | Slice | Purpose | Tests |
 |---|---|---|---|
 | `skill_corpus_cache.py` | 8a (#202) | Caches SKILL.md frontmatter + first paragraph for redundancy analysis | `tests/kb/test_audit_workspace_cache.py` |
-| `friction_queries.py` | 8b (#203) | Session-store SQL query templates for friction-signal mining | `tests/kb/test_audit_workspace_friction_queries.py` |
+| `friction_queries.py` | 8c (#204) | Session-store SQL query templates for friction-signal mining | `tests/kb/test_audit_workspace_friction_queries.py` |
 | `stale_generator.py` | 8d (#205) | Deterministic stale-instruction detector (git/rg/gh probes) | `tests/kb/test_audit_workspace_stale_generator.py` |
 | `redundancy_generator.py` | 8e (#206) | LLM-judgment redundancy detector (GitHub Models endpoint) | `tests/kb/test_audit_workspace_redundancy_generator.py` |
 
