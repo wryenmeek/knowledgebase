@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Pre-commit hook: enforce the Locality 4 paired-deletion ratchet.
+"""Git hook: enforce the Locality 4 paired-deletion ratchet.
 
 ADR-028 requires net-positive additions to each always-loaded instruction
 file to either pair a deletion in that file in the same staged commit or carry a
 ``Locality-4-Justification:`` trailer. This hook computes the staged
 non-exempt line delta for ``.github/copilot-instructions.md`` and ``AGENTS.md``
 against ``HEAD`` and fails closed when either file's gated delta is positive
-without a trailer supplied by the invoking hook wrapper.
+without a trailer supplied by the invoking hook wrapper. When invoked with the
+finalized commit message, it also enforces ADR-028's per-file 1-in-10 rolling
+soft budget for trailer escapes.
 """
 
 from __future__ import annotations
@@ -23,6 +25,8 @@ COPILOT_INSTRUCTIONS_PATH = ".github/copilot-instructions.md"
 AGENTS_PATH = "AGENTS.md"
 GATED_PATHS = frozenset({COPILOT_INSTRUCTIONS_PATH, AGENTS_PATH})
 TRAILER = "Locality-4-Justification"
+TRAILER_SOFT_BUDGET = 1
+TRAILER_WINDOW_COMMITS = 10
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 _MARKDOWN_TABLE_SEPARATOR_RE = re.compile(r"^\|[\s:|-]+\|$")
@@ -101,7 +105,12 @@ def _read_available_stdin() -> tuple[list[str], str | None]:
             break
 
     if commit_message is None:
-        for key in ("commit_msg_file", "commitMessageFile", "message_file", "messageFile"):
+        for key in (
+            "commit_msg_file",
+            "commitMessageFile",
+            "message_file",
+            "messageFile",
+        ):
             value = payload.get(key)
             if isinstance(value, str):
                 commit_message = _read_commit_message_file(value)
@@ -139,17 +148,21 @@ def _read_commit_message_file(path: str) -> str | None:
         return None
 
 
-def _has_justification_trailer(message: str | None) -> bool:
+def _justification_trailer_value(message: str | None) -> str | None:
     if not message:
-        return False
+        return None
 
     rc, out, _ = _run_git("interpret-trailers", "--parse", input_text=message)
     trailer_lines = out.splitlines() if rc == 0 else message.splitlines()
-    prefix = f"{TRAILER.lower()}:"
-    return any(
-        line.lower().startswith(prefix) and bool(line[len(prefix) :].strip())
-        for line in trailer_lines
-    )
+    for line in trailer_lines:
+        key, separator, value = line.partition(":")
+        if separator and key.lower() == TRAILER.lower() and value.strip():
+            return value.strip()
+    return None
+
+
+def _has_justification_trailer(message: str | None) -> bool:
+    return _justification_trailer_value(message) is not None
 
 
 def _get_staged_paths() -> tuple[set[str], str | None]:
@@ -237,13 +250,9 @@ def _staged_diff(path: str) -> str | None:
     return out if rc == 0 else None
 
 
-def _line_delta_for_path(path: str) -> tuple[int, int] | str | None:
-    diff = _staged_diff(path)
-    if diff is None:
-        return None
-
-    old_content = _get_head_content(path)
-    new_content = _get_staged_content(path)
+def _line_delta_from_diff(
+    path: str, diff: str, old_content: str, new_content: str
+) -> tuple[int, int] | str:
     if (
         path == COPILOT_INSTRUCTIONS_PATH
         and new_content
@@ -286,6 +295,131 @@ def _line_delta_for_path(path: str) -> tuple[int, int] | str | None:
             new_line += 1
 
     return additions, deletions
+
+
+def _line_delta_for_path(path: str) -> tuple[int, int] | str | None:
+    diff = _staged_diff(path)
+    if diff is None:
+        return None
+
+    return _line_delta_from_diff(
+        path, diff, _get_head_content(path), _get_staged_content(path)
+    )
+
+
+def _first_parent(commit: str) -> str | None:
+    rc, out, _ = _run_git("rev-list", "--parents", "-n", "1", commit)
+    if rc != 0:
+        return None
+    parts = out.split()
+    return parts[1] if len(parts) > 1 else None
+
+
+def _content_at_revision(revision: str, path: str) -> str:
+    rc, out, _ = _run_git("show", f"{revision}:{path}")
+    return out if rc == 0 else ""
+
+
+def _commit_message(commit: str) -> str | None:
+    rc, out, _ = _run_git("log", "-1", "--format=%B", commit)
+    return out if rc == 0 else None
+
+
+def _historical_line_delta_for_commit(
+    path: str, commit: str
+) -> tuple[int, int] | str | None:
+    parent = _first_parent(commit)
+    if parent is None:
+        rc, diff, _ = _run_git("show", "--format=", "--unified=0", commit, "--", path)
+        old_content = ""
+    else:
+        rc, diff, _ = _run_git("diff", "--unified=0", parent, commit, "--", path)
+        old_content = _content_at_revision(parent, path)
+    if rc != 0:
+        return None
+
+    new_content = _content_at_revision(commit, path)
+    return _line_delta_from_diff(path, diff, old_content, new_content)
+
+
+def _recent_gated_commit_deltas(
+    path: str,
+) -> tuple[list[tuple[str, tuple[int, int]]], str | None]:
+    rc, out, _ = _run_git(
+        "log",
+        "--format=%H",
+        "--",
+        path,
+    )
+    if rc != 0:
+        return [], f"{path}: cannot read recent commit history via git log"
+
+    commits: list[tuple[str, tuple[int, int]]] = []
+    for commit in out.splitlines():
+        delta = _historical_line_delta_for_commit(path, commit)
+        if delta is None:
+            return [], f"{path}: cannot inspect historical gated delta for {commit}"
+        if isinstance(delta, str):
+            return [], delta
+        additions, deletions = delta
+        if additions == 0 and deletions == 0:
+            continue
+        commits.append((commit, delta))
+        if len(commits) >= TRAILER_WINDOW_COMMITS:
+            break
+
+    return commits, None
+
+
+def _trailer_candidate_commits(path: str) -> tuple[set[str], str | None]:
+    rc, out, _ = _run_git("log", "--grep", TRAILER, "--format=%H", "--", path)
+    if rc != 0:
+        return set(), f"{path}: cannot read trailer history via git log --grep"
+    return set(out.splitlines()), None
+
+
+def _is_paired_deletion_commit(additions: int, deletions: int) -> bool:
+    return deletions > 0 and additions - deletions <= 0
+
+
+def _trailer_count_since_latest_paired_deletion(path: str) -> tuple[int, str | None]:
+    commits, error = _recent_gated_commit_deltas(path)
+    if error is not None:
+        return 0, error
+    trailer_candidates, error = _trailer_candidate_commits(path)
+    if error is not None:
+        return 0, error
+
+    count = 0
+    for commit, (additions, deletions) in commits:
+        if _is_paired_deletion_commit(additions, deletions):
+            break
+        if commit not in trailer_candidates:
+            continue
+        message = _commit_message(commit)
+        if message is None:
+            return 0, f"{path}: cannot read commit message for {commit}"
+        if _has_justification_trailer(message):
+            count += 1
+
+    return count, None
+
+
+def _trailer_budget_failures(paths: set[str]) -> list[str]:
+    failures: list[str] = []
+    for path in sorted(paths):
+        count, error = _trailer_count_since_latest_paired_deletion(path)
+        if error is not None:
+            failures.append(error)
+            continue
+        if count >= TRAILER_SOFT_BUDGET:
+            failures.append(
+                f"{path}: Locality-4-Justification soft budget exceeded; "
+                f"the last {TRAILER_WINDOW_COMMITS} gated commits already has "
+                f"{count} trailer(s) since the latest paired-deletion commit. "
+                "Stage a same-file paired deletion before using another trailer."
+            )
+    return failures
 
 
 def _candidate_paths(paths: list[str]) -> tuple[set[str], list[str]]:
@@ -335,13 +469,20 @@ def main(argv: list[str] | None = None) -> int:
 
     commit_message = cli_commit_message if cli_commit_message is not None else stdin_commit_message
     trailer_present = _has_justification_trailer(commit_message)
+    budget_failures = (
+        _trailer_budget_failures(set(positive_deltas))
+        if positive_deltas and trailer_present
+        else []
+    )
 
-    if failures or (positive_deltas and not trailer_present):
+    if failures or (positive_deltas and not trailer_present) or budget_failures:
         print(
             "ERROR: Locality 4 ratchet violation for always-loaded instruction files.",
             file=sys.stderr,
         )
         for failure in failures:
+            print(f"  {failure}", file=sys.stderr)
+        for failure in budget_failures:
             print(f"  {failure}", file=sys.stderr)
         if positive_deltas and not trailer_present:
             print(

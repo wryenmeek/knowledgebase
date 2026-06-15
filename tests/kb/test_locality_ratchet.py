@@ -70,6 +70,13 @@ def _stage(repo: Path, rel_path: str, content: str) -> None:
     _run_git(repo, "add", rel_path)
 
 
+def _commit(repo: Path, subject: str, trailer: str | None = None) -> None:
+    command = ["commit", "-m", subject]
+    if trailer is not None:
+        command.extend(["-m", trailer])
+    _run_git(repo, *command)
+
+
 def _init_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -185,6 +192,131 @@ def test_addition_with_trailer_from_stdin_payload_exits_0(tmp_path: Path) -> Non
                     "Locality-4-Justification: applies before scoped context can load\n"
                 ),
             }
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+
+
+def test_trailer_with_no_prior_trailers_in_window_exits_0(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _stage(repo, COPILOT_PATH, COPILOT_BASE + "\nNew always-on rule.\n")
+
+    result = _run_hook(
+        repo,
+        COPILOT_PATH,
+        commit_message=(
+            "Add global rule\n\n"
+            "Locality-4-Justification: applies before scoped context can load\n"
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+
+
+def test_trailer_with_one_prior_trailer_in_window_exits_1(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    prior_content = COPILOT_BASE + "\nPrior always-on rule.\n"
+    _stage(repo, COPILOT_PATH, prior_content)
+    _commit(
+        repo,
+        "Add prior global rule",
+        "Locality-4-Justification: applies before scoped context can load",
+    )
+    _stage(repo, COPILOT_PATH, prior_content + "\nNew always-on rule.\n")
+
+    result = _run_hook(
+        repo,
+        COPILOT_PATH,
+        commit_message=(
+            "Add another global rule\n\n"
+            "Locality-4-Justification: applies before scoped context can load\n"
+        ),
+    )
+
+    assert result.returncode == 1
+    assert COPILOT_PATH in result.stderr
+    assert "soft budget" in result.stderr
+    assert "already has 1" in result.stderr
+
+
+def test_existing_budget_violation_does_not_gate_non_locality_commit(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path)
+    first_content = COPILOT_BASE + "\nFirst prior always-on rule.\n"
+    _stage(repo, COPILOT_PATH, first_content)
+    _commit(
+        repo,
+        "Add first prior global rule",
+        "Locality-4-Justification: applies before scoped context can load",
+    )
+    second_content = first_content + "\nSecond prior always-on rule.\n"
+    _stage(repo, COPILOT_PATH, second_content)
+    _commit(
+        repo,
+        "Add second prior global rule",
+        "Locality-4-Justification: applies before scoped context can load",
+    )
+    _stage(repo, "docs/regular.md", "# Regular markdown\n")
+
+    result = _run_hook(
+        repo,
+        "docs/regular.md",
+        commit_message=(
+            "Update regular docs\n\n"
+            "Locality-4-Justification: not relevant to this commit\n"
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+
+
+def test_paired_deletion_restores_trailer_budget_headroom(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    prior_content = COPILOT_BASE + "\nPrior always-on rule.\n"
+    _stage(repo, COPILOT_PATH, prior_content)
+    _commit(
+        repo,
+        "Add prior global rule",
+        "Locality-4-Justification: applies before scoped context can load",
+    )
+    _stage(repo, COPILOT_PATH, COPILOT_BASE)
+    _commit(repo, "Remove stale global rule")
+    _stage(repo, COPILOT_PATH, COPILOT_BASE + "\nNew always-on rule.\n")
+
+    result = _run_hook(
+        repo,
+        COPILOT_PATH,
+        commit_message=(
+            "Add replacement global rule\n\n"
+            "Locality-4-Justification: applies before scoped context can load\n"
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+
+
+def test_trailer_budget_is_tracked_per_file(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _stage(repo, COPILOT_PATH, COPILOT_BASE + "\nPrior always-on rule.\n")
+    _commit(
+        repo,
+        "Add prior copilot global rule",
+        "Locality-4-Justification: applies before scoped context can load",
+    )
+    _stage(repo, AGENTS_PATH, AGENTS_BASE + "\nNew AGENTS global rule.\n")
+
+    result = _run_hook(
+        repo,
+        AGENTS_PATH,
+        commit_message=(
+            "Add AGENTS global rule\n\n"
+            "Locality-4-Justification: applies before scoped context can load\n"
         ),
     )
 
@@ -312,3 +444,20 @@ def test_hooks_json_registers_precommit_locality_ratchet() -> None:
     ]
 
     assert "python3 scripts/hooks/check_locality_ratchet.py" in commands
+
+
+def test_hooks_json_registers_commitmsg_locality_ratchet() -> None:
+    hooks = json.loads(
+        (REPO_ROOT / ".github/hooks/hooks.json").read_text(encoding="utf-8")
+    )
+
+    commands = [
+        entry.get("command", "")
+        for entry in hooks["hooks"].get("CommitMsg", [])
+        if isinstance(entry, dict)
+    ]
+
+    assert (
+        "python3 scripts/hooks/check_locality_ratchet.py --commit-msg-file"
+        in commands
+    )
