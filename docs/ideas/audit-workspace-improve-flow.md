@@ -41,7 +41,7 @@ As of 2026-06-15 the 23 vertical-slice issues (#190–#212) tracking this plan h
 | 9c | Phase 4 (OutOfBand handoff routing) | [#210](https://github.com/wryenmeek/knowledgebase/issues/210) | ✅ CLOSED | `outofband_handoff.py` routes cross-skill findings to `framework-engineer` handoff records with `tests/kb/test_audit_workspace_outofband.py` |
 | 10 | Phase 7 (real-use) | [#212](https://github.com/wryenmeek/knowledgebase/issues/212) | OPEN (HITL) | Pending |
 | qa-ab | QA gate | [#198](https://github.com/wryenmeek/knowledgebase/issues/198) | OPEN (HITL) | Pending |
-| qa-d | QA gate | [#201](https://github.com/wryenmeek/knowledgebase/issues/201) | OPEN | Pending |
+| qa-d | QA gate | [#201](https://github.com/wryenmeek/knowledgebase/issues/201) | ✅ CLOSED | 5a-primary adversarial composition gate in `tests/kb/test_locality_ratchet_adversarial.py`; 5b rolling-window assertions remain gated by open #200; follow-up #266 tracks the content-insensitive paired-deletion bug surfaced by the gate |
 | qa-f | QA gate | [#207](https://github.com/wryenmeek/knowledgebase/issues/207) | OPEN (HITL) | Pending |
 | qa-g | QA gate | [#211](https://github.com/wryenmeek/knowledgebase/issues/211) | OPEN | Pending |
 
