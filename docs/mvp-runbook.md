@@ -366,7 +366,7 @@ confirmation, then apply:
 
 ```bash
 # 1. Dry-run bootstrap — emits the reconciliation report without writing
-python3 scripts/kb/checkpoint_registry.py --bootstrap --dry-run
+python3 scripts/kb/checkpoint_registry.py --bootstrap
 
 # 2. Review the reconciliation report (item-by-item classification plus
 #    any ambiguous cases) printed to stdout.

@@ -17,6 +17,9 @@ from . import path_utils
 
 
 LOG_PATH = Path("wiki/log.md")
+# Single-threaded reentrancy tracker for CLI surfaces. Do not call
+# exclusive_write_lock concurrently from multiple threads without adding a
+# threading.Lock around this counter.
 _HELD_LOCK_COUNTS: dict[Path, int] = {}
 
 def governed_artifact_contract_for_path(

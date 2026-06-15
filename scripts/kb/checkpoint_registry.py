@@ -7,6 +7,11 @@ Supports three explicit modes:
 * ``--mutate`` applies a lock-protected batch of item state transitions.
 * ``--verify`` validates the registry and emits retention/parse/schema signals.
 
+All write-capable paths are approval-gated and acquire only the lock declared
+for the target artifact. Bootstrap and mutation writes hold
+``CHECKPOINT_REGISTRY_LOCK_PATH``; verify remains read-only unless approved
+warning telemetry is appended to ``wiki/log.md`` under ``WRITE_LOCK_PATH``.
+
 Governance: ADR-026 (decision), ADR-027 (amendment),
 schema/wiki-processing-checkpoint-registry-contract.md (schema), issue #187 (PR3).
 """
@@ -47,6 +52,10 @@ SCHEMA_OWNER = "schema/wiki-processing-checkpoint-registry-contract.md"
 SCHEMA_VERSION = "1"
 STALE_TIMEOUT = timedelta(hours=1)
 ITEM_COUNT_WARN_THRESHOLD = 5_000
+MAX_INPUT_BYTES = 1_000_000
+DRY_RUN_REDUNDANT_WARNING = (
+    "--dry-run is redundant with --bootstrap; bootstrap is dry-run unless --apply is supplied"
+)
 
 ITEM_STATUSES = frozenset(
     {"pending", "in_progress", "completed", "stale", "failed", "skipped"}
@@ -167,9 +176,7 @@ def _is_single_line_text(value: Any, *, allow_empty: bool = False) -> bool:
         return False
     if not allow_empty and not value:
         return False
-    return "\n" not in value and "\r" not in value and all(
-        ord(char) >= 32 or char == "\t" for char in value
-    )
+    return "\n" not in value and "\r" not in value and all(ord(char) >= 32 for char in value)
 
 
 def _markdown_safe(value: Any) -> str:
@@ -412,9 +419,19 @@ def _build_bootstrap_registry(repo_root: Path) -> tuple[dict[str, Any], list[dic
                     "message": f"duplicate item_key: {item['item_key']}",
                 }
             )
-    return _empty_registry(source_fingerprints, items), sorted(
-        excluded, key=lambda item: (item["reason_code"], item["path"])
-    )
+    return _empty_registry(source_fingerprints, items), _dedupe_exclusions(excluded)
+
+
+def _dedupe_exclusions(excluded: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for item in excluded:
+        key = (
+            str(item.get("path", "")),
+            str(item.get("reason_code", "")),
+            str(item.get("message", "")),
+        )
+        deduped.setdefault(key, item)
+    return sorted(deduped.values(), key=lambda item: (item["reason_code"], item["path"]))
 
 
 def _group_by(items: Sequence[dict[str, Any]], field: str) -> dict[str, list[dict[str, Any]]]:
@@ -599,13 +616,16 @@ def bootstrap_registry(
     repo_root: str | Path = ".",
     registry_path: str = REGISTRY_PATH,
     apply: bool = False,
+    dry_run: bool = False,
     approval: str = APPROVAL_NONE,
 ) -> SurfaceResult:
     """Classify existing wiki artifacts and optionally seed the registry.
 
-    Dry-run emits a reconciliation report without writes. Approved apply mode
-    requires ``--approval approved``, acquires ``CHECKPOINT_REGISTRY_LOCK_PATH``,
-    and writes only the initial registry JSON. Primary failures include
+    The default path is a read-only reconciliation report. The ``dry_run`` flag
+    exists for CLI compatibility and only records a warning because bootstrap is
+    already dry-run unless ``apply=True``. Approved apply mode requires
+    ``--approval approved``, acquires ``CHECKPOINT_REGISTRY_LOCK_PATH``, and
+    writes only the initial registry JSON. Primary failures include
     ``approval_required``, ``invalid_input``, ``schema_validation_failed``,
     ``registry_exists``, and ``lock_unavailable``.
     """
@@ -623,6 +643,8 @@ def bootstrap_registry(
         return _result(mode=mode, status=STATUS_FAIL, reason_code="schema_validation_failed", message="bootstrap registry failed schema validation", items=_error_items(errors))
     content = _canonical_json(registry)
     summary = _bootstrap_summary(registry, excluded, target, would_write=apply)
+    if dry_run and not apply:
+        summary["warnings"] = [DRY_RUN_REDUNDANT_WARNING]
     if not apply:
         return _result(mode=mode, status=STATUS_PASS, reason_code="ok", message="bootstrap dry-run completed", items=(*registry["items"], *excluded), summary=summary)
     if approval != APPROVAL_APPROVED:
@@ -677,7 +699,9 @@ def _error_items(errors: Sequence[str]) -> tuple[dict[str, Any], ...]:
 
 def _load_mutation_input(repo_root: Path, input_path: str) -> dict[str, Any]:
     if input_path == "-":
-        raw = sys.stdin.read()
+        raw = sys.stdin.read(MAX_INPUT_BYTES + 1)
+        if len(raw.encode("utf-8")) > MAX_INPUT_BYTES:
+            raise ValueError(f"stdin mutation input exceeds {MAX_INPUT_BYTES} byte limit")
     else:
         normalized = path_utils.normalize_repo_relative_path(input_path)
         if not normalized.startswith("docs/staged/") or not normalized.endswith(".json"):
@@ -686,6 +710,8 @@ def _load_mutation_input(repo_root: Path, input_path: str) -> dict[str, Any]:
         write_utils.check_no_symlink_path(repo_root / normalized)
         if not resolved.is_file() or not resolved.resolve().is_relative_to(repo_root):
             raise ValueError("--input must be a file inside the repository")
+        if resolved.stat().st_size > MAX_INPUT_BYTES:
+            raise ValueError(f"mutation input exceeds {MAX_INPUT_BYTES} byte limit")
         raw = resolved.read_text(encoding="utf-8")
     data = json.loads(raw)
     if not isinstance(data, dict):
@@ -705,11 +731,12 @@ def mutate_registry(
     """Apply one approved batch of checkpoint item transitions.
 
     Requires ``--approval approved`` and ``--input`` from ``docs/staged/**`` or
-    stdin. Holds ``CHECKPOINT_REGISTRY_LOCK_PATH`` while loading, validating,
-    mutating, and atomically replacing the registry. Primary failures include
+    stdin. Inputs are capped by ``MAX_INPUT_BYTES`` before JSON parsing. Holds
+    ``CHECKPOINT_REGISTRY_LOCK_PATH`` while loading, validating, mutating, and
+    atomically replacing the registry. Primary failures include
     ``approval_required``, ``invalid_input``, ``json_parse_failed``,
     ``schema_validation_failed``, ``lock_unavailable``, ``illegal_transition``,
-    and ``stale_timeout``.
+    ``fingerprint_mismatch``, and ``stale_timeout``.
     """
     mode = "mutate"
     root = Path(repo_root).resolve()
@@ -758,6 +785,8 @@ def mutate_registry(
 
 
 class TransitionError(ValueError):
+    """Mutation-specific validation error carrying a stable reason code."""
+
     reason_code: str
 
     def __init__(self, reason_code: str, message: str) -> None:
@@ -1257,7 +1286,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Read-only schema validation of the registry; --warn-only returns exit 0 even on warnings.",
     )
     parser.add_argument("--repo-root", default=".", help="Repository root path (must satisfy looks_like_repo_root).")
-    parser.add_argument("--registry", default=REGISTRY_PATH, help="Registry JSON path (defaults to raw/wiki-processing/wiki-processing-checkpoint-registry.json).")
+    parser.add_argument("--registry", default=REGISTRY_PATH, choices=(REGISTRY_PATH,), help="Registry JSON path (fixed to raw/wiki-processing/wiki-processing-checkpoint-registry.json).")
     parser.add_argument("--apply", action="store_true", help="Write bootstrap output after approval.")
     parser.add_argument("--dry-run", action="store_true", help="Compatibility flag; bootstrap defaults to dry-run unless --apply is set.")
     parser.add_argument("--input", help="Repo-local mutation input JSON path, or '-' for stdin.")
@@ -1276,14 +1305,18 @@ def run_checkpoint_registry(args: argparse.Namespace) -> SurfaceResult:
     Each mode enforces its own approval and lock contract: bootstrap/mutate write
     the registry under ``CHECKPOINT_REGISTRY_LOCK_PATH``; verify is read-only
     unless approved warning logging appends to ``wiki/log.md``. Dispatch-level
-    failures include ``invalid_input`` for ``--mutate`` without ``--input``;
-    mode functions return their own failure reason codes.
+    failures include cross-mode argument misuse and ``--mutate`` without
+    ``--input``; mode functions return their own failure reason codes.
     """
+    invalid = _validate_cli_mode_arguments(args)
+    if invalid is not None:
+        return invalid
     if args.bootstrap:
         return bootstrap_registry(
             repo_root=args.repo_root,
             registry_path=args.registry,
             apply=bool(args.apply),
+            dry_run=bool(args.dry_run),
             approval=args.approval,
         )
     if args.mutate:
@@ -1306,7 +1339,65 @@ def run_checkpoint_registry(args: argparse.Namespace) -> SurfaceResult:
     )
 
 
+def _validate_cli_mode_arguments(args: argparse.Namespace) -> SurfaceResult | None:
+    if args.bootstrap:
+        mode = "bootstrap"
+        invalid_message = _first_present_argument(
+            args,
+            {
+                "input": "--input is only valid with --mutate",
+                "trigger": "--trigger is only valid with --mutate",
+                "warn_only": "--warn-only is only valid with --verify",
+                "log_warnings": "--log-warnings is only valid with --verify",
+                "now": "--now is only valid with --mutate",
+            },
+        )
+        if invalid_message is None and args.apply and args.dry_run:
+            invalid_message = "--dry-run cannot be combined with --apply"
+    elif args.mutate:
+        mode = "mutate"
+        invalid_message = _first_present_argument(
+            args,
+            {
+                "apply": "--apply is only valid with --bootstrap",
+                "dry_run": "--dry-run is only valid with --bootstrap",
+                "warn_only": "--warn-only is only valid with --verify",
+                "log_warnings": "--log-warnings is only valid with --verify",
+            },
+        )
+    else:
+        mode = "verify"
+        invalid_message = _first_present_argument(
+            args,
+            {
+                "apply": "--apply is only valid with --bootstrap",
+                "dry_run": "--dry-run is only valid with --bootstrap",
+                "input": "--input is only valid with --mutate",
+                "trigger": "--trigger is only valid with --mutate",
+                "now": "--now is only valid with --mutate",
+            },
+        )
+    if invalid_message is None:
+        return None
+    return _result(
+        mode=mode,
+        status=STATUS_FAIL,
+        reason_code=REASON_CODE_INVALID_INPUT,
+        message=invalid_message,
+        approval=args.approval,
+    )
+
+
+def _first_present_argument(args: argparse.Namespace, messages_by_attr: dict[str, str]) -> str | None:
+    for attr, message in messages_by_attr.items():
+        if bool(getattr(args, attr)):
+            return message
+    return None
+
+
 def main(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+    """Parse CLI arguments, emit one ``SurfaceResult`` JSON line, and return an exit code."""
+
     try:
         args = _build_parser().parse_args(list(argv) if argv is not None else None)
     except ValueError as exc:
