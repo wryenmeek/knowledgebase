@@ -134,7 +134,7 @@ class AuditWorkspaceRedundancyGeneratorTests(RuntimeWorkspaceTestCase):
     def test_loads_precomputed_skill_corpus_cache_without_materializing(self) -> None:
         cache_path = self._cache_path()
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_payload = self._skill_corpus(cache_strategy="mtime_first_para")
+        cache_payload = self._cache_payload(cache_strategy="mtime_first_para")
         cache_path.write_text(json.dumps(cache_payload, sort_keys=True), encoding="utf-8")
         before = self.snapshot_workspace()
         captured_prompts: list[str] = []
@@ -176,11 +176,13 @@ class AuditWorkspaceRedundancyGeneratorTests(RuntimeWorkspaceTestCase):
         cache_path.write_text(
             json.dumps(
                 {
-                    str(readme_path.resolve()): {
-                        "frontmatter": {},
-                        "first_paragraph": "Unrelated repo-local snippet.",
-                        "mtime_ns": 1,
-                        "cache_strategy": "mtime_first_para",
+                    "cache_strategy": "mtime_first_para",
+                    "entries": {
+                        str(readme_path.resolve()): {
+                            "frontmatter": {},
+                            "first_paragraph": "Unrelated repo-local snippet.",
+                            "mtime_ns": 1,
+                        }
                     }
                 }
             ),
@@ -1058,7 +1060,7 @@ class AuditWorkspaceRedundancyGeneratorTests(RuntimeWorkspaceTestCase):
         source_path = self.write_file("docs/test.md", "Higher-locality guidance.\n")
         cache_path = self._cache_path()
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(json.dumps(self._skill_corpus()), encoding="utf-8")
+        cache_path.write_text(json.dumps(self._cache_payload()), encoding="utf-8")
         output = io.StringIO()
         before = self.snapshot_workspace()
 
@@ -1163,6 +1165,19 @@ class AuditWorkspaceRedundancyGeneratorTests(RuntimeWorkspaceTestCase):
                 "mtime_ns": 1,
                 "cache_strategy": cache_strategy,
             }
+        }
+
+    def _cache_payload(self, *, cache_strategy: str = "mtime_first_para") -> dict[str, object]:
+        return {
+            "cache_strategy": cache_strategy,
+            "entries": {
+                cache_key: {
+                    "frontmatter": entry["frontmatter"],
+                    "first_paragraph": entry["first_paragraph"],
+                    "mtime_ns": entry["mtime_ns"],
+                }
+                for cache_key, entry in self._skill_corpus(cache_strategy=cache_strategy).items()
+            },
         }
 
     def _cache_path(self) -> Path:

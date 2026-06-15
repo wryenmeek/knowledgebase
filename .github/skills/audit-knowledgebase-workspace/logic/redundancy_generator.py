@@ -34,9 +34,27 @@ if __package__ in (None, ""):
 from scripts.kb.write_utils import check_no_symlink_path
 
 try:
-    from skill_corpus_cache import CACHE_FILENAME, CACHE_STRATEGY, SkillCorpus
+    from skill_corpus_cache import (
+        CACHE_FILENAME,
+        CACHE_PAYLOAD_ENTRIES_KEY,
+        CACHE_PAYLOAD_STRATEGY_KEY,
+        CACHE_STRATEGY,
+        ENTRY_FIRST_PARAGRAPH_KEY,
+        ENTRY_FRONTMATTER_KEY,
+        ENTRY_MTIME_NS_KEY,
+        SkillCorpus,
+    )
 except ImportError:  # pragma: no cover - exercised when imported as a package
-    from .skill_corpus_cache import CACHE_FILENAME, CACHE_STRATEGY, SkillCorpus
+    from .skill_corpus_cache import (
+        CACHE_FILENAME,
+        CACHE_PAYLOAD_ENTRIES_KEY,
+        CACHE_PAYLOAD_STRATEGY_KEY,
+        CACHE_STRATEGY,
+        ENTRY_FIRST_PARAGRAPH_KEY,
+        ENTRY_FRONTMATTER_KEY,
+        ENTRY_MTIME_NS_KEY,
+        SkillCorpus,
+    )
 
 
 MAX_ATTEMPTS = 3
@@ -580,17 +598,52 @@ def _load_cached_skill_corpus(cache_path: Path) -> SkillCorpus:
     if not isinstance(payload, dict):
         raise ValueError("cached skill-corpus root must be a JSON object")
 
+    cache_strategy = payload.get(CACHE_PAYLOAD_STRATEGY_KEY)
+    entries = payload.get(CACHE_PAYLOAD_ENTRIES_KEY)
+    if CACHE_PAYLOAD_STRATEGY_KEY in payload or CACHE_PAYLOAD_ENTRIES_KEY in payload:
+        if not isinstance(cache_strategy, str) or cache_strategy not in VALID_CACHE_STRATEGIES:
+            raise ValueError("cached skill-corpus root has invalid cache_strategy")
+        if not isinstance(entries, dict):
+            raise ValueError("cached skill-corpus root missing entries object")
+        return _coerce_cached_skill_entries(entries, cache_strategy=cache_strategy)
+
+    return _coerce_legacy_cached_skill_entries(payload)
+
+
+def _coerce_cached_skill_entries(
+    entries: dict[Any, Any], *, cache_strategy: str
+) -> SkillCorpus:
+    corpus: SkillCorpus = {}
+    for cache_key, entry in entries.items():
+        if not isinstance(cache_key, str) or not isinstance(entry, dict):
+            raise ValueError("cached skill-corpus entries must be keyed JSON objects")
+        frontmatter = entry.get(ENTRY_FRONTMATTER_KEY)
+        first_paragraph = entry.get(ENTRY_FIRST_PARAGRAPH_KEY)
+        mtime_ns = entry.get(ENTRY_MTIME_NS_KEY)
+        if not isinstance(frontmatter, dict):
+            raise ValueError(f"cached skill-corpus entry missing frontmatter: {cache_key}")
+        if not isinstance(first_paragraph, str):
+            raise ValueError(f"cached skill-corpus entry missing first_paragraph: {cache_key}")
+        if not isinstance(mtime_ns, int) or isinstance(mtime_ns, bool):
+            raise ValueError(f"cached skill-corpus entry missing mtime_ns: {cache_key}")
+        corpus[cache_key] = {
+            "frontmatter": dict(frontmatter),
+            "first_paragraph": first_paragraph,
+            "mtime_ns": mtime_ns,
+            "cache_strategy": cache_strategy,
+        }
+    return corpus
+
+
+def _coerce_legacy_cached_skill_entries(payload: dict[Any, Any]) -> SkillCorpus:
     corpus: SkillCorpus = {}
     for cache_key, entry in payload.items():
         if not isinstance(cache_key, str) or not isinstance(entry, dict):
             raise ValueError("cached skill-corpus entries must be keyed JSON objects")
-        if not isinstance(entry.get("frontmatter"), dict):
-            raise ValueError(f"cached skill-corpus entry missing frontmatter: {cache_key}")
-        if not isinstance(entry.get("first_paragraph"), str):
-            raise ValueError(f"cached skill-corpus entry missing first_paragraph: {cache_key}")
-        if entry.get("cache_strategy") not in VALID_CACHE_STRATEGIES:
+        cache_strategy = entry.get(CACHE_PAYLOAD_STRATEGY_KEY)
+        if cache_strategy not in VALID_CACHE_STRATEGIES:
             raise ValueError(f"cached skill-corpus entry has invalid cache_strategy: {cache_key}")
-        corpus[cache_key] = entry
+        corpus.update(_coerce_cached_skill_entries({cache_key: entry}, cache_strategy=cache_strategy))
     return corpus
 
 
@@ -610,6 +663,7 @@ def _bounded_files(repo_root: Path, root: Path, pattern: str) -> list[Path]:
         if resolved.is_file():
             files.append(resolved)
     return files
+
 
 def _validate_skill_corpus_path(repo_root: Path, path: Path) -> str:
     relative_path = _repo_relative_path(repo_root, path)
