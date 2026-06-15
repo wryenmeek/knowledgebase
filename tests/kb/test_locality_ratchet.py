@@ -87,6 +87,7 @@ def _run_hook(
     repo: Path,
     *paths: str,
     commit_message: str | None = None,
+    commit_msg_file: Path | None = None,
     stdin_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
@@ -94,6 +95,8 @@ def _run_hook(
     command = [sys.executable, "-m", HOOK_MODULE]
     if commit_message is not None:
         command.extend(["--commit-message", commit_message])
+    if commit_msg_file is not None:
+        command.extend(["--commit-msg-file", str(commit_msg_file)])
     command.extend(paths)
     return subprocess.run(
         command,
@@ -130,6 +133,39 @@ def test_addition_with_trailer_exits_0(tmp_path: Path) -> None:
             "Locality-4-Justification: applies before scoped context can load\n"
         ),
     )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+
+
+def test_addition_with_lowercase_trailer_exits_0(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _stage(repo, COPILOT_PATH, COPILOT_BASE + "\nNew always-on rule.\n")
+
+    result = _run_hook(
+        repo,
+        COPILOT_PATH,
+        commit_message=(
+            "Add global rule\n\n"
+            "locality-4-justification: applies before scoped context can load\n"
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+
+
+def test_addition_with_absolute_commit_msg_file_exits_0(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _stage(repo, COPILOT_PATH, COPILOT_BASE + "\nNew always-on rule.\n")
+    message_file = repo / "COMMIT_EDITMSG"
+    message_file.write_text(
+        "Add global rule\n\n"
+        "Locality-4-Justification: applies before scoped context can load\n",
+        encoding="utf-8",
+    )
+
+    result = _run_hook(repo, COPILOT_PATH, commit_msg_file=message_file.resolve())
 
     assert result.returncode == 0, result.stderr
     assert result.stderr == ""

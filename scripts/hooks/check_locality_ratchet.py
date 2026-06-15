@@ -11,6 +11,7 @@ without a trailer supplied by the invoking hook wrapper.
 
 from __future__ import annotations
 
+from functools import lru_cache
 import json
 import re
 import select
@@ -23,7 +24,7 @@ AGENTS_PATH = "AGENTS.md"
 GATED_PATHS = frozenset({COPILOT_INSTRUCTIONS_PATH, AGENTS_PATH})
 TRAILER = "Locality-4-Justification"
 
-_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 _MARKDOWN_TABLE_SEPARATOR_RE = re.compile(r"^\|[\s:|-]+\|$")
 
 
@@ -66,7 +67,7 @@ def _read_available_stdin() -> tuple[list[str], str | None]:
         if not readable:
             return [], None
         stdin_text = sys.stdin.read()
-    except (OSError, ValueError):
+    except (OSError, ValueError, AttributeError):
         return [], None
 
     stripped = stdin_text.strip()
@@ -132,11 +133,8 @@ def _split_cli_args(argv: list[str]) -> tuple[list[str], str | None]:
 
 
 def _read_commit_message_file(path: str) -> str | None:
-    normalized = _normalize_path(path)
-    if _has_invalid_path_components(normalized):
-        return None
     try:
-        return Path(normalized).read_text(encoding="utf-8")
+        return Path(path).read_text(encoding="utf-8")
     except OSError:
         return None
 
@@ -147,9 +145,9 @@ def _has_justification_trailer(message: str | None) -> bool:
 
     rc, out, _ = _run_git("interpret-trailers", "--parse", input_text=message)
     trailer_lines = out.splitlines() if rc == 0 else message.splitlines()
-    prefix = f"{TRAILER}:"
+    prefix = f"{TRAILER.lower()}:"
     return any(
-        line.startswith(prefix) and bool(line[len(prefix) :].strip())
+        line.lower().startswith(prefix) and bool(line[len(prefix) :].strip())
         for line in trailer_lines
     )
 
@@ -178,6 +176,7 @@ def _get_head_content(path: str) -> str:
     return out if rc == 0 else ""
 
 
+@lru_cache(maxsize=4)
 def _copilot_h2_lines(content: str) -> list[int]:
     lines = content.splitlines()
     return [
@@ -264,7 +263,7 @@ def _line_delta_for_path(path: str) -> tuple[int, int] | str | None:
         hunk_match = _HUNK_RE.match(line)
         if hunk_match is not None:
             old_line = int(hunk_match.group(1))
-            new_line = int(hunk_match.group(3))
+            new_line = int(hunk_match.group(2))
             continue
 
         if old_line is None or new_line is None:
