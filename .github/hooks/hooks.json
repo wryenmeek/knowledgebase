@@ -6,6 +6,12 @@
         "command": "bash .github/hooks/session-start.sh"
       }
     ],
+    "PreCommit": [
+      {
+        "type": "command",
+        "command": "python3 scripts/hooks/check_locality_ratchet.py"
+      }
+    ],
     "PreToolUse": [
       {
         "type": "command",
