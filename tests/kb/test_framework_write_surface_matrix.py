@@ -46,12 +46,12 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Hard-fail behavior": ("path escape", "invalid wiki path", "fail closed"),
     },
     ".github/skills/audit-knowledgebase-workspace/logic/**": {
-        "Runtime mode": ("Mixed surface", "read-only only", "blocking-only", "transient skill-local"),
-        "Writable paths": ("None for the wildcard scope", "narrower rows below", "transient skill-local cache"),
-        "Read-only / prerequisite paths": (".github/copilot-instructions.md", "AGENTS.md", ".github/skills/**", ".github/agents/**", ".github/hooks/**", "tests/kb/**"),
-        "Lock requirements": ("None", "transient cache", ".github/.customizations.lock"),
+        "Runtime mode": ("Mixed surface", "read-only only", "write-path validation scaffold", "blocking-only", "transient skill-local"),
+        "Writable paths": (".github/instructions/**/*.instructions.md", ".github/hooks/**", ".github/copilot-instructions.md", "AGENTS.md", ".github/skills/audit-knowledgebase-workspace/**", "transient skill-local cache"),
+        "Read-only / prerequisite paths": (".github/copilot-instructions.md", "AGENTS.md", ".github/skills/**", ".github/agents/**", ".github/hooks/**", "apply-target validation", "tests/kb/**"),
+        "Lock requirements": ("None", "apply-target validation", ".github/.customizations.lock", "slice 9b"),
         "Artifact / schema owners": (".github/skills/audit-knowledgebase-workspace/SKILL.md", "scripts/_optional_surface_common.py", "ADR-028"),
-        "Hard-fail behavior": ("unsupported mode", "unsupported approval", "missing repo root", "undeclared", "protected-path", "fail closed"),
+        "Hard-fail behavior": ("unsupported mode", "unsupported approval", "missing repo root", "path_not_allowlisted", "outside_allowlist", "cross_skill_finding", "path traversal", "symlink target", "undeclared", "protected-path", "fail closed"),
     },
     ".github/skills/audit-knowledgebase-workspace/logic/skill_corpus_cache.py": {
         "Runtime mode": ("blocking-only", "transient skill-local cache"),
