@@ -12,9 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import fs from "node:fs";
 import path from "node:path";
 
 const FLEET_DATE_PATTERN = /^\d{4}_\d{2}_\d{2}$/;
+
+export function findFleetRepoRoot(startDirectory?: string): string {
+  let currentDirectory = path.resolve(startDirectory ?? process.cwd());
+
+  while (true) {
+    const gitPath = path.join(currentDirectory, ".git");
+    if (fs.existsSync(gitPath)) {
+      const gitEntry = fs.statSync(gitPath);
+      if (gitEntry.isFile() || gitEntry.isDirectory()) {
+        return currentDirectory;
+      }
+    }
+
+    const parentDirectory = path.dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) {
+      throw new Error("Unable to locate repository root from .git.");
+    }
+    currentDirectory = parentDirectory;
+  }
+}
 
 export function resolveFleetDir(root: string, fleetDate: string): string {
   if (!FLEET_DATE_PATTERN.test(fleetDate)) {
@@ -34,4 +55,3 @@ export function resolveFleetDir(root: string, fleetDate: string): string {
 
   return fleetDir;
 }
-

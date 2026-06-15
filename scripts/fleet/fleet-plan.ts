@@ -20,13 +20,15 @@ import { branchExists, getGitRepoInfo, getCurrentBranch } from "./github/git.js"
 import { assertFleetEnvironment } from "./env.js";
 import {
   assertMutationPreflight,
-  getSanitizedErrorMessage,
   MUTATION_EXECUTION_CONTRACT,
-  MutationFailureError,
   PreflightFailureError,
   resolveMutationMaxAttempts,
   runMutationWithDiagnostics,
 } from "./github/mutation-diagnostics.js";
+import {
+  handleFleetFatalError,
+  logMutationAttemptFailure,
+} from "./_fleet_output.js";
 
 export async function main(): Promise<void> {
   assertFleetEnvironment({
@@ -84,8 +86,7 @@ export async function main(): Promise<void> {
         },
       }),
     onAttemptFailure: (envelope) => {
-      console.error("⚠️ Jules planning mutation attempt failed.");
-      console.error(JSON.stringify(envelope));
+      logMutationAttemptFailure("⚠️ Jules planning mutation attempt failed.", envelope);
     },
   });
 
@@ -99,20 +100,11 @@ export async function main(): Promise<void> {
 }
 
 export function handleFatalError(error: unknown): never {
-  if (error instanceof PreflightFailureError) {
-    console.error("❌ Fleet planning preflight failed.");
-    console.error(JSON.stringify(error.envelope));
-    process.exit(1);
-  }
-
-  if (error instanceof MutationFailureError) {
-    console.error("❌ Jules planning mutation hard-failed after bounded retries.");
-    console.error(JSON.stringify(error.terminalEnvelope));
-    process.exit(1);
-  }
-
-  console.error(`❌ Fleet planning failed: ${getSanitizedErrorMessage(error)}`);
-  process.exit(1);
+  return handleFleetFatalError(error, {
+    preflight: "❌ Fleet planning preflight failed.",
+    mutation: "❌ Jules planning mutation hard-failed after bounded retries.",
+    genericPrefix: "❌ Fleet planning failed: ",
+  });
 }
 
 if (import.meta.main) {
