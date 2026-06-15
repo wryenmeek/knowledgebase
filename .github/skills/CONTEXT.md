@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2026-06-13
+last_updated: 2026-06-15
 ---
 
 # CONTEXT — .github/skills/
@@ -19,7 +19,7 @@ Vocabulary for the skill and agent persona layer. `AGENTS.md` takes precedence o
 | AFK lane | Operator-direct pathway for tasks on the ADR-014 allowlist. Skips persona pipeline but still requires lock, log entry, and post-publication patrol. |
 | evidence-verifier → policy-arbiter → synthesis-curator pipeline | The three-persona sequence that governs non-AFK synthesis. `knowledgebase-orchestrator` tests enforce this ordering — AFK cannot bypass without an allowlist entry. |
 | synthesis combined entrypoint | `.github/skills/synthesize-entity-page/logic/synthesize_combined.py` — CI-3 entrypoint that synthesizes entity + concept pages in one critical section under a single `wiki/.kb_write.lock` acquisition. |
-| `parents[4]` import pattern | The canonical way to import from `scripts.kb` inside skill logic files: `sys.path.insert(0, str(Path(__file__).resolve().parents[4]))`. Resolves 4 levels up from `logic/<file>.py` to the repo root. |
+| `parents[4]` import pattern | The canonical way to import from `scripts.kb` inside skill logic files: prepend `str(Path(__file__).resolve().parents[4])` to `sys.path`. Resolves 4 levels up from `logic/<file>.py` to the repo root; changed logic may de-duplicate before prepending to avoid repeated global-state mutation. |
 | skill-first execution | When a task matches a skill, invoke and follow that skill workflow. Do not quick-implement around an applicable skill. |
 | instruction ratchet | The pattern where always-on instruction files such as `.github/copilot-instructions.md` grow monotonically add-only, decoupled from customization-surface growth. Measured by net line change in a window where skill count is flat. |
 | Locality | A trigger-frequency ordinal for instruction destinations (Locality 0–4); frequency increases monotonically. Locality 4 = every turn (always-on); Locality 0 = only when a single file is read. See ADR-028 (pending). |
@@ -33,7 +33,7 @@ Vocabulary for the skill and agent persona layer. `AGENTS.md` takes precedence o
 | Skill-first execution | If a task matches a skill, invoke the skill workflow. Do not skip required skill phases for non-trivial work. |
 | Fail-closed on lock/policy | Skill logic files in `logic/` must fail closed on any lock contention, policy gap, or validation error. Partial success is treated as failure on protected/write paths. |
 | Combined synthesis uses one lock | CI-3 synthesis flows run entity and concept draft generation under one lock-critical section (`synthesize_combined.py`) and release only after all writes/index/log updates complete. |
-| `parents[4]` for imports | Skill logic files use `sys.path.insert(0, str(Path(__file__).resolve().parents[4]))` to import from `scripts.kb`. Never inline-reimplement helpers from canonical modules. |
+| `parents[4]` for imports | Skill logic files resolve the repo root with `Path(__file__).resolve().parents[4]` before importing from `scripts.kb`. Never inline-reimplement helpers from canonical modules. |
 | Logic files need matrix rows | Every `logic/*.py` file needs a row in the AGENTS.md write-surface matrix. A doc-only skill (no `logic/`) needs no row. |
 
 ## File Roles
