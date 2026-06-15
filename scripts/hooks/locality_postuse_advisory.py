@@ -8,10 +8,11 @@ classified against the locality ladder before commit. The warning points to
 ADR-028, especially the "Deletion pairing and trailer escape" section and the
 Locality 3c PostToolUse advisory tier defined by the ladder.
 
-Invariant: this script is advisory only. It never exits non-zero, never blocks
-the edit, and never mutates repository state. Missing fields, malformed JSON,
-failed tool results, unsupported tools, or unmatched paths all return 0 without
-emitting a warning.
+Invariant: this script is advisory only. In normal mode it never exits non-zero,
+never blocks the edit, and never mutates repository state. Missing fields,
+malformed JSON, failed tool results, unsupported tools, or unmatched paths all
+return 0 without emitting a warning. `DEBUG_LOCALITY_HOOK=1` is a local
+debugging escape hatch that re-raises unexpected exceptions.
 
 Output contract: for each matched Locality 4 path, emit one JSON warning record
 to stdout. Each record includes a `hookSpecificOutput` envelope with
@@ -33,6 +34,7 @@ from typing import Any
 
 
 LOCALITY_4_PATHS = (".github/copilot-instructions.md", "AGENTS.md")
+DEBUG_ENV_VAR = "DEBUG_LOCALITY_HOOK"
 PAYLOAD_ENV_VARS = (
     "COPILOT_HOOK_EVENT_PAYLOAD",
     "CLAUDE_HOOK_INPUT",
@@ -55,6 +57,17 @@ PATH_KEYS = {
     "edited_files",
     "changed_file",
     "changed_files",
+}
+# Only scan tool input/argument containers; result payloads may echo paths from
+# diagnostics or metadata and should not trigger Locality 4 edit advisories.
+PATH_CONTAINER_KEYS = {
+    "args",
+    "arguments",
+    "input",
+    "parameters",
+    "tool_arguments",
+    "tool_input",
+    "toolInput",
 }
 WRITE_TOOL_NAMES = {
     "edit",
@@ -110,16 +123,20 @@ def _flatten_path_value(value: Any) -> Iterable[str]:
             yield from _flatten_path_value(item)
 
 
+def _collect_paths_from_container(value: Any) -> Iterable[str]:
+    if isinstance(value, Mapping):
+        yield from _collect_paths(value)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _collect_paths_from_container(item)
+
+
 def _collect_paths(mapping: Mapping[str, Any]) -> Iterable[str]:
     for key, value in mapping.items():
         if key in PATH_KEYS:
             yield from _flatten_path_value(value)
-        elif isinstance(value, Mapping):
-            yield from _collect_paths(value)
-        elif isinstance(value, list | tuple):
-            for item in value:
-                if isinstance(item, Mapping):
-                    yield from _collect_paths(item)
+        elif key in PATH_CONTAINER_KEYS:
+            yield from _collect_paths_from_container(value)
 
 
 def _payload_paths(payload: Mapping[str, Any]) -> list[str]:
@@ -133,6 +150,7 @@ def _normalize_cwd(cwd: object) -> str:
 
 
 def _normalize_path(raw_path: str, cwd: str) -> str:
+    # Keep this lexical: hook payload paths may be synthetic and need not exist.
     path = raw_path.strip().replace("\\", "/")
     if path.startswith("file://"):
         path = path.removeprefix("file://")
@@ -214,6 +232,8 @@ def _tool_result_succeeded(payload: Mapping[str, Any]) -> bool:
 
 def _is_post_tool_use(payload: Mapping[str, Any]) -> bool:
     event_name = payload.get("hookEventName") or payload.get("hook_event_name")
+    # Some hook hosts omit the event name for PostToolUse payloads. Missing stays
+    # lenient so this advisory never blocks otherwise-valid write events.
     return not isinstance(event_name, str) or event_name == "PostToolUse"
 
 
@@ -261,6 +281,8 @@ def main() -> int:
         for path in _matched_locality4_paths(_payload_paths(payload), cwd):
             print(json.dumps(_warning_record(path), sort_keys=True))
     except Exception:
+        if os.environ.get(DEBUG_ENV_VAR) == "1":
+            raise
         return 0
     return 0
 

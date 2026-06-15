@@ -7,17 +7,22 @@ import sys
 from pathlib import Path
 
 
-SCRIPT = Path("scripts/hooks/locality_postuse_advisory.py")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = REPO_ROOT / "scripts/hooks/locality_postuse_advisory.py"
 
 
-def _run_hook(payload: object | str) -> subprocess.CompletedProcess[str]:
+def _run_hook(
+    payload: object | str, *, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     stdin = payload if isinstance(payload, str) else json.dumps(payload)
+    run_env = {**os.environ, **(env or {})}
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         input=stdin,
         capture_output=True,
         text=True,
         check=False,
+        env=run_env,
     )
 
 
@@ -137,6 +142,20 @@ def test_unmatched_tool_input_files_exits_cleanly_without_warning() -> None:
         "tool_name": "edit",
         "tool_input": {"files": ["docs/architecture.md"]},
         "tool_result": {"success": True},
+    }
+
+    result = _run_hook(payload)
+
+    assert result.returncode == 0
+    assert result.stderr == ""
+    assert result.stdout == ""
+
+
+def test_tool_result_paths_do_not_trigger_recursive_false_positive() -> None:
+    payload = _successful_edit_payload("docs/architecture.md")
+    payload["tool_result"] = {
+        "success": True,
+        "path": "AGENTS.md",
     }
 
     result = _run_hook(payload)
@@ -295,8 +314,17 @@ def test_empty_malformed_and_missing_field_payloads_emit_no_output() -> None:
         assert result.stderr == ""
 
 
+def test_debug_env_reraises_unexpected_errors_for_local_debugging() -> None:
+    result = _run_hook("{not json", env={"DEBUG_LOCALITY_HOOK": "1"})
+
+    assert result.returncode != 0
+    assert "JSONDecodeError" in result.stderr
+
+
 def test_hooks_json_registers_posttooluse_advisory_command() -> None:
-    hooks = json.loads(Path(".github/hooks/hooks.json").read_text(encoding="utf-8"))
+    hooks = json.loads(
+        (REPO_ROOT / ".github/hooks/hooks.json").read_text(encoding="utf-8")
+    )
     post_tool_use = hooks["hooks"]["PostToolUse"]
 
     matching_entries = [
