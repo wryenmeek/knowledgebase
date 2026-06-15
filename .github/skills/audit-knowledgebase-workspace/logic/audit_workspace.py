@@ -2,20 +2,28 @@
 
 Phase 3 intentionally performs no classification and no mutation. The default
 flow preserves the existing structural-lint audit contract, while the `improve`
-flow is a dry-run scaffold that returns an empty findings list. Any write-capable
-behavior, classifier output, and `.github/.customizations.lock` acquisition are
-deferred to later governed slices.
+flow remains a dry-run scaffold. It returns an empty findings list by default
+and can route caller-supplied classifier findings into read-only OutOfBand
+handoff records. Any write-capable behavior and `.github/.customizations.lock`
+acquisition are deferred to later governed slices.
 """
 
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 from pathlib import Path
 import sys
-from typing import Sequence, TextIO
+from typing import Any, Sequence, TextIO
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+try:
+    from outofband_handoff import OutOfBandRoutingError, route_findings
+except ImportError:  # pragma: no cover - exercised when imported as a package
+    from .outofband_handoff import OutOfBandRoutingError, route_findings
 
 from scripts._optional_surface_common import (
     APPROVAL_NONE,
@@ -60,7 +68,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=SUPPORTED_MODES,
         default="default",
-        help="default: compatibility scaffold; improve: dry-run scaffold with empty findings.",
+        help=(
+            "default: compatibility scaffold; improve: dry-run scaffold with "
+            "empty findings unless caller-supplied findings are routed."
+        ),
     )
     parser.add_argument("--repo-root", default=".", help="Repository root path.")
     parser.add_argument(
@@ -77,8 +88,9 @@ def audit(
     repo_root: str | Path = ".",
     mode: str = "default",
     approval: str = APPROVAL_NONE,
+    classifier_findings: Sequence[Mapping[str, Any]] | None = None,
 ) -> SurfaceResult:
-    """Return an empty read-only audit result with zero writes attempted."""
+    """Return a read-only audit result with zero writes attempted."""
 
     path_rules = _path_rules()
     if approval != APPROVAL_NONE:
@@ -111,10 +123,30 @@ def audit(
             path_rules=path_rules,
         )
 
+    try:
+        routed_findings = route_findings(
+            tuple(classifier_findings or ()),
+            repo_root=normalized_repo_root,
+        )
+    except OutOfBandRoutingError as exc:
+        return SurfaceResult(
+            surface=SURFACE,
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code=REASON_CODE_INVALID_INPUT,
+            message=f"finding routing failed closed: {exc}",
+            approval=approval,
+            path_rules=path_rules,
+        )
+
+    findings = [dict(finding) for finding in routed_findings.eligible_findings]
+    out_of_band_handoffs = [
+        dict(handoff) for handoff in routed_findings.out_of_band_handoffs
+    ]
     message = (
         "default structural lint remains external; compatibility scaffold returned empty findings"
         if mode == "default"
-        else "improve dry-run scaffold completed with empty findings"
+        else "improve dry-run scaffold completed with routed findings"
     )
     return SurfaceResult(
         surface=SURFACE,
@@ -126,8 +158,10 @@ def audit(
         path_rules=path_rules,
         items=(),
         summary={
-            "findings": [],
-            "finding_count": 0,
+            "findings": findings,
+            "finding_count": len(findings),
+            "out_of_band_handoffs": out_of_band_handoffs,
+            "out_of_band_handoff_count": len(out_of_band_handoffs),
             "writes_attempted": 0,
             "dry_run": True,
             "read_only": True,

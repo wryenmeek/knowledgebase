@@ -1,6 +1,6 @@
 # Audit-Workspace `improve` Flow + Instruction Locality Ladder
 
-**Status:** Implemented (Phase 4) — 11 of 23 slices closed as of 2026-06-15; ADR-028 is Accepted, and remaining apply/wiring plus QA slices are open. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
+**Status:** Implemented (Phase 4) — 12 of 23 slices closed as of 2026-06-15; ADR-028 is Accepted, and remaining apply/wiring plus QA slices are open. See § Slice progress (live) below for the authoritative status; plan body revised 2026-06-07 via grill-with-docs pass (see Appendix A for the 12 design decisions adopted on the user's behalf in autopilot mode).
 **Origin:** Adapted from HSI's `docs/planned-work/audit-workspace-improve-flow.md` (2026-06-06), retargeted for this repo's customization surface
 
 | Field | Value |
@@ -36,14 +36,15 @@ As of 2026-06-15 the 23 vertical-slice issues (#190–#212) tracking this plan h
 | 8c | Phase 4 (friction queries) | [#204](https://github.com/wryenmeek/knowledgebase/issues/204) | ✅ CLOSED | `friction_queries.py` with `tests/kb/test_audit_workspace_friction_queries.py` (PR #237) |
 | 8d | Phase 4 (stale generator) | [#205](https://github.com/wryenmeek/knowledgebase/issues/205) | ✅ CLOSED | `stale_generator.py` with `tests/kb/test_audit_workspace_stale_generator.py` (PR #242) |
 | 8e | Phase 4 (redundancy generator) | [#206](https://github.com/wryenmeek/knowledgebase/issues/206) | ✅ CLOSED | `redundancy_generator.py` with `tests/kb/test_audit_workspace_redundancy_generator.py` (PR #238) |
-| 9a–9c | Phase 4 (`--apply`) | [#208](https://github.com/wryenmeek/knowledgebase/issues/208)–[#210](https://github.com/wryenmeek/knowledgebase/issues/210) | OPEN | Pending |
+| 9a–9b | Phase 4 (`--apply`) | [#208](https://github.com/wryenmeek/knowledgebase/issues/208)–[#209](https://github.com/wryenmeek/knowledgebase/issues/209) | OPEN | Pending — allowlist and lock acquisition remain deferred |
+| 9c | Phase 4 (OutOfBand handoff routing) | [#210](https://github.com/wryenmeek/knowledgebase/issues/210) | ✅ CLOSED | `outofband_handoff.py` routes cross-skill findings to `framework-engineer` handoff records with `tests/kb/test_audit_workspace_outofband.py` |
 | 10 | Phase 7 (real-use) | [#212](https://github.com/wryenmeek/knowledgebase/issues/212) | OPEN (HITL) | Pending |
 | qa-ab | QA gate | [#198](https://github.com/wryenmeek/knowledgebase/issues/198) | OPEN (HITL) | Pending |
 | qa-d | QA gate | [#201](https://github.com/wryenmeek/knowledgebase/issues/201) | OPEN | Pending |
 | qa-f | QA gate | [#207](https://github.com/wryenmeek/knowledgebase/issues/207) | OPEN (HITL) | Pending |
 | qa-g | QA gate | [#211](https://github.com/wryenmeek/knowledgebase/issues/211) | OPEN | Pending |
 
-**Rollup:** 11 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each was independently buildable; ADR-028 (#190) is now Accepted and anchors the remaining apply/wiring and QA slices.
+**Rollup:** 12 of 23 slices CLOSED. **The original critical-path framing "no slices begin until #190 (ADR-028) merges" is no longer accurate** — slices 1b/2/3/6 were independently green-lit and merged ahead of #190 because each was independently buildable; ADR-028 (#190) is now Accepted and anchors the remaining apply/wiring and QA slices.
 
 ---
 
@@ -375,13 +376,13 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
     - Hard-fail conditions: missing dry-run input, unsupported destination, classifier output failing JSON schema validation
 - [ ] Phase 4 amends this row to add narrow write capability for `--apply` mode (see Phase 4 spec).
 - [ ] **Dry-run report schema (load-bearing for Phase 7).** Report emits BOTH human-readable markdown AND a fenced JSON block. The schema below includes the classifier fields that Phase 4 / Phase 7 acceptance depends on, so tests and consumers built against this contract from Phase 3 onward stay forward-compatible:
-    ```json
+```json
     {
       "findings": [
         {
           "source_file": "string — .github/copilot-instructions.md | AGENTS.md",
           "source_section": "string — H2/H3 heading or signal identifier",
-          "proposed_destination": "one of: Delete | Locality 0 | Locality 1 | Locality 2 | Locality 3a | Locality 3b | Locality 3c | Locality 3d | Locality 3e | Locality 4 | OutOfBand",
+          "proposed_destination": "one of: Delete | Locality 0 | Locality 1 | Locality 2 | Locality 3a | Locality 3b | Locality 3c | Locality 3d | Locality 3e | Locality 4",
           "deletion_candidate": "string path+snippet | null",
           "rationale": "string",
           "citation": "string artifact path + snippet | null (required when proposed_destination = Delete via redundant-up-the-ladder)",
@@ -391,7 +392,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
         }
       ]
     }
-    ```
+```
     Phase 3's stub classifier MUST emit all seven always-required fields (`source_file`, `source_section`, `proposed_destination`, `rationale`, `compliance_risk`, `expected_token_efficiency_rank`, `cache_strategy`) — the two conditionally-nullable fields (`deletion_candidate`, `citation`) may be `null` when not applicable. Stub findings are hardcoded; values may be placeholder but the seven required keys are mandatory so the JSON schema validator in Phase 3 acceptance is exercised against the same shape Phase 4 / Phase 7 will rely on.
 - [ ] Progressive disclosure: Phase B / `--apply` mechanics live in `logic/` scripts loaded only when the flow is requested. SKILL.md root stays small.
 - [ ] **CONTEXT.md cascade:** bump `last_updated` in `.github/skills/CONTEXT.md`.
@@ -402,12 +403,12 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
 
 - [ ] Replace the Phase 3 stub with the real classifier:
     - `session_store_sql` query templates for friction signals (chronicle commits, repeated user prompts, repeated context loads, hook bypasses, retry loops).
-    - **11-bin classifier** (input: friction signal; output: one of `Delete | Locality 0 | Locality 1 | Locality 2 | Locality 3a | Locality 3b | Locality 3c | Locality 3d | Locality 3e | Locality 4 | OutOfBand` + rationale + `compliance_risk` field + `expected_token_efficiency_rank` field + `cache_strategy` field + suggested artifact path). Output schema matches the Phase 3 canonical JSON block (the `OutOfBand` value is the cross-skill handoff route described below). **Optimization objective (Decision Q5 revised):** for each finding, propose the tier that **minimizes expected token waste across the rule's actual usage pattern**, computed as `(estimated trigger frequency × per-fire cost)`. Not "find the lowest locality number" — find the cheapest *for this rule's expected trigger pattern*. The `compliance_risk` field (Decision Q4 revised) is `"deterministic"` (Locality 0 + Locality 3a/3b/3c/3d) or `"agent-dependent"` (Locality 1, Locality 2, Locality 3e, Locality 4 mechanism-A). Locality 1 demotions inherit Locality-2-equivalent compliance shape — dry-run report MUST surface this for every Locality 1 finding so the reviewer can decide whether the token-cost advantage justifies the compliance dependency. The `cache_strategy` field (Decision Q11) records which skill-corpus indexing strategy generated the finding (`"mtime_first_para"` baseline; `"hybrid_signature"` if Phase 7 retro escalates per K15 upgrade trigger) so successive runs can be diffed to detect late-caught false-negatives. **Locality 1 destination availability assumes CLI behavior verified by reading `app.js`** (no separate gating on Phase 1.5 — that spike measures agent compliance rate, not feature presence). Prompt MUST mention per-context Locality 1 globs (`scripts/kb/**`, `scripts/fleet/**`, `scripts/github_monitor/**`, `scripts/drive_monitor/**`, `scripts/ingest/**`, `scripts/validation/**`, `scripts/reporting/**`, `scripts/maintenance/**`, `scripts/context/**`, `scripts/hooks/**`, `.github/skills/**`, `.github/agents/**`, `wiki/**`, `schema/**`, `docs/decisions/**`, `tests/kb/**`) as **viable destinations the classifier may propose lazily** — but **do not pre-create empty instruction files** (Decision Q8).
+    - **10-bin classifier plus OutOfBand router** (input: friction signal; finding output: one of `Delete | Locality 0 | Locality 1 | Locality 2 | Locality 3a | Locality 3b | Locality 3c | Locality 3d | Locality 3e | Locality 4` + rationale + `compliance_risk` field + `expected_token_efficiency_rank` field + `cache_strategy` field + suggested artifact path). Output schema matches the Phase 3 canonical JSON block; OutOfBand is a separate routing record derived from cross-skill, agent, or prompt `suggested_artifact_path` values rather than a `proposed_destination` enum value. **Optimization objective (Decision Q5 revised):** for each finding, propose the tier that **minimizes expected token waste across the rule's actual usage pattern**, computed as `(estimated trigger frequency × per-fire cost)`. Not "find the lowest locality number" — find the cheapest *for this rule's expected trigger pattern*. The `compliance_risk` field (Decision Q4 revised) is `"deterministic"` (Locality 0 + Locality 3a/3b/3c/3d) or `"agent-dependent"` (Locality 1, Locality 2, Locality 3e, Locality 4 mechanism-A). Locality 1 demotions inherit Locality-2-equivalent compliance shape — dry-run report MUST surface this for every Locality 1 finding so the reviewer can decide whether the token-cost advantage justifies the compliance dependency. The `cache_strategy` field (Decision Q11) records which skill-corpus indexing strategy generated the finding (`"mtime_first_para"` baseline; `"hybrid_signature"` if Phase 7 retro escalates per K15 upgrade trigger) so successive runs can be diffed to detect late-caught false-negatives. **Locality 1 destination availability assumes CLI behavior verified by reading `app.js`** (no separate gating on Phase 1.5 — that spike measures agent compliance rate, not feature presence). Prompt MUST mention per-context Locality 1 globs (`scripts/kb/**`, `scripts/fleet/**`, `scripts/github_monitor/**`, `scripts/drive_monitor/**`, `scripts/ingest/**`, `scripts/validation/**`, `scripts/reporting/**`, `scripts/maintenance/**`, `scripts/context/**`, `scripts/hooks/**`, `.github/skills/**`, `.github/agents/**`, `wiki/**`, `schema/**`, `docs/decisions/**`, `tests/kb/**`) as **viable destinations the classifier may propose lazily** — but **do not pre-create empty instruction files** (Decision Q8).
     - **Hybrid deletion-candidate generator:**
         - **Stale (deterministic):** path/symbol extraction → `git ls-files` / `rg` check; issue ref extraction → `gh issue view --json state`; ADR-supersession walker over `docs/decisions/`.
         - **Redundant-up-the-ladder (LLM judgment with mandatory citation):** loads every lower-locality artifact as comparison corpus; emits redundancy claims only with cited artifact path + snippet. Uncited claims are dropped.
     - **Skill-corpus indexing (Decision Q11):** Cache SKILL.md frontmatter + first paragraph only (not full bodies); refresh on file mtime change. Accepts the false-negative on first pass when a SKILL body changes meaningfully but the first paragraph doesn't — the next chronicle session that surfaces the missed redundancy will catch it. **Document this tradeoff in the SKILL.md `improve` flow contract.**
-    - **Cross-skill suggestions are out-of-band (Decision Q12):** if the classifier identifies a redundancy or demotion target that would require editing another skill's `SKILL.md` or another agent's persona file, the finding is emitted with `proposed_destination: "OutOfBand"` and routes to a framework-engineer handoff. The `--apply` mode refuses to touch cross-skill files.
+    - **Cross-skill suggestions are out-of-band (Decision Q12):** if the classifier identifies a redundancy or demotion target whose `suggested_artifact_path` would require editing another skill's `SKILL.md`, another agent's persona file, or a prompt template, the finding is routed into an `out_of_band_handoffs` record targeting `framework-engineer`. The `--apply` mode refuses to touch cross-skill files.
 - [ ] **Write-surface matrix row — amend with narrow write capability for `--apply` mode** (Decision Q12 blast-radius containment):
     - Path: `.github/skills/audit-knowledgebase-workspace/logic/**`
     - Runtime mode: `read-only only` for `--dry-run` (default); `blocking-only with narrow write capability` for `--apply`
@@ -424,7 +425,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
 
 - [ ] Insert the override block as the **first H2 under the H1 title**, before any other content section, in **both** `.github/copilot-instructions.md` and `AGENTS.md`. (Slice 2 / #192 has already landed both copies; this Phase 5 entry now governs the position invariant going forward.) Required structure (showing `copilot-instructions.md`; substitute `# AGENTS` for the AGENTS.md copy):
 
-    ```markdown
+```markdown
     # Copilot project instructions
 
     <!-- LOCALITY-0-INVARIANT: This H2 MUST remain the first H2 under the H1. -->
@@ -451,7 +452,7 @@ The repo has no `.github/instructions/` directory today. Locality 1 mechanism ne
     manually.
 
     ## <existing first content section>
-    ```
+```
 
 - [ ] **Pre-commit hook to enforce Locality 0 invariant:** add `scripts/hooks/check_override_block_position.py` that verifies the override block is the first H2 in **both** `copilot-instructions.md` and `AGENTS.md` whenever either file is staged. Wire into `.pre-commit-config.yaml`.
 - [ ] **Write-surface matrix row** for the new hook (`read-only only`; standard hook hard-fail behavior).
