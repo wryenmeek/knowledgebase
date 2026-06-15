@@ -409,6 +409,30 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
             "fail closed",
         ),
     },
+    "scripts/hooks/check_locality_ratchet.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Read-only / prerequisite paths": (
+            ".github/copilot-instructions.md",
+            "AGENTS.md",
+            "git diff --cached",
+            "git show",
+            "Locality-4-Justification",
+        ),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": (
+            "ADR-028",
+            "locality-4-justification-trailer.md",
+            ".github/hooks/hooks.json",
+        ),
+        "Hard-fail behavior": (
+            "net-positive gated-region delta",
+            "same-file paired deletion",
+            "Locality-4-Justification",
+            "invalid Locality 4 path",
+            "fail closed",
+        ),
+    },
     "scripts/hooks/check_adr_cross_ref.py": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "forbidden"),
