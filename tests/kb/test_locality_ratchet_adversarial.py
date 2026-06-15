@@ -130,7 +130,7 @@ def _run_ratchet_hook(
         command,
         cwd=repo,
         env=env,
-        input=stdin_text,
+        input=stdin_text if stdin_text is not None else "",
         capture_output=True,
         text=True,
         check=False,
