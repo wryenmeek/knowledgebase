@@ -66,7 +66,7 @@ Every Locality 4 addition to `.github/copilot-instructions.md` or `AGENTS.md` ou
 1. **Paired deletion:** remove a stale or redundant Locality 4 entry of roughly equivalent token weight in the same commit.
 2. **Trailer escape:** add a `Locality-4-Justification:` git trailer using `docs/templates/locality-4-justification-trailer.md`.
 
-Trailer usage has a soft budget: at most one trailer per ten commits touching global rules sections in the rolling window. Beyond that budget, the gate should fail until a paired deletion lands. Trailer validation belongs to a `commit-msg` hook because `pre-commit` cannot see the finalized commit message. The paired line-delta check belongs to `pre-commit`. Contributors must install both stages with `pre-commit install --hook-type pre-commit --hook-type commit-msg` once the hooks land.
+Trailer usage has a soft budget: at most one trailer per ten commits touching the gated regions. The rolling window means the last 10 commits on the target branch that touched the respective gated region (`.github/copilot-instructions.md` or `AGENTS.md` outside exempt regions), counted separately per file unless the Phase 6 hook spec in #199/#200 deliberately changes that algorithm. Beyond that budget, the gate should fail until a paired deletion lands. Trailer validation belongs to a `commit-msg` hook because `pre-commit` cannot see the finalized commit message. The paired line-delta check belongs to `pre-commit`.
 
 Deletion candidates come in two classes:
 
@@ -144,6 +144,13 @@ Future write-capable `audit-knowledgebase-workspace --apply` work uses `.github/
 
 Term placeholders for `instruction ratchet`, `Locality`, `trailer soft budget`, and `customizations lock` are queued for the follow-up context slice. This ADR intentionally does not modify `CONTEXT.md`; that cascade is owned by the later slice that updates context vocabulary after ADR-028 is accepted.
 
+## Alternatives considered
+
+1. **Keep `/chronicle improve` writing directly to `.github/copilot-instructions.md`.** Rejected because it preserves the always-on destination bias and adds locality review only after the ratchet has already occurred.
+2. **Gate only `.github/copilot-instructions.md`.** Rejected because `AGENTS.md` is a multi-consumer convention. The observed +3 clean-window only measures Copilot-CLI-driven growth and would leave Antigravity IDE, Gemini CLI, and other consumers outside the gate.
+3. **Treat `.github/instructions/` files as deterministic scoped instructions.** Rejected because CLI `applyTo:` currently injects metadata only. Agent compliance is required.
+4. **Allow frontmatter-less instruction files as broad scoped guidance.** Rejected because the CLI splitter loads them every turn, creating a hidden Locality 4 ratchet.
+
 ## Consequences
 
 ### Positive
@@ -165,13 +172,6 @@ Term placeholders for `instruction ratchet`, `Locality`, `trailer soft budget`, 
 - Locality 4 additions must pair deletion or carry a budgeted `Locality-4-Justification:` trailer.
 - `audit-knowledgebase-workspace improve` dry-run reports must include proposed destination, rationale, deletion candidate, citation when claiming redundancy, `compliance_risk`, and expected token-efficiency ranking.
 
-## Alternatives considered
-
-1. **Keep `/chronicle improve` writing directly to `.github/copilot-instructions.md`.** Rejected because it preserves the always-on destination bias and adds locality review only after the ratchet has already occurred.
-2. **Gate only `.github/copilot-instructions.md`.** Rejected because `AGENTS.md` is a multi-consumer convention. The observed +3 clean-window only measures Copilot-CLI-driven growth and would leave Antigravity IDE, Gemini CLI, and other consumers outside the gate.
-3. **Treat `.github/instructions/` files as deterministic scoped instructions.** Rejected because CLI `applyTo:` currently injects metadata only. Agent compliance is required.
-4. **Allow frontmatter-less instruction files as broad scoped guidance.** Rejected because the CLI splitter loads them every turn, creating a hidden Locality 4 ratchet.
-
 ## Related decisions
 
 - ADR-005: Write concurrency guards
@@ -179,6 +179,33 @@ Term placeholders for `instruction ratchet`, `Locality`, `trailer soft budget`, 
 - ADR-016: Pre-commit hooks governance
 - ADR-018: CONTEXT.md vocabulary pattern
 - ADR-022: AFK automation uses deterministic scripts; Copilot CLI reserved for HITL
+
+## Migration and rollback
+
+When the Phase 6 hooks land, contributors must install both hook stages so the paired line-delta check and trailer-budget check run at the right boundaries:
+
+```bash
+pre-commit install --hook-type pre-commit --hook-type commit-msg
+```
+
+The `pre-commit` stage owns the gated-region line-delta check. The `commit-msg` stage owns `Locality-4-Justification:` parsing and soft-budget enforcement because it needs the finalized commit message.
+
+If the Phase 6 rollout produces false positives, rollback is limited to the hook wiring or hook implementation for #199/#200. The placement policy in this ADR remains accepted; reviewers must enforce paired deletion or trailer justification manually until a corrected hook lands.
+
+## Implementation status
+
+| Decision subsection | Delivery or follow-up slice |
+|---|---|
+| Locality ladder | Accepted by ADR-028 in #190; `/chronicle improve` is routed through the ladder by the override block delivered in #192. |
+| Five-step efficiency check for Locality 4 promotion | Normative policy accepted in #190; classifier/apply implementation remains split across the audit-workspace improve slices, including #202–#206 and #208–#210. |
+| Deletion pairing and trailer escape | `Locality-4-Justification:` template delivered in #192; paired-deletion `pre-commit` enforcement is tracked in #199; trailer soft-budget `commit-msg` enforcement is tracked in #200. |
+| CLI `applyTo:` mechanism sidebar | Source-code finding accepted in #190; the hidden-ratchet guard that depends on it was delivered in #193. |
+| Hidden-ratchet invariant | Enforced by `scripts/hooks/check_instructions_applyto_present.py`, delivered in #193. |
+| Locality 2 compliance equivalence | Accepted with an explicit Phase 1.5 waiver in #190; measured compliance evidence remains tracked by #196. |
+| Other recognized instruction locations | Recorded as ADR evidence in #190 for future drift checks. |
+| Two-file Locality 4 scope and multi-consumer caveat | Override block coverage for both `.github/copilot-instructions.md` and `AGENTS.md` delivered in #192; Phase 6 gates for both files are tracked in #199/#200. |
+| Customizations lock | Lock constant declared in #191; runtime acquisition for write-capable apply paths remains tracked by #208–#210. |
+| CONTEXT.md terms | Deferred to the follow-up context vocabulary slice named in this ADR; #228 does not add terms. |
 
 ## Open questions
 
