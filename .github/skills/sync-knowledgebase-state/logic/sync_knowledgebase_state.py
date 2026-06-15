@@ -18,7 +18,6 @@ from scripts.kb import checkpoint_registry, path_utils, write_utils
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 REPO_OWNER = "local"
-REPO_NAME = re.sub(r"[^A-Za-z0-9_.-]", "-", REPO_ROOT.name) or "repo"
 WIKI_ROOT = "wiki"
 QMD_REQUIRED_RESOURCE = ".qmd/index"
 INDEX_ARTIFACT = "wiki/index.md"
@@ -52,6 +51,28 @@ class SyncArgumentError(ValueError):
     def __init__(self, reason_code: SyncReasonCode | str, message: str) -> None:
         self.reason_code = str(reason_code)
         super().__init__(message)
+
+
+def _default_repo_name(repo_root: Path) -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_root), "config", "--get", "remote.origin.url"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        remote_name = ""
+    else:
+        remote_url = completed.stdout.strip() if completed.returncode == 0 else ""
+        remote_name = remote_url.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+        if remote_name.endswith(".git"):
+            remote_name = remote_name[:-4]
+    return re.sub(r"[^A-Za-z0-9_.-]", "-", remote_name or repo_root.name) or "repo"
+
+
+REPO_NAME = _default_repo_name(REPO_ROOT)
 
 
 @dataclass(frozen=True, slots=True)

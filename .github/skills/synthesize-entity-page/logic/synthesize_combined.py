@@ -69,7 +69,13 @@ def run(
     repo_root: Path | None = None,
     lock_already_held: bool = False,
 ) -> int:
-    """Synthesize entity and concept pages under a single lock. Returns 0 on success."""
+    """Synthesize entity and concept pages under a single lock.
+
+    ``lock_already_held`` is for callers that already acquired
+    ``wiki/.kb_write.lock`` before invoking this combined writer (for example,
+    a future checkpoint-registry orchestration path). The guard verifies this
+    process holds the lock before skipping the nested acquisition.
+    """
     if repo_root is None:
         repo_root = Path(__file__).resolve().parents[4]
 

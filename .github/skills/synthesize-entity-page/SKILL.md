@@ -39,7 +39,10 @@ the same critical section. Entity page behavior remains append-only on updates
 - Output: `wiki/entities/<slug>.md` pages (created or updated); CI-3 combined
   flow also writes `wiki/concepts/<slug>.md`
 - Lock: standalone acquires `wiki/.kb_write.lock` before entity writes; CI-3
-  combined flow acquires once and reuses it for entity + concept writes
+  combined flow acquires once and reuses it for entity + concept writes.
+  Programmatic callers that already hold `wiki/.kb_write.lock` in this process
+  may pass `lock_already_held=True`; the runtime verifies the held lock and
+  fails closed if the flag is used without it.
 - Skip: soft-skipped bundles produce no writes; ambiguous matches and slug collisions
   are skipped (logged to stderr) and counted in the results dict
 
@@ -62,7 +65,9 @@ Load the JSON bundle from `extract_entities.py`. If `soft_skipped: true`, exit c
 CI-3's `synthesize_combined.py` acquires `wiki/.kb_write.lock` once, then calls
 `_write_entity_drafts` followed by `_write_concept_drafts` before releasing.
 When `synthesize_entity_page.py` is invoked standalone, it acquires/releases the
-lock around entity writes only.
+lock around entity writes only. Non-CLI callers may skip the nested acquisition
+with `lock_already_held=True` only after acquiring the wiki write lock in the
+same process.
 
 ### Step 3: Scan existing entity pages
 

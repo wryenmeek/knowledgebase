@@ -203,6 +203,7 @@ def _mutation_payload(
 
 
 def test_bootstrap_classifies_each_artifact_type_and_reports_shape(repo_root: Path) -> None:
+    """Assert: bootstrap classifies each artifact type and reports shape."""
     (repo_root / "wiki" / "sources" / "source.md").write_text("source\n", encoding="utf-8")
     _write_page(
         repo_root,
@@ -241,6 +242,7 @@ def test_bootstrap_classifies_each_artifact_type_and_reports_shape(repo_root: Pa
 
 
 def test_main_bootstrap_and_mutate_argument_errors(repo_root: Path) -> None:
+    """Assert: main bootstrap and mutate argument errors."""
     _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
     bootstrap_stream = io.StringIO()
     mutate_stream = io.StringIO()
@@ -264,7 +266,118 @@ def test_main_bootstrap_and_mutate_argument_errors(repo_root: Path) -> None:
     assert json.loads(parse_stream.getvalue())["mode"] == "unknown"
 
 
+def test_cli_rejects_cross_mode_arguments_and_bad_registry_choice(repo_root: Path) -> None:
+    """Assert: cli rejects cross mode arguments and bad registry choice."""
+    _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
+    mutation = _write_mutation(
+        repo_root,
+        _mutation_payload(items=[{"item_key": "wiki_entity_page:alpha", "target_status": "in_progress"}]),
+    )
+    mutate_stream = io.StringIO()
+    verify_stream = io.StringIO()
+    registry_stream = io.StringIO()
+
+    mutate_exit = checkpoint_registry.main(
+        [
+            "--mutate",
+            "--repo-root",
+            str(repo_root),
+            "--input",
+            mutation,
+            "--approval",
+            "approved",
+            "--apply",
+        ],
+        output_stream=mutate_stream,
+    )
+    verify_exit = checkpoint_registry.main(
+        ["--verify", "--repo-root", str(repo_root), "--input", mutation],
+        output_stream=verify_stream,
+    )
+    registry_exit = checkpoint_registry.main(
+        ["--verify", "--repo-root", str(repo_root), "--registry", "raw/wiki-processing/other.json"],
+        output_stream=registry_stream,
+    )
+
+    mutate = json.loads(mutate_stream.getvalue())
+    verify = json.loads(verify_stream.getvalue())
+    registry = json.loads(registry_stream.getvalue())
+    assert mutate_exit == 1
+    assert mutate["mode"] == "mutate"
+    assert mutate["reason_code"] == "invalid_input"
+    assert mutate["message"] == "--apply is only valid with --bootstrap"
+    assert verify_exit == 1
+    assert verify["mode"] == "verify"
+    assert verify["reason_code"] == "invalid_input"
+    assert verify["message"] == "--input is only valid with --mutate"
+    assert registry_exit == 1
+    assert registry["mode"] == "unknown"
+    assert "invalid choice" in registry["message"]
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected_mode", "expected_message"),
+    (
+        (["--bootstrap", "--input", "docs/staged/mutation.json"], "bootstrap", "--input is only valid with --mutate"),
+        (["--bootstrap", "--trigger", "manual_rescan"], "bootstrap", "--trigger is only valid with --mutate"),
+        (["--bootstrap", "--warn-only"], "bootstrap", "--warn-only is only valid with --verify"),
+        (["--bootstrap", "--log-warnings"], "bootstrap", "--log-warnings is only valid with --verify"),
+        (["--bootstrap", "--now", NOW], "bootstrap", "--now is only valid with --mutate"),
+        (["--bootstrap", "--apply", "--dry-run"], "bootstrap", "--dry-run cannot be combined with --apply"),
+        (["--mutate", "--input", "docs/staged/mutation.json", "--dry-run"], "mutate", "--dry-run is only valid with --bootstrap"),
+        (["--mutate", "--input", "docs/staged/mutation.json", "--warn-only"], "mutate", "--warn-only is only valid with --verify"),
+        (["--mutate", "--input", "docs/staged/mutation.json", "--log-warnings"], "mutate", "--log-warnings is only valid with --verify"),
+        (["--verify", "--apply"], "verify", "--apply is only valid with --bootstrap"),
+        (["--verify", "--dry-run"], "verify", "--dry-run is only valid with --bootstrap"),
+        (["--verify", "--trigger", "manual_rescan"], "verify", "--trigger is only valid with --mutate"),
+        (["--verify", "--now", NOW], "verify", "--now is only valid with --mutate"),
+    ),
+)
+def test_cli_rejects_every_cross_mode_argument_without_side_effects(
+    repo_root: Path,
+    argv: list[str],
+    expected_mode: str,
+    expected_message: str,
+) -> None:
+    """Assert: cli rejects every cross mode argument without side effects."""
+    _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
+    before = _registry_path(repo_root).read_text(encoding="utf-8")
+    output_stream = io.StringIO()
+
+    exit_code = checkpoint_registry.main(
+        [*argv, "--repo-root", str(repo_root), "--approval", "approved"],
+        output_stream=output_stream,
+    )
+
+    result = json.loads(output_stream.getvalue())
+    assert exit_code == 1
+    assert result["mode"] == expected_mode
+    assert result["reason_code"] == "invalid_input"
+    assert result["message"] == expected_message
+    assert _registry_path(repo_root).read_text(encoding="utf-8") == before
+    assert not (repo_root / "wiki" / "log.md").exists()
+
+
+def test_cli_bootstrap_reports_redundant_dry_run_warning(repo_root: Path) -> None:
+    """Assert: cli bootstrap reports redundant dry run warning."""
+    _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
+    output_stream = io.StringIO()
+
+    exit_code = checkpoint_registry.main(
+        ["--bootstrap", "--dry-run", "--repo-root", str(repo_root)],
+        output_stream=output_stream,
+    )
+
+    result = json.loads(output_stream.getvalue())
+    assert exit_code == 0
+    assert result["summary"]["warnings"] == [
+        "--dry-run is redundant with --bootstrap; bootstrap is dry-run unless --apply is supplied"
+    ]
+    assert not _registry_path(repo_root).exists()
+
+
 def test_main_dispatches_mutate_with_valid_input(repo_root: Path) -> None:
+    """Assert: main dispatches mutate with valid input."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     mutation = _write_mutation(
         repo_root,
@@ -299,6 +412,7 @@ def test_bootstrap_apply_requires_approval_then_replays_idempotently(
     repo_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Assert: bootstrap apply requires approval then replays idempotently."""
     _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
 
     denied = checkpoint_registry.bootstrap_registry(repo_root=repo_root, apply=True)
@@ -331,6 +445,7 @@ def test_bootstrap_apply_uses_checkpoint_lock_path(
     repo_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Assert: bootstrap apply uses checkpoint lock path."""
     _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
     calls = _track_lock_calls(monkeypatch)
 
@@ -348,6 +463,7 @@ def test_bootstrap_apply_fails_closed_on_lock_contention(
     repo_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Assert: bootstrap apply fails closed on lock contention."""
     _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
 
     def locked(*args: Any, **kwargs: Any) -> Any:
@@ -365,7 +481,46 @@ def test_bootstrap_apply_fails_closed_on_lock_contention(
     assert not _registry_path(repo_root).exists()
 
 
+def test_bootstrap_reports_schema_validation_failure_without_writing(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assert: bootstrap reports schema validation failure without writing."""
+    invalid_registry = _base_registry(items=[_item(status="not-a-state")])
+
+    def build_invalid_registry(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        return invalid_registry, []
+
+    monkeypatch.setattr(checkpoint_registry, "_build_bootstrap_registry", build_invalid_registry)
+    result = checkpoint_registry.bootstrap_registry(repo_root=repo_root, apply=True, approval="approved")
+
+    assert result.status == "fail"
+    assert result.reason_code == "schema_validation_failed"
+    assert "items[0].status is unsupported" in result.items[0]["message"]
+    assert not _registry_path(repo_root).exists()
+
+
+def test_bootstrap_apply_fails_closed_on_write_oserror(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assert: bootstrap apply fails closed on write oserror."""
+    _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
+
+    def fail_replace(*args: Any, **kwargs: Any) -> Any:
+        raise OSError("simulated bootstrap write failure")
+
+    monkeypatch.setattr(checkpoint_registry.write_utils, "atomic_replace_governed_artifact", fail_replace)
+    result = checkpoint_registry.bootstrap_registry(repo_root=repo_root, apply=True, approval="approved")
+
+    assert result.status == "fail"
+    assert result.reason_code == "write_failed"
+    assert "simulated bootstrap write failure" in result.message
+    assert not _registry_path(repo_root).exists()
+
+
 def test_bootstrap_apply_refuses_to_clobber_different_existing_registry(repo_root: Path) -> None:
+    """Assert: bootstrap apply refuses to clobber different existing registry."""
     _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
     _write_registry(repo_root, _base_registry(items=[]))
     before = _registry_path(repo_root).read_text(encoding="utf-8")
@@ -382,6 +537,7 @@ def test_bootstrap_apply_refuses_to_clobber_different_existing_registry(repo_roo
 
 
 def test_bootstrap_detects_identity_collisions_without_writing(repo_root: Path) -> None:
+    """Assert: bootstrap detects identity collisions without writing."""
     _write_page(
         repo_root,
         "wiki/entities/alpha.md",
@@ -407,6 +563,7 @@ def test_bootstrap_detects_identity_collisions_without_writing(repo_root: Path) 
 
 
 def test_bootstrap_excludes_unclassifiable_outputs(repo_root: Path) -> None:
+    """Assert: bootstrap excludes unclassifiable outputs."""
     _write_page(repo_root, "wiki/analyses/missing-fingerprint.md", page_type="analysis", title="Bad Analysis")
     (repo_root / "wiki" / "entities" / "broken.md").write_text("not frontmatter\n", encoding="utf-8")
 
@@ -418,7 +575,44 @@ def test_bootstrap_excludes_unclassifiable_outputs(repo_root: Path) -> None:
     assert {item["reason_code"] for item in result.items} == {"classification_failed"}
 
 
+def test_bootstrap_deduplicates_identical_exclusion_records() -> None:
+    """Assert: bootstrap deduplicates identical exclusion records."""
+    duplicate = {
+        "path": "wiki/entities/alpha.md",
+        "status": "excluded",
+        "reason_code": "collision_detected",
+        "message": "duplicate item_key: wiki_entity_page:alpha",
+    }
+    other = {
+        "path": "wiki/entities/bravo.md",
+        "status": "excluded",
+        "reason_code": "classification_failed",
+        "message": "page template validation failed",
+    }
+
+    deduped = checkpoint_registry._dedupe_exclusions([duplicate, other, dict(duplicate)])
+
+    assert deduped == [other, duplicate]
+
+
+def test_bootstrap_uses_epoch_timestamp_when_page_updated_at_is_invalid(repo_root: Path) -> None:
+    """Assert: bootstrap uses epoch timestamp when page updated at is invalid."""
+    _write_page(
+        repo_root,
+        "wiki/entities/alpha.md",
+        page_type="entity",
+        title="Alpha",
+        extra_frontmatter="updated_at: not-a-timestamp\n",
+    )
+
+    result = checkpoint_registry.bootstrap_registry(repo_root=repo_root)
+
+    assert result.status == "pass"
+    assert result.items[0]["last_succeeded_at"] == "1970-01-01T00:00:00Z"
+
+
 def test_bootstrap_fails_for_non_repo_root_and_bad_registry_path(repo_root: Path) -> None:
+    """Assert: bootstrap fails for non repo root and bad registry path."""
     missing_agent = repo_root / "nested"
     missing_agent.mkdir()
 
@@ -435,6 +629,7 @@ def test_bootstrap_fails_for_non_repo_root_and_bad_registry_path(repo_root: Path
 
 
 def test_registry_path_rejects_symlinked_parent(repo_root: Path) -> None:
+    """Assert: registry path rejects symlinked parent."""
     shutil.rmtree(repo_root / "raw" / "wiki-processing")
     try:
         os.symlink(repo_root / "wiki", repo_root / "raw" / "wiki-processing")
@@ -453,6 +648,7 @@ def test_registry_path_rejects_symlinked_parent(repo_root: Path) -> None:
 
 
 def test_bootstrap_excludes_symlinked_candidate_before_reading(repo_root: Path) -> None:
+    """Assert: bootstrap excludes symlinked candidate before reading."""
     target = repo_root / "outside-entity.md"
     target.write_text("not a valid page\n", encoding="utf-8")
     link = repo_root / "wiki" / "entities" / "linked.md"
@@ -470,6 +666,7 @@ def test_bootstrap_excludes_symlinked_candidate_before_reading(repo_root: Path) 
 
 
 def test_mutate_resumes_interrupted_running_batch_to_completion(repo_root: Path) -> None:
+    """Assert: mutate resumes interrupted running batch to completion."""
     _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
     _write_registry(
         repo_root,
@@ -509,6 +706,7 @@ def test_mutate_resumes_interrupted_running_batch_to_completion(repo_root: Path)
 
 
 def test_mutate_revalidates_stale_item_by_claiming_it(repo_root: Path) -> None:
+    """Assert: mutate revalidates stale item by claiming it."""
     _write_registry(repo_root, _base_registry(items=[_item(status="stale")]))
     mutation = _write_mutation(
         repo_root,
@@ -534,7 +732,9 @@ def test_mutate_revalidates_stale_item_by_claiming_it(repo_root: Path) -> None:
 
 
 def test_mutate_requires_approval_and_can_add_new_pending_item(repo_root: Path) -> None:
+    """Assert: mutate requires approval and can add new pending item."""
     _write_registry(repo_root, _base_registry(items=[]))
+    before = _registry_path(repo_root).read_text(encoding="utf-8")
     mutation = _write_mutation(
         repo_root,
         _mutation_payload(
@@ -552,6 +752,10 @@ def test_mutate_requires_approval_and_can_add_new_pending_item(repo_root: Path) 
     )
 
     denied = checkpoint_registry.mutate_registry(repo_root=repo_root, input_path=mutation)
+    assert denied.status == "fail"
+    assert denied.reason_code == "approval_required"
+    assert _registry_path(repo_root).read_text(encoding="utf-8") == before
+
     applied = checkpoint_registry.mutate_registry(
         repo_root=repo_root,
         input_path=mutation,
@@ -559,13 +763,12 @@ def test_mutate_requires_approval_and_can_add_new_pending_item(repo_root: Path) 
         now=NOW,
     )
 
-    assert denied.status == "fail"
-    assert denied.reason_code == "approval_required"
     assert applied.status == "pass"
     assert _read_registry(repo_root)["items"][0]["item_key"] == "wiki_concept_page:new"
 
 
 def test_mutate_cli_trigger_override_updates_batch_trigger(repo_root: Path) -> None:
+    """Assert: mutate cli trigger override updates batch trigger."""
     _write_registry(repo_root, _base_registry(items=[_item(status="stale")]))
     mutation = _write_mutation(
         repo_root,
@@ -593,6 +796,7 @@ def test_mutate_cli_trigger_override_updates_batch_trigger(repo_root: Path) -> N
 
 
 def test_mutate_fails_closed_on_lock_contention(repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert: mutate fails closed on lock contention."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     mutation = _write_mutation(
         repo_root,
@@ -615,7 +819,97 @@ def test_mutate_fails_closed_on_lock_contention(repo_root: Path, monkeypatch: py
     assert _read_registry(repo_root)["items"][0]["status"] == "pending"
 
 
+def test_mutate_reads_stdin_and_rejects_oversized_stdin(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assert: mutate reads stdin and rejects oversized stdin."""
+    _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
+    stdin_payload = json.dumps(
+        _mutation_payload(items=[{"item_key": "wiki_entity_page:alpha", "target_status": "in_progress"}])
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(stdin_payload))
+
+    applied = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path="-",
+        approval="approved",
+        now=NOW,
+    )
+
+    monkeypatch.setattr(checkpoint_registry, "MAX_INPUT_BYTES", 10)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(" " * 11))
+    oversized = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path="-",
+        approval="approved",
+        now=NOW,
+    )
+
+    assert applied.status == "pass"
+    assert _read_registry(repo_root)["items"][0]["status"] == "in_progress"
+    assert oversized.status == "fail"
+    assert oversized.reason_code == "invalid_input"
+    assert "exceeds 10 byte limit" in oversized.message
+
+
+def test_mutate_rejects_malformed_and_oversized_mutation_inputs(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assert: mutate rejects malformed and oversized mutation inputs."""
+    _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
+
+    bad_json_path = repo_root / "docs" / "staged" / "bad-json.json"
+    bad_json_path.write_text("{not json", encoding="utf-8")
+    before = _registry_path(repo_root).read_text(encoding="utf-8")
+    bad_json = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path=bad_json_path.relative_to(repo_root).as_posix(),
+        approval="approved",
+        now=NOW,
+    )
+
+    non_object_path = repo_root / "docs" / "staged" / "non-object.json"
+    non_object_path.write_text("[]", encoding="utf-8")
+    non_object = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path=non_object_path.relative_to(repo_root).as_posix(),
+        approval="approved",
+        now=NOW,
+    )
+
+    monkeypatch.setattr(checkpoint_registry, "MAX_INPUT_BYTES", 5)
+    oversized_path = repo_root / "docs" / "staged" / "oversized.json"
+    oversized_path.write_text('{"a":1}', encoding="utf-8")
+    oversized = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path=oversized_path.relative_to(repo_root).as_posix(),
+        approval="approved",
+        now=NOW,
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{"))
+    malformed_stdin = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path="-",
+        approval="approved",
+        now=NOW,
+    )
+
+    assert bad_json.status == "fail"
+    assert bad_json.reason_code == "json_parse_failed"
+    assert non_object.status == "fail"
+    assert non_object.reason_code == "invalid_input"
+    assert oversized.status == "fail"
+    assert oversized.reason_code == "invalid_input"
+    assert "exceeds 5 byte limit" in oversized.message
+    assert malformed_stdin.status == "fail"
+    assert malformed_stdin.reason_code == "json_parse_failed"
+    assert _registry_path(repo_root).read_text(encoding="utf-8") == before
+
+
 def test_mutate_reports_json_parse_failed_on_corrupt_registry(repo_root: Path) -> None:
+    """Assert: mutate reports json parse failed on corrupt registry."""
     _registry_path(repo_root).write_text("{not json", encoding="utf-8")
     mutation = _write_mutation(
         repo_root,
@@ -634,6 +928,7 @@ def test_mutate_reports_json_parse_failed_on_corrupt_registry(repo_root: Path) -
 
 
 def test_mutate_uses_checkpoint_lock_path(repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert: mutate uses checkpoint lock path."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     mutation = _write_mutation(
         repo_root,
@@ -653,6 +948,7 @@ def test_mutate_uses_checkpoint_lock_path(repo_root: Path, monkeypatch: pytest.M
 
 
 def test_mutate_preserves_identity_across_rename_with_path_alias(repo_root: Path) -> None:
+    """Assert: mutate preserves identity across rename with path alias."""
     _write_page(repo_root, "wiki/entities/alpha-renamed.md", page_type="entity", title="Alpha Renamed")
     _write_registry(repo_root, _base_registry(items=[_item(status="completed", last_succeeded_at=RECENT)]))
     mutation = _write_mutation(
@@ -685,6 +981,7 @@ def test_mutate_preserves_identity_across_rename_with_path_alias(repo_root: Path
 
 
 def test_mutate_rejects_analysis_page_rename(repo_root: Path) -> None:
+    """Assert: mutate rejects analysis page rename."""
     _write_registry(
         repo_root,
         _base_registry(
@@ -729,6 +1026,7 @@ def test_mutate_rejects_analysis_page_rename(repo_root: Path) -> None:
 
 
 def test_mutate_enforces_one_hour_stale_timeout_and_rolls_back(repo_root: Path) -> None:
+    """Assert: mutate enforces one hour stale timeout and rolls back."""
     _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
     original = _base_registry(items=[_item(status="in_progress", last_attempted_at=OLD)])
     _write_registry(repo_root, original)
@@ -751,6 +1049,7 @@ def test_mutate_enforces_one_hour_stale_timeout_and_rolls_back(repo_root: Path) 
 
 
 def test_mutate_rolls_back_when_atomic_replace_fails(repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert: mutate rolls back when atomic replace fails."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     before = _registry_path(repo_root).read_text(encoding="utf-8")
     mutation = _write_mutation(
@@ -775,6 +1074,7 @@ def test_mutate_rolls_back_when_atomic_replace_fails(repo_root: Path, monkeypatc
 
 
 def test_mutate_rolls_back_entire_batch_when_later_item_fails(repo_root: Path) -> None:
+    """Assert: mutate rolls back entire batch when later item fails."""
     _write_registry(
         repo_root,
         _base_registry(
@@ -820,6 +1120,7 @@ def test_mutate_rolls_back_entire_batch_when_later_item_fails(repo_root: Path) -
 
 
 def test_mutate_records_failed_transition_and_missing_output_fail_closed(repo_root: Path) -> None:
+    """Assert: mutate records failed transition and missing output fail closed."""
     _write_registry(repo_root, _base_registry(items=[_item(status="in_progress", last_attempted_at=RECENT)]))
     fail_mutation = _write_mutation(
         repo_root,
@@ -860,6 +1161,7 @@ def test_mutate_records_failed_transition_and_missing_output_fail_closed(repo_ro
 
 
 def test_mutate_completion_requires_valid_page_and_matching_fingerprints(repo_root: Path) -> None:
+    """Assert: mutate completion requires valid page and matching fingerprints."""
     (repo_root / "wiki" / "entities" / "alpha.md").write_text("not frontmatter\n", encoding="utf-8")
     _write_registry(repo_root, _base_registry(items=[_item(status="in_progress", last_attempted_at=RECENT)]))
     invalid_page_mutation = _write_mutation(
@@ -900,7 +1202,51 @@ def test_mutate_completion_requires_valid_page_and_matching_fingerprints(repo_ro
     assert mismatch.reason_code == "fingerprint_mismatch"
 
 
+@pytest.mark.parametrize(
+    "operation_extra",
+    (
+        {"dependency_fingerprint": HASH_B},
+        {"source_fingerprint": HASH_C, "dependency_fingerprint": HASH_B},
+        {"source_fingerprint": HASH_A},
+        {"source_fingerprint": HASH_A, "dependency_fingerprint": HASH_C},
+    ),
+)
+def test_mutate_completion_rolls_back_on_each_fingerprint_mismatch(
+    repo_root: Path,
+    operation_extra: dict[str, str],
+) -> None:
+    """Assert: mutate completion rolls back on each fingerprint mismatch."""
+    _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
+    _write_registry(repo_root, _base_registry(items=[_item(status="in_progress", last_attempted_at=RECENT)]))
+    before = _registry_path(repo_root).read_text(encoding="utf-8")
+    mutation = _write_mutation(
+        repo_root,
+        _mutation_payload(
+            items=[
+                {
+                    "item_key": "wiki_entity_page:alpha",
+                    "target_status": "completed",
+                    **operation_extra,
+                }
+            ]
+        ),
+        "fingerprint-case.json",
+    )
+
+    result = checkpoint_registry.mutate_registry(
+        repo_root=repo_root,
+        input_path=mutation,
+        approval="approved",
+        now=NOW,
+    )
+
+    assert result.status == "fail"
+    assert result.reason_code == "fingerprint_mismatch"
+    assert _registry_path(repo_root).read_text(encoding="utf-8") == before
+
+
 def test_mutate_rejects_invalid_batch_and_item_inputs(repo_root: Path) -> None:
+    """Assert: mutate rejects invalid batch and item inputs."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")], batches=[_batch(status="completed")]))
     cases = [
         ({}, "mutation input requires a batch object"),
@@ -953,6 +1299,7 @@ def test_mutate_rejects_invalid_batch_and_item_inputs(repo_root: Path) -> None:
 
 
 def test_mutate_rejects_input_paths_outside_staged_json_boundary(repo_root: Path) -> None:
+    """Assert: mutate rejects input paths outside staged json boundary."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     payload = _mutation_payload(items=[{"item_key": "wiki_entity_page:alpha", "target_status": "in_progress"}])
     outside = repo_root / "mutation.json"
@@ -974,6 +1321,7 @@ def test_mutate_rejects_input_paths_outside_staged_json_boundary(repo_root: Path
 
 
 def test_mutate_rejects_symlinked_input_file(repo_root: Path) -> None:
+    """Assert: mutate rejects symlinked input file."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     payload = _mutation_payload(items=[{"item_key": "wiki_entity_page:alpha", "target_status": "in_progress"}])
     target = repo_root / "docs" / "staged" / "real.json"
@@ -999,6 +1347,7 @@ def test_mutate_rejects_symlinked_input_file(repo_root: Path) -> None:
 
 
 def test_mutate_rejects_new_item_output_path_traversal_and_wrong_namespace(repo_root: Path) -> None:
+    """Assert: mutate rejects new item output path traversal and wrong namespace."""
     _write_registry(repo_root, _base_registry(items=[]))
     cases = [
         ("wiki/entities/../concepts/bad.md", "wiki_entity_page"),
@@ -1037,6 +1386,7 @@ def test_mutate_rejects_new_item_output_path_traversal_and_wrong_namespace(repo_
 
 
 def test_mutate_rejects_running_batch_metadata_mismatch(repo_root: Path) -> None:
+    """Assert: mutate rejects running batch metadata mismatch."""
     _write_registry(
         repo_root,
         _base_registry(
@@ -1066,6 +1416,7 @@ def test_mutate_rejects_running_batch_metadata_mismatch(repo_root: Path) -> None
 
 
 def test_mutate_enforces_terminal_batch_item_outcome_invariants(repo_root: Path) -> None:
+    """Assert: mutate enforces terminal batch item outcome invariants."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     mutation = _write_mutation(
         repo_root,
@@ -1091,6 +1442,7 @@ def test_mutate_enforces_terminal_batch_item_outcome_invariants(repo_root: Path)
 
 
 def test_mutate_rejects_completed_batch_when_omitted_claimed_item_remains_in_progress(repo_root: Path) -> None:
+    """Assert: mutate rejects completed batch when omitted claimed item remains in progress."""
     _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
     _write_registry(
         repo_root,
@@ -1138,6 +1490,7 @@ def test_mutate_rejects_completed_batch_when_omitted_claimed_item_remains_in_pro
 
 
 def test_mutate_allows_partial_batch_only_with_mixed_item_outcomes(repo_root: Path) -> None:
+    """Assert: mutate allows partial batch only with mixed item outcomes."""
     _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
     _write_registry(
         repo_root,
@@ -1312,6 +1665,7 @@ def test_mutate_enforces_trigger_transition_matrix(
     expected_status: str,
     expected_reason: str,
 ) -> None:
+    """Assert: mutate enforces trigger transition matrix."""
     if target_status == "completed":
         _write_page(repo_root, "wiki/entities/alpha.md", page_type="entity", title="Alpha")
     _write_registry(
@@ -1377,6 +1731,7 @@ def test_mutate_rejects_truly_forbidden_pairs(
     target_status: str,
     operation_extra: dict[str, Any],
 ) -> None:
+    """Assert: mutate rejects truly forbidden pairs."""
     _write_registry(
         repo_root,
         _base_registry(
@@ -1416,6 +1771,7 @@ def test_mutate_rejects_truly_forbidden_pairs(
 
 
 def test_verify_reports_file_size_item_count_and_preserves_registry(repo_root: Path) -> None:
+    """Assert: verify reports file size item count and preserves registry."""
     registry = _base_registry(items=[_item(status="pending"), _item(key="wiki_concept_page:beta", output_path="wiki/concepts/beta.md", artifact_type="wiki_concept_page")])
     _write_registry(repo_root, registry)
     before = _registry_path(repo_root).read_text(encoding="utf-8")
@@ -1432,6 +1788,7 @@ def test_verify_reports_file_size_item_count_and_preserves_registry(repo_root: P
 
 
 def test_verify_proceeds_when_checkpoint_lock_is_held(repo_root: Path) -> None:
+    """Assert: verify proceeds when checkpoint lock is held."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     lock_path = repo_root / contracts.CHECKPOINT_REGISTRY_LOCK_PATH
     lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1448,6 +1805,7 @@ def test_verify_proceeds_when_checkpoint_lock_is_held(repo_root: Path) -> None:
 
 
 def test_verify_detects_schema_failure_and_warn_only_exit_semantics(repo_root: Path) -> None:
+    """Assert: verify detects schema failure and warn only exit semantics."""
     broken = _base_registry(items=[_item(status="not-a-state")])
     _write_registry(repo_root, broken)
     strict_stream = io.StringIO()
@@ -1475,6 +1833,7 @@ def test_verify_log_warnings_requires_approval_and_uses_lock(
     repo_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Assert: verify log warnings requires approval and uses lock."""
     broken = _base_registry(items=[_item(status="not-a-state")])
     _write_registry(repo_root, broken)
     calls = _track_lock_calls(monkeypatch)
@@ -1484,6 +1843,10 @@ def test_verify_log_warnings_requires_approval_and_uses_lock(
         warn_only=True,
         log_warnings=True,
     )
+    assert denied.status == "fail"
+    assert denied.reason_code == "approval_required"
+    assert not (repo_root / "wiki" / "log.md").exists()
+
     approved = checkpoint_registry.verify_registry(
         repo_root=repo_root,
         warn_only=True,
@@ -1491,8 +1854,6 @@ def test_verify_log_warnings_requires_approval_and_uses_lock(
         approval="approved",
     )
 
-    assert denied.status == "fail"
-    assert denied.reason_code == "approval_required"
     assert approved.status == "pass"
     assert approved.summary["log_appended"] is True
     assert approved.lock_path == contracts.WRITE_LOCK_PATH
@@ -1503,6 +1864,7 @@ def test_verify_log_warnings_requires_approval_and_uses_lock(
 
 
 def test_verify_log_warnings_logs_json_parse_failures(repo_root: Path) -> None:
+    """Assert: verify log warnings logs json parse failures."""
     _registry_path(repo_root).write_text("{not json", encoding="utf-8")
 
     result = checkpoint_registry.verify_registry(
@@ -1523,6 +1885,7 @@ def test_verify_log_warnings_fails_closed_on_wiki_lock_contention(
     repo_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Assert: verify log warnings fails closed on wiki lock contention."""
     broken = _base_registry(items=[_item(status="not-a-state")])
     _write_registry(repo_root, broken)
 
@@ -1542,7 +1905,33 @@ def test_verify_log_warnings_fails_closed_on_wiki_lock_contention(
     assert not (repo_root / "wiki" / "log.md").exists()
 
 
+def test_verify_log_warnings_fails_closed_on_log_write_error(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assert: verify log warnings fails closed on log write error."""
+    broken = _base_registry(items=[_item(status="not-a-state")])
+    _write_registry(repo_root, broken)
+
+    def fail_append(*args: Any, **kwargs: Any) -> Any:
+        raise OSError("simulated log write failure")
+
+    monkeypatch.setattr(checkpoint_registry.write_utils, "append_log_only_state_changes", fail_append)
+    result = checkpoint_registry.verify_registry(
+        repo_root=repo_root,
+        warn_only=True,
+        log_warnings=True,
+        approval="approved",
+    )
+
+    assert result.status == "fail"
+    assert result.reason_code == "write_failed"
+    assert "simulated log write failure" in result.message
+    assert not (repo_root / "wiki" / "log.md").exists()
+
+
 def test_verify_rejects_symlinked_registry_path(repo_root: Path) -> None:
+    """Assert: verify rejects symlinked registry path."""
     _registry_path(repo_root).unlink(missing_ok=True)
     target = repo_root / "redirect-registry.json"
     target.write_text(json.dumps(_base_registry(items=[])), encoding="utf-8")
@@ -1562,6 +1951,7 @@ def test_verify_reports_registry_read_oserror(
     repo_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Assert: verify reports registry read oserror."""
     _write_registry(repo_root, _base_registry(items=[]))
 
     def unreadable(*args: Any, **kwargs: Any) -> Any:
@@ -1576,6 +1966,7 @@ def test_verify_reports_registry_read_oserror(
 
 
 def test_verify_reports_schema_errors_for_malformed_registry_fields(repo_root: Path) -> None:
+    """Assert: verify reports schema errors for malformed registry fields."""
     malformed = {
         "version": "2",
         "source_fingerprints": {"../bad": "not-a-hash"},
@@ -1655,7 +2046,37 @@ def test_verify_reports_schema_errors_for_malformed_registry_fields(repo_root: P
     assert "artifact_type is unsupported" in errors
 
 
+def test_verify_reports_non_object_json_as_parse_contract_error(repo_root: Path) -> None:
+    """Assert: verify reports non object json as parse contract error."""
+    _registry_path(repo_root).write_text("[]", encoding="utf-8")
+
+    result = checkpoint_registry.verify_registry(repo_root=repo_root, warn_only=True)
+
+    assert result.status == "pass"
+    assert result.reason_code == "verify_warning"
+    assert result.summary["json_parse_pass"] is False
+    assert result.summary["errors"] == ["registry JSON must be an object"]
+
+
+def test_verify_rejects_tabs_in_single_line_fields(repo_root: Path) -> None:
+    """Assert: verify rejects tabs in single line fields."""
+    tabbed_registry = _base_registry(
+        batches=[{**_batch(batch_id="batch\t1"), "triggered_by": "agent\tname"}],
+        items=[_item(status="failed", last_error="bad\ttab")],
+    )
+    _write_registry(repo_root, tabbed_registry)
+
+    result = checkpoint_registry.verify_registry(repo_root=repo_root, warn_only=True)
+
+    errors = "\n".join(result.summary["errors"])
+    assert result.status == "pass"
+    assert "batches[0].batch_id must be a non-empty string" in errors
+    assert "batches[0].triggered_by must be a non-empty string" in errors
+    assert "items[0].last_error must be a single-line string or null" in errors
+
+
 def test_verify_detects_alias_collision_with_later_output_path(repo_root: Path) -> None:
+    """Assert: verify detects alias collision with later output path."""
     _write_registry(
         repo_root,
         _base_registry(
@@ -1680,6 +2101,7 @@ def test_verify_detects_alias_collision_with_later_output_path(repo_root: Path) 
 
 
 def test_verify_detects_json_parse_failure(repo_root: Path) -> None:
+    """Assert: verify detects json parse failure."""
     _registry_path(repo_root).write_text("{not json", encoding="utf-8")
 
     result = checkpoint_registry.verify_registry(repo_root=repo_root, warn_only=True)
@@ -1692,6 +2114,7 @@ def test_verify_detects_json_parse_failure(repo_root: Path) -> None:
 
 
 def test_verify_missing_registry_and_bad_registry_path(repo_root: Path) -> None:
+    """Assert: verify missing registry and bad registry path."""
     missing = checkpoint_registry.verify_registry(repo_root=repo_root, warn_only=True)
     bad_path = checkpoint_registry.verify_registry(
         repo_root=repo_root,
@@ -1706,18 +2129,22 @@ def test_verify_missing_registry_and_bad_registry_path(repo_root: Path) -> None:
 
 
 def test_verify_warns_on_retention_thresholds(repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert: verify warns on retention thresholds."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     monkeypatch.setattr(checkpoint_registry.contracts, "CHECKPOINT_REGISTRY_SIZE_WARN_BYTES", 1)
     monkeypatch.setattr(checkpoint_registry.contracts, "CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES", 10_000_000)
+    monkeypatch.setattr(checkpoint_registry, "ITEM_COUNT_WARN_THRESHOLD", 0)
 
     result = checkpoint_registry.verify_registry(repo_root=repo_root)
 
     assert result.status == "pass"
     assert result.reason_code == "verify_warning"
     assert "file_size_bytes exceeds CHECKPOINT_REGISTRY_SIZE_WARN_BYTES" in result.summary["warnings"]
+    assert "item_count exceeds 5000" in result.summary["warnings"]
 
 
 def test_verify_strict_fails_on_size_fail_threshold(repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert: verify strict fails on size fail threshold."""
     _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
     monkeypatch.setattr(checkpoint_registry.contracts, "CHECKPOINT_REGISTRY_SIZE_WARN_BYTES", 1)
     monkeypatch.setattr(checkpoint_registry.contracts, "CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES", 2)
@@ -1729,6 +2156,7 @@ def test_verify_strict_fails_on_size_fail_threshold(repo_root: Path, monkeypatch
 
 
 def test_render_checkpoint_status_includes_latest_batch_and_item_counts(repo_root: Path) -> None:
+    """Assert: render checkpoint status includes latest batch and item counts."""
     _write_registry(
         repo_root,
         _base_registry(
@@ -1746,7 +2174,30 @@ def test_render_checkpoint_status_includes_latest_batch_and_item_counts(repo_roo
     assert "failed=1" in rendered
 
 
+def test_render_checkpoint_status_reports_schema_invalid_and_no_batches(repo_root: Path) -> None:
+    """Assert: render checkpoint status reports schema invalid and no batches."""
+    _write_registry(repo_root, _base_registry(items=[_item(status="not-a-state")]))
+    invalid_rendered = checkpoint_registry.render_checkpoint_status(repo_root)
+    _write_registry(repo_root, _base_registry(items=[_item(status="pending")]))
+    no_batches_rendered = checkpoint_registry.render_checkpoint_status(repo_root)
+
+    assert "Registry: schema invalid (1 errors)" in invalid_rendered
+    assert "- Latest batch: none" in no_batches_rendered
+    assert "pending=1" in no_batches_rendered
+
+
+def test_render_checkpoint_status_reports_missing_and_corrupt_registry(repo_root: Path) -> None:
+    """Assert: render checkpoint status reports missing and corrupt registry."""
+    missing_rendered = checkpoint_registry.render_checkpoint_status(repo_root)
+    _registry_path(repo_root).write_text("{not json", encoding="utf-8")
+    corrupt_rendered = checkpoint_registry.render_checkpoint_status(repo_root)
+
+    assert "Registry: not initialized" in missing_rendered
+    assert "Registry: invalid" in corrupt_rendered
+
+
 def test_render_checkpoint_status_wraps_untrusted_error_summary_in_code_span(repo_root: Path) -> None:
+    """Assert: render checkpoint status wraps untrusted error summary in code span."""
     _write_registry(
         repo_root,
         _base_registry(
@@ -1771,6 +2222,7 @@ def test_render_checkpoint_status_wraps_untrusted_error_summary_in_code_span(rep
 
 
 def test_render_checkpoint_status_rejects_symlinked_registry_path(repo_root: Path) -> None:
+    """Assert: render checkpoint status rejects symlinked registry path."""
     _registry_path(repo_root).unlink(missing_ok=True)
     target = repo_root / "redirect-registry.json"
     target.write_text(json.dumps(_base_registry(items=[])), encoding="utf-8")
@@ -1786,6 +2238,7 @@ def test_render_checkpoint_status_rejects_symlinked_registry_path(repo_root: Pat
 
 
 def test_sync_skill_inline_checkpoint_status_render_uses_registry(repo_root: Path) -> None:
+    """Assert: sync skill inline checkpoint status render uses registry."""
     _write_registry(
         repo_root,
         _base_registry(
@@ -1816,4 +2269,7 @@ def test_sync_skill_inline_checkpoint_status_render_uses_registry(repo_root: Pat
     assert "keep" in updated
     assert "- old" not in updated
     source_lines, _ = inspect.getsourcelines(module.render_checkpoint_status)
+    registry_source_lines, _ = inspect.getsourcelines(checkpoint_registry.render_checkpoint_status)
     assert len(source_lines) < 50
+    assert len(registry_source_lines) < 50
+    assert len(source_lines) + len(registry_source_lines) < 50

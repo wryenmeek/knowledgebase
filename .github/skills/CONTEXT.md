@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2026-06-13
+last_updated: 2026-06-15
 ---
 
 # CONTEXT — .github/skills/
@@ -35,6 +35,7 @@ Vocabulary for the skill and agent persona layer. `AGENTS.md` takes precedence o
 | Combined synthesis uses one lock | CI-3 synthesis flows run entity and concept draft generation under one lock-critical section (`synthesize_combined.py`) and release only after all writes/index/log updates complete. |
 | `parents[4]` for imports | Skill logic files use `sys.path.insert(0, str(Path(__file__).resolve().parents[4]))` to import from `scripts.kb`. Never inline-reimplement helpers from canonical modules. |
 | Logic files need matrix rows | Every `logic/*.py` file needs a row in the AGENTS.md write-surface matrix. A doc-only skill (no `logic/`) needs no row. |
+| Repo-name normalization for wrappers | Skill wrappers that pass `lint_wiki --authoritative-sourcerefs` derive the repo name from `remote.origin.url`, falling back to the checkout directory name only when the remote is unavailable. This avoids worktree names leaking into SourceRef validation. |
 
 ## File Roles
 
