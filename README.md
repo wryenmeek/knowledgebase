@@ -57,6 +57,10 @@ Hooks enforce:
   in `raw/inbox/` or `wiki/sources/`)
 - `.github/instructions/*.instructions.md` staged-content validation requiring
   non-empty `applyTo:` frontmatter
+- ADR-028 locality guardrails: the PostToolUse advisory warns on Locality 4
+  edits, and hook enforcement keeps scoped instructions from silently becoming
+  always-on context; see the runbook
+  [locality guardrails](docs/mvp-runbook.md#locality-guardrails-for-customization-edits).
 
 For full operational flow (including qmd and query-persist behavior), see
 [`docs/mvp-runbook.md`](docs/mvp-runbook.md).
@@ -73,6 +77,7 @@ For full operational flow (including qmd and query-persist behavior), see
 | `python3 .github/skills/suggest-backlinks/logic/suggest_backlinks.py <page> [--wiki-root wiki]` | Suggest backlink opportunities for a wiki page; returns JSON `BacklinkProposal` list; read-only. |
 | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --check-only` | Run read-only framework state-sync prechecks, including authoritative commit-bound SourceRef linting. |
 | `python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index` | Refresh `wiki/index.md` through the allowlisted framework wrapper after authoritative commit-bound SourceRef prechecks pass. |
+| `python3 scripts/kb/checkpoint_registry.py --verify` | Verify an existing wiki-processing checkpoint registry (fails closed until bootstrap creates it); see the runbook for approved `--bootstrap` and `--mutate` operations. |
 | `python3 -m pytest tests/kb/test_framework_contracts.py tests/kb/test_framework_skills.py tests/kb/test_framework_agents.py tests/kb/test_framework_references.py tests/kb/test_skill_wrappers.py -v` | Run the targeted framework contracts/skills/agents/reference plus wrapper test suite. |
 | `qmd collection add wiki --name wiki && qmd embed && qmd query "<query>"` | Build/query local semantic index. |
 | `python3 scripts/kb/persist_query.py ... --result-json` | Policy-gated persistence of high-value query outputs. |

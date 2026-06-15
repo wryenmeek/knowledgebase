@@ -2,7 +2,7 @@
 
 <!-- LOCALITY-0-INVARIANT: This H2 MUST remain the first H2 under the H1. -->
 <!-- Position is load-bearing for the /chronicle improve hard-redirect. -->
-<!-- Do not move, demote, or insert another H2 above it without ADR-028 (pending) revision. -->
+<!-- Do not move, demote, or insert another H2 above it without ADR-028 revision. -->
 
 ## ⚠️ Slash-Command Override: /chronicle improve → audit-knowledgebase-workspace skill
 
@@ -14,9 +14,9 @@ skill owns: session-store mining, locality-ladder classification (Locality
 `.github/copilot-instructions.md` AND `AGENTS.md`, and writes to the chosen
 locality — not necessarily either always-on file.
 
-ADR-028 (pending — tracked at issue #190) will normatively own the
-`Locality-4-Justification:` trailer escape and trailer soft budget for
-Locality 4 additions. Until ADR-028 lands, apply the rules captured in
+ADR-028 normatively owns the `Locality-4-Justification:` trailer
+escape and trailer soft budget for Locality 4 additions. Apply the rules
+captured in
 [`.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md`](.github/skills/audit-knowledgebase-workspace/references/locality-ladder.md)
 and the [`docs/templates/locality-4-justification-trailer.md`](docs/templates/locality-4-justification-trailer.md) template.
 
@@ -607,7 +607,7 @@ When editing documentation/instruction files that contain executable commands (e
 ### "What skills should have been used?" is an execution directive
 
 When a user asks **"what skills should have been used to validate these changes?"** (or any close variant), treat this as a directive to execute — not just an informational question. Immediately:
-1. Identify the applicable skills for the change types in scope
+1. Identify the applicable skills for the change types in scope, including `audit-knowledgebase-workspace` when `.github/**` customizations or always-on context changed
 2. Invoke `quality-pass-chain` when the change scope is non-trivial or touches code paths
 3. Dispatch the corresponding custom agents in parallel (use `@code-reviewer`, `@test-engineer`, `@security-auditor`, `@documentation-engineer` as appropriate)
 4. Collect results, present consolidated findings, and remediate P0–P2 findings before any completion signal
