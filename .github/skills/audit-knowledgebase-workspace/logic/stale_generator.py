@@ -29,9 +29,16 @@ import subprocess
 import sys
 from typing import Callable, Sequence
 
+
+def _prepend_sys_path_once(path: Path) -> None:
+    path_text = str(path)
+    sys.path[:] = [entry for entry in sys.path if entry != path_text]
+    sys.path.insert(0, path_text)
+
+
 if __package__ in (None, ""):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    _prepend_sys_path_once(Path(__file__).resolve().parents[4])
+    _prepend_sys_path_once(Path(__file__).resolve().parent)
 
 from scripts.kb.contracts import (
     CHECKPOINT_REGISTRY_LOCK_PATH,
@@ -49,6 +56,7 @@ ISSUE_COMMAND_TIMEOUT_SECONDS = 5
 MAX_INSTRUCTION_CHARS = 50_000
 MAX_REFERENCES_PER_KIND = 100
 MAX_TOTAL_PROBES = 200
+MAX_ISSUE_REFERENCE_DIGITS = 10
 VALID_CACHE_STRATEGIES = (CACHE_STRATEGY, "hybrid_signature")
 GOVERNANCE_LOCK_PATHS = frozenset(
     {
@@ -67,7 +75,9 @@ PATH_REFERENCE_RE = re.compile(
     r"|\.gitkeep)\b",
     re.IGNORECASE,
 )
-ISSUE_REFERENCE_RE = re.compile(r"(?<![A-Za-z0-9])#([0-9]{1,5})\b")
+ISSUE_REFERENCE_RE = re.compile(
+    rf"(?<![A-Za-z0-9])#([0-9]{{1,{MAX_ISSUE_REFERENCE_DIGITS}}})\b"
+)
 ADR_REFERENCE_RE = re.compile(r"\bADR-([0-9]{1,4})\b", re.IGNORECASE)
 STATUS_HEADING_RE = re.compile(r"^#{2,3}\s+status\b", re.IGNORECASE)
 SCHEMELESS_URL_PATH_RE = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/")
@@ -81,11 +91,12 @@ SYMBOL_PLAIN_REFERENCE_RE = re.compile(
 )
 BACKTICK_CALL_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)\(\)`")
 BACKTICK_IDENTIFIER_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)`")
-SAFE_REPO_RELATIVE_PATH_RE = re.compile(
+SAFE_REPO_RELATIVE_PATH_PATTERN = (
     r"^(?!.*[\s\x00-\x1F\x7F])(?!/)(?![A-Za-z]:)"
     r"(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*(?:^|/)\.\.?($|/))"
     r"[A-Za-z0-9._@+-]+(?:/[A-Za-z0-9._@+-]+)*$"
 )
+SAFE_REPO_RELATIVE_PATH_RE = re.compile(SAFE_REPO_RELATIVE_PATH_PATTERN)
 
 CommandRunner = Callable[
     [Sequence[str], Path, int],
@@ -147,13 +158,18 @@ def generate_stale_findings(
     tracked_python_files = (
         _tracked_python_files(repo_root=repo_root_path, runner=runner) if symbol_references else ()
     )
-    for symbol in symbol_references:
-        if not _python_symbol_exists(
-            symbol,
+    existing_python_symbols = (
+        _existing_python_symbols(
+            symbol_references,
             repo_root=repo_root_path,
             runner=runner,
             python_files=tracked_python_files,
-        ):
+        )
+        if symbol_references
+        else frozenset()
+    )
+    for symbol in symbol_references:
+        if symbol not in existing_python_symbols:
             findings.append(
                 _finding(
                     source_file=normalized_source_file,
@@ -309,7 +325,38 @@ def _git_path_exists(
     return bool(result.stdout.strip())
 
 
-def _python_symbol_exists(
+def _existing_python_symbols(
+    symbols: tuple[str, ...],
+    *,
+    repo_root: Path,
+    runner: CommandRunner,
+    python_files: tuple[str, ...],
+) -> frozenset[str]:
+    if not symbols or not python_files:
+        return frozenset()
+
+    existing_symbols: set[str] = set()
+    for symbol in symbols:
+        try:
+            if _python_symbol_exists_with_rg(
+                symbol,
+                repo_root=repo_root,
+                runner=runner,
+                python_files=python_files,
+            ):
+                existing_symbols.add(symbol)
+        except RuntimeError as exc:
+            if "rg CLI is required" not in str(exc):
+                raise
+            return _python_fallback_defined_symbols(
+                symbols,
+                repo_root=repo_root,
+                python_files=python_files,
+            )
+    return frozenset(existing_symbols)
+
+
+def _python_symbol_exists_with_rg(
     symbol: str,
     *,
     repo_root: Path,
@@ -318,25 +365,11 @@ def _python_symbol_exists(
 ) -> bool:
     if not python_files:
         return False
-    try:
-        result = runner(
-            ["rg", "-l", "--fixed-strings", "--type", "python", "--", symbol, *python_files],
-            repo_root,
-            COMMAND_TIMEOUT_SECONDS,
-        )
-    except RuntimeError as exc:
-        if "rg CLI is required" not in str(exc):
-            raise
-        candidate_paths = _python_files_containing_text(
-            symbol,
-            repo_root=repo_root,
-            python_files=python_files,
-        )
-        return _python_symbol_defined(
-            symbol,
-            repo_root=repo_root,
-            candidate_paths=candidate_paths,
-        )
+    result = runner(
+        ["rg", "-l", "--fixed-strings", "--type", "python", "--", symbol, *python_files],
+        repo_root,
+        COMMAND_TIMEOUT_SECONDS,
+    )
     if result.returncode == 1:
         return False
     if result.returncode != 0:
@@ -384,36 +417,49 @@ def _python_symbol_defined(
             raise RuntimeError(f"unable to read rg match path: {candidate_path}") from exc
         except SyntaxError as exc:
             raise RuntimeError(f"unable to parse rg match path: {candidate_path}") from exc
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                if node.name == symbol:
-                    return True
-            if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-                if symbol in _assignment_target_names(node):
-                    return True
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                if symbol in _imported_names(node):
-                    return True
+        if symbol in _defined_symbol_names(tree):
+            return True
     return False
 
 
-def _python_files_containing_text(
-    symbol: str,
+def _python_fallback_defined_symbols(
+    symbols: tuple[str, ...],
     *,
     repo_root: Path,
     python_files: tuple[str, ...],
-) -> tuple[str, ...]:
-    matched_paths: list[str] = []
+) -> frozenset[str]:
+    sought_symbols = set(symbols)
+    defined_symbols: set[str] = set()
     for python_file in python_files:
         path = (repo_root / python_file).resolve()
         if not path.is_relative_to(repo_root):
             raise ValueError(f"tracked Python path escapes repository root: {python_file}")
         try:
-            if symbol in path.read_text(encoding="utf-8"):
-                matched_paths.append(python_file)
+            file_text = path.read_text(encoding="utf-8")
         except OSError as exc:
             raise RuntimeError(f"unable to read tracked Python path: {python_file}") from exc
-    return tuple(matched_paths)
+        if not any(symbol in file_text for symbol in sought_symbols):
+            continue
+        try:
+            tree = ast.parse(file_text, filename=python_file)
+        except SyntaxError as exc:
+            raise RuntimeError(f"unable to parse tracked Python path: {python_file}") from exc
+        defined_symbols.update(_defined_symbol_names(tree) & sought_symbols)
+        if sought_symbols.issubset(defined_symbols):
+            break
+    return frozenset(defined_symbols)
+
+
+def _defined_symbol_names(tree: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            names.update(_assignment_target_names(node))
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update(_imported_names(node))
+    return names
 
 
 def _assignment_target_names(node: ast.Assign | ast.AnnAssign | ast.AugAssign) -> set[str]:
@@ -456,7 +502,7 @@ def _issue_is_closed(
     repo_root: Path,
     runner: CommandRunner,
 ) -> bool:
-    if not issue_number.isdigit() or len(issue_number) > 5:
+    if not issue_number.isdigit() or len(issue_number) > MAX_ISSUE_REFERENCE_DIGITS:
         raise ValueError(f"invalid issue number: {issue_number}")
     result = runner(
         ["gh", "issue", "view", issue_number, "--json", "state", "--jq", ".state"],
@@ -571,8 +617,10 @@ __all__ = [
     "COMMAND_TIMEOUT_SECONDS",
     "ISSUE_COMMAND_TIMEOUT_SECONDS",
     "MAX_INSTRUCTION_CHARS",
+    "MAX_ISSUE_REFERENCE_DIGITS",
     "MAX_REFERENCES_PER_KIND",
     "MAX_TOTAL_PROBES",
+    "SAFE_REPO_RELATIVE_PATH_PATTERN",
     "VALID_CACHE_STRATEGIES",
     "StaleFinding",
     "build_adr_supersession_map",

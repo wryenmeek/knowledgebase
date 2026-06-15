@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -35,6 +36,31 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
         super().setUp()
         self.module = load_module("audit_workspace_stale_generator", STALE_GENERATOR_PATH)
         self.schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    def test_runtime_safe_path_pattern_matches_finding_schema(self) -> None:
+        schema_patterns = {
+            self.schema["properties"]["source_file"]["pattern"],
+            self.schema["properties"]["suggested_artifact_path"]["pattern"],
+        }
+
+        self.assertEqual(schema_patterns, {self.module.SAFE_REPO_RELATIVE_PATH_PATTERN})
+
+    def test_import_setup_does_not_duplicate_sys_path_entries(self) -> None:
+        repo_root = str(STALE_GENERATOR_PATH.resolve().parents[4])
+        logic_dir = str(STALE_GENERATOR_PATH.resolve().parent)
+        expected_paths = {repo_root, logic_dir}
+        original_path = list(sys.path)
+
+        try:
+            sys.path[:] = ["sentinel-before", repo_root, "sentinel-between", logic_dir]
+            load_module("audit_workspace_stale_generator_sys_path_a", STALE_GENERATOR_PATH)
+            load_module("audit_workspace_stale_generator_sys_path_b", STALE_GENERATOR_PATH)
+
+            self.assertEqual(sys.path[:2], [logic_dir, repo_root])
+            for expected_path in expected_paths:
+                self.assertEqual(sys.path.count(expected_path), 1)
+        finally:
+            sys.path[:] = original_path
 
     def test_instruction_mentions_missing_file_emits_stale_finding(self) -> None:
         instruction = "When debugging, read docs/missing-runbook.md before proceeding."
@@ -141,6 +167,21 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
 
         self.assertEqual(findings, ())
         self.assertEqual(run.call_args.args[0], ["git", "ls-files", "--", "pyproject.toml"])
+
+    def test_numeric_dotted_toml_filename_remains_accepted(self) -> None:
+        instruction = "Respect 1.2.3.toml before changing version fixtures."
+
+        with patch.object(self.module.subprocess, "run") as run:
+            run.return_value = self._completed(["git"], stdout="1.2.3.toml\n")
+            findings = self.module.generate_stale_findings(
+                instruction,
+                source_file="AGENTS.md",
+                source_section="## Build, test, and verify commands",
+                repo_root=self.workspace_root,
+            )
+
+        self.assertEqual(findings, ())
+        self.assertEqual(run.call_args.args[0], ["git", "ls-files", "--", "1.2.3.toml"])
 
     def test_instruction_mentions_hidden_dotted_files_emits_stale_findings(self) -> None:
         instruction = "Seed .env.example, .secrets.baseline, and .gitkeep when bootstrapping."
@@ -364,6 +405,41 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
         self.assert_schema_valid(findings[0])
         self.assertIn("missing_symbol", findings[0]["deletion_candidate"])
 
+    def test_missing_rg_binary_fallback_reads_each_tracked_file_once(self) -> None:
+        instruction = "Use function present_symbol and function missing_symbol before changing runtime."
+        self.write_file(
+            "scripts/kb/present.py",
+            "def present_symbol():\n    return None\n",
+        )
+        read_count = 0
+        original_read_text = Path.read_text
+
+        def counting_read_text(path: Path, *args: object, **kwargs: object) -> str:
+            nonlocal read_count
+            if path.name == "present.py":
+                read_count += 1
+            return original_read_text(path, *args, **kwargs)
+
+        with (
+            patch.object(self.module.subprocess, "run") as run,
+            patch.object(self.module.Path, "read_text", counting_read_text),
+        ):
+            run.side_effect = (
+                self._completed(["git"], stdout="scripts/kb/present.py\n"),
+                FileNotFoundError(),
+            )
+            findings = self.module.generate_stale_findings(
+                instruction,
+                source_file="AGENTS.md",
+                source_section="## Codebase-specific patterns",
+                repo_root=self.workspace_root,
+            )
+
+        self.assertEqual(read_count, 1)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("missing_symbol", findings[0]["deletion_candidate"])
+        self.assertEqual(run.call_count, 2)
+
     def test_backticked_tool_name_does_not_emit_symbol_finding(self) -> None:
         instruction = "Run `pytest` before merging."
 
@@ -462,6 +538,38 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
             run.call_args.args[0],
             ["gh", "issue", "view", "206", "--json", "state", "--jq", ".state"],
         )
+
+    def test_six_digit_issue_reference_uses_gh_probe(self) -> None:
+        instruction = "Keep this workaround until #100000 is resolved."
+
+        with patch.object(self.module.subprocess, "run") as run:
+            run.return_value = self._completed(["gh"], stdout="open\n")
+            findings = self.module.generate_stale_findings(
+                instruction,
+                source_file=".github/copilot-instructions.md",
+                source_section="## Operational patterns",
+                repo_root=self.workspace_root,
+            )
+
+        self.assertEqual(findings, ())
+        self.assertEqual(
+            run.call_args.args[0],
+            ["gh", "issue", "view", "100000", "--json", "state", "--jq", ".state"],
+        )
+
+    def test_issue_reference_above_digit_cap_is_ignored_before_gh_probe(self) -> None:
+        instruction = "Do not treat #12345678901 as a bounded GitHub issue reference."
+
+        with patch.object(self.module.subprocess, "run") as run:
+            findings = self.module.generate_stale_findings(
+                instruction,
+                source_file=".github/copilot-instructions.md",
+                source_section="## Operational patterns",
+                repo_root=self.workspace_root,
+            )
+
+        self.assertEqual(findings, ())
+        run.assert_not_called()
 
     def test_issue_zero_reference_is_ignored_before_gh_probe(self) -> None:
         instruction = "Do not treat #0 as a real GitHub issue reference."
@@ -642,6 +750,21 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
                     source_section="## Operational patterns",
                     repo_root=self.workspace_root,
                 )
+
+    def test_tracked_python_path_escape_fails_closed_before_rg_probe(self) -> None:
+        instruction = "Use symbol `missing_symbol` before changing runtime."
+
+        with patch.object(self.module.subprocess, "run") as run:
+            run.return_value = self._completed(["git"], stdout="../outside.py\n")
+            with self.assertRaisesRegex(ValueError, "unsafe tracked Python path"):
+                self.module.generate_stale_findings(
+                    instruction,
+                    source_file="AGENTS.md",
+                    source_section="## Operational patterns",
+                    repo_root=self.workspace_root,
+                )
+
+        self.assertEqual(run.call_count, 1)
 
     def test_adversarial_rg_stdout_fails_closed(self) -> None:
         instruction = "Use symbol `missing_symbol` before changing runtime."
