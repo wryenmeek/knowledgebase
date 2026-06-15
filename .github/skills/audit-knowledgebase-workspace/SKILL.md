@@ -14,7 +14,7 @@ Use this skill to self-audit the framework layer as the skill and agent surface 
 
 - **Mode:** Read-only scaffold; **Category:** `dev-support`; **Status:** Active Phase 3 scaffold
 - **Boundary:** Audit and handoff only; no self-heal edits, broad crawler, or second runtime.
-- **Forward references:** ADR-028 (pending issue #190), `.github/.customizations.lock`
+- **Accepted references:** ADR-028 (instruction locality ladder), `.github/.customizations.lock`
   (pending issue #191; not acquired here), Phase 4 classifier/apply work (#202–#211),
   and slice 9b lock acquisition (#209).
 
@@ -75,8 +75,8 @@ python3 -m pytest tests/kb/test_doc_cascade_completeness.py tests/kb/test_docs_i
 ## References
 
 - [`AGENTS.md`](../../../AGENTS.md)
-- ADR-028 instruction locality ladder (pending, issue #190)
-- `.github/.customizations.lock` declaration (pending, issue #191)
+- [`ADR-028`](../../../docs/decisions/ADR-028-instruction-locality-ladder.md) instruction locality ladder (accepted)
+- `.github/.customizations.lock` declaration (issue #191; runtime acquisition deferred to slice 9b / #209)
 - [`docs/architecture.md`](../../../docs/architecture.md)
 - [`docs/decisions/ADR-007-control-plane-layering-and-packaging.md`](../../../docs/decisions/ADR-007-control-plane-layering-and-packaging.md)
 - [`docs/ideas/wiki-curation-agent-framework.md`](../../../docs/ideas/wiki-curation-agent-framework.md)

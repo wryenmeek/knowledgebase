@@ -19,7 +19,7 @@ Locality-4-Justification: <one-line reason explaining why this rule must be Loca
 
 The reason must fit on one line and explain why a lower-locality destination
 cannot carry the rule. Trailer use counts against the soft budget defined by
-ADR-028 (pending): by default, one trailer per ten commits touching global
+ADR-028: by default, one trailer per ten commits touching global
 rules sections, until a paired deletion lands.
 
 ## Example

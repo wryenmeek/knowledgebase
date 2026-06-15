@@ -10,7 +10,7 @@ OVERRIDE_HEADING = (
 )
 LOCALITY_INVARIANT_BLOCK = """<!-- LOCALITY-0-INVARIANT: This H2 MUST remain the first H2 under the H1. -->
 <!-- Position is load-bearing for the /chronicle improve hard-redirect. -->
-<!-- Do not move, demote, or insert another H2 above it without ADR-028 (pending) revision. -->"""
+<!-- Do not move, demote, or insert another H2 above it without ADR-028 revision. -->"""
 OVERRIDE_BLOCK_END = (
     "bypass the locality ladder for this turn (audited)."
 )
@@ -60,7 +60,7 @@ class TestLocalityOverridePresence(unittest.TestCase):
         self.assertEqual(OVERRIDE_HEADING, _first_h2_after_h1(text))
 
         block = _extract_override_block(text)
-        self.assertIn("ADR-028 (pending", block)
+        self.assertIn("ADR-028", block)
         self.assertIn("Locality-4-Justification:", block)
         self.assertIn("fail closed", block)
 
@@ -77,7 +77,7 @@ class TestLocalityOverridePresence(unittest.TestCase):
         self.assertIn("# Locality 4 Justification Trailer Template", text)
         self.assertIn(TRAILER_TEMPLATE, text)
         self.assertIn("Locality-4-Justification: keep this rule always-on", text)
-        self.assertIn("ADR-028 (pending)", text)
+        self.assertIn("ADR-028", text)
         self.assertIn("soft budget", text)
 
     def test_context_terms_present(self) -> None:

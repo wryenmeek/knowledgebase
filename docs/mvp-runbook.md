@@ -58,7 +58,7 @@ What `--fresh` does:
 - Verifies `REPO_ROOT` sentinel files (`pyproject.toml`, `.git`, `AGENTS.md`, `schema/`) are present
 - Checks that `wiki/.kb_write.lock` is not held (blocks if it is)
 - Wipes 10 content directories: `wiki/analyses/`, `wiki/concepts/`, `wiki/entities/`, `wiki/sources/`, `raw/inbox/`, `raw/processed/`, `raw/assets/`, `raw/rejected/`, `raw/github-sources/`, `raw/drive-sources/`
-- Removes stale sibling lock files under `raw/` and `.github/`, including `.github/.customizations.lock` from #191's pending ADR-028 context (but never removes `wiki/.kb_write.lock`, which is checked-and-blocks above)
+- Removes stale sibling lock files under `raw/` and `.github/`, including `.github/.customizations.lock` declared by ADR-028 § Customizations lock (but never removes `wiki/.kb_write.lock`, which is checked-and-blocks above)
 - Regenerates `raw/processed/SPEC.md` skeleton, a sample inbox source, and stub wiki artifacts
 - Runs `pip install -e ".[dev]"` and `pytest tests/` to verify the clean state
 
