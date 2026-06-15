@@ -389,6 +389,8 @@ def _active_sibling_lock_path(repo_root: Path) -> str | None:
             if hasattr(os, "O_NOFOLLOW"):
                 flags |= os.O_NOFOLLOW
             fd = os.open(abs_lock, flags)
+        except FileNotFoundError:
+            continue
         except OSError:
             return lock_path
 

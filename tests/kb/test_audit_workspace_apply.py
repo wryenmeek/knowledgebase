@@ -439,6 +439,29 @@ class AuditWorkspaceApplyAllowlistTests(RuntimeWorkspaceTestCase):
                 self.assertEqual(payload["lock_path"], contracts.CUSTOMIZATIONS_LOCK_PATH)
                 self.assertTrue(payload["lock_required"])
 
+    def test_approved_apply_ignores_sibling_lock_deleted_before_probe_open(self) -> None:
+        disappearing_lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        disappearing_lock_path.parent.mkdir(parents=True, exist_ok=True)
+        disappearing_lock_path.write_text("stale metadata\n", encoding="utf-8")
+        original_open = self.module.os.open
+
+        def deleting_open(path, flags, *args, **kwargs):
+            if Path(path) == disappearing_lock_path:
+                disappearing_lock_path.unlink()
+                raise FileNotFoundError(path)
+            return original_open(path, flags, *args, **kwargs)
+
+        with patch.object(self.module.os, "open", side_effect=deleting_open):
+            result = self.module.audit(
+                repo_root=self.workspace_root,
+                mode="apply",
+                approval="approved",
+                apply_targets=("AGENTS.md",),
+            )
+
+        self.assertEqual(result.status, "pass")
+        self.assertTrue(result.summary["lock_acquired"])
+
 
 if __name__ == "__main__":
     unittest.main()
