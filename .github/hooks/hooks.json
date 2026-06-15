@@ -12,6 +12,12 @@
         "command": "python3 scripts/hooks/check_locality_ratchet.py"
       }
     ],
+    "CommitMsg": [
+      {
+        "type": "command",
+        "command": "python3 scripts/hooks/check_locality_ratchet.py --commit-msg-file"
+      }
+    ],
     "PreToolUse": [
       {
         "type": "command",
