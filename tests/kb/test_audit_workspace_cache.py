@@ -108,6 +108,79 @@ class SkillCorpusCacheTests(RuntimeWorkspaceTestCase):
         self.assertEqual(headed_entry["first_paragraph"], "First prose paragraph")
         self.assertEqual(headed_entry["cache_strategy"], "mtime_first_para")
 
+    def test_unicode_first_prose_paragraph_is_preserved(self) -> None:
+        first_paragraph = "Café policy résumé — 医療 coverage stays deterministic ✅"
+        skill_path = self._write_skill(
+            "unicode-prose",
+            self._skill_body("unicode-prose", first_paragraph, leading_blank=True),
+        )
+
+        corpus = self.module.get_skill_corpus(self.skill_root, self.cache_dir)
+
+        self.assertEqual(self._entry_for(corpus, skill_path)["first_paragraph"], first_paragraph)
+
+    def test_large_first_prose_paragraph_is_not_truncated(self) -> None:
+        first_paragraph = "Large paragraph " + ("0123456789abcdef " * 512)
+        skill_path = self._write_skill(
+            "large-prose",
+            self._skill_body("large-prose", first_paragraph, leading_blank=True),
+        )
+
+        corpus = self.module.get_skill_corpus(self.skill_root, self.cache_dir)
+
+        self.assertEqual(self._entry_for(corpus, skill_path)["first_paragraph"], first_paragraph)
+
+    def test_persists_cache_strategy_once_at_top_level(self) -> None:
+        skill_path = self._write_skill(
+            "top-level-strategy",
+            self._skill_body("top-level-strategy", "Top-level strategy", leading_blank=True),
+        )
+
+        corpus = self.module.get_skill_corpus(self.skill_root, self.cache_dir)
+
+        cache_path = self.cache_dir / self.module.CACHE_FILENAME
+        persisted = json.loads(cache_path.read_text(encoding="utf-8"))
+        persisted_entry = persisted["entries"][str(skill_path.resolve())]
+        self.assertEqual(persisted["cache_strategy"], "mtime_first_para")
+        self.assertNotIn("cache_strategy", persisted_entry)
+        self.assertEqual(persisted_entry["first_paragraph"], "Top-level strategy")
+        self.assertEqual(self._entry_for(corpus, skill_path)["cache_strategy"], "mtime_first_para")
+
+    def test_legacy_per_entry_cache_strategy_hits_cache_and_rewrites_top_level_shape(self) -> None:
+        skill_path = self._write_skill(
+            "legacy-strategy",
+            self._skill_body("legacy-strategy", "Legacy strategy", leading_blank=True),
+        )
+        mtime_ns = skill_path.stat().st_mtime_ns
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = self.cache_dir / self.module.CACHE_FILENAME
+        cache_path.write_text(
+            json.dumps(
+                {
+                    str(skill_path.resolve()): {
+                        "frontmatter": {"name": "legacy-strategy"},
+                        "first_paragraph": "Legacy strategy",
+                        "mtime_ns": mtime_ns,
+                        "cache_strategy": "mtime_first_para",
+                    }
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+        with patch.object(
+            self.module,
+            "_extract_skill_entry",
+            side_effect=AssertionError("fresh legacy cache should remain a cache hit"),
+        ):
+            corpus = self.module.get_skill_corpus(self.skill_root, self.cache_dir)
+
+        persisted = json.loads(cache_path.read_text(encoding="utf-8"))
+        self.assertEqual(self._entry_for(corpus, skill_path)["first_paragraph"], "Legacy strategy")
+        self.assertEqual(persisted["cache_strategy"], "mtime_first_para")
+        self.assertNotIn("cache_strategy", persisted["entries"][str(skill_path.resolve())])
+
     def test_mtime_change_causes_cache_miss_and_reextracts(self) -> None:
         skill_path = self._write_skill(
             "mtime-miss",
@@ -128,7 +201,7 @@ class SkillCorpusCacheTests(RuntimeWorkspaceTestCase):
         refreshed = self.module.get_skill_corpus(self.skill_root, self.cache_dir)
         refreshed_entry = self._entry_for(refreshed, skill_path)
         self.assertEqual(refreshed_entry["first_paragraph"], "Updated first paragraph")
-        self.assertGreater(refreshed_entry["mtime_ns"], original_mtime_ns)
+        self.assertEqual(refreshed_entry["mtime_ns"], original_mtime_ns + 1_000_000_000)
 
     def test_no_mtime_change_uses_cache_without_rereading_skill_file(self) -> None:
         skill_path = self._write_skill(
@@ -244,7 +317,7 @@ class SkillCorpusCacheTests(RuntimeWorkspaceTestCase):
         )
         persisted = json.loads(cache_path.read_text(encoding="utf-8"))
         self.assertEqual(
-            persisted[str(skill_path.resolve())]["first_paragraph"],
+            persisted["entries"][str(skill_path.resolve())]["first_paragraph"],
             "Recovered first paragraph",
         )
 
