@@ -8,11 +8,11 @@ category: dev-support
 
 ## Overview
 
-Use this skill to self-audit the framework layer as the skill and agent surface grows. The default flow remains the current structural lint workflow via existing repository checks. The Phase 3 `audit_workspace.py` orchestrator still returns empty findings, while Phase 4 classifier components now exist as tested read-only modules that are not yet wired into that orchestrator.
+Use this skill to self-audit the framework layer as the skill and agent surface grows. The default flow remains the current structural lint workflow via existing repository checks. The Phase 3 `audit_workspace.py` orchestrator still returns empty findings by default, while Phase 4 classifier components and the read-only OutOfBand routing layer now exist as tested modules.
 
 ## Classification
 
-- **Mode:** Read-only scaffold orchestrator plus landed read-only classifier components; **Category:** `dev-support`; **Status:** Active Phase 4 components, not yet orchestrator-wired
+- **Mode:** Read-only scaffold orchestrator plus landed read-only classifier/routing components; **Category:** `dev-support`; **Status:** Active Phase 4 components, not yet fully orchestrator-wired
 - **Boundary:** Audit and handoff only; no self-heal edits, broad crawler, or second runtime.
 - **Accepted reference:** ADR-028 owns the instruction-locality ladder and trailer governance.
 - **Forward references:** apply-mode work (#208–#210), QA gates (#207/#211),
@@ -27,10 +27,12 @@ Use this skill to self-audit the framework layer as the skill and agent surface 
 - You need the Phase 3 `improve` dry-run scaffold without applying mutations
 - Orphaned but useful framework assets need governed follow-up rather than silent deletion
 
-## Phase 4 classifier components (landed; not yet wired into orchestrator)
+## Phase 4 classifier and routing components (landed; not yet fully wired)
 
-These read-only components are present and tested, but `audit_workspace.py --mode
-improve` does not yet compose them into findings:
+These read-only components are present and tested. `audit_workspace.py --mode
+improve` does not yet compose the classifier generators into findings, but it
+does route caller-supplied classifier findings through the OutOfBand handoff
+layer:
 
 | Component | Slice | Purpose | Test coverage |
 |---|---|---|---|
@@ -39,14 +41,15 @@ improve` does not yet compose them into findings:
 | `logic/friction_queries.py` | 8c / #204 | Provide repo-scoped and fallback `session_store_sql` query templates for friction-signal mining. | `tests/kb/test_audit_workspace_friction_queries.py` |
 | `logic/stale_generator.py` | 8d / #205 | Generate deterministic stale deletion-candidate findings from tracked files, symbols, ADR status, and issue state. | `tests/kb/test_audit_workspace_stale_generator.py` |
 | `logic/redundancy_generator.py` | 8e / #206 | Generate cited redundant-up-the-ladder findings from lower-locality evidence. | `tests/kb/test_audit_workspace_redundancy_generator.py` |
+| `logic/outofband_handoff.py` | 9c / #210 | Route findings targeting other skills, agents, or prompts into deterministic `framework-engineer` handoff records without invoking the persona or writing files. | `tests/kb/test_audit_workspace_outofband.py` |
 
 ## Contract
 
 - Input: the current framework workspace or a scoped set of changed framework files
 - Audit targets: skill docs, agent docs, hooks, framework tests, and thin wrapper references
 - Default flow: structural lint only through the existing framework test commands
-- Orchestrator surface: compatibility `default` mode and `improve` dry-run mode in `audit_workspace.py` return empty findings until wiring lands
-- Output: a pass/fail audit summary with zero writes attempted
+- Orchestrator surface: compatibility `default` mode and `improve` dry-run mode in `audit_workspace.py` return empty findings unless caller-supplied classifier findings are provided for routing
+- Output: a pass/fail audit summary with zero writes attempted; cross-skill targets appear under `summary.out_of_band_handoffs`
 - Handoff rule: failures route to the owning skill or `review-wiki-plan`; useful
   orphaned assets route to governed planning rather than ad hoc fixes
 
@@ -56,7 +59,8 @@ improve` does not yet compose them into findings:
 - Attached-tool and wrapper allowlist paths must point to real repo-local files
 - The audit fails closed on missing framework dependencies
 - The logic scaffold is `read-only only`; writable paths are none and writes are forbidden
-- The `improve` orchestrator returns empty findings until component wiring lands
+- The `improve` orchestrator returns empty findings until classifier-generator wiring lands
+- OutOfBand routing is deterministic, read-only, fails closed on unsupported finding destinations, and never invokes the target persona
 - Classifier components are landed and tested, but composed classifier output, apply mode, and lock acquisition are deferred
 
 ## Procedure
@@ -64,7 +68,9 @@ improve` does not yet compose them into findings:
 1. Run the default structural lint flow with the framework test commands below, which audit repo-local links, command examples, wrapper allowlists, and attached-tool references.
 2. When requested, run the orchestrator surface in `--mode improve`; it returns
    an empty findings list and records `writes_attempted: 0` until the landed
-   classifier components are wired in.
+   classifier generators are wired in. Caller-supplied classifier findings are
+   routed read-only, with cross-skill records emitted under
+   `out_of_band_handoffs`.
 3. Route failures to the owning skill or `review-wiki-plan`; route broader
    integration work through governed planning instead of invisible fixes.
 
@@ -72,6 +78,7 @@ improve` does not yet compose them into findings:
 
 ```bash
 python3 .github/skills/audit-knowledgebase-workspace/logic/audit_workspace.py --mode improve
+python3 -m pytest tests/kb/test_audit_workspace_outofband.py -v
 python3 -m unittest tests.kb.test_framework_references tests.kb.test_skill_wrappers
 python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents
 python3 -m pytest tests/kb/test_doc_cascade_completeness.py tests/kb/test_docs_ideas_archival.py -v
