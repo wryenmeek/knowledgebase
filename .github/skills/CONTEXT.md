@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2026-06-15
+last_updated: 2026-06-18
 ---
 
 # CONTEXT — .github/skills/
@@ -24,7 +24,7 @@ Vocabulary for the skill and agent persona layer. `AGENTS.md` takes precedence o
 | instruction ratchet | The pattern where always-on instruction files such as `.github/copilot-instructions.md` grow monotonically add-only, decoupled from customization-surface growth. Measured by net line change in a window where skill count is flat. |
 | Locality | A trigger-frequency ordinal for instruction destinations (Locality 0–4); frequency increases monotonically. Locality 4 = every turn (always-on); Locality 0 = only when a single file is read. See ADR-028. |
 | trailer soft budget | The rolling-window cap on `Locality-4-Justification:` git trailers (default 1 per 10 commits to global rules sections) that prevents the escape hatch from normalizing into bypass. ADR-028 owns the enforcement details. |
-| customizations lock | The planned file `.github/.customizations.lock` — concurrency guard for approved `--apply` mode writes to `.github/**` introduced by ADR-028; runtime acquisition remains deferred to slice 9b / issue #209. Sibling to `wiki/.kb_write.lock` and `raw/.rejection-registry.lock`; never held simultaneously with either once implemented. |
+| customizations lock | `.github/.customizations.lock` — concurrency guard for approved `--mode apply` validation introduced by ADR-028. The landed validation-only scaffold rejects raw control-character targets before lock acquisition, then `--mode apply --approval approved` acquires this lock around caller-provided target validation, releases it on success/failure/exception, and performs no writes. Later write-capable apply work must keep this lock sibling to `wiki/.kb_write.lock` and `raw/.rejection-registry.lock`; never held simultaneously with either. |
 
 ## Invariants
 

@@ -127,6 +127,76 @@ class AuditWorkspaceApplyAllowlistTests(RuntimeWorkspaceTestCase):
         self.assertEqual(result.status, "fail")
         self.assertEqual(result.reason_code, "path_not_allowlisted")
 
+    def test_null_byte_in_path_returns_path_not_allowlisted(self) -> None:
+        target_path = ".github/hooks/bad\x00hook.py"
+
+        decision = self.module.validate_apply_target_path(
+            self.workspace_root,
+            target_path,
+        )
+        result = self.module.audit(
+            repo_root=self.workspace_root,
+            mode="apply",
+            apply_targets=(target_path,),
+        )
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason_code, "outside_allowlist")
+        self.assertIn("ASCII control character", decision.message)
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.reason_code, "path_not_allowlisted")
+        self.assertEqual(result.items[0]["path"], target_path)
+        self.assertEqual(result.items[0]["reason_code"], "outside_allowlist")
+        self.assertIn("ASCII control character", result.items[0]["message"])
+        self.assertEqual(result.summary["writes_attempted"], 0)
+
+    def test_control_character_in_path_returns_path_not_allowlisted(self) -> None:
+        for control_character in ("\n", "\r", "\t", "\x7f"):
+            target_path = f".github/hooks/bad{control_character}hook.py"
+            with self.subTest(control_character=repr(control_character)):
+                decision = self.module.validate_apply_target_path(
+                    self.workspace_root,
+                    target_path,
+                )
+                result = self.module.audit(
+                    repo_root=self.workspace_root,
+                    mode="apply",
+                    apply_targets=(target_path,),
+                )
+
+                self.assertFalse(decision.allowed)
+                self.assertEqual(decision.reason_code, "outside_allowlist")
+                self.assertIn("ASCII control character", decision.message)
+                self.assertEqual(result.status, "fail")
+                self.assertEqual(result.reason_code, "path_not_allowlisted")
+                self.assertEqual(result.items[0]["path"], target_path)
+                self.assertEqual(result.items[0]["reason_code"], "outside_allowlist")
+                self.assertIn("ASCII control character", result.items[0]["message"])
+                self.assertEqual(result.summary["writes_attempted"], 0)
+
+    def test_control_char_target_does_not_acquire_lock(self) -> None:
+        target_path = ".github/hooks/bad\nhook.py"
+
+        with patch.object(
+            self.module.write_utils,
+            "exclusive_write_lock",
+            side_effect=AssertionError("control-char targets must fail before lock"),
+        ) as lock_mock:
+            result = self.module.audit(
+                repo_root=self.workspace_root,
+                mode="apply",
+                approval="approved",
+                apply_targets=(target_path,),
+            )
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.reason_code, "path_not_allowlisted")
+        self.assertTrue(result.lock_required)
+        self.assertEqual(result.lock_path, contracts.CUSTOMIZATIONS_LOCK_PATH)
+        self.assertFalse(result.summary["lock_acquired"])
+        self.assertEqual(result.summary["writes_attempted"], 0)
+        lock_mock.assert_not_called()
+
     def test_apply_rejects_symlink_components(self) -> None:
         real_dir = self.workspace_root / ".github" / "instructions" / "real"
         real_dir.mkdir(parents=True, exist_ok=True)

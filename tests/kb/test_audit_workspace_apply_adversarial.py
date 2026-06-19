@@ -161,7 +161,6 @@ class AuditWorkspaceApplyAdversarialTests(RuntimeWorkspaceTestCase):
             (self.workspace_root / contracts.CUSTOMIZATIONS_LOCK_PATH).exists()
         )
 
-    @unittest.expectedFailure
     def test_null_byte_apply_target_is_rejected_gracefully_followup_272(self) -> None:
         result = self.module.audit(
             repo_root=self.workspace_root,
@@ -175,7 +174,6 @@ class AuditWorkspaceApplyAdversarialTests(RuntimeWorkspaceTestCase):
         self.assertEqual(result.items[0]["reason_code"], "outside_allowlist")
         self.assertEqual(result.summary["writes_attempted"], 0)
 
-    @unittest.expectedFailure
     def test_control_character_apply_target_is_rejected_followup_272(self) -> None:
         result = self.module.audit(
             repo_root=self.workspace_root,

@@ -190,7 +190,22 @@ def _path_matches_root(path: str, root: str) -> bool:
     return candidate == root_path or candidate.is_relative_to(root_path)
 
 
+def _apply_target_control_character_message(raw_path: str) -> str | None:
+    for character in raw_path:
+        codepoint = ord(character)
+        if codepoint < 0x20 or codepoint == 0x7F:
+            return (
+                "path contains ASCII control character "
+                f"U+{codepoint:04X}; apply targets must be printable repo-relative paths"
+            )
+    return None
+
+
 def _normalize_apply_target_path(repo_root: Path, raw_path: str) -> tuple[str, Path] | str:
+    control_character_message = _apply_target_control_character_message(raw_path)
+    if control_character_message is not None:
+        return control_character_message
+
     normalized = raw_path.strip()
     if not normalized:
         return "path values must be non-empty repo-relative paths"
@@ -373,6 +388,53 @@ def _apply_result(
     )
 
 
+def _control_character_preflight_result(
+    *,
+    approval: str,
+    path_rules: dict[str, object],
+    apply_targets: Sequence[str],
+    apply_operation: str | None,
+) -> SurfaceResult | None:
+    decisions = tuple(
+        _apply_denied(
+            target_path=target,
+            operation=apply_operation or APPLY_OPERATION_CREATE,
+            reason_code=APPLY_REASON_OUTSIDE_ALLOWLIST,
+            message=message,
+        )
+        for target in apply_targets
+        if (message := _apply_target_control_character_message(target)) is not None
+    )
+    if not decisions:
+        return None
+
+    lock_required = approval == APPROVAL_APPROVED
+    return SurfaceResult(
+        surface=SURFACE,
+        mode="apply",
+        status=STATUS_FAIL,
+        reason_code=REASON_CODE_PATH_NOT_ALLOWLISTED,
+        message=(
+            "one or more apply targets contain ASCII control characters and "
+            "were rejected before lock acquisition or allowlist classification"
+        ),
+        approval=approval,
+        lock_path=contracts.CUSTOMIZATIONS_LOCK_PATH if lock_required else None,
+        lock_required=lock_required,
+        path_rules=path_rules,
+        items=tuple(decision.to_item() for decision in decisions),
+        summary={
+            "write_targets_validated": len(decisions),
+            "write_targets_allowed": 0,
+            "write_targets_rejected": len(decisions),
+            "writes_attempted": 0,
+            "writes_performed": 0,
+            "lock_acquired": False,
+            "lock_path": contracts.CUSTOMIZATIONS_LOCK_PATH if lock_required else None,
+        },
+    )
+
+
 def _active_sibling_lock_path(repo_root: Path) -> str | None:
     for lock_path in APPLY_SIBLING_LOCK_PATHS:
         if write_utils.is_write_lock_held(repo_root, lock_path=lock_path):
@@ -491,6 +553,15 @@ def audit(
         )
 
     if mode == "apply":
+        control_character_result = _control_character_preflight_result(
+            approval=approval,
+            path_rules=path_rules,
+            apply_targets=apply_targets,
+            apply_operation=apply_operation,
+        )
+        if control_character_result is not None:
+            return control_character_result
+
         if approval == APPROVAL_APPROVED:
             sibling_lock_path = _active_sibling_lock_path(normalized_repo_root)
             if sibling_lock_path is not None:
