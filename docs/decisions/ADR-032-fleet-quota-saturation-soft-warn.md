@@ -1,4 +1,4 @@
-# ADR-030: Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION
+# ADR-032: Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION
 
 ## Status
 Accepted
