@@ -1,4 +1,4 @@
-# ADR-030: Lock holder PID/start-time tracking for lock-unavailable UX
+# ADR-031: Lock holder PID/start-time tracking for lock-unavailable UX
 
 **Date:** 2026-06-19
 
@@ -17,6 +17,9 @@ guess whether the holder process was active.
 The issue contract for #183 requires disambiguation without changing `flock`
 semantics or adding new dependencies.
 
+This ADR extends ADR-005's lock-unavailable contract with lock-holder metadata
+hashing while preserving the existing `reason_code=lock_unavailable` envelope.
+
 ## Decision
 
 Adopt Resolution A:
@@ -31,8 +34,10 @@ Adopt Resolution A:
    - `holder_pid: int | None`
    - `holder_alive: bool | None`
    - `holder_started_at: str | None` (UTC ISO-8601 string)
+   - `holder_context_hash: str | None` (`sha256` over canonical lock metadata)
 5. Keep fail-safe fallback behavior: if lock metadata cannot be read or trusted,
-   preserve the prior generic lock-unavailable hint.
+   preserve the prior generic lock-unavailable hint, and sanitize lock-unavailable
+   messages/context to expose only `holder_context_hash` (not raw PID/start-time).
 
 ## Consequences
 

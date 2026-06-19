@@ -204,7 +204,7 @@ def lock_unavailable_result(
     exc: Exception,
 ) -> SurfaceResult:
     context: dict[str, Any] = {}
-    for key in ("holder_pid", "holder_alive", "holder_started_at"):
+    for key in ("holder_alive", "holder_context_hash"):
         value = getattr(exc, key, None)
         if value is not None:
             context[key] = value
