@@ -5,7 +5,7 @@ Pre-commit passes filenames as positional arguments. For each file:
 - Checks required top-level 'hooks' key
 - Checks all four required event keys: SessionStart, PreToolUse, PostToolUse, Stop
 - Checks each hook entry has a 'command' field
-- Checks all referenced shell script paths resolve to real files
+- Checks all referenced shell and Python script paths resolve to real files
 
 Exits non-zero if any file fails validation.
 """

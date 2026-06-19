@@ -6,18 +6,6 @@
         "command": "bash .github/hooks/session-start.sh"
       }
     ],
-    "PreCommit": [
-      {
-        "type": "command",
-        "command": "python3 scripts/hooks/check_locality_ratchet.py"
-      }
-    ],
-    "CommitMsg": [
-      {
-        "type": "command",
-        "command": "python3 scripts/hooks/check_locality_ratchet.py --commit-msg-file"
-      }
-    ],
     "PreToolUse": [
       {
         "type": "command",
@@ -31,7 +19,7 @@
       },
       {
         "type": "command",
-        "matcher": "Edit|Write|MultiEdit|edit|create|apply_patch|create_file|write_file|edit_file|replace_string_in_file|editFiles|notebookedit|notebookEdit|multiedit|editfiles",
+        "matcher": "^(Edit|Write|MultiEdit|edit|create|apply_patch|create_file|write_file|edit_file|replace_string_in_file|editFiles|notebookedit|notebookEdit|multiedit|editfiles)$",
         "command": "python3 scripts/hooks/locality_postuse_advisory.py"
       }
     ],

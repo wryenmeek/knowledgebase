@@ -3,6 +3,8 @@
 # Run manually: pre-commit run --all-files
 # See docs/ideas/pre-commit-guardrails.md for design rationale.
 
+default_install_hook_types: [pre-commit, commit-msg]
+
 repos:
   - repo: local
     hooks:
@@ -34,6 +36,22 @@ repos:
         entry: python -m scripts.hooks.check_hooks_json
         files: '\.github/hooks/hooks\.json$'
         types_or: [json]
+        pass_filenames: true
+
+      - id: locality-ratchet-pre-commit
+        name: Locality 4 paired-deletion or trailer enforcement (pre-commit stage)
+        language: python
+        entry: python -m scripts.hooks.check_locality_ratchet
+        stages: [pre-commit]
+        files: '^(\.github/copilot-instructions\.md|AGENTS\.md)$'
+        pass_filenames: true
+
+      - id: locality-ratchet-commit-msg
+        name: Locality 4 trailer rolling-window soft budget (commit-msg stage)
+        language: python
+        entry: python -m scripts.hooks.check_locality_ratchet
+        stages: [commit-msg]
+        args: [--commit-msg-file]
         pass_filenames: true
 
       - id: sourceref-format

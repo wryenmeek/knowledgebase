@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """Git hook: enforce the Locality 4 paired-deletion ratchet.
 
-ADR-028 requires net-positive additions to each always-loaded instruction
-file to either pair a deletion in that file in the same staged commit or carry a
-``Locality-4-Justification:`` trailer. This hook computes the staged
-non-exempt line delta for ``.github/copilot-instructions.md`` and ``AGENTS.md``
-against ``HEAD`` and fails closed when either file's gated delta is positive
-without a trailer supplied by the invoking hook wrapper. When invoked with the
-finalized commit message, it also enforces ADR-028's per-file 1-in-10 rolling
-soft budget for trailer escapes.
+ADR-028 requires net-positive additions to each always-loaded instruction file
+to either pair a substantive deletion in that file or carry a
+``Locality-4-Justification:`` trailer. This hook computes non-exempt line
+deltas for ``.github/copilot-instructions.md`` and ``AGENTS.md`` against either
+the staged index or, for CI/all-files reruns with a clean index, ``HEAD``. The
+pre-commit framework stage cannot see finalized commit-message trailers, so
+trailer-only decisions are deferred there and enforced by the commit-msg stage.
+When invoked with a commit message, it also enforces ADR-028's per-file 1-in-10
+rolling soft budget for trailer escapes.
 """
 
 from __future__ import annotations
 
 from functools import lru_cache
 import json
+import os
 import re
 import select
 import subprocess
@@ -250,6 +252,28 @@ def _staged_diff(path: str) -> str | None:
     return out if rc == 0 else None
 
 
+def _is_substantive_deleted_line(line: str) -> bool:
+    stripped = line.strip()
+    return bool(stripped) and not stripped.startswith("<!--")
+
+
+def _html_comment_lines(content: str) -> set[int]:
+    comment_lines: set[int] = set()
+    in_comment = False
+    for line_number, line in enumerate(content.splitlines(), start=1):
+        stripped = line.strip()
+        if in_comment:
+            comment_lines.add(line_number)
+            if "-->" in stripped:
+                in_comment = False
+            continue
+        if stripped.startswith("<!--"):
+            comment_lines.add(line_number)
+            if "-->" not in stripped:
+                in_comment = True
+    return comment_lines
+
+
 def _line_delta_from_diff(
     path: str, diff: str, old_content: str, new_content: str
 ) -> tuple[int, int] | str:
@@ -262,6 +286,7 @@ def _line_delta_from_diff(
 
     old_gated_lines = _gated_lines(path, old_content)
     new_gated_lines = _gated_lines(path, new_content)
+    old_comment_lines = _html_comment_lines(old_content)
 
     additions = 0
     deletions = 0
@@ -285,7 +310,11 @@ def _line_delta_from_diff(
             continue
 
         if line.startswith("-") and not line.startswith("---"):
-            if old_line in old_gated_lines:
+            if (
+                old_line in old_gated_lines
+                and old_line not in old_comment_lines
+                and _is_substantive_deleted_line(line[1:])
+            ):
                 deletions += 1
             old_line += 1
             continue
@@ -342,8 +371,13 @@ def _historical_line_delta_for_commit(
     return _line_delta_from_diff(path, diff, old_content, new_content)
 
 
+def _head_commit() -> str | None:
+    rc, out, _ = _run_git("rev-parse", "--verify", "HEAD")
+    return out.strip() if rc == 0 else None
+
+
 def _recent_gated_commit_deltas(
-    path: str,
+    path: str, *, skip_commit: str | None = None
 ) -> tuple[list[tuple[str, tuple[int, int]]], str | None]:
     rc, out, _ = _run_git(
         "log",
@@ -356,6 +390,8 @@ def _recent_gated_commit_deltas(
 
     commits: list[tuple[str, tuple[int, int]]] = []
     for commit in out.splitlines():
+        if skip_commit is not None and commit == skip_commit:
+            continue
         delta = _historical_line_delta_for_commit(path, commit)
         if delta is None:
             return [], f"{path}: cannot inspect historical gated delta for {commit}"
@@ -382,8 +418,10 @@ def _is_paired_deletion_commit(additions: int, deletions: int) -> bool:
     return deletions > 0 and additions - deletions <= 0
 
 
-def _trailer_count_since_latest_paired_deletion(path: str) -> tuple[int, str | None]:
-    commits, error = _recent_gated_commit_deltas(path)
+def _trailer_count_since_latest_paired_deletion(
+    path: str, *, skip_commit: str | None = None
+) -> tuple[int, str | None]:
+    commits, error = _recent_gated_commit_deltas(path, skip_commit=skip_commit)
     if error is not None:
         return 0, error
     trailer_candidates, error = _trailer_candidate_commits(path)
@@ -405,10 +443,14 @@ def _trailer_count_since_latest_paired_deletion(path: str) -> tuple[int, str | N
     return count, None
 
 
-def _trailer_budget_failures(paths: set[str]) -> list[str]:
+def _trailer_budget_failures(
+    paths: set[str], *, skip_commit: str | None = None
+) -> list[str]:
     failures: list[str] = []
     for path in sorted(paths):
-        count, error = _trailer_count_since_latest_paired_deletion(path)
+        count, error = _trailer_count_since_latest_paired_deletion(
+            path, skip_commit=skip_commit
+        )
         if error is not None:
             failures.append(error)
             continue
@@ -420,6 +462,41 @@ def _trailer_budget_failures(paths: set[str]) -> list[str]:
                 "Stage a same-file paired deletion before using another trailer."
             )
     return failures
+
+
+def _head_commit_failures(paths: set[str], commit_message: str | None) -> list[str]:
+    parent = _first_parent("HEAD")
+    if parent is None:
+        return []
+    head = _head_commit()
+    if head is None:
+        return ["HEAD: cannot resolve current commit for Locality 4 rerun"]
+
+    message = commit_message if commit_message is not None else _commit_message(head)
+    failures: list[str] = []
+    for path in sorted(paths):
+        delta = _historical_line_delta_for_commit(path, head)
+        if delta is None:
+            failures.append(f"{path}: cannot inspect HEAD gated delta for {head}")
+            continue
+        if isinstance(delta, str):
+            failures.append(delta)
+            continue
+        additions, deletions = delta
+        if additions - deletions <= 0:
+            continue
+        if not _has_justification_trailer(message):
+            failures.append(
+                f"{path}: HEAD commit has net-positive gated-region delta "
+                f"+{additions}/-{deletions} without {TRAILER}: trailer"
+            )
+            continue
+        failures.extend(_trailer_budget_failures({path}, skip_commit=head))
+    return failures
+
+
+def _is_pre_commit_framework_without_message(commit_message: str | None) -> bool:
+    return commit_message is None and os.environ.get("PRE_COMMIT") == "1"
 
 
 def _candidate_paths(paths: list[str]) -> tuple[set[str], list[str]]:
@@ -467,15 +544,27 @@ def main(argv: list[str] | None = None) -> int:
         if additions - deletions > 0
     }
 
-    commit_message = cli_commit_message if cli_commit_message is not None else stdin_commit_message
+    commit_message = (
+        cli_commit_message if cli_commit_message is not None else stdin_commit_message
+    )
     trailer_present = _has_justification_trailer(commit_message)
+    trailer_decision_deferred = _is_pre_commit_framework_without_message(commit_message)
+    clean_index_for_gated_paths = bool(deltas) and all(
+        additions == 0 and deletions == 0 for additions, deletions in deltas.values()
+    )
+    if clean_index_for_gated_paths:
+        failures.extend(_head_commit_failures(set(deltas), commit_message))
     budget_failures = (
         _trailer_budget_failures(set(positive_deltas))
         if positive_deltas and trailer_present
         else []
     )
 
-    if failures or (positive_deltas and not trailer_present) or budget_failures:
+    missing_trailer_failures = (
+        positive_deltas and not trailer_present and not trailer_decision_deferred
+    )
+
+    if failures or missing_trailer_failures or budget_failures:
         print(
             "ERROR: Locality 4 ratchet violation for always-loaded instruction files.",
             file=sys.stderr,
@@ -484,7 +573,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {failure}", file=sys.stderr)
         for failure in budget_failures:
             print(f"  {failure}", file=sys.stderr)
-        if positive_deltas and not trailer_present:
+        if missing_trailer_failures:
             print(
                 "\nStaged gated-region line delta is net-positive outside exempt regions:",
                 file=sys.stderr,

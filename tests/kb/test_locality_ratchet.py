@@ -9,6 +9,8 @@ import sys
 import textwrap
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK_MODULE = "scripts.hooks.check_locality_ratchet"
@@ -51,6 +53,16 @@ AGENTS_BASE = textwrap.dedent(
     Existing AGENTS rule.
     """
 )
+
+
+def _local_pre_commit_hooks() -> dict[str, dict[str, object]]:
+    config = yaml.safe_load(
+        (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    )
+    for repo_config in config["repos"]:
+        if repo_config["repo"] == "local":
+            return {hook["id"]: hook for hook in repo_config["hooks"]}
+    raise AssertionError("local pre-commit repo configuration not found")
 
 
 def _run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -432,32 +444,33 @@ def test_agents_write_surface_matrix_row_addition_is_exempt(tmp_path: Path) -> N
     assert result.stderr == ""
 
 
-def test_hooks_json_registers_precommit_locality_ratchet() -> None:
+def test_pre_commit_config_registers_precommit_locality_ratchet() -> None:
+    config = yaml.safe_load(
+        (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    )
+    hook = _local_pre_commit_hooks()["locality-ratchet-pre-commit"]
+
+    assert "pre-commit" in config["default_install_hook_types"]
+    assert "commit-msg" in config["default_install_hook_types"]
+    assert hook["entry"] == "python -m scripts.hooks.check_locality_ratchet"
+    assert hook["stages"] == ["pre-commit"]
+    assert hook["files"] == "^(\\.github/copilot-instructions\\.md|AGENTS\\.md)$"
+    assert hook["pass_filenames"] is True
+
+
+def test_pre_commit_config_registers_commitmsg_locality_ratchet() -> None:
+    hook = _local_pre_commit_hooks()["locality-ratchet-commit-msg"]
+
+    assert hook["entry"] == "python -m scripts.hooks.check_locality_ratchet"
+    assert hook["stages"] == ["commit-msg"]
+    assert hook["args"] == ["--commit-msg-file"]
+    assert hook["pass_filenames"] is True
+
+
+def test_hooks_json_does_not_register_nonstandard_git_hook_events() -> None:
     hooks = json.loads(
         (REPO_ROOT / ".github/hooks/hooks.json").read_text(encoding="utf-8")
     )
 
-    commands = [
-        entry.get("command", "")
-        for entry in hooks["hooks"].get("PreCommit", [])
-        if isinstance(entry, dict)
-    ]
-
-    assert "python3 scripts/hooks/check_locality_ratchet.py" in commands
-
-
-def test_hooks_json_registers_commitmsg_locality_ratchet() -> None:
-    hooks = json.loads(
-        (REPO_ROOT / ".github/hooks/hooks.json").read_text(encoding="utf-8")
-    )
-
-    commands = [
-        entry.get("command", "")
-        for entry in hooks["hooks"].get("CommitMsg", [])
-        if isinstance(entry, dict)
-    ]
-
-    assert (
-        "python3 scripts/hooks/check_locality_ratchet.py --commit-msg-file"
-        in commands
-    )
+    assert "PreCommit" not in hooks["hooks"]
+    assert "CommitMsg" not in hooks["hooks"]

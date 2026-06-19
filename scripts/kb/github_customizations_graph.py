@@ -35,6 +35,10 @@ _MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 # (prevents false positives on extensions like .sh.bak).
 _SH_PATH_RE = re.compile(r"""(?<!['\"])(\S+?\.sh)(?=\s|[\"';|&>]|$)""")
 
+# Python script path in a hooks.json command string
+# (e.g. "python3 scripts/hooks/check_hooks_json.py").
+_PY_PATH_RE = re.compile(r"""(?<!['\"])(\S+?\.py)(?=\s|[\"';|&>]|$)""")
+
 # Required hook event names per hooks.json schema
 _REQUIRED_HOOK_EVENTS: frozenset[str] = frozenset(
     {"SessionStart", "PreToolUse", "PostToolUse", "Stop"}
@@ -131,7 +135,7 @@ def validate_hooks_json(hooks_path: Path, repo_root: Path) -> list[str]:
     3. Top-level ``hooks`` key is a dict.
     4. All four required event keys present.
     5. Each event value is a list of hook-entry dicts with a ``command`` field.
-    6. Each ``*.sh`` path in a command string resolves to a real file.
+    6. Each ``*.sh`` and ``*.py`` path in a command string resolves to a real file.
     """
     errors: list[str] = []
 
@@ -172,18 +176,20 @@ def validate_hooks_json(hooks_path: Path, repo_root: Path) -> list[str]:
                 )
                 continue
             command = entry["command"]
-            for sh_m in _SH_PATH_RE.finditer(command):
-                sh_path = sh_m.group(1)
-                resolved = (repo_root / sh_path).resolve()
-                if not resolved.is_relative_to(repo_root.resolve()):
-                    errors.append(
-                        f"{hooks_path}: event '{event}' entry[{i}]"
-                        f" script path escapes repo root: {sh_path}"
-                    )
-                elif not resolved.is_file():
-                    errors.append(
-                        f"{hooks_path}: event '{event}' entry[{i}]"
-                        f" references missing script: {sh_path}"
+            script_patterns = (
+                (_SH_PATH_RE, "script"),
+                (_PY_PATH_RE, "Python script"),
+            )
+            for path_re, label in script_patterns:
+                for match in path_re.finditer(command):
+                    _validate_hook_script_path(
+                        errors,
+                        hooks_path=hooks_path,
+                        event=event,
+                        entry_index=i,
+                        script_path=match.group(1),
+                        repo_root=repo_root,
+                        label=label,
                     )
 
     return errors
@@ -228,6 +234,29 @@ def _section_body(text: str, heading: str) -> str:
     if nxt:
         return text[body_start : body_start + nxt.start()]
     return text[body_start:]
+
+
+def _validate_hook_script_path(
+    errors: list[str],
+    *,
+    hooks_path: Path,
+    event: str,
+    entry_index: int,
+    script_path: str,
+    repo_root: Path,
+    label: str,
+) -> None:
+    resolved = (repo_root / script_path).resolve()
+    if not resolved.is_relative_to(repo_root.resolve()):
+        errors.append(
+            f"{hooks_path}: event '{event}' entry[{entry_index}]"
+            f" {label} path escapes repo root: {script_path}"
+        )
+    elif not resolved.is_file():
+        errors.append(
+            f"{hooks_path}: event '{event}' entry[{entry_index}]"
+            f" references missing {label}: {script_path}"
+        )
 
 
 def _resolve_link(source: Path, target: str, repo_root: Path) -> Path:

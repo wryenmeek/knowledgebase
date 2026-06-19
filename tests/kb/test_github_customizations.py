@@ -138,20 +138,51 @@ class ValidateHooksJsonUnitTests(unittest.TestCase):
             errors = validate_hooks_json(p, REPO_ROOT)
             self.assertTrue(errors, f"Expected error for missing 'command' key, got none")
 
-    def test_nonexistent_script_path_returns_error(self) -> None:
+    def test_nonexistent_script_paths_return_errors(self) -> None:
+        import tempfile, json
+        cases = (
+            ("bash scripts/hooks/no_such_script_xyz.sh", "missing script"),
+            ("python3 scripts/hooks/no_such_hook_xyz.py", "missing Python script"),
+        )
+        for command, expected in cases:
+            with self.subTest(command=command):
+                data = {
+                    "hooks": {
+                        "SessionStart": [{"command": command}],
+                        "PreToolUse": [{"command": "echo pre"}],
+                        "PostToolUse": [{"command": "echo post"}],
+                        "Stop": [{"command": "echo stop"}],
+                    }
+                }
+                with tempfile.TemporaryDirectory() as tmp:
+                    p = self._write_hooks(Path(tmp), json.dumps(data))
+                    errors = validate_hooks_json(p, REPO_ROOT)
+                    self.assertTrue(
+                        any(expected in e for e in errors),
+                        f"Expected {expected} error, got: {errors}",
+                    )
+
+    def test_registered_python_path_must_match_actual_filename_after_rename(self) -> None:
         import tempfile, json
         data = {
             "hooks": {
-                "SessionStart": [{"command": "bash scripts/hooks/no_such_script_xyz.sh"}],
+                "SessionStart": [{"command": "bash .github/hooks/session-start.sh"}],
                 "PreToolUse": [{"command": "echo pre"}],
-                "PostToolUse": [{"command": "echo post"}],
-                "Stop": [{"command": "echo stop"}],
+                "PostToolUse": [
+                    {
+                        "command": "python3 scripts/hooks/locality_postuse_advisor.py",
+                    }
+                ],
+                "Stop": [{"command": "bash .github/hooks/simplify-ignore.sh"}],
             }
         }
         with tempfile.TemporaryDirectory() as tmp:
             p = self._write_hooks(Path(tmp), json.dumps(data))
             errors = validate_hooks_json(p, REPO_ROOT)
-            self.assertTrue(errors, f"Expected error for missing script, got none")
+            self.assertTrue(
+                any("locality_postuse_advisor.py" in e for e in errors),
+                f"Expected stale renamed Python hook path error, got: {errors}",
+            )
 
 
 class HooksJsonStructureTests(unittest.TestCase):
@@ -162,6 +193,22 @@ class HooksJsonStructureTests(unittest.TestCase):
         for err in errors:
             with self.subTest(error=err):
                 self.fail(f"hooks.json validation error: {err}")
+
+    def test_posttooluse_edit_matcher_is_anchored(self) -> None:
+        import json, re
+        hooks = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"]
+        matchers = [
+            entry["matcher"]
+            for entry in hooks["PostToolUse"]
+            if entry.get("command") == "python3 scripts/hooks/locality_postuse_advisory.py"
+        ]
+
+        self.assertEqual(len(matchers), 1)
+        matcher = re.compile(matchers[0])
+        self.assertIsNotNone(matcher.fullmatch("edit"))
+        self.assertIsNotNone(matcher.fullmatch("Edit"))
+        self.assertIsNone(matcher.search("prefix_edit_suffix"))
+        self.assertIsNone(matcher.search("EditExtra"))
 
 
 class PromptLinkTests(unittest.TestCase):
