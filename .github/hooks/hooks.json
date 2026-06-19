@@ -23,6 +23,12 @@
         "command": "python3 scripts/hooks/locality_postuse_advisory.py"
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": "python3 scripts/hooks/locality_ratchet_redirect_hook.py"
+      }
+    ],
     "Stop": [
       {
         "type": "command",
