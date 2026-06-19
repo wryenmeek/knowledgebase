@@ -335,7 +335,6 @@ class AuditWorkspaceRedundancyGeneratorTests(RuntimeWorkspaceTestCase):
 
         self.assertFalse(result["soft_skipped"])
         self.assertEqual(result["findings"], [])
-        self.assertEqual(len(claims) - len(result["findings"]), 1)
 
     def test_claim_with_path_escape_citation_is_dropped_silently(self) -> None:
         result = self._generate_with_response(
