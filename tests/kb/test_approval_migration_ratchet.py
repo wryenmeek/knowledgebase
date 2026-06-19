@@ -154,7 +154,7 @@ def test_hook_rejects_approval_equals_after_deadline(monkeypatch, capsys) -> Non
     monkeypatch.setattr(
         check_approval_flag,
         "_migration_deadline_passed",
-        lambda today=None: check_approval_flag.APPROVAL_EQUALS_REJECTION_DEADLINE < date(2099, 1, 1),
+        lambda today=None: True,
     )
 
     assert check_approval_flag.main([]) == 1

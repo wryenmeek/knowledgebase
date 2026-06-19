@@ -172,18 +172,18 @@ def _collect_paths(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
     if isinstance(value, list):
-        collected: list[str] = []
+        collected_from_list: list[str] = []
         for item in value:
-            collected.extend(_collect_paths(item))
-        return collected
+            collected_from_list.extend(_collect_paths(item))
+        return collected_from_list
     if isinstance(value, dict):
-        collected: list[str] = []
+        collected_from_dict: list[str] = []
         for key, nested in value.items():
             if key in PATH_KEYS:
-                collected.extend(_collect_paths(nested))
+                collected_from_dict.extend(_collect_paths(nested))
             elif key in PATH_CONTAINER_KEYS:
-                collected.extend(_collect_paths(nested))
-        return collected
+                collected_from_dict.extend(_collect_paths(nested))
+        return collected_from_dict
     return []
 
 
