@@ -9,17 +9,17 @@ from scripts.kb import contracts
 
 
 class _AssertMixin:
-    def assertEqual(self, left, right) -> None:
-        assert left == right
+    def assertEqual(self, left, right, msg=None) -> None:
+        assert left == right, msg
 
-    def assertIn(self, member, container) -> None:
-        assert member in container
+    def assertIn(self, member, container, msg=None) -> None:
+        assert member in container, msg
 
-    def assertIsNotNone(self, value) -> None:
-        assert value is not None
+    def assertIsNotNone(self, value, msg=None) -> None:
+        assert value is not None, msg
 
-    def assertIsNone(self, value) -> None:
-        assert value is None
+    def assertIsNone(self, value, msg=None) -> None:
+        assert value is None, msg
 
 
 class TestSharedContracts(_AssertMixin):
