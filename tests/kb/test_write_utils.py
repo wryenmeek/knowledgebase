@@ -51,9 +51,8 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                             "acquired": False,
                             "reason_code": exc.reason_code,
                             "failure_reason": exc.failure_reason,
-                            "holder_pid": exc.holder_pid,
                             "holder_alive": exc.holder_alive,
-                            "holder_started_at": exc.holder_started_at,
+                            "holder_context_hash": exc.holder_context_hash,
                             "message": str(exc),
                         }
                     )
@@ -371,10 +370,12 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         with write_utils.exclusive_write_lock(self.workspace_root):
             probe_result = self._probe_lock_attempt()
 
-        self.assertEqual(probe_result["holder_pid"], os.getpid())
         self.assertTrue(probe_result["holder_alive"])
-        self.assertIsInstance(probe_result["holder_started_at"], str)
+        self.assertRegex(probe_result["holder_context_hash"], r"^[0-9a-f]{64}$")
         self.assertIn("retry shortly", probe_result["message"])
+        self.assertIn("context sha256:", probe_result["message"])
+        self.assertIn(contracts.WRITE_LOCK_PATH, probe_result["message"])
+        self.assertNotIn(str(os.getpid()), probe_result["message"])
 
     def test_lock_unavailable_error_reports_dead_holder(self) -> None:
         lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
@@ -390,7 +391,10 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertEqual(exc.holder_pid, 4242)
         self.assertFalse(exc.holder_alive)
         self.assertEqual(exc.holder_started_at, "2024-06-06T22:01:34Z")
-        self.assertIn("stale lock from dead PID 4242; safe to remove", str(exc))
+        self.assertRegex(exc.holder_context_hash or "", r"^[0-9a-f]{64}$")
+        self.assertIn("holder metadata appears stale/reused", str(exc))
+        self.assertNotIn("safe to remove", str(exc))
+        self.assertNotIn("4242", str(exc))
 
     def test_lock_unavailable_error_detects_pid_reuse_via_start_time_mismatch(self) -> None:
         lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
@@ -401,7 +405,7 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             patch.object(write_utils.os, "kill", return_value=None),
             patch.object(
                 write_utils,
-                "_linux_pid_start_time_unix_seconds",
+                "_pid_start_time_unix_seconds",
                 return_value=200.0,
             ),
         ):
@@ -413,7 +417,43 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertEqual(exc.holder_pid, 4242)
         self.assertFalse(exc.holder_alive)
         self.assertEqual(exc.holder_started_at, "1970-01-01T00:01:40Z")
-        self.assertIn("stale lock from dead PID 4242; safe to remove", str(exc))
+        self.assertIn("holder metadata appears stale/reused", str(exc))
+        self.assertNotIn("safe to remove", str(exc))
+        self.assertNotIn("4242", str(exc))
+
+    def test_lock_unavailable_error_pid_reuse_boundary_at_tolerance(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text("4242\t100.0\n", encoding="utf-8")
+
+        with (
+            patch.object(write_utils.os, "kill", return_value=None),
+            patch.object(write_utils, "_pid_start_time_tolerance_seconds", return_value=0.5),
+            patch.object(
+                write_utils,
+                "_pid_start_time_unix_seconds",
+                return_value=100.5,
+            ),
+        ):
+            exc = write_utils.LockUnavailableError(
+                contracts.WRITE_LOCK_PATH,
+                lock_file_path=lock_path,
+            )
+
+        self.assertFalse(exc.holder_alive)
+
+    def test_holder_process_is_alive_detects_reuse_with_darwin_precision(self) -> None:
+        with (
+            patch.object(write_utils.sys, "platform", "darwin"),
+            patch.object(write_utils.os, "kill", return_value=None),
+            patch.object(write_utils, "_pid_start_time_unix_seconds", return_value=100.5),
+        ):
+            holder_alive = write_utils._holder_process_is_alive(
+                4242,
+                expected_started_at_unix_seconds=100.0,
+            )
+
+        self.assertFalse(holder_alive)
 
     def test_lock_unavailable_error_unreadable_lock_file_falls_back(self) -> None:
         with patch.object(Path, "read_text", side_effect=OSError("denied")):
@@ -430,9 +470,8 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
 
     def test_lock_unavailable_result_includes_holder_context(self) -> None:
         exc = RuntimeError("lock unavailable")
-        setattr(exc, "holder_pid", 12345)
         setattr(exc, "holder_alive", False)
-        setattr(exc, "holder_started_at", "2026-06-06T22:01:34Z")
+        setattr(exc, "holder_context_hash", "a" * 64)
 
         result = lock_unavailable_result(
             surface="test-surface",
@@ -445,9 +484,8 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertEqual(
             result.context,
             {
-                "holder_pid": 12345,
                 "holder_alive": False,
-                "holder_started_at": "2026-06-06T22:01:34Z",
+                "holder_context_hash": "a" * 64,
             },
         )
 
