@@ -7,13 +7,15 @@ import json
 import os
 import tempfile
 import time
-import unittest
 from pathlib import Path
 import subprocess
 import sys
 import textwrap
 from unittest.mock import patch
 
+import pytest
+
+from scripts._optional_surface_common import lock_unavailable_result
 from scripts.kb import contracts
 from scripts.kb import write_utils
 from scripts.kb.write_utils import check_no_symlink_path
@@ -50,6 +52,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                             "acquired": False,
                             "reason_code": exc.reason_code,
                             "failure_reason": exc.failure_reason,
+                            "holder_alive": exc.holder_alive,
+                            "holder_context_hash": exc.holder_context_hash,
+                            "message": str(exc),
                         }
                     )
                 )
@@ -141,6 +146,15 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             self.assertTrue(lock_path.exists())
             self.assertTrue(write_utils.is_write_lock_held(self.workspace_root))
         self.assertFalse(write_utils.is_write_lock_held(self.workspace_root))
+
+    def test_exclusive_write_lock_writes_pid_and_start_time_metadata(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        with write_utils.exclusive_write_lock(self.workspace_root):
+            raw = lock_path.read_text(encoding="utf-8").strip()
+
+        pid_text, started_at_text = raw.split("\t", 1)
+        self.assertEqual(int(pid_text), os.getpid())
+        self.assertGreater(float(started_at_text), 0.0)
 
     def test_exclusive_write_lock_tracking_survives_nested_same_process_lock(self) -> None:
         with write_utils.exclusive_write_lock(self.workspace_root):
@@ -353,6 +367,160 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                     )
                 )
 
+    def test_exclusive_write_lock_contention_reports_live_holder_metadata(self) -> None:
+        with write_utils.exclusive_write_lock(self.workspace_root):
+            probe_result = self._probe_lock_attempt()
+
+        self.assertTrue(probe_result["holder_alive"])
+        self.assertRegex(probe_result["holder_context_hash"], r"^[0-9a-f]{64}$")
+        self.assertIn("retry shortly", probe_result["message"])
+        self.assertIn("context sha256:", probe_result["message"])
+        self.assertIn(contracts.WRITE_LOCK_PATH, probe_result["message"])
+        self.assertNotIn(str(os.getpid()), probe_result["message"])
+
+    def test_lock_unavailable_error_reports_dead_holder(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text("4242\t1717711294.0\n", encoding="utf-8")
+
+        with patch.object(write_utils.os, "kill", side_effect=ProcessLookupError):
+            exc = write_utils.LockUnavailableError(
+                contracts.WRITE_LOCK_PATH,
+                lock_file_path=lock_path,
+            )
+
+        self.assertEqual(exc.holder_pid, 4242)
+        self.assertFalse(exc.holder_alive)
+        self.assertEqual(exc.holder_started_at, "2024-06-06T22:01:34Z")
+        self.assertRegex(exc.holder_context_hash or "", r"^[0-9a-f]{64}$")
+        self.assertIn("holder metadata appears stale/reused", str(exc))
+        self.assertNotIn("safe to remove", str(exc))
+        self.assertNotIn("4242", str(exc))
+
+    def test_lock_unavailable_error_detects_pid_reuse_via_start_time_mismatch(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text("4242\t100.0\n", encoding="utf-8")
+
+        with (
+            patch.object(write_utils.os, "kill", return_value=None),
+            patch.object(
+                write_utils,
+                "_pid_start_time_unix_seconds",
+                return_value=200.0,
+            ),
+        ):
+            exc = write_utils.LockUnavailableError(
+                contracts.WRITE_LOCK_PATH,
+                lock_file_path=lock_path,
+            )
+
+        self.assertEqual(exc.holder_pid, 4242)
+        self.assertFalse(exc.holder_alive)
+        self.assertEqual(exc.holder_started_at, "1970-01-01T00:01:40Z")
+        self.assertIn("holder metadata appears stale/reused", str(exc))
+        self.assertNotIn("safe to remove", str(exc))
+        self.assertNotIn("4242", str(exc))
+
+    def test_lock_unavailable_error_pid_reuse_boundary_at_tolerance(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text("4242\t100.0\n", encoding="utf-8")
+
+        with (
+            patch.object(write_utils.os, "kill", return_value=None),
+            patch.object(write_utils, "_pid_start_time_tolerance_seconds", return_value=0.5),
+            patch.object(
+                write_utils,
+                "_pid_start_time_unix_seconds",
+                return_value=100.5,
+            ),
+        ):
+            exc = write_utils.LockUnavailableError(
+                contracts.WRITE_LOCK_PATH,
+                lock_file_path=lock_path,
+            )
+
+        self.assertFalse(exc.holder_alive)
+
+    def test_holder_process_is_alive_detects_reuse_with_darwin_precision(self) -> None:
+        with (
+            patch.object(write_utils.sys, "platform", "darwin"),
+            patch.object(write_utils.os, "kill", return_value=None),
+            patch.object(write_utils, "_pid_start_time_tolerance_seconds", return_value=1e-6),
+        ):
+            for observed, expected_alive in (
+                (100.0, True),  # exact coarse-second match
+                (100.0 + 2e-6, False),  # just beyond Darwin tolerance
+                (101.0, False),  # coarse-second rollover -> reused PID
+            ):
+                with self.subTest(observed=observed, expected_alive=expected_alive):
+                    with patch.object(
+                        write_utils,
+                        "_pid_start_time_unix_seconds",
+                        return_value=observed,
+                    ):
+                        holder_alive = write_utils._holder_process_is_alive(
+                            4242,
+                            expected_started_at_unix_seconds=100.0,
+                        )
+                    self.assertEqual(holder_alive, expected_alive)
+
+    def test_darwin_pid_start_time_uses_c_locale(self) -> None:
+        with (
+            patch.object(write_utils.sys, "platform", "darwin"),
+            patch.object(
+                write_utils.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(
+                    args=["ps"],
+                    returncode=0,
+                    stdout="Thu Jun 19 12:34:56 2026\n",
+                    stderr="",
+                ),
+            ) as run_mock,
+        ):
+            started_at = write_utils._pid_start_time_unix_seconds(1234)
+
+        self.assertIsInstance(started_at, float)
+        self.assertIsNotNone(started_at)
+        env = run_mock.call_args.kwargs.get("env", {})
+        self.assertEqual(env.get("LC_TIME"), "C")
+
+    def test_lock_unavailable_error_unreadable_lock_file_falls_back(self) -> None:
+        with patch.object(Path, "read_text", side_effect=OSError("denied")):
+            exc = write_utils.LockUnavailableError(contracts.WRITE_LOCK_PATH)
+
+        self.assertEqual(exc.holder_pid, None)
+        self.assertEqual(exc.holder_alive, None)
+        self.assertEqual(exc.holder_started_at, None)
+        self.assertEqual(
+            str(exc),
+            f"{write_utils.lock_unavailable_reason()} — "
+            "retry after the competing process completes, or remove the lock file if it is stale",
+        )
+
+    def test_lock_unavailable_result_includes_holder_context(self) -> None:
+        exc = RuntimeError("lock unavailable")
+        setattr(exc, "holder_alive", False)
+        setattr(exc, "holder_context_hash", "a" * 64)
+
+        result = lock_unavailable_result(
+            surface="test-surface",
+            mode="apply",
+            approval="approved",
+            path_rules={"allowlisted_roots": ["wiki"]},
+            exc=exc,
+        )
+
+        self.assertEqual(
+            result.context,
+            {
+                "holder_alive": False,
+                "holder_context_hash": "a" * 64,
+            },
+        )
+
     def test_governed_artifact_helpers_report_append_only_log_contract(self) -> None:
         contract = write_utils.governed_artifact_contract_for_path("wiki/log.md")
         self.assertIsNotNone(contract)
@@ -549,13 +717,13 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             )
 
 
-class CheckNoSymlinkPathTests(unittest.TestCase):
-    def setUp(self) -> None:
+class CheckNoSymlinkPathTests:
+    def setup_method(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         # Resolve to canonical path; on macOS /var is a symlink to /private/var
         self.tmp_path = Path(self._tmp.name).resolve()
 
-    def tearDown(self) -> None:
+    def teardown_method(self) -> None:
         self._tmp.cleanup()
 
     def test_plain_file_passes(self) -> None:
@@ -573,7 +741,7 @@ class CheckNoSymlinkPathTests(unittest.TestCase):
         target.write_text("data", encoding="utf-8")
         link = self.tmp_path / "link.txt"
         link.symlink_to(target)
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             check_no_symlink_path(link)
 
     def test_symlinked_parent_raises(self) -> None:
@@ -582,21 +750,21 @@ class CheckNoSymlinkPathTests(unittest.TestCase):
         link_dir = self.tmp_path / "link_dir"
         link_dir.symlink_to(real_dir)
         child = link_dir / "file.txt"
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             check_no_symlink_path(child)
 
     def test_is_in_public_api(self) -> None:
-        self.assertIn("check_no_symlink_path", write_utils.__all__)
+        assert "check_no_symlink_path" in write_utils.__all__
 
 
-class WriteTextCapturingPreviousSafeSymlinkTests(unittest.TestCase):
+class WriteTextCapturingPreviousSafeSymlinkTests:
     """Regression tests: write_text_capturing_previous_safe must reject symlinked paths."""
 
-    def setUp(self) -> None:
+    def setup_method(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self._tmp.name).resolve()
 
-    def tearDown(self) -> None:
+    def teardown_method(self) -> None:
         self._tmp.cleanup()
 
     def test_rejects_symlink_at_target_path(self) -> None:
@@ -606,11 +774,11 @@ class WriteTextCapturingPreviousSafeSymlinkTests(unittest.TestCase):
         link = self.tmp_path / "link.md"
         link.symlink_to(real_file)
 
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             write_utils.write_text_capturing_previous_safe(link, "updated\n")
 
         # Original file must be untouched.
-        self.assertEqual(real_file.read_text(encoding="utf-8"), "original\n")
+        assert real_file.read_text(encoding="utf-8") == "original\n"
 
     def test_rejects_symlinked_parent_directory(self) -> None:
         """write_text_capturing_previous_safe must raise OSError when a parent dir is a symlink."""
@@ -620,7 +788,7 @@ class WriteTextCapturingPreviousSafeSymlinkTests(unittest.TestCase):
         link_dir.symlink_to(real_dir)
         target = link_dir / "file.md"
 
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             write_utils.write_text_capturing_previous_safe(target, "data\n")
 
     def test_plain_path_succeeds(self) -> None:
@@ -628,32 +796,32 @@ class WriteTextCapturingPreviousSafeSymlinkTests(unittest.TestCase):
         target = self.tmp_path / "subdir" / "page.md"
         target.parent.mkdir()
         write_utils.write_text_capturing_previous_safe(target, "content\n")
-        self.assertEqual(target.read_text(encoding="utf-8"), "content\n")
+        assert target.read_text(encoding="utf-8") == "content\n"
 
 
-class ExclusiveCreateWriteOnceTests(unittest.TestCase):
-    def setUp(self) -> None:
+class ExclusiveCreateWriteOnceTests:
+    def setup_method(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self._tmp.name).resolve()
 
-    def tearDown(self) -> None:
+    def teardown_method(self) -> None:
         self._tmp.cleanup()
 
     def test_creates_new_file_in_new_parent_dirs(self) -> None:
         target = self.tmp_path / "a" / "b" / "c.bin"
         write_utils.exclusive_create_write_once(target, b"hello")
-        self.assertEqual(target.read_bytes(), b"hello")
+        assert target.read_bytes() == b"hello"
 
     def test_idempotent_same_bytes(self) -> None:
         target = self.tmp_path / "asset.bin"
         write_utils.exclusive_create_write_once(target, b"data")
         write_utils.exclusive_create_write_once(target, b"data")  # second call: no-op
-        self.assertEqual(target.read_bytes(), b"data")
+        assert target.read_bytes() == b"data"
 
     def test_raises_on_byte_mismatch(self) -> None:
         target = self.tmp_path / "asset.bin"
         write_utils.exclusive_create_write_once(target, b"original")
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             write_utils.exclusive_create_write_once(target, b"different")
 
     def test_raises_on_symlink_path(self) -> None:
@@ -661,7 +829,7 @@ class ExclusiveCreateWriteOnceTests(unittest.TestCase):
         real.write_bytes(b"content")
         link = self.tmp_path / "link.bin"
         link.symlink_to(real)
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             write_utils.exclusive_create_write_once(link, b"content")
 
     def test_no_temp_file_remains_on_success(self) -> None:
@@ -669,11 +837,7 @@ class ExclusiveCreateWriteOnceTests(unittest.TestCase):
         write_utils.exclusive_create_write_once(target, b"hello")
         # Only the target file should exist; no .asset.bin.* temp files.
         files = list(self.tmp_path.iterdir())
-        self.assertEqual([target], files)
+        assert [target] == files
 
     def test_is_in_public_api(self) -> None:
-        self.assertIn("exclusive_create_write_once", write_utils.__all__)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert "exclusive_create_write_once" in write_utils.__all__

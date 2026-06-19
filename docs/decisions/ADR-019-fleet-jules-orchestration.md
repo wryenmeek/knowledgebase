@@ -206,12 +206,67 @@ Several security decisions were made that are not reflected in the original ADR:
 - Fleet PRs continue to enter the normal CI review gate (CI-2 → fleet-merge)
   like any other PR.
 
+## Amendment 2
+
+**Date:** 2026-06-19
+
+### What changed
+
+**Ops tooling added: account probe and stale-session archive**
+
+Two operator scripts were ported into `scripts/fleet/` from `wryenmeek/hot-springs-island`
+(see issue #82) to remove the cross-repo dependency for session-cap saturation diagnosis:
+
+- **`jules-account-probe.ts`** — read-only snapshot of sources, session counts per source,
+  and `inProgress` session ages. No side effects. Outputs structured JSON to stdout.
+- **`archive-stale-sessions.ts`** — bulk-archive with dry-run default. `--older-than-days N`
+  is required. `--apply` performs real archive calls.
+
+**Source-scoping safety contract (deny-by-default)**
+
+`jules.sessions()` returns sessions across **all** repositories on the Jules account.
+The archive tool enforces source scoping for `--apply` mode to prevent accidental
+cross-account archive:
+
+- `--apply` without any source scope fails closed with a non-zero exit.
+- `--repo current` — shorthand for `sources/github/wryenmeek/knowledgebase`.
+- `--source-filter <source-id>` — explicit source ID.
+- `--repo all` — explicit opt-in for account-wide archive.
+- Dry-run (default, no `--apply`) allows any scope, including no scope, because it
+  has no side effects.
+
+**Approval model:** `--apply` flag on the CLI or `apply=true` in the workflow is the
+operator confirmation. No additional interactive prompt is required; the explicit flag
+is the acknowledgment. `--repo all` serves as the second confirmation for account-wide
+archive.
+
+**Rollback / verification path:** Archive is not deletion. Archived sessions remain
+accessible by ID and can be unarchived via `jules.session(id).unarchive()`. After
+archiving, re-run the account probe (`jules-account-probe.ts`) to confirm
+`totals.activeSessions` dropped.
+
+**Corresponding CI workflows:**
+- `jules-account-probe.yml` — `workflow_dispatch` only; attaches JSON artifact; no secret required beyond `JULES_API_KEY` (step-scoped).
+- `jules-archive-stale.yml` — `workflow_dispatch` only; `source_filter` defaults to `sources/github/wryenmeek/knowledgebase`; `JULES_API_KEY` step-scoped.
+  All inputs routed through `env:` blocks per the shell-injection guard from Amendment 1.
+
+### What did not change
+
+- The three-phase fleet orchestration pattern (Plan → Dispatch → Merge) is unchanged.
+- The Jules SDK usage contract is unchanged.
+- Security conventions from Amendment 1 (injection guard, step-scoped secrets, etc.) are unchanged.
+
 ## References
 
 - `scripts/fleet/` — TypeScript/Bun fleet orchestration scripts
+- `scripts/fleet/jules-account-probe.ts` — read-only Jules account health diagnostic
+- `scripts/fleet/archive-stale-sessions.ts` — stale session archive with deny-by-default scoping
 - `.github/workflows/fleet-plan.yml` — Phase 1 scheduled planning pipeline
 - `.github/workflows/fleet-dispatch.yml` — Phase 2 dispatch pipeline (triggered by plan PR merge)
 - `.github/workflows/fleet-merge.yml` — sequential PR merge pipeline
+- `.github/workflows/jules-account-probe.yml` — read-only account diagnostic workflow
+- `.github/workflows/jules-archive-stale.yml` — archive workflow (manual dispatch)
+- `.github/instructions/fleet-operations.instructions.md` — operator runbook
 - `docs/decisions/ADR-004-split-ci-workflow-governance.md` — CI trust model that fleet PRs enter
 - `docs/decisions/ADR-015-extended-ci-trust-model.md` — CI-4/CI-5 context
 - `@google/jules-sdk` — Jules API client

@@ -1,0 +1,63 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# .github/workflows/jules-account-probe.yml
+#
+# Read-only diagnostic workflow that surfaces source/session/quota state for
+# the operator's Jules account. Intended for diagnosing session-cap saturation
+# events (see knowledgebase#82) without any side effects.
+#
+# Triggers: manual dispatch only (workflow_dispatch). No schedule.
+# Output: structured JSON artifact attached to the workflow run.
+name: Jules Account Probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.1"
+
+      - name: Install fleet dependencies
+        working-directory: scripts/fleet
+        run: bun install
+
+      - name: Run account probe
+        id: probe
+        working-directory: scripts/fleet
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+        run: |
+          set -euo pipefail
+          bun run jules-account-probe.ts | tee /tmp/probe-output.json
+
+      - name: Upload probe results
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: jules-account-probe-${{ github.run_id }}
+          path: /tmp/probe-output.json
+          retention-days: 7
