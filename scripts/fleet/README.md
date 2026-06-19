@@ -160,6 +160,55 @@ Run this after every TypeScript edit. `pytest` passing does **not** mean TypeScr
 | `fleet-plan.ts` | `bun plan` | 1 | Planning session, manifest PR |
 | `fleet-dispatch.ts` | `bun dispatch` | 2 | Parallel Jules dispatch |
 | `fleet-merge.ts` | `bun merge` | 3 | Ordered merge with re-dispatch |
+| `jules-account-probe.ts` | — | ops | Read-only Jules account health diagnostic |
+| `archive-stale-sessions.ts` | — | ops | Bulk-archive stale/zombie sessions |
+
+### Operational scripts
+
+See `.github/instructions/fleet-operations.instructions.md` for the full
+operations runbook, including step-by-step diagnosis for session-cap saturation
+events.
+
+#### `jules-account-probe.ts` — account health snapshot (read-only)
+
+```bash
+bun run jules-account-probe.ts
+```
+
+Surfaces source/session/quota state for the Jules account. Outputs a structured
+JSON envelope with: registered sources, active/inProgress session counts per
+source, ages of `inProgress` sessions, and account totals. No side effects.
+
+Requires `JULES_API_KEY`. Also available as a GitHub Actions workflow:
+**Actions → Jules Account Probe**.
+
+#### `archive-stale-sessions.ts` — bulk archive zombie sessions
+
+```bash
+# Dry-run (default): shows what would be archived, no side effects
+bun run archive-stale-sessions.ts --older-than-days 7 --state inProgress
+
+# Apply: actually archive
+bun run archive-stale-sessions.ts --older-than-days 7 --apply
+
+# Scope to a specific repo source
+bun run archive-stale-sessions.ts \
+  --older-than-days 3 \
+  --state inProgress \
+  --source-filter sources/github/wryenmeek/knowledgebase \
+  --apply
+```
+
+Flags:
+- `--older-than-days N` — **required**; minimum age in days (no default to prevent mass-archive)
+- `--state <state>` — session state filter (default: `inProgress`)
+- `--source-filter <source-id>` — optional; scope to one source
+- `--apply` — perform real archive calls; omit for dry-run
+
+Uses `jules.session(id).archive()` per SDK pattern (SDK over REST for mutations).
+NOTE: Jules has no cancel endpoint; archive is the correct removal mechanism.
+
+Also available as a GitHub Actions workflow: **Actions → Jules Archive Stale Sessions**.
 
 ### Fleet helper modules (`scripts/fleet/github/`)
 
