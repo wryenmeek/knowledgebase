@@ -703,6 +703,37 @@ class OptionalSurfaceScriptTests(RuntimeWorkspaceTestCase):
         self.assertEqual(payload["reason_code"], "invalid_input")
         self.assertIn("cannot be combined", payload["message"])
 
+    def test_quality_runtime_rejects_apply_and_approval_equals_combination(self) -> None:
+        for args in (
+            ("--approval=approved", "--apply"),
+            ("--apply", "--approval=approved"),
+        ):
+            with self.subTest(args=args):
+                exit_code, payload = self._run_script(
+                    QUALITY_RUNTIME_PATH,
+                    "--mode",
+                    "score-update",
+                    "--path",
+                    "wiki",
+                    *args,
+                )
+                self.assertEqual(exit_code, 1)
+                self.assertEqual(payload["reason_code"], "invalid_input")
+                self.assertIn("equals-sign syntax is not supported", payload["message"])
+
+    def test_quality_runtime_rejects_approval_equals_spelling_without_apply(self) -> None:
+        exit_code, payload = self._run_script(
+            QUALITY_RUNTIME_PATH,
+            "--mode",
+            "score-update",
+            "--path",
+            "wiki",
+            "--approval=approved",
+        )
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["reason_code"], "invalid_input")
+        self.assertIn("equals-sign syntax is not supported", payload["message"])
+
     def test_quality_runtime_report_writes_quality_report_artifact(self) -> None:
         self.write_file(
             "wiki/page2.md",

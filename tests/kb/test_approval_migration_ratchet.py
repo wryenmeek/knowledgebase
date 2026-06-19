@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -117,3 +118,45 @@ def test_hooks_json_registers_approval_flag_posttooluse_command() -> None:
         entry.get("command") == "python3 scripts/hooks/check_approval_flag.py"
         for entry in post_tool_use
     )
+
+
+def test_hook_rejects_posttooluse_worktree_edit_with_legacy_approval(monkeypatch, tmp_path, capsys) -> None:
+    script_path = tmp_path / "scripts" / "tool.py"
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text('parser.add_argument("--approval", default="none")\n', encoding="utf-8")
+
+    payload = {
+        "hookEventName": "PostToolUse",
+        "tool_name": "edit",
+        "tool_result": {"success": True},
+        "cwd": str(tmp_path),
+        "tool_input": {"path": "scripts/tool.py"},
+    }
+    monkeypatch.setenv("COPILOT_HOOK_EVENT_PAYLOAD", json.dumps(payload))
+    monkeypatch.chdir(tmp_path)
+
+    assert check_approval_flag.main([]) == 1
+    captured = capsys.readouterr()
+    assert "modified legacy script still uses --approval" in captured.err
+
+
+def test_hook_rejects_approval_equals_after_deadline(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_staged_script_paths",
+        lambda: ([check_approval_flag.StagedScriptPath("M", "scripts/_optional_surface_common.py")], None),
+    )
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_get_staged_content",
+        lambda path: ('argv = ["--approval=approved"]\n', None),
+    )
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_migration_deadline_passed",
+        lambda today=None: check_approval_flag.APPROVAL_EQUALS_REJECTION_DEADLINE < date(2099, 1, 1),
+    )
+
+    assert check_approval_flag.main([]) == 1
+    captured = capsys.readouterr()
+    assert "--approval=<value> is forbidden after" in captured.err

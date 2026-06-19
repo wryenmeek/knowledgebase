@@ -438,9 +438,14 @@ def add_approval_arg(parser: argparse.ArgumentParser) -> None:
 def normalize_apply_alias(argv: Sequence[str]) -> list[str]:
     """Map ``--apply`` to legacy ``--approval approved`` for deprecation window."""
     args = list(argv)
+    if any(token.startswith("--approval=") for token in args):
+        raise ValueError(
+            "legacy --approval must use space-separated form (--approval approved); "
+            "equals-sign syntax is not supported"
+        )
     if "--apply" not in args:
         return args
-    if "--approval" in args:
+    if "--approval" in args or any(token.startswith("--approval=") for token in args):
         raise ValueError("--apply cannot be combined with --approval")
 
     normalized: list[str] = []

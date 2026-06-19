@@ -5,11 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import contextmanager
+from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from scripts._optional_surface_common import SurfaceResult
+from scripts.drive_monitor import fetch_content as fetch_content_module
 from scripts.drive_monitor.fetch_content import fetch_content
 
 
@@ -139,6 +142,44 @@ class TestFetchContentApprovalGate:
                 drift_report_path=report_path,
                 approval="approved",
             )
+
+    @pytest.mark.parametrize(
+        ("flag_args", "expected_approval"),
+        [
+            (["--apply"], "approved"),
+            (["--approval", "approved"], "approved"),
+        ],
+    )
+    def test_run_cli_write_confirmation_aliases(self, tmp_path, monkeypatch, flag_args, expected_approval):
+        _write_registry(tmp_path)
+        report_path = _write_drift_report(tmp_path, _make_drift_report([]))
+
+        captured: dict[str, object] = {}
+
+        def fake_runner(**kwargs):
+            captured.update(kwargs)
+            return SurfaceResult(
+                surface=fetch_content_module.SURFACE,
+                mode=fetch_content_module.MODE,
+                status="pass",
+                reason_code="ok",
+                message="ok",
+                path_rules=fetch_content_module._path_rules(),
+                approval=str(kwargs["approval"]),
+            )
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(fetch_content_module, "_runner", fake_runner)
+
+        output = StringIO()
+        exit_code = fetch_content_module.run_cli(
+            ["--repo-root", str(tmp_path), "--drift-report", str(report_path), *flag_args],
+            output_stream=output,
+        )
+        payload = json.loads(output.getvalue())
+        assert exit_code == 0
+        assert captured["approval"] == expected_approval
+        assert payload["approval"] == "approved"
 
 
 # ---------------------------------------------------------------------------
