@@ -91,6 +91,84 @@ class LockUnavailableError(RuntimeError):
         super().__init__(f"{self.failure_reason} — {hint}")
 
 
+def _open_lock_file(
+    repo_root: Path,
+    lock_path: str,
+    *,
+    create: bool,
+) -> tuple[Path, Path, TextIO]:
+    """Open a lock file under *repo_root* and return ``(abs, resolved, handle)``."""
+    abs_lock = repo_root / lock_path
+    resolved_lock = abs_lock.resolve(strict=False)
+    _check_no_symlink_path_within_root(repo_root, abs_lock)
+    if not resolved_lock.is_relative_to(repo_root):
+        raise OSError(f"lock path escapes repository root: {lock_path}")
+    if create:
+        abs_lock.parent.mkdir(parents=True, exist_ok=True)
+        _check_no_symlink_path_within_root(repo_root, abs_lock)
+    flags = os.O_RDWR | (os.O_CREAT if create else 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(abs_lock, flags, 0o600)
+    return abs_lock, resolved_lock, os.fdopen(fd, "a+", encoding="utf-8")
+
+
+def _acquire_sibling_governance_lock(
+    repo_root: Path,
+    lock_path: str,
+    lock_file: TextIO,
+) -> None:
+    """Acquire a sibling governance lock using the meta-lock protocol."""
+    meta_lock_abs_path = repo_root / contracts.GOVERNANCE_META_LOCK_PATH
+    meta_lock_preexisting = meta_lock_abs_path.exists()
+    _, _, meta_lock_file = _open_lock_file(
+        repo_root,
+        contracts.GOVERNANCE_META_LOCK_PATH,
+        create=True,
+    )
+    try:
+        with meta_lock_file:
+            try:
+                fcntl.flock(meta_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise LockUnavailableError(contracts.GOVERNANCE_META_LOCK_PATH) from exc
+            try:
+                for sibling_lock_path in sorted(contracts.GOVERNANCE_SIBLING_LOCKS):
+                    if sibling_lock_path == lock_path:
+                        continue
+                    sibling_resolved = (repo_root / sibling_lock_path).resolve(strict=False)
+                    if sibling_resolved in _HELD_LOCK_COUNTS:
+                        raise LockUnavailableError(sibling_lock_path)
+                    try:
+                        _, _, sibling_lock_file = _open_lock_file(
+                            repo_root,
+                            sibling_lock_path,
+                            create=False,
+                        )
+                    except FileNotFoundError:
+                        continue
+                    except OSError as exc:
+                        raise LockUnavailableError(sibling_lock_path) from exc
+                    with sibling_lock_file:
+                        try:
+                            fcntl.flock(sibling_lock_file.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+                        except OSError as exc:
+                            raise LockUnavailableError(sibling_lock_path) from exc
+                        finally:
+                            with contextlib.suppress(OSError):
+                                fcntl.flock(sibling_lock_file.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise LockUnavailableError(lock_path) from exc
+            finally:
+                with contextlib.suppress(OSError):
+                    fcntl.flock(meta_lock_file.fileno(), fcntl.LOCK_UN)
+    finally:
+        if not meta_lock_preexisting:
+            with contextlib.suppress(OSError):
+                meta_lock_abs_path.unlink()
+
+
 @contextmanager
 def exclusive_write_lock(
     repo_root: str | Path = ".",
@@ -122,24 +200,18 @@ def exclusive_write_lock(
         return
 
     try:
-        _check_no_symlink_path_within_root(root, abs_lock)
-        if not resolved_lock.is_relative_to(root):
-            raise OSError(f"lock path escapes repository root: {lock_path}")
-        abs_lock.parent.mkdir(parents=True, exist_ok=True)
-        _check_no_symlink_path_within_root(root, abs_lock)
-        flags = os.O_RDWR | os.O_CREAT
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        fd = os.open(abs_lock, flags, 0o600)
-        lock_file = os.fdopen(fd, "a+", encoding="utf-8")
+        abs_lock, resolved_lock, lock_file = _open_lock_file(root, lock_path, create=True)
     except OSError as exc:
         raise LockUnavailableError(lock_path) from exc
 
     with lock_file:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as exc:
-            raise LockUnavailableError(lock_path) from exc
+        if lock_path in contracts.GOVERNANCE_SIBLING_LOCKS:
+            _acquire_sibling_governance_lock(root, lock_path, lock_file)
+        else:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise LockUnavailableError(lock_path) from exc
 
         try:
             _HELD_LOCK_COUNTS[resolved_lock] = _HELD_LOCK_COUNTS.get(resolved_lock, 0) + 1

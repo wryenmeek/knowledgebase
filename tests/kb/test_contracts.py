@@ -227,6 +227,26 @@ class SharedContractsTests(unittest.TestCase):
         self.assertIn(".customizations.lock", contracts.GOVERNANCE_LOCK_FILES)
         self.assertIn(contracts.CUSTOMIZATIONS_LOCK_PATH, init_script.LOCK_FILES)
 
+    def test_governance_meta_lock_and_sibling_set_are_declared_and_exported(self) -> None:
+        self.assertEqual(
+            contracts.GOVERNANCE_META_LOCK_PATH,
+            "raw/.governance-meta.lock",
+        )
+        self.assertEqual(
+            contracts.GOVERNANCE_SIBLING_LOCKS,
+            frozenset(
+                {
+                    contracts.WRITE_LOCK_PATH,
+                    contracts.REJECTION_REGISTRY_LOCK_PATH,
+                    contracts.CUSTOMIZATIONS_LOCK_PATH,
+                }
+            ),
+        )
+        self.assertIn("GOVERNANCE_META_LOCK_PATH", contracts.__all__)
+        self.assertIn("GOVERNANCE_SIBLING_LOCKS", contracts.__all__)
+        self.assertIn(".governance-meta.lock", contracts.GOVERNANCE_LOCK_FILES)
+        self.assertIn(contracts.GOVERNANCE_META_LOCK_PATH, init_script.LOCK_FILES)
+
     def test_test_framework_ratchet_baseline_is_declared_and_exported(self) -> None:
         self.assertEqual(contracts.MAX_UNITTEST_FILES, 60)
         self.assertIn("MAX_UNITTEST_FILES", contracts.__all__)

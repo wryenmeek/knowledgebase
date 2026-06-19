@@ -78,6 +78,14 @@ DRIVE_SOURCES_LOCK_PATH = "raw/.drive-sources.lock"
 CHECKPOINT_REGISTRY_LOCK_PATH = "raw/.wiki-processing-checkpoint.lock"
 # ADR-028 — instruction-locality ladder; sibling pattern per ADR-005 / ADR-013.
 CUSTOMIZATIONS_LOCK_PATH = ".github/.customizations.lock"
+GOVERNANCE_META_LOCK_PATH = "raw/.governance-meta.lock"
+GOVERNANCE_SIBLING_LOCKS: frozenset[str] = frozenset(
+    {
+        WRITE_LOCK_PATH,
+        REJECTION_REGISTRY_LOCK_PATH,
+        CUSTOMIZATIONS_LOCK_PATH,
+    }
+)
 
 # Exact basenames of all governance lock files. Derived from the path constants
 # above so that this frozenset stays in sync automatically (ADR-011: single
@@ -90,6 +98,7 @@ GOVERNANCE_LOCK_FILES: frozenset[str] = frozenset({
     _os.path.basename(DRIVE_SOURCES_LOCK_PATH),
     _os.path.basename(CHECKPOINT_REGISTRY_LOCK_PATH),
     _os.path.basename(CUSTOMIZATIONS_LOCK_PATH),
+    _os.path.basename(GOVERNANCE_META_LOCK_PATH),
 })
 
 CHECKPOINT_REGISTRY_SIZE_WARN_BYTES = 5 * 1024 * 1024
@@ -409,6 +418,8 @@ __all__ = [
     "GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS",
     "CUSTOMIZATIONS_LOCK_PATH",
     "GITHUB_SOURCES_LOCK_PATH",
+    "GOVERNANCE_META_LOCK_PATH",
+    "GOVERNANCE_SIBLING_LOCKS",
     "CHECKPOINT_REGISTRY_LOCK_PATH",
     "CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES",
     "CHECKPOINT_REGISTRY_SIZE_WARN_BYTES",

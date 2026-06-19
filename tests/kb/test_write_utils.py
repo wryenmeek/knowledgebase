@@ -26,7 +26,10 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         super().setUp()
         (self.workspace_root / "wiki").mkdir(parents=True, exist_ok=True)
 
-    def _probe_lock_attempt(self) -> dict[str, object]:
+    def _probe_lock_attempt(
+        self,
+        lock_path: str = contracts.WRITE_LOCK_PATH,
+    ) -> dict[str, object]:
         probe_script = textwrap.dedent(
             """
             import json
@@ -34,8 +37,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             from scripts.kb.write_utils import LockUnavailableError, exclusive_write_lock
 
             repo_root = sys.argv[1]
+            lock_path = sys.argv[2]
             try:
-                with exclusive_write_lock(repo_root):
+                with exclusive_write_lock(repo_root, lock_path=lock_path):
                     print(json.dumps({"acquired": True}))
             except LockUnavailableError as exc:
                 print(
@@ -51,7 +55,7 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         )
 
         completed = subprocess.run(
-            [sys.executable, "-c", probe_script, str(self.workspace_root)],
+            [sys.executable, "-c", probe_script, str(self.workspace_root), lock_path],
             check=True,
             capture_output=True,
             cwd=REPO_ROOT,
@@ -97,6 +101,19 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         with write_utils.exclusive_write_lock(self.workspace_root) as acquired_path:
             self.assertEqual(acquired_path, lock_path)
 
+    def test_governance_sibling_locks_treat_preexisting_unlocked_file_as_stale(self) -> None:
+        for lock_path in sorted(contracts.GOVERNANCE_SIBLING_LOCKS):
+            with self.subTest(lock_path=lock_path):
+                abs_lock_path = self.workspace_root / lock_path
+                abs_lock_path.parent.mkdir(parents=True, exist_ok=True)
+                abs_lock_path.write_text("stale\n", encoding="utf-8")
+
+                with write_utils.exclusive_write_lock(
+                    self.workspace_root,
+                    lock_path=lock_path,
+                ) as acquired_path:
+                    self.assertEqual(acquired_path, abs_lock_path)
+
     def test_exclusive_write_lock_rejects_symlinked_lock_file(self) -> None:
         lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
         lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -138,6 +155,45 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             probe_result["failure_reason"],
             write_utils.lock_unavailable_reason(),
         )
+
+    def test_customizations_lock_fails_when_sibling_governance_lock_is_held(self) -> None:
+        for held_lock in sorted(
+            contracts.GOVERNANCE_SIBLING_LOCKS - {contracts.CUSTOMIZATIONS_LOCK_PATH}
+        ):
+            with self.subTest(held_lock=held_lock):
+                with write_utils.exclusive_write_lock(self.workspace_root, lock_path=held_lock):
+                    probe_result = self._probe_lock_attempt(contracts.CUSTOMIZATIONS_LOCK_PATH)
+
+                self.assertFalse(probe_result["acquired"])
+                self.assertEqual(
+                    probe_result["reason_code"],
+                    contracts.ReasonCode.LOCK_UNAVAILABLE.value,
+                )
+                self.assertEqual(
+                    probe_result["failure_reason"],
+                    write_utils.lock_unavailable_reason(held_lock),
+                )
+
+    def test_sibling_governance_lock_fails_when_customizations_lock_is_held(self) -> None:
+        for attempted_lock in sorted(
+            contracts.GOVERNANCE_SIBLING_LOCKS - {contracts.CUSTOMIZATIONS_LOCK_PATH}
+        ):
+            with self.subTest(attempted_lock=attempted_lock):
+                with write_utils.exclusive_write_lock(
+                    self.workspace_root,
+                    lock_path=contracts.CUSTOMIZATIONS_LOCK_PATH,
+                ):
+                    probe_result = self._probe_lock_attempt(attempted_lock)
+
+                self.assertFalse(probe_result["acquired"])
+                self.assertEqual(
+                    probe_result["reason_code"],
+                    contracts.ReasonCode.LOCK_UNAVAILABLE.value,
+                )
+                self.assertEqual(
+                    probe_result["failure_reason"],
+                    write_utils.lock_unavailable_reason(contracts.CUSTOMIZATIONS_LOCK_PATH),
+                )
 
     def test_governed_artifact_helpers_report_append_only_log_contract(self) -> None:
         contract = write_utils.governed_artifact_contract_for_path("wiki/log.md")
