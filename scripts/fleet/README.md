@@ -31,6 +31,13 @@ Do not use `npm install`. This project requires Bun.
 | `FLEET_ALLOW_NO_CHECKS` | No | Allow merge to proceed when PR has zero check runs (`false` by default; fail-closed). |
 | `FLEET_PENDING_DATE` | No | Fleet date override (`YYYY_MM_DD`) so dispatch/merge can target a prior planning day. Invalid format fails preflight. |
 
+> **Note:** Bun does **not** auto-load `.env` files. Export variables explicitly before running scripts locally:
+> ```bash
+> export $(grep JULES_API_KEY .env | xargs) && bun run jules-account-probe.ts
+> # or for the archive tool:
+> export $(grep JULES_API_KEY .env | xargs) && bun run archive-stale-sessions.ts --older-than-days 7 --repo current
+> ```
+
 ## Scripts
 
 ### `bun analyze` — inspect open issues (read-only)
@@ -170,6 +177,62 @@ Run this after every TypeScript edit. `pytest` passing does **not** mean TypeScr
 | `fleet-plan.ts` | `bun plan` | 1 | Planning session, manifest PR |
 | `fleet-dispatch.ts` | `bun dispatch` | 2 | Parallel Jules dispatch |
 | `fleet-merge.ts` | `bun merge` | 3 | Ordered merge with re-dispatch |
+| `jules-account-probe.ts` | — | ops | Read-only Jules account health diagnostic |
+| `archive-stale-sessions.ts` | — | ops | Bulk-archive stale/zombie sessions |
+
+### Operational scripts
+
+See `.github/instructions/fleet-operations.instructions.md` for the full
+operations runbook, including step-by-step diagnosis for session-cap saturation
+events.
+
+#### `jules-account-probe.ts` — account health snapshot (read-only)
+
+```bash
+bun run jules-account-probe.ts
+```
+
+Surfaces source/session/quota state for the Jules account. Outputs a structured
+JSON envelope with: registered sources, active/inProgress session counts per
+source, ages of `inProgress` sessions, and account totals. No side effects.
+
+Requires `JULES_API_KEY`. Also available as a GitHub Actions workflow:
+**Actions → Jules Account Probe**.
+
+#### `archive-stale-sessions.ts` — bulk archive zombie sessions
+
+```bash
+# Dry-run (default): shows what would be archived, no side effects
+bun run archive-stale-sessions.ts --older-than-days 7 --state inProgress --repo current
+
+# Apply: archive stale sessions for this repo (deny-by-default: source scope is required with --apply)
+bun run archive-stale-sessions.ts --older-than-days 7 --repo current --apply
+
+# Scope to a specific repo source via explicit source filter
+bun run archive-stale-sessions.ts \
+  --older-than-days 3 \
+  --state inProgress \
+  --source-filter sources/github/wryenmeek/knowledgebase \
+  --apply
+
+# Account-wide: archive across all repos (explicit opt-in)
+bun run archive-stale-sessions.ts --older-than-days 7 --repo all --apply
+```
+
+Flags:
+- `--older-than-days N` — **required**; minimum age in days (no default to prevent mass-archive)
+- `--state <state>` — session state filter (default: `inProgress`)
+- `--repo current` — shorthand for `sources/github/wryenmeek/knowledgebase`
+- `--repo all` — account-wide archive (explicit opt-in; no source filter applied)
+- `--source-filter <source-id>` — explicit source ID
+- `--apply` — perform real archive calls; omit for dry-run
+
+**Safety rule:** `--apply` requires an explicit source scope (`--repo current`, `--repo all`, or `--source-filter`). Omitting all three exits non-zero to prevent accidental account-wide archive.
+
+Uses `jules.session(id).archive()` per SDK pattern (SDK over REST for mutations).
+NOTE: Jules has no cancel endpoint; archive is the correct removal mechanism.
+
+Also available as a GitHub Actions workflow: **Actions → Jules Archive Stale Sessions**.
 
 ### Fleet helper modules (`scripts/fleet/github/`)
 
