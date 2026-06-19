@@ -3,13 +3,26 @@
 from __future__ import annotations
 
 import json
-import unittest
 
 from scripts import init as init_script
 from scripts.kb import contracts
 
 
-class SharedContractsTests(unittest.TestCase):
+class _AssertMixin:
+    def assertEqual(self, left, right) -> None:
+        assert left == right
+
+    def assertIn(self, member, container) -> None:
+        assert member in container
+
+    def assertIsNotNone(self, value) -> None:
+        assert value is not None
+
+    def assertIsNone(self, value) -> None:
+        assert value is None
+
+
+class TestSharedContracts(_AssertMixin):
     def test_governed_artifact_contracts_cover_declared_state_targets(self) -> None:
         self.assertEqual(
             contracts.GOVERNED_ARTIFACT_IDS,
@@ -136,6 +149,55 @@ class SharedContractsTests(unittest.TestCase):
         self.assertIsNone(
             contracts.governed_artifact_contract_by_pattern("../wiki/log.md")
         )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("wiki/../raw/processed/SPEC.md")
+        )
+
+    def test_governed_artifact_contract_by_pattern_rejects_platform_specific_paths(
+        self,
+    ) -> None:
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern(
+                r"wiki\..\.github/copilot-instructions.md"
+            )
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("\\\\server\\share\\foo")
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("C:\\wiki\\index.md")
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("C:/wiki/index.md")
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("C:wiki/index.md")
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("/wiki/index.md")
+        )
+
+    def test_governed_artifact_contract_by_pattern_matches_all_declared_artifacts(
+        self,
+    ) -> None:
+        representative_paths = {
+            "github-source-registry": "raw/github-sources/example.source-registry.json",
+            "external-asset": "raw/assets/example/repo/abc123/file.md",
+            "rejection-record": "raw/rejected/example--a1b2c3d4.rejection.md",
+        }
+        dynamic_pattern_ids = {
+            artifact.artifact_id
+            for artifact in contracts.GOVERNED_ARTIFACT_CONTRACTS
+            if artifact.path_pattern
+        }
+        self.assertEqual(set(representative_paths), dynamic_pattern_ids)
+
+        for artifact in contracts.GOVERNED_ARTIFACT_CONTRACTS:
+            path = representative_paths.get(artifact.artifact_id, artifact.path)
+            matched = contracts.governed_artifact_contract_by_pattern(path)
+            self.assertIsNotNone(matched, msg=f"expected match for {artifact.artifact_id}")
+            assert matched is not None
+            self.assertEqual(matched.artifact_id, artifact.artifact_id)
 
     def test_governed_artifact_contract_details_are_explicit(self) -> None:
         log_contract = contracts.governed_artifact_contract("wiki/log.md")
@@ -227,8 +289,31 @@ class SharedContractsTests(unittest.TestCase):
         self.assertIn(".customizations.lock", contracts.GOVERNANCE_LOCK_FILES)
         self.assertIn(contracts.CUSTOMIZATIONS_LOCK_PATH, init_script.LOCK_FILES)
 
+    def test_governance_meta_lock_and_sibling_set_are_declared_and_exported(self) -> None:
+        self.assertEqual(
+            contracts.GOVERNANCE_META_LOCK_PATH,
+            "raw/.governance-meta.lock",
+        )
+        self.assertEqual(
+            contracts.GOVERNANCE_SIBLING_LOCKS,
+            frozenset(
+                {
+                    contracts.WRITE_LOCK_PATH,
+                    contracts.REJECTION_REGISTRY_LOCK_PATH,
+                    contracts.CUSTOMIZATIONS_LOCK_PATH,
+                    contracts.GITHUB_SOURCES_LOCK_PATH,
+                    contracts.DRIVE_SOURCES_LOCK_PATH,
+                    contracts.CHECKPOINT_REGISTRY_LOCK_PATH,
+                }
+            ),
+        )
+        self.assertIn("GOVERNANCE_META_LOCK_PATH", contracts.__all__)
+        self.assertIn("GOVERNANCE_SIBLING_LOCKS", contracts.__all__)
+        self.assertIn(".governance-meta.lock", contracts.GOVERNANCE_LOCK_FILES)
+        self.assertIn(contracts.GOVERNANCE_META_LOCK_PATH, init_script.LOCK_FILES)
+
     def test_test_framework_ratchet_baseline_is_declared_and_exported(self) -> None:
-        self.assertEqual(contracts.MAX_UNITTEST_FILES, 60)
+        self.assertEqual(contracts.MAX_UNITTEST_FILES, 58)
         self.assertIn("MAX_UNITTEST_FILES", contracts.__all__)
 
     def test_approval_flag_ratchet_baseline_is_declared_and_exported(self) -> None:
@@ -272,7 +357,3 @@ class SharedContractsTests(unittest.TestCase):
             json.loads(envelope.to_json()),
             envelope_dict,
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

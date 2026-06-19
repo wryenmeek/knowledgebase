@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts.kb import persist_query
+from scripts.kb import contracts
 from tests.kb.harnesses import RuntimeWorkspaceTestCase
 
 
@@ -19,6 +20,10 @@ class PersistQueryCliTests(RuntimeWorkspaceTestCase):
         super().setUp()
         self.wiki_root = self.workspace / "wiki"
         self.wiki_root.mkdir(parents=True, exist_ok=True)
+        (self.workspace / "raw").mkdir(parents=True, exist_ok=True)
+        (self.workspace / contracts.GOVERNANCE_META_LOCK_PATH).write_text(
+            "", encoding="utf-8"
+        )
         (self.wiki_root / "index.md").write_text("stale-index\n", encoding="utf-8")
         (self.wiki_root / "log.md").write_text(
             self._build_process_page("Knowledgebase Log"),

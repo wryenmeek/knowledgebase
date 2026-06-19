@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts.kb import update_index
+from scripts.kb import contracts
 from scripts.kb import write_utils
 
 from tests.kb.harnesses import KnowledgebaseWorkspaceTestCase
@@ -30,6 +31,9 @@ class UpdateIndexCommandTests(KnowledgebaseWorkspaceTestCase):
         (self.workspace / "raw").mkdir(parents=True, exist_ok=True)
         (self.workspace / "raw" / "sentinel.txt").write_text(
             "raw-is-immutable\n", encoding="utf-8"
+        )
+        (self.workspace / contracts.GOVERNANCE_META_LOCK_PATH).write_text(
+            "", encoding="utf-8"
         )
 
         (self.wiki_root / "index.md").write_text("stale-index\n", encoding="utf-8")
