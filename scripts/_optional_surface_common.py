@@ -75,6 +75,7 @@ class SurfaceResult:
     lock_path: str | None = None
     lock_required: bool = False
     path_rules: dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
     items: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     summary: dict[str, Any] = field(default_factory=dict)
 
@@ -89,6 +90,7 @@ class SurfaceResult:
             "lock_path": self.lock_path,
             "lock_required": self.lock_required,
             "path_rules": self.path_rules,
+            "context": dict(self.context),
             "items": [dict(item) for item in self.items],
             "summary": dict(self.summary),
         }
@@ -201,6 +203,11 @@ def lock_unavailable_result(
     path_rules: dict[str, Any],
     exc: Exception,
 ) -> SurfaceResult:
+    context: dict[str, Any] = {}
+    for key in ("holder_alive", "holder_context_hash"):
+        value = getattr(exc, key, None)
+        if value is not None:
+            context[key] = value
     return SurfaceResult(
         surface=surface,
         mode=mode,
@@ -211,6 +218,7 @@ def lock_unavailable_result(
         lock_path=LOCK_PATH,
         lock_required=True,
         path_rules=path_rules,
+        context=context,
     )
 
 
