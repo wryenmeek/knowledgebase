@@ -345,6 +345,7 @@ def _holder_process_is_alive(pid: int, *, expected_started_at_unix_seconds: floa
 
 
 def _pid_start_time_tolerance_seconds() -> float:
+
     """Return start-time comparison tolerance based on Linux clock-tick precision."""
 
     if sys.platform.startswith("linux"):
