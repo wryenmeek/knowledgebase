@@ -239,6 +239,9 @@ class SharedContractsTests(unittest.TestCase):
                     contracts.WRITE_LOCK_PATH,
                     contracts.REJECTION_REGISTRY_LOCK_PATH,
                     contracts.CUSTOMIZATIONS_LOCK_PATH,
+                    contracts.GITHUB_SOURCES_LOCK_PATH,
+                    contracts.DRIVE_SOURCES_LOCK_PATH,
+                    contracts.CHECKPOINT_REGISTRY_LOCK_PATH,
                 }
             ),
         )

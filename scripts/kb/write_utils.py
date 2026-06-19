@@ -22,6 +22,27 @@ LOG_PATH = Path("wiki/log.md")
 # threading.Lock around this counter.
 _HELD_LOCK_COUNTS: dict[Path, int] = {}
 
+
+def _resolved_governance_sibling_locks(repo_root: Path) -> dict[Path, str]:
+    """Map resolved sibling lock paths to canonical contract lock paths."""
+    return {
+        (repo_root / lock_path).resolve(strict=False): lock_path
+        for lock_path in contracts.GOVERNANCE_SIBLING_LOCKS
+    }
+
+
+def _can_cohold_with_held_sibling(target_lock_path: str, held_sibling_lock_path: str) -> bool:
+    """Allow approved same-process lock nesting with enforced acquisition order."""
+    return (
+        held_sibling_lock_path == contracts.WRITE_LOCK_PATH
+        and target_lock_path
+        in {
+            contracts.GITHUB_SOURCES_LOCK_PATH,
+            contracts.DRIVE_SOURCES_LOCK_PATH,
+        }
+    )
+
+
 def governed_artifact_contract_for_path(
     path: str | PathLike[str],
 ) -> contracts.GovernedArtifactContract | None:
@@ -119,54 +140,49 @@ def _acquire_sibling_governance_lock(
     lock_file: TextIO,
 ) -> None:
     """Acquire a sibling governance lock using the meta-lock protocol."""
-    meta_lock_abs_path = repo_root / contracts.GOVERNANCE_META_LOCK_PATH
-    meta_lock_preexisting = meta_lock_abs_path.exists()
     _, _, meta_lock_file = _open_lock_file(
         repo_root,
         contracts.GOVERNANCE_META_LOCK_PATH,
         create=True,
     )
-    try:
-        with meta_lock_file:
-            try:
-                fcntl.flock(meta_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError as exc:
-                raise LockUnavailableError(contracts.GOVERNANCE_META_LOCK_PATH) from exc
-            try:
-                for sibling_lock_path in sorted(contracts.GOVERNANCE_SIBLING_LOCKS):
-                    if sibling_lock_path == lock_path:
+    with meta_lock_file:
+        try:
+            fcntl.flock(meta_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise LockUnavailableError(contracts.GOVERNANCE_META_LOCK_PATH) from exc
+        try:
+            for sibling_lock_path in sorted(contracts.GOVERNANCE_SIBLING_LOCKS):
+                if sibling_lock_path == lock_path:
+                    continue
+                sibling_resolved = (repo_root / sibling_lock_path).resolve(strict=False)
+                if sibling_resolved in _HELD_LOCK_COUNTS:
+                    if _can_cohold_with_held_sibling(lock_path, sibling_lock_path):
                         continue
-                    sibling_resolved = (repo_root / sibling_lock_path).resolve(strict=False)
-                    if sibling_resolved in _HELD_LOCK_COUNTS:
-                        raise LockUnavailableError(sibling_lock_path)
+                    raise LockUnavailableError(sibling_lock_path)
+                try:
+                    _, _, sibling_lock_file = _open_lock_file(
+                        repo_root,
+                        sibling_lock_path,
+                        create=False,
+                    )
+                except FileNotFoundError:
+                    continue
+                except OSError as exc:
+                    raise LockUnavailableError(sibling_lock_path) from exc
+                with sibling_lock_file:
                     try:
-                        _, _, sibling_lock_file = _open_lock_file(
-                            repo_root,
-                            sibling_lock_path,
-                            create=False,
-                        )
-                    except FileNotFoundError:
-                        continue
+                        fcntl.flock(sibling_lock_file.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
                     except OSError as exc:
                         raise LockUnavailableError(sibling_lock_path) from exc
-                    with sibling_lock_file:
-                        try:
-                            fcntl.flock(sibling_lock_file.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
-                        except OSError as exc:
-                            raise LockUnavailableError(sibling_lock_path) from exc
-                        finally:
-                            with contextlib.suppress(OSError):
-                                fcntl.flock(sibling_lock_file.fileno(), fcntl.LOCK_UN)
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError as exc:
-                raise LockUnavailableError(lock_path) from exc
-            finally:
-                with contextlib.suppress(OSError):
-                    fcntl.flock(meta_lock_file.fileno(), fcntl.LOCK_UN)
-    finally:
-        if not meta_lock_preexisting:
+                    finally:
+                        with contextlib.suppress(OSError):
+                            fcntl.flock(sibling_lock_file.fileno(), fcntl.LOCK_UN)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise LockUnavailableError(lock_path) from exc
+        finally:
             with contextlib.suppress(OSError):
-                meta_lock_abs_path.unlink()
+                fcntl.flock(meta_lock_file.fileno(), fcntl.LOCK_UN)
 
 
 @contextmanager
@@ -204,9 +220,16 @@ def exclusive_write_lock(
     except OSError as exc:
         raise LockUnavailableError(lock_path) from exc
 
+    resolved_sibling_locks = _resolved_governance_sibling_locks(root)
+    canonical_lock_path = resolved_sibling_locks.get(resolved_lock)
+
     with lock_file:
-        if lock_path in contracts.GOVERNANCE_SIBLING_LOCKS:
-            _acquire_sibling_governance_lock(root, lock_path, lock_file)
+        if canonical_lock_path is not None:
+            _acquire_sibling_governance_lock(
+                root,
+                canonical_lock_path,
+                lock_file,
+            )
         else:
             try:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)

@@ -47,15 +47,18 @@ Lock contention must fail closed, return non-zero, and emit
 
 - **Date:** 2026-06-19
 - **What changed:** The sibling governance lock set (`wiki/.kb_write.lock`,
-  `raw/.rejection-registry.lock`, `.github/.customizations.lock`) now acquires under
-  a shared meta-lock protocol using `raw/.governance-meta.lock`: acquire meta-lock,
-  probe other sibling locks with `LOCK_SH | LOCK_NB`, acquire target sibling lock,
-  then release meta-lock while retaining the target lock for the critical section.
+  `raw/.rejection-registry.lock`, `.github/.customizations.lock`,
+  `raw/.github-sources.lock`, `raw/.drive-sources.lock`,
+  `raw/.wiki-processing-checkpoint.lock`) now acquires under a shared meta-lock
+  protocol using `raw/.governance-meta.lock`: acquire meta-lock, probe other
+  sibling locks with `LOCK_SH | LOCK_NB`, acquire target sibling lock, then
+  release meta-lock while retaining the target lock for the critical section.
 - **Why:** Entry-time checks alone could not prevent cross-process races where one
   process held `.github/.customizations.lock` while another later acquired a sibling
   governance lock.
-- **What did not change:** Existing stale unlocked lock-file reclaim behavior and
-  ADR-012/ADR-021 lock-ordering rules for GitHub/Drive monitor locks.
+- **What did not change:** Existing stale unlocked lock-file reclaim behavior for
+  sibling lock files and ADR-012/ADR-021 lock-ordering rules for GitHub/Drive
+  monitor locks (`wiki/.kb_write.lock` acquired before monitor registry locks).
 
 ## References
 
