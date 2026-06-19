@@ -446,10 +446,11 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         with (
             patch.object(write_utils.sys, "platform", "darwin"),
             patch.object(write_utils.os, "kill", return_value=None),
-            patch.object(write_utils, "_pid_start_time_tolerance_seconds", return_value=1.0),
+            patch.object(write_utils, "_pid_start_time_tolerance_seconds", return_value=1e-6),
         ):
             for observed, expected_alive in (
                 (100.0, True),  # exact coarse-second match
+                (100.0 + 2e-6, False),  # just beyond Darwin tolerance
                 (101.0, False),  # coarse-second rollover -> reused PID
             ):
                 with self.subTest(observed=observed, expected_alive=expected_alive):
