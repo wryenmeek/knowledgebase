@@ -195,8 +195,7 @@ class TestSharedContracts(_AssertMixin):
         for artifact in contracts.GOVERNED_ARTIFACT_CONTRACTS:
             path = representative_paths.get(artifact.artifact_id, artifact.path)
             matched = contracts.governed_artifact_contract_by_pattern(path)
-            self.assertIsNotNone(matched, msg=f"expected match for {artifact.artifact_id}")
-            assert matched is not None
+            assert matched is not None, f"expected match for {artifact.artifact_id}"
             self.assertEqual(matched.artifact_id, artifact.artifact_id)
 
     def test_governed_artifact_contract_details_are_explicit(self) -> None:
