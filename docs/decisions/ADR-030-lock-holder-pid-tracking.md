@@ -1,0 +1,70 @@
+# ADR-030: Lock holder PID/start-time tracking for lock-unavailable UX
+
+**Date:** 2026-06-19
+
+## Status
+
+Accepted
+
+## Context
+
+Write-capable surfaces use non-blocking `flock` via
+`scripts/kb/write_utils.py::exclusive_write_lock()`. When contention occurs,
+`LockUnavailableError` could only report `lock_unavailable:<path>` plus a
+generic hint to either retry or remove a stale lock file. Operators had to
+guess whether the holder process was active.
+
+The issue contract for #183 requires disambiguation without changing `flock`
+semantics or adding new dependencies.
+
+## Decision
+
+Adopt Resolution A:
+
+1. After `flock(... LOCK_EX | LOCK_NB)` succeeds, write lock-file metadata in a
+   truncate-first format:
+   - `{pid}\t{start_time_unix_seconds}\n`
+2. On `LockUnavailableError`, read and parse the lock file when possible.
+3. Use `os.kill(pid, 0)` liveness probing plus Linux process start-time checks
+   (`/proc/<pid>/stat` + `/proc/stat btime`) to detect PID reuse.
+4. Populate structured fields on `LockUnavailableError`:
+   - `holder_pid: int | None`
+   - `holder_alive: bool | None`
+   - `holder_started_at: str | None` (UTC ISO-8601 string)
+5. Keep fail-safe fallback behavior: if lock metadata cannot be read or trusted,
+   preserve the prior generic lock-unavailable hint.
+
+## Consequences
+
+### Positive
+
+- Operators can distinguish active holders from stale metadata without manual
+  guesswork.
+- `SurfaceResult` consumers can branch on structured holder context.
+- Change applies uniformly across all lock-path variants that use
+  `exclusive_write_lock()`.
+
+### Trade-offs
+
+- Lock files now contain operational metadata bytes.
+- Linux start-time probing relies on `/proc`; non-Linux fallback remains
+  generic.
+
+### Governance scope note
+
+Lock-file bytes are governance-internal runtime metadata. No
+`governed_artifact_contract_for_path()` row claims lock-file contents, so this
+change does not alter governed artifact contracts.
+
+## Alternatives considered
+
+1. **Mtime heuristic only (Resolution B):** rejected; cannot reliably
+   distinguish long-running holders from stale files.
+2. **Third-party lock library (Resolution C):** rejected; dependency and
+   migration cost outweighs value for this focused UX improvement.
+
+## References
+
+- GitHub issue #183
+- `scripts/kb/write_utils.py`
+- ADR-005: write concurrency guards

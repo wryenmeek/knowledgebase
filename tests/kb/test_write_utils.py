@@ -14,6 +14,7 @@ import sys
 import textwrap
 from unittest.mock import patch
 
+from scripts._optional_surface_common import lock_unavailable_result
 from scripts.kb import contracts
 from scripts.kb import write_utils
 from scripts.kb.write_utils import check_no_symlink_path
@@ -50,6 +51,10 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                             "acquired": False,
                             "reason_code": exc.reason_code,
                             "failure_reason": exc.failure_reason,
+                            "holder_pid": exc.holder_pid,
+                            "holder_alive": exc.holder_alive,
+                            "holder_started_at": exc.holder_started_at,
+                            "message": str(exc),
                         }
                     )
                 )
@@ -141,6 +146,15 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             self.assertTrue(lock_path.exists())
             self.assertTrue(write_utils.is_write_lock_held(self.workspace_root))
         self.assertFalse(write_utils.is_write_lock_held(self.workspace_root))
+
+    def test_exclusive_write_lock_writes_pid_and_start_time_metadata(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        with write_utils.exclusive_write_lock(self.workspace_root):
+            raw = lock_path.read_text(encoding="utf-8").strip()
+
+        pid_text, started_at_text = raw.split("\t", 1)
+        self.assertEqual(int(pid_text), os.getpid())
+        self.assertGreater(float(started_at_text), 0.0)
 
     def test_exclusive_write_lock_tracking_survives_nested_same_process_lock(self) -> None:
         with write_utils.exclusive_write_lock(self.workspace_root):
@@ -352,6 +366,90 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                         lock_path=contracts.DRIVE_SOURCES_LOCK_PATH,
                     )
                 )
+
+    def test_exclusive_write_lock_contention_reports_live_holder_metadata(self) -> None:
+        with write_utils.exclusive_write_lock(self.workspace_root):
+            probe_result = self._probe_lock_attempt()
+
+        self.assertEqual(probe_result["holder_pid"], os.getpid())
+        self.assertTrue(probe_result["holder_alive"])
+        self.assertIsInstance(probe_result["holder_started_at"], str)
+        self.assertIn("retry shortly", probe_result["message"])
+
+    def test_lock_unavailable_error_reports_dead_holder(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text("4242\t1717711294.0\n", encoding="utf-8")
+
+        with patch.object(write_utils.os, "kill", side_effect=ProcessLookupError):
+            exc = write_utils.LockUnavailableError(
+                contracts.WRITE_LOCK_PATH,
+                lock_file_path=lock_path,
+            )
+
+        self.assertEqual(exc.holder_pid, 4242)
+        self.assertFalse(exc.holder_alive)
+        self.assertEqual(exc.holder_started_at, "2024-06-06T22:01:34Z")
+        self.assertIn("stale lock from dead PID 4242; safe to remove", str(exc))
+
+    def test_lock_unavailable_error_detects_pid_reuse_via_start_time_mismatch(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text("4242\t100.0\n", encoding="utf-8")
+
+        with (
+            patch.object(write_utils.os, "kill", return_value=None),
+            patch.object(
+                write_utils,
+                "_linux_pid_start_time_unix_seconds",
+                return_value=200.0,
+            ),
+        ):
+            exc = write_utils.LockUnavailableError(
+                contracts.WRITE_LOCK_PATH,
+                lock_file_path=lock_path,
+            )
+
+        self.assertEqual(exc.holder_pid, 4242)
+        self.assertFalse(exc.holder_alive)
+        self.assertEqual(exc.holder_started_at, "1970-01-01T00:01:40Z")
+        self.assertIn("stale lock from dead PID 4242; safe to remove", str(exc))
+
+    def test_lock_unavailable_error_unreadable_lock_file_falls_back(self) -> None:
+        with patch.object(Path, "read_text", side_effect=OSError("denied")):
+            exc = write_utils.LockUnavailableError(contracts.WRITE_LOCK_PATH)
+
+        self.assertEqual(exc.holder_pid, None)
+        self.assertEqual(exc.holder_alive, None)
+        self.assertEqual(exc.holder_started_at, None)
+        self.assertEqual(
+            str(exc),
+            f"{write_utils.lock_unavailable_reason()} — "
+            "retry after the competing process completes, or remove the lock file if it is stale",
+        )
+
+    def test_lock_unavailable_result_includes_holder_context(self) -> None:
+        exc = RuntimeError("lock unavailable")
+        setattr(exc, "holder_pid", 12345)
+        setattr(exc, "holder_alive", False)
+        setattr(exc, "holder_started_at", "2026-06-06T22:01:34Z")
+
+        result = lock_unavailable_result(
+            surface="test-surface",
+            mode="apply",
+            approval="approved",
+            path_rules={"allowlisted_roots": ["wiki"]},
+            exc=exc,
+        )
+
+        self.assertEqual(
+            result.context,
+            {
+                "holder_pid": 12345,
+                "holder_alive": False,
+                "holder_started_at": "2026-06-06T22:01:34Z",
+            },
+        )
 
     def test_governed_artifact_helpers_report_append_only_log_contract(self) -> None:
         contract = write_utils.governed_artifact_contract_for_path("wiki/log.md")
