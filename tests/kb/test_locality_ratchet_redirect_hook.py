@@ -4,11 +4,16 @@ import json
 import os
 import subprocess
 import sys
+import importlib.util
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts/hooks/locality_ratchet_redirect_hook.py"
+_SPEC = importlib.util.spec_from_file_location("locality_ratchet_redirect_hook", SCRIPT)
+assert _SPEC is not None and _SPEC.loader is not None
+HOOK_MODULE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(HOOK_MODULE)
 
 
 def _run_hook(payload: object | str, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -46,12 +51,24 @@ def test_unmatched_event_exits_cleanly_without_output() -> None:
     assert result.stderr == ""
 
 
+def test_missing_event_name_exits_cleanly_without_output() -> None:
+    result = _run_hook({})
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
+
+
 def test_malformed_payload_exits_cleanly_without_output() -> None:
     result = _run_hook("{not json")
 
     assert result.returncode == 0
     assert result.stdout == ""
     assert result.stderr == ""
+
+
+def test_parse_payload_malformed_json_returns_empty_dict() -> None:
+    assert HOOK_MODULE._parse_payload("{not json") == {}
 
 
 def test_hooks_json_registers_user_prompt_submit_command() -> None:

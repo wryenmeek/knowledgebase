@@ -48,7 +48,10 @@ def _read_payload_text() -> str:
 def _parse_payload(text: str) -> dict[str, Any]:
     if not text.strip():
         return {}
-    payload = json.loads(text)
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
     return payload if isinstance(payload, dict) else {}
 
 
@@ -72,7 +75,7 @@ def main() -> int:
     try:
         payload = _parse_payload(_read_payload_text())
         event_name = _event_name(payload)
-        if event_name and event_name != EXPECTED_EVENT:
+        if event_name != EXPECTED_EVENT:
             return 0
         print(json.dumps(_context_record(), sort_keys=True))
     except Exception:
