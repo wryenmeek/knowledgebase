@@ -187,6 +187,7 @@ def _linux_pid_start_time_unix_seconds(pid: int) -> float | None:
         stat_fields = stat_text[right_paren + 2 :].split()
         if len(stat_fields) < 20:
             return None
+        # /proc/<pid>/stat field 22 (starttime) becomes index 19 after dropping pid+comm.
         start_ticks = int(stat_fields[19])
         ticks_per_second = int(os.sysconf("SC_CLK_TCK"))
         if ticks_per_second <= 0:
@@ -248,10 +249,20 @@ def _holder_process_is_alive(pid: int, *, expected_started_at_unix_seconds: floa
         return None
 
     observed_start = _linux_pid_start_time_unix_seconds(pid)
-    if observed_start is not None and abs(observed_start - expected_started_at_unix_seconds) > 1e-6:
+    if observed_start is not None and abs(observed_start - expected_started_at_unix_seconds) > _pid_start_time_tolerance_seconds():
         # PID reuse: the currently alive process is not the lock holder recorded in the file.
         return False
     return True
+
+
+def _pid_start_time_tolerance_seconds() -> float:
+    try:
+        ticks_per_second = float(int(os.sysconf("SC_CLK_TCK")))
+    except (OSError, ValueError, TypeError):
+        return 0.01
+    if ticks_per_second <= 0:
+        return 0.01
+    return 1.0 / ticks_per_second
 
 
 def _open_lock_file(
