@@ -44,6 +44,13 @@ export function handleFleetFatalError(
   }
 
   if (error instanceof MutationFailureError) {
+    if (error.terminalEnvelope.classification === "quota_saturation") {
+      console.log(
+        "::warning::Jules session quota saturated; Fleet run skipped this cycle. Re-run after quota resets."
+      );
+      console.log(JSON.stringify(error.terminalEnvelope));
+      process.exit(0);
+    }
     console.error(messages.mutation);
     console.error(JSON.stringify(error.terminalEnvelope));
     process.exit(1);

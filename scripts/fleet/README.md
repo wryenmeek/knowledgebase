@@ -89,14 +89,24 @@ Each failed attempt logs a sanitized JSON envelope with:
 - `contract` (`first_pass_target`, `post_retry_behavior`, `diagnostic_detail`)
 - `operation`
 - `attempt` / `max_attempts`
-- `classification` (`failed_precondition`, `auth`, `permission`, `rate_limit`, `network`, `unknown`)
+- `classification` (`quota_saturation`, `failed_precondition`, `auth`, `permission`, `rate_limit`, `network`, `unknown`)
 - `retryable`, `retrying`, and `retry_delay_ms`
 - `status_code`, `error_code`
 - `message`, `hint`, and `root_cause_path`
 
 ### FAILED_PRECONDITION root-cause path
 
-When Jules returns `FAILED_PRECONDITION` (HTTP 400):
+When Jules returns `FAILED_PRECONDITION` (HTTP 400), the classifier applies a three-step signal check:
+
+1. **Explicit quota signals** (`QUOTA`, `SESSION LIMIT/CAP`, `SATURATED`) → `quota_saturation` (non-retryable, soft-warn).
+   `handleFleetFatalError` emits a `::warning::` GitHub Actions annotation and exits 0.
+   No code or configuration change is needed; re-run after quota resets (typically within 24 hours).
+2. **Mismatch-specific account-binding signals** (`NOT REGISTERED`, `ACCOUNT MISMATCH`, etc.) → `failed_precondition` (retryable, hard-fail after bounded retries).
+   Check `JULES_API_KEY`, GitHub App registration, and repo preconditions.
+3. **Bare body** (no quota or account-mismatch signal) → `quota_saturation` (same soft-warn path as step 1).
+   This covers the production `{"code":400,"message":"Precondition check failed.","status":"FAILED_PRECONDITION"}` shape that carries no additional diagnostic text during quota saturation.
+
+For all other `FAILED_PRECONDITION` hard-fails:
 
 1. Fleet preflight validates local configuration (`JULES_API_KEY`, `GITHUB_TOKEN`, repo format, base-branch format, base-branch visibility in local/origin refs, bounded retry config) before mutation attempts.
 2. Retryable mutation failures run with deterministic bounded backoff (2s, 4s, 6s, capped at 8s) up to `FLEET_MUTATION_MAX_ATTEMPTS`; non-retryable classes fail immediately.

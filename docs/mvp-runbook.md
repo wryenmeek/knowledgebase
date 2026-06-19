@@ -672,8 +672,9 @@ Suggested HTTP response mapping from relay result:
 ### Fleet mutation troubleshooting (`FAILED_PRECONDITION`)
 
 - Fleet mutation entrypoints (`fleet-plan.ts`, `fleet-dispatch.ts`, `fleet-merge.ts`) now fail closed with bounded retries and a `sanitized_error_envelope` that includes `classification`, `hint`, and `root_cause_path`.
+- **`quota_saturation`** (new, non-retryable): Jules per-account session cap reached. `handleFleetFatalError` emits a `::warning::` GitHub Actions annotation and exits 0 (soft-warn). Re-run after quota resets (typically within 24 hours). No code or configuration change is needed. This classification is triggered by: (a) explicit quota signals (`QUOTA`, `SESSION LIMIT/CAP`, `SATURATED`) in the body; or (b) a bare `FAILED_PRECONDITION` body with no diagnostic text (the production shape `{"code":400,"message":"Precondition check failed.","status":"FAILED_PRECONDITION"}`).
 - Retry policy is deterministic: retryable classes (`failed_precondition`, `rate_limit`, `network`) back off in bounded steps and hard-fail after `FLEET_MUTATION_MAX_ATTEMPTS` (default `3`, max `5`).
-- Non-retryable classes (`auth`, `permission`) fail immediately after preflight diagnostics; there is no permissive fallback path.
+- Non-retryable classes (`quota_saturation`, `auth`, `permission`) fail or soft-warn immediately after the first attempt; there is no permissive fallback path.
 - Preflight checks validate `JULES_API_KEY`, `GITHUB_TOKEN`, repo format (`owner/repo`), base-branch format, base-branch visibility in local/origin refs, retry bounds, and fleet date format (`FLEET_PENDING_DATE` must be `YYYY_MM_DD`) before any Jules mutation call.
 - Local validation commands:
   - `cd scripts/fleet && bun test`

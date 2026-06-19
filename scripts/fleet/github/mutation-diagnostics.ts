@@ -28,11 +28,37 @@ export const MUTATION_EXECUTION_CONTRACT = Object.freeze({
 
 export type MutationErrorClass =
   | "failed_precondition"
+  | "quota_saturation"
   | "auth"
   | "permission"
   | "rate_limit"
   | "network"
   | "unknown";
+
+/**
+ * Explicit quota-saturation signals that win before any account-binding check.
+ * A body containing any of these is classified as quota_saturation even if it
+ * also mentions a Google Account or GitHub App.
+ *
+ * Ordering (per wryenmeek/hot-springs-island#595 final classifier):
+ *   1. QUOTA_SIGNAL_RE matches → quota_saturation
+ *   2. ACCOUNT_MISMATCH_RE matches → failed_precondition
+ *   3. Default (bare body) → quota_saturation
+ *
+ * Reversibility: revert classifyFromSignals to always return "failed_precondition"
+ * for FAILED_PRECONDITION bodies and remove both constants.
+ */
+const QUOTA_SIGNAL_RE = /\bQUOTA\b|SESSION.{0,30}\b(LIMIT|CAP)\b|SATURATED/i;
+
+/**
+ * Mismatch-specific account-binding signals that indicate a genuine registration
+ * or configuration error requiring operator remediation (hard-fail).
+ * Broad noun matches ("GOOGLE ACCOUNT", "GITHUB APP" alone) are intentionally
+ * excluded — quota messages frequently reference those nouns without implying
+ * a configuration fault.
+ * Source: wryenmeek/hot-springs-island#595 final classifier ordering.
+ */
+const ACCOUNT_MISMATCH_RE = /NOT REGISTERED|UNREGISTERED|ACCOUNT[^.]{0,60}NOT AUTHORIZED|ACCOUNT.*MISMATCH|REGISTRATION.*REQUIRED/i;
 
 interface MutationCategoryDetails {
   readonly retryable: boolean;
@@ -49,6 +75,16 @@ const MUTATION_CATEGORY_DETAILS: Record<MutationErrorClass, MutationCategoryDeta
       "Confirm source.github is owner/repo and FLEET_BASE_BRANCH points to an existing branch.",
       "Retry bounded attempts to absorb transient Jules precondition lag.",
       "If retries are exhausted, escalate provider-side with sanitized_error_envelope.",
+    ],
+  },
+  quota_saturation: {
+    retryable: false,
+    hint: "Jules per-account session quota saturated. Fleet run is skipped; re-run after quota resets (typically within 24 hours). No code or configuration change is needed.",
+    rootCausePath: [
+      "Per-account Jules session cap reached; no account-binding error signal was present in the response body.",
+      "This is a transient quota condition — no code or configuration change is needed.",
+      "Re-run fleet dispatch after quota resets (typically within 24 hours).",
+      "If saturation persists beyond 48 hours, escalate with sanitized_error_envelope evidence.",
     ],
   },
   auth: {
@@ -244,8 +280,12 @@ function extractStatusCode(error: unknown): number | null {
   const candidates = [
     toNumberValue(record.status),
     toNumberValue(record.statusCode),
+    // record.code may carry an HTTP status code (e.g. {"code":400,"status":"FAILED_PRECONDITION"})
+    toNumberValue(record.code),
     toNumberValue(nestedError?.status),
     toNumberValue(nestedError?.statusCode),
+    // nestedError.code may carry gRPC status code (e.g. {"error":{"code":9,"status":"FAILED_PRECONDITION"}})
+    toNumberValue(nestedError?.code),
     toNumberValue(response?.status),
     toNumberValue(cause?.status),
     toNumberValue(cause?.statusCode),
@@ -267,7 +307,11 @@ function extractErrorCode(error: unknown, upperMessage: string): string | null {
 
   const candidates = [
     toStringValue(record?.code),
+    // record.status may carry the canonical gRPC/HTTP status name (e.g. {"status":"FAILED_PRECONDITION"})
+    toStringValue(record?.status),
     toStringValue(nestedError?.code),
+    // nestedError.status: canonical name in nested error objects (e.g. {"error":{"status":"FAILED_PRECONDITION"}})
+    toStringValue(nestedError?.status),
     toStringValue(response?.code),
     toStringValue(cause?.code),
   ];
@@ -296,7 +340,13 @@ function extractErrorCode(error: unknown, upperMessage: string): string | null {
 
 function classifyFromSignals(statusCode: number | null, upper: string): MutationErrorClass {
   if (upper.includes("FAILED_PRECONDITION") || (statusCode === 400 && upper.includes("PRECONDITION"))) {
-    return "failed_precondition";
+    // Ordering (per wryenmeek/hot-springs-island#595 final classifier):
+    //   1. Explicit quota signals win first → quota_saturation (even if account nouns are present).
+    //   2. Mismatch-specific account-binding signals → failed_precondition (hard-fail, retryable).
+    //   3. Default (bare body, no recognisable signals) → quota_saturation (soft-warn, exit 0).
+    if (QUOTA_SIGNAL_RE.test(upper)) return "quota_saturation";
+    if (ACCOUNT_MISMATCH_RE.test(upper)) return "failed_precondition";
+    return "quota_saturation";
   }
   if (
     statusCode === 401 ||
