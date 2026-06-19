@@ -286,7 +286,7 @@ def governed_artifact_contract_by_pattern(path: str) -> GovernedArtifactContract
         return None  # Reject absolute paths
     if len(path) >= 2 and path[0].isalpha() and path[1] == ":":
         return None  # Reject drive-prefixed paths (e.g., C:\foo)
-    if ".." in (component for component in path.split("/") if component):
+    if any(component == ".." for component in path.split("/") if component):
         return None  # Reject traversal paths
     exact = _GOVERNED_ARTIFACTS_BY_PATH.get(path)
     if exact is not None:

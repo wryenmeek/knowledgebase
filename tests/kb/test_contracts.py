@@ -144,7 +144,9 @@ class SharedContractsTests(unittest.TestCase):
         self,
     ) -> None:
         self.assertIsNone(
-            contracts.governed_artifact_contract_by_pattern("wiki\\..\\.github/copilot-instructions.md")
+            contracts.governed_artifact_contract_by_pattern(
+                r"wiki\..\.github/copilot-instructions.md"
+            )
         )
         self.assertIsNone(
             contracts.governed_artifact_contract_by_pattern("\\\\server\\share\\foo")
