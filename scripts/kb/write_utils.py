@@ -215,11 +215,14 @@ def _darwin_pid_start_time_unix_seconds(pid: int) -> float | None:
     if pid <= 0:
         return None
     try:
+        ps_env = dict(os.environ)
+        ps_env["LC_TIME"] = "C"
         completed = subprocess.run(
             ["ps", "-o", "lstart=", "-p", str(pid)],
             check=True,
             capture_output=True,
             text=True,
+            env=ps_env,
         )
     except (OSError, subprocess.SubprocessError):
         return None
