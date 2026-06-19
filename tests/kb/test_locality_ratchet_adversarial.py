@@ -21,6 +21,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RATCHET_MODULE = "scripts.hooks.check_locality_ratchet"
 ADVISORY_SCRIPT = REPO_ROOT / "scripts/hooks/locality_postuse_advisory.py"
+FIXTURE_DIR = REPO_ROOT / "tests/fixtures/qa-ab"
 
 COPILOT_PATH = ".github/copilot-instructions.md"
 AGENTS_PATH = "AGENTS.md"
@@ -193,6 +194,10 @@ def _successful_edit_payload(path: str) -> dict[str, object]:
         "tool_arguments": {"path": path},
         "tool_result": {"success": True},
     }
+
+
+def _fixture_text(name: str) -> str:
+    return (FIXTURE_DIR / name).read_text(encoding="utf-8")
 
 
 def test_commit_body_footer_trailer_satisfies_net_positive_delta(
@@ -614,3 +619,39 @@ def test_posttooluse_advisory_racing_with_precommit_has_isolated_outputs(
     warning = json.loads(advisory_result.stdout)
     assert warning["code"] == "locality_4_edit_advisory"
     assert warning["path"] == COPILOT_PATH
+
+
+def test_heading_bypass_fixture_is_still_gated_without_trailer(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _stage(repo, COPILOT_PATH, _fixture_text("heading-bypass-copilot.md"))
+
+    result = _run_ratchet_hook(repo, COPILOT_PATH)
+
+    assert result.returncode == 1
+    assert COPILOT_PATH in result.stderr
+    assert "Locality-4-Justification:" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_code"),
+    (
+        ("trailer-body.txt", 0),
+        ("trailer-subject.txt", 1),
+        ("trailer-empty-value.txt", 1),
+    ),
+)
+def test_trailer_placement_and_empty_value_fixtures(
+    tmp_path: Path, fixture_name: str, expected_code: int
+) -> None:
+    repo = _init_repo(tmp_path)
+    _stage(repo, COPILOT_PATH, COPILOT_BASE + "\nFixture-driven always-on rule.\n")
+
+    result = _run_ratchet_hook(
+        repo, COPILOT_PATH, commit_message=_fixture_text(fixture_name)
+    )
+
+    assert result.returncode == expected_code
+    if expected_code == 0:
+        assert result.stderr == ""
+    else:
+        assert "Locality-4-Justification:" in result.stderr
