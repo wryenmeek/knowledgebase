@@ -429,7 +429,10 @@ def _acquire_sibling_governance_lock(
                             fcntl.flock(sibling_lock_file.fileno(), fcntl.LOCK_UN)
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
-            raise LockUnavailableError(lock_path) from exc
+            raise LockUnavailableError(
+                lock_path,
+                lock_file_path=repo_root / lock_path,
+            ) from exc
         finally:
             with contextlib.suppress(OSError):
                 fcntl.flock(meta_lock_file.fileno(), fcntl.LOCK_UN)
