@@ -163,7 +163,7 @@ def _format_unix_seconds_utc(unix_seconds: float) -> str:
 def _lock_holder_context_hash(holder_details: _LockHolderDetails) -> str:
     """Return canonical lock-holder context hash as lower-case 64-hex SHA-256.
 
-    Canonical payload format is exactly ``<pid>\\t<start_time_unix_seconds:.6f>\\n``.
+    Canonical payload format is exactly ``<pid>\t<start_time_unix_seconds:.6f>\n``.
     """
 
     canonical_payload = f"{holder_details.pid}\t{holder_details.started_at_unix_seconds:.6f}\n"
@@ -235,7 +235,7 @@ def _darwin_pid_start_time_unix_seconds(pid: int) -> float | None:
         return None
     local_tz = datetime.now().astimezone().tzinfo
     if local_tz is None:
-        return None
+        return parsed.replace(tzinfo=timezone.utc).timestamp()
     return parsed.replace(tzinfo=local_tz).timestamp()
 
 
@@ -333,6 +333,8 @@ def _pid_start_time_tolerance_seconds() -> float:
             return 1e-6
         if ticks_per_second <= 0:
             return 1e-6
+        # Linux start times are tick-based; treat half-tick or larger drift as
+        # a mismatch to avoid accepting adjacent-tick PID reuse.
         return max(1e-6, 0.5 / ticks_per_second)
     if sys.platform == "darwin":
         return 1e-6
