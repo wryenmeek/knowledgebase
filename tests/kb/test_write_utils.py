@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 import subprocess
@@ -26,7 +28,10 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         super().setUp()
         (self.workspace_root / "wiki").mkdir(parents=True, exist_ok=True)
 
-    def _probe_lock_attempt(self) -> dict[str, object]:
+    def _probe_lock_attempt(
+        self,
+        lock_path: str = contracts.WRITE_LOCK_PATH,
+    ) -> dict[str, object]:
         probe_script = textwrap.dedent(
             """
             import json
@@ -34,8 +39,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             from scripts.kb.write_utils import LockUnavailableError, exclusive_write_lock
 
             repo_root = sys.argv[1]
+            lock_path = sys.argv[2]
             try:
-                with exclusive_write_lock(repo_root):
+                with exclusive_write_lock(repo_root, lock_path=lock_path):
                     print(json.dumps({"acquired": True}))
             except LockUnavailableError as exc:
                 print(
@@ -51,7 +57,7 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         )
 
         completed = subprocess.run(
-            [sys.executable, "-c", probe_script, str(self.workspace_root)],
+            [sys.executable, "-c", probe_script, str(self.workspace_root), lock_path],
             check=True,
             capture_output=True,
             cwd=REPO_ROOT,
@@ -59,6 +65,61 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         )
 
         return json.loads(completed.stdout.strip().splitlines()[-1])
+
+    def _race_probe_lock_attempt(self, lock_path: str, gate_dir: Path) -> subprocess.Popen[str]:
+        probe_script = textwrap.dedent(
+            """
+            import json
+            import os
+            from pathlib import Path
+            import sys
+            import time
+            from scripts.kb.write_utils import LockUnavailableError, exclusive_write_lock
+
+            repo_root = sys.argv[1]
+            lock_path = sys.argv[2]
+            gate_dir = Path(sys.argv[3])
+            ready_path = gate_dir / f"{os.getpid()}.ready"
+            go_path = gate_dir / "go.signal"
+
+            ready_path.write_text("ready\\n", encoding="utf-8")
+            deadline = time.time() + 10.0
+            while not go_path.exists():
+                if time.time() > deadline:
+                    print(json.dumps({"acquired": False, "lock_path": lock_path, "timeout": True}))
+                    raise SystemExit(0)
+                time.sleep(0.005)
+
+            try:
+                with exclusive_write_lock(repo_root, lock_path=lock_path):
+                    time.sleep(0.1)
+                    print(json.dumps({"acquired": True, "lock_path": lock_path}))
+            except LockUnavailableError as exc:
+                print(
+                    json.dumps(
+                        {
+                            "acquired": False,
+                            "lock_path": lock_path,
+                            "reason_code": exc.reason_code,
+                            "failure_reason": exc.failure_reason,
+                        }
+                    )
+                )
+            """
+        )
+        return subprocess.Popen(
+            [sys.executable, "-c", probe_script, str(self.workspace_root), lock_path, str(gate_dir)],
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+    def _collect_probe_process_result(self, process: subprocess.Popen[str]) -> dict[str, object]:
+        stdout, stderr = process.communicate(timeout=20)
+        self.assertEqual(process.returncode, 0, msg=stderr)
+        self.assertTrue(stdout.strip(), msg=stderr)
+        return json.loads(stdout.strip().splitlines()[-1])
 
     def test_lock_unavailable_reason_returns_deterministic_string(self) -> None:
         # Default path
@@ -96,6 +157,19 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
 
         with write_utils.exclusive_write_lock(self.workspace_root) as acquired_path:
             self.assertEqual(acquired_path, lock_path)
+
+    def test_governance_sibling_locks_treat_preexisting_unlocked_file_as_stale(self) -> None:
+        for lock_path in sorted(contracts.GOVERNANCE_SIBLING_LOCKS):
+            with self.subTest(lock_path=lock_path):
+                abs_lock_path = self.workspace_root / lock_path
+                abs_lock_path.parent.mkdir(parents=True, exist_ok=True)
+                abs_lock_path.write_text("stale\n", encoding="utf-8")
+
+                with write_utils.exclusive_write_lock(
+                    self.workspace_root,
+                    lock_path=lock_path,
+                ) as acquired_path:
+                    self.assertEqual(acquired_path, abs_lock_path)
 
     def test_exclusive_write_lock_rejects_symlinked_lock_file(self) -> None:
         lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
@@ -138,6 +212,146 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             probe_result["failure_reason"],
             write_utils.lock_unavailable_reason(),
         )
+
+    def test_customizations_lock_fails_when_sibling_governance_lock_is_held(self) -> None:
+        for held_lock in sorted(
+            contracts.GOVERNANCE_SIBLING_LOCKS - {contracts.CUSTOMIZATIONS_LOCK_PATH}
+        ):
+            with self.subTest(held_lock=held_lock):
+                with write_utils.exclusive_write_lock(self.workspace_root, lock_path=held_lock):
+                    probe_result = self._probe_lock_attempt(contracts.CUSTOMIZATIONS_LOCK_PATH)
+
+                self.assertFalse(probe_result["acquired"])
+                self.assertEqual(
+                    probe_result["reason_code"],
+                    contracts.ReasonCode.LOCK_UNAVAILABLE.value,
+                )
+                self.assertEqual(
+                    probe_result["failure_reason"],
+                    write_utils.lock_unavailable_reason(held_lock),
+                )
+
+    def test_sibling_governance_lock_fails_when_customizations_lock_is_held(self) -> None:
+        for attempted_lock in sorted(
+            contracts.GOVERNANCE_SIBLING_LOCKS - {contracts.CUSTOMIZATIONS_LOCK_PATH}
+        ):
+            with self.subTest(attempted_lock=attempted_lock):
+                with write_utils.exclusive_write_lock(
+                    self.workspace_root,
+                    lock_path=contracts.CUSTOMIZATIONS_LOCK_PATH,
+                ):
+                    probe_result = self._probe_lock_attempt(attempted_lock)
+
+                self.assertFalse(probe_result["acquired"])
+                self.assertEqual(
+                    probe_result["reason_code"],
+                    contracts.ReasonCode.LOCK_UNAVAILABLE.value,
+                )
+                self.assertEqual(
+                    probe_result["failure_reason"],
+                    write_utils.lock_unavailable_reason(contracts.CUSTOMIZATIONS_LOCK_PATH),
+                )
+
+    def test_governance_lock_uses_meta_lock_even_with_noncanonical_target_path(self) -> None:
+        noncanonical_write_lock_path = "wiki/../wiki/.kb_write.lock"
+        with write_utils.exclusive_write_lock(
+            self.workspace_root,
+            lock_path=contracts.CUSTOMIZATIONS_LOCK_PATH,
+        ):
+            probe_result = self._probe_lock_attempt(noncanonical_write_lock_path)
+
+        self.assertFalse(probe_result["acquired"])
+        self.assertEqual(
+            probe_result["reason_code"],
+            contracts.ReasonCode.LOCK_UNAVAILABLE.value,
+        )
+        self.assertEqual(
+            probe_result["failure_reason"],
+            write_utils.lock_unavailable_reason(contracts.CUSTOMIZATIONS_LOCK_PATH),
+        )
+
+    def test_governance_sibling_race_allows_exactly_one_winner(self) -> None:
+        lock_a = contracts.CUSTOMIZATIONS_LOCK_PATH
+        lock_b = contracts.REJECTION_REGISTRY_LOCK_PATH
+
+        with tempfile.TemporaryDirectory(dir=self.workspace_root) as tmp:
+            gate_dir = Path(tmp)
+            process_a = self._race_probe_lock_attempt(lock_a, gate_dir)
+            process_b = self._race_probe_lock_attempt(lock_b, gate_dir)
+            try:
+                deadline = time.time() + 10.0
+                while True:
+                    ready_count = len(list(gate_dir.glob("*.ready")))
+                    if ready_count >= 2:
+                        break
+                    if time.time() > deadline:
+                        self.fail("timed out waiting for race probe readiness files")
+                    time.sleep(0.005)
+                (gate_dir / "go.signal").write_text("go\n", encoding="utf-8")
+                result_a = self._collect_probe_process_result(process_a)
+                result_b = self._collect_probe_process_result(process_b)
+            finally:
+                if process_a.poll() is None:
+                    process_a.kill()
+                if process_b.poll() is None:
+                    process_b.kill()
+
+        acquired_count = int(bool(result_a["acquired"])) + int(bool(result_b["acquired"]))
+        self.assertEqual(acquired_count, 1)
+
+        loser = result_a if not result_a["acquired"] else result_b
+        self.assertEqual(
+            loser.get("reason_code"),
+            contracts.ReasonCode.LOCK_UNAVAILABLE.value,
+        )
+        self.assertIn(
+            loser.get("failure_reason"),
+            {
+                write_utils.lock_unavailable_reason(lock_a),
+                write_utils.lock_unavailable_reason(lock_b),
+                write_utils.lock_unavailable_reason(contracts.GOVERNANCE_META_LOCK_PATH),
+            },
+        )
+        # The meta-lock is a persistent sentinel; it must remain on disk.
+        self.assertTrue(
+            (self.workspace_root / contracts.GOVERNANCE_META_LOCK_PATH).exists()
+        )
+
+    def test_meta_lock_file_is_created_when_missing_and_persists(self) -> None:
+        meta_lock_path = self.workspace_root / contracts.GOVERNANCE_META_LOCK_PATH
+        with contextlib.suppress(FileNotFoundError):
+            meta_lock_path.unlink()
+
+        with write_utils.exclusive_write_lock(
+            self.workspace_root,
+            lock_path=contracts.CUSTOMIZATIONS_LOCK_PATH,
+        ):
+            self.assertTrue(meta_lock_path.exists())
+
+        self.assertTrue(meta_lock_path.exists())
+
+    def test_write_lock_allows_same_process_nesting_for_monitor_registry_locks(self) -> None:
+        with write_utils.exclusive_write_lock(self.workspace_root):
+            with write_utils.exclusive_write_lock(
+                self.workspace_root,
+                lock_path=contracts.GITHUB_SOURCES_LOCK_PATH,
+            ):
+                self.assertTrue(
+                    write_utils.is_write_lock_held(
+                        self.workspace_root,
+                        lock_path=contracts.GITHUB_SOURCES_LOCK_PATH,
+                    )
+                )
+            with write_utils.exclusive_write_lock(
+                self.workspace_root,
+                lock_path=contracts.DRIVE_SOURCES_LOCK_PATH,
+            ):
+                self.assertTrue(
+                    write_utils.is_write_lock_held(
+                        self.workspace_root,
+                        lock_path=contracts.DRIVE_SOURCES_LOCK_PATH,
+                    )
+                )
 
     def test_governed_artifact_helpers_report_append_only_log_contract(self) -> None:
         contract = write_utils.governed_artifact_contract_for_path("wiki/log.md")
