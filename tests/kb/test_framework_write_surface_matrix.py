@@ -27,7 +27,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     ".github/skills/manage-redirects-and-anchors/logic/**": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/redirects.md", "append-only"),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("ADR-009", "schema/governed-artifact-contract.md"),
         "Hard-fail behavior": ("lock_unavailable", "duplicate redirect", "fail closed"),
     },
@@ -235,21 +235,21 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/reporting/content_quality_report.py` — `persist` mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/reports/content-quality-*.json",),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("schema validation failure", "lock contention", "fail closed"),
     },
     "scripts/reporting/quality_runtime.py` — `score-update` and `report` modes": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/reports/quality-scores-*.json", "wiki/reports/quality-report-*.json"),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("schema validation failure", "lock contention", "fail closed"),
     },
     "scripts/reporting/coverage_report.py` — `summary` and `persist` modes": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/reports/coverage-report-*.json",),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("Missing approval", "lock contention", "wiki path escapes boundary", "fail closed"),
     },
@@ -270,7 +270,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/context/fill_context_pages.py` — `apply` mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": (".github/skills/**", "docs/**"),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/_optional_surface_common.py", "scripts/kb/write_utils.py"),
         "Hard-fail behavior": ("path outside write roots", "SHA drift", "placeholder markers", "fail closed"),
     },
@@ -284,7 +284,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/maintenance/generate_docs.py` — `apply` mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("docs/**",),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/_optional_surface_common.py", "scripts/kb/write_utils.py"),
         "Hard-fail behavior": ("path outside docs/**", "SHA drift", "lock unavailable", "fail closed"),
     },
@@ -326,7 +326,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/ingest/convert_sources_to_md.py` — `apply` mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/processed/**", "write-once", "immutable post-write"),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("ADR-006", "ADR-010"),
         "Hard-fail behavior": ("raw/inbox", "output already exists", "lock unavailable", "fail closed"),
     },
@@ -354,14 +354,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/github_monitor/fetch_content.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/assets/", "raw/github-sources/", "last_fetched_"),
-        "Lock requirements": ("raw/.github-sources.lock", "--approval approved"),
+        "Lock requirements": ("raw/.github-sources.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/github-source-registry-contract.md"),
         "Hard-fail behavior": ("sha-256 mismatch", "path traversal", "lock unavailable", "last_applied_", "fail closed"),
     },
     "scripts/github_monitor/synthesize_diff.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/**", "raw/github-sources/", "last_applied_"),
-        "Lock requirements": ("wiki/.kb_write.lock", "raw/.github-sources.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "raw/.github-sources.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/github-source-registry-contract.md"),
         "Hard-fail behavior": ("diff injection", "lock unavailable", "last_applied_", "fail closed"),
     },
@@ -469,6 +469,29 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
             "fail closed",
         ),
     },
+    "scripts/hooks/check_approval_flag.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Read-only / prerequisite paths": (
+            "scripts/**/*.py",
+            "git diff --cached",
+            "git show",
+            "--approval",
+            "_optional_surface_common.py",
+            "scripts/kb/checkpoint_registry.py",
+        ),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": (
+            "ADR-030",
+            "MAX_APPROVAL_FLAG_SCRIPTS",
+            "tests/kb/test_approval_migration_ratchet.py",
+        ),
+        "Hard-fail behavior": (
+            "newly staged scripts introducing legacy",
+            "modified legacy scripts",
+            "fail closed",
+        ),
+    },
     "scripts/hooks/locality_postuse_advisory.py": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "forbidden"),
@@ -521,14 +544,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/drive_monitor/fetch_content.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/assets/gdrive/", "raw/drive-sources/", "last_fetched_"),
-        "Lock requirements": ("raw/.drive-sources.lock", "--approval approved"),
+        "Lock requirements": ("raw/.drive-sources.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
         "Hard-fail behavior": ("sha-256 mismatch", "path traversal", "lock unavailable", "last_applied_", "fail closed"),
     },
     "scripts/drive_monitor/synthesize_diff.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/**", "raw/drive-sources/", "last_applied_"),
-        "Lock requirements": ("wiki/.kb_write.lock", "raw/.drive-sources.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "raw/.drive-sources.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
         "Hard-fail behavior": ("lock unavailable", "path traversal", "last_applied_", "fail closed"),
     },
@@ -542,7 +565,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/drive_monitor/advance_cursor.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/drive-sources/", "changes_page_token"),
-        "Lock requirements": ("raw/.drive-sources.lock", "--approval approved"),
+        "Lock requirements": ("raw/.drive-sources.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
         "Hard-fail behavior": ("lock unavailable", "alias with pipeline errors", "fail closed"),
     },
