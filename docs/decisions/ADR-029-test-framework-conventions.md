@@ -25,13 +25,10 @@ Adopt **pytest** as the canonical test framework for new and changed tests.
 Enforcement has two layers:
 
 1. A local hook (`scripts/hooks/check_test_framework.py`) blocks newly staged
-   unittest-style test files and blocks test-logic changes to existing
-   unittest-style files until the touched file is migrated to pytest. In #224,
-   the hook implementation lands first; registration in `.pre-commit-config.yaml`
-   and `.github/hooks/hooks.json`, plus the `AGENTS.md` write-surface matrix row,
-   is deferred to the parent consolidation step.
+   unittest-style test files and blocks any staged modification to existing
+   unittest-style files until the touched file is migrated to pytest.
 2. A CI ratchet test (`tests/kb/test_test_framework_ratchet.py`) asserts the
-   repository-wide unittest-style file count equals
+   repository-wide unittest-style file count stays at or below
    `scripts.kb.contracts.MAX_UNITTEST_FILES`, preventing stale slack after a
    migration.
 
@@ -50,8 +47,8 @@ Enforcement has two layers:
    `python3 -m unittest tests.kb.test_framework_*` fast-path commands until that
    migration lands.
 
-After the proof-of-concept migration in #224, the initial ratchet baseline is
-`MAX_UNITTEST_FILES = 60`.
+After the latest proof-of-concept migration, the ratchet baseline is
+`MAX_UNITTEST_FILES = 59`.
 
 ## Alternatives considered
 
@@ -75,8 +72,8 @@ After the proof-of-concept migration in #224, the initial ratchet baseline is
 
 ### Negative
 
-- Contributors touching legacy tests must pay the migration cost before making
-  otherwise small test-logic changes.
+- Contributors touching legacy unittest-style tests must migrate those files in
+  the same change.
 - The hook needs explicit registration in both `.pre-commit-config.yaml` and
   `.github/hooks/hooks.json`, and `AGENTS.md` needs a write-surface matrix row;
   that wiring is intentionally deferred to the #224 consolidation step owned

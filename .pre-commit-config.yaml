@@ -55,7 +55,7 @@ repos:
         pass_filenames: true
 
       - id: test-framework-ratchet
-        name: pytest canonical framework ratchet (block new unittest.TestCase tests)
+        name: pytest canonical framework ratchet (block new/modified unittest.TestCase tests)
         language: python
         entry: python -m scripts.hooks.check_test_framework
         stages: [pre-commit]

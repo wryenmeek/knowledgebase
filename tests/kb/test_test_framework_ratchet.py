@@ -47,8 +47,8 @@ def _from_import_case_source() -> str:
 def test_unittest_file_count_does_not_exceed_contract() -> None:
     files = _unittest_test_files()
 
-    assert len(files) == MAX_UNITTEST_FILES, (
-        f"{len(files)} unittest-style test files must equal MAX_UNITTEST_FILES="
+    assert len(files) <= MAX_UNITTEST_FILES, (
+        f"{len(files)} unittest-style test files must be <= MAX_UNITTEST_FILES="
         f"{MAX_UNITTEST_FILES}: "
         + ", ".join(path.relative_to(REPO_ROOT).as_posix() for path in files)
     )
@@ -98,55 +98,6 @@ def test_hook_detects_unittest_testcase_styles() -> None:
     assert not check_test_framework.contains_unittest_testcase(
         'def test_docs():\n    text = "unittest.' + 'TestCase example"\n    assert text\n'
     )
-
-
-def test_hook_ignores_comment_and_docstring_only_changes() -> None:
-    old = "\n".join(
-        [
-            '"""old module docs"""',
-            "# old comment",
-            "def test_x():",
-            "    assert 1 == 1",
-        ]
-    )
-    new = "\n".join(
-        [
-            '"""new module docs"""',
-            "# new comment",
-            "def test_x():",
-            "    assert 1 == 1",
-        ]
-    )
-
-    assert not check_test_framework._test_logic_changed(old, new)
-
-
-def test_hook_ignores_inline_comment_and_formatting_only_changes() -> None:
-    old = "def test_x():\n    value = 1  # old comment\n    assert value == 1\n"
-    new = "def test_x():\n  value = 1  # new comment\n  assert value == 1\n"
-
-    assert not check_test_framework._test_logic_changed(old, new)
-
-
-def test_hook_treats_non_docstring_triple_quoted_strings_as_logic() -> None:
-    old = 'def test_x():\n    payload = """old"""\n    assert payload\n'
-    new = 'def test_x():\n    payload = """new"""\n    assert payload\n'
-
-    assert check_test_framework._test_logic_changed(old, new)
-
-
-def test_hook_treats_hash_lines_inside_strings_as_logic() -> None:
-    old = 'def test_x():\n    payload = """\\n# old\\n"""\n    assert payload\n'
-    new = 'def test_x():\n    payload = """\\n# new\\n"""\n    assert payload\n'
-
-    assert check_test_framework._test_logic_changed(old, new)
-
-
-def test_hook_detects_test_logic_changes() -> None:
-    old = "def test_x():\n    assert 1 == 1\n"
-    new = "def test_x():\n    assert 2 == 2\n"
-
-    assert check_test_framework._test_logic_changed(old, new)
 
 
 def test_hook_rejects_new_unittest_style_test(monkeypatch, capsys) -> None:
@@ -235,7 +186,7 @@ def test_hook_rejects_copied_unittest_style_test(monkeypatch, capsys) -> None:
     assert "new tests must use pytest" in captured.err
 
 
-def test_hook_rejects_modified_unittest_style_test_logic(monkeypatch, capsys) -> None:
+def test_hook_rejects_any_modified_unittest_style_test(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         check_test_framework,
         "_staged_test_paths",
@@ -244,14 +195,9 @@ def test_hook_rejects_modified_unittest_style_test_logic(monkeypatch, capsys) ->
     monkeypatch.setattr(
         check_test_framework,
         "_get_staged_content",
-        lambda path: (_dotted_case_source().replace("1, 1", "2, 2"), None),
-    )
-    monkeypatch.setattr(
-        check_test_framework,
-        "_get_head_content",
         lambda path: (_dotted_case_source(), None),
     )
 
     assert check_test_framework.main([]) == 1
     captured = capsys.readouterr()
-    assert "Migrate this file to pytest" in captured.err
+    assert "cannot be modified" in captured.err

@@ -2,8 +2,7 @@
 """Git hook: ratchet tests toward pytest as the canonical framework.
 
 New staged test files may not introduce unittest ``TestCase`` tests. Existing
-unittest-style tests may not change test logic without first migrating the file
-to pytest.
+unittest-style test files may not be modified until they are migrated to pytest.
 """
 
 from __future__ import annotations
@@ -106,13 +105,6 @@ def _get_staged_content(path: str) -> tuple[str, str | None]:
     return out, None
 
 
-def _get_head_content(path: str) -> tuple[str, str | None]:
-    rc, out, err = _run_git("show", f"HEAD:{path}")
-    if rc != 0:
-        return "", f"{path}: cannot read HEAD content: {err.strip() or out.strip()}"
-    return out, None
-
-
 def _contains_unittest_testcase_fallback(text: str) -> bool:
     if _DOTTED_TESTCASE_RE.search(text) or _FROM_IMPORT_TESTCASE_RE.search(text):
         return True
@@ -187,103 +179,6 @@ def _contains_unittest_testcase(text: str) -> bool:
     return contains_unittest_testcase(text)
 
 
-def _docstring_line_numbers(text: str) -> set[int]:
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        return set()
-
-    docstring_lines: set[int] = set()
-    docstring_owners = (
-        ast.Module,
-        ast.ClassDef,
-        ast.FunctionDef,
-        ast.AsyncFunctionDef,
-    )
-    for node in ast.walk(tree):
-        if not isinstance(node, docstring_owners) or not node.body:
-            continue
-        first = node.body[0]
-        if (
-            isinstance(first, ast.Expr)
-            and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)
-        ):
-            start = getattr(first, "lineno", None)
-            end = getattr(first, "end_lineno", start)
-            if start is not None and end is not None:
-                docstring_lines.update(range(start, end + 1))
-    return docstring_lines
-
-
-def _logic_signature(text: str) -> list[str]:
-    signature: list[str] = []
-    docstring_lines = _docstring_line_numbers(text)
-
-    for line_number, line in enumerate(text.splitlines(), start=1):
-        stripped = line.strip()
-        if line_number in docstring_lines:
-            continue
-        if not stripped or stripped.startswith("#"):
-            continue
-        signature.append(stripped)
-
-    return signature
-
-
-class _DocstringStripper(ast.NodeTransformer):
-    def visit_Module(self, node: ast.Module) -> ast.Module:
-        self.generic_visit(node)
-        node.body = _without_leading_docstring(node.body)
-        return node
-
-    def visit_ClassDef(self, node: ast.ClassDef) -> ast.ClassDef:
-        self.generic_visit(node)
-        node.body = _without_leading_docstring(node.body)
-        return node
-
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
-        self.generic_visit(node)
-        node.body = _without_leading_docstring(node.body)
-        return node
-
-    def visit_AsyncFunctionDef(
-        self, node: ast.AsyncFunctionDef
-    ) -> ast.AsyncFunctionDef:
-        self.generic_visit(node)
-        node.body = _without_leading_docstring(node.body)
-        return node
-
-
-def _without_leading_docstring(body: list[ast.stmt]) -> list[ast.stmt]:
-    if (
-        body
-        and isinstance(body[0], ast.Expr)
-        and isinstance(body[0].value, ast.Constant)
-        and isinstance(body[0].value.value, str)
-    ):
-        return body[1:]
-    return body
-
-
-def _normalized_logic_ast(text: str) -> str | None:
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        return None
-    tree = _DocstringStripper().visit(tree)
-    ast.fix_missing_locations(tree)
-    return ast.dump(tree, include_attributes=False)
-
-
-def _test_logic_changed(old_text: str, new_text: str) -> bool:
-    old_ast = _normalized_logic_ast(old_text)
-    new_ast = _normalized_logic_ast(new_text)
-    if old_ast is not None and new_ast is not None:
-        return old_ast != new_ast
-    return _logic_signature(old_text) != _logic_signature(new_text)
-
-
 def _new_file_error(path: str) -> str:
     return (
         f"{path}: new tests must use pytest, not unittest TestCase. "
@@ -293,8 +188,8 @@ def _new_file_error(path: str) -> str:
 
 def _modified_file_error(path: str) -> str:
     return (
-        f"{path}: staged test logic changes touch an existing unittest TestCase file. "
-        f"Migrate this file to pytest before changing its test logic."
+        f"{path}: existing unittest TestCase test files cannot be modified. "
+        "Migrate this file to pytest in the same change."
     )
 
 
@@ -324,14 +219,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         if status_code in {"M", "R"} and contains_unittest_testcase(staged_text):
-            head_path = (
-                staged.old_path if status_code == "R" and staged.old_path else staged.path
-            )
-            head_text, head_error = _get_head_content(head_path)
-            if head_error is not None:
-                errors.append(head_error)
-            elif _test_logic_changed(head_text, staged_text):
-                errors.append(_modified_file_error(staged.path))
+            errors.append(_modified_file_error(staged.path))
 
     for error in errors:
         print(f"ERROR: {error}", file=sys.stderr)
