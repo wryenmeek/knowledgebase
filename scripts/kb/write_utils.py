@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import contextlib
 from contextlib import contextmanager
+from datetime import datetime, timezone
+import errno
 import fcntl
 import hashlib
 import os
 from os import PathLike
 from pathlib import Path
 import tempfile
+import time
 from typing import Iterator, Sequence, TextIO
 
 from . import contracts
@@ -21,6 +24,9 @@ LOG_PATH = Path("wiki/log.md")
 # exclusive_write_lock concurrently from multiple threads without adding a
 # threading.Lock around this counter.
 _HELD_LOCK_COUNTS: dict[Path, int] = {}
+_LOCK_UNAVAILABLE_HINT = (
+    "retry after the competing process completes, or remove the lock file if it is stale"
+)
 
 def governed_artifact_contract_for_path(
     path: str | PathLike[str],
@@ -83,12 +89,148 @@ class LockUnavailableError(RuntimeError):
 
     reason_code: str
     failure_reason: str
+    holder_pid: int | None
+    holder_alive: bool | None
+    holder_started_at: str | None
 
-    def __init__(self, lock_path: str = contracts.WRITE_LOCK_PATH) -> None:
+    def __init__(
+        self,
+        lock_path: str = contracts.WRITE_LOCK_PATH,
+        lock_file_path: Path | None = None,
+    ) -> None:
         self.reason_code = contracts.ReasonCode.LOCK_UNAVAILABLE.value
         self.failure_reason = lock_unavailable_reason(lock_path)
-        hint = "retry after the competing process completes, or remove the lock file if it is stale"
-        super().__init__(f"{self.failure_reason} — {hint}")
+        self.holder_pid = None
+        self.holder_alive = None
+        self.holder_started_at = None
+
+        holder_details = _read_lock_holder_details(lock_file_path or Path(lock_path))
+        if holder_details is None:
+            super().__init__(f"{self.failure_reason} — {_LOCK_UNAVAILABLE_HINT}")
+            return
+
+        self.holder_pid = holder_details.pid
+        self.holder_started_at = _format_unix_seconds_utc(holder_details.started_at_unix_seconds)
+        holder_alive = _holder_process_is_alive(
+            holder_details.pid,
+            expected_started_at_unix_seconds=holder_details.started_at_unix_seconds,
+        )
+        self.holder_alive = holder_alive
+
+        if holder_alive is True:
+            super().__init__(
+                f"{self.failure_reason} — holder PID {holder_details.pid} alive since "
+                f"{self.holder_started_at}; retry shortly"
+            )
+            return
+        if holder_alive is False:
+            super().__init__(
+                f"{self.failure_reason} — stale lock from dead PID {holder_details.pid}; safe to remove"
+            )
+            return
+        super().__init__(f"{self.failure_reason} — {_LOCK_UNAVAILABLE_HINT}")
+
+
+class _LockHolderDetails:
+    def __init__(self, pid: int, started_at_unix_seconds: float) -> None:
+        self.pid = pid
+        self.started_at_unix_seconds = started_at_unix_seconds
+
+
+def _format_unix_seconds_utc(unix_seconds: float) -> str:
+    return datetime.fromtimestamp(unix_seconds, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _linux_boot_time_unix_seconds() -> float | None:
+    try:
+        with Path("/proc/stat").open(encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("btime "):
+                    return float(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _linux_pid_start_time_unix_seconds(pid: int) -> float | None:
+    if pid <= 0:
+        return None
+    boot_time = _linux_boot_time_unix_seconds()
+    if boot_time is None:
+        return None
+    try:
+        stat_text = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        right_paren = stat_text.rfind(")")
+        if right_paren == -1:
+            return None
+        stat_fields = stat_text[right_paren + 2 :].split()
+        if len(stat_fields) < 20:
+            return None
+        start_ticks = int(stat_fields[19])
+        ticks_per_second = int(os.sysconf("SC_CLK_TCK"))
+        if ticks_per_second <= 0:
+            return None
+    except (OSError, ValueError, TypeError):
+        return None
+    return boot_time + (start_ticks / ticks_per_second)
+
+
+def _current_process_start_time_unix_seconds() -> float:
+    started_at = _linux_pid_start_time_unix_seconds(os.getpid())
+    if started_at is not None:
+        return started_at
+    return time.time()
+
+
+def _write_lock_holder_details(lock_file: TextIO) -> None:
+    holder_pid = os.getpid()
+    holder_started_at = _current_process_start_time_unix_seconds()
+    lock_file.seek(0)
+    lock_file.truncate()
+    lock_file.write(f"{holder_pid}\t{holder_started_at:.6f}\n")
+    lock_file.flush()
+
+
+def _read_lock_holder_details(lock_file_path: Path) -> _LockHolderDetails | None:
+    try:
+        line = lock_file_path.read_text(encoding="utf-8").splitlines()[0].strip()
+    except IndexError:
+        return None
+    except OSError:
+        return None
+
+    if not line:
+        return None
+    try:
+        pid_text, started_at_text = line.split("\t", 1)
+        pid = int(pid_text)
+        started_at = float(started_at_text)
+    except (ValueError, TypeError):
+        return None
+    if pid <= 0:
+        return None
+    return _LockHolderDetails(pid=pid, started_at_unix_seconds=started_at)
+
+
+def _holder_process_is_alive(pid: int, *, expected_started_at_unix_seconds: float) -> bool | None:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError as exc:
+        if exc.errno == errno.ESRCH:
+            return False
+        if exc.errno == errno.EPERM:
+            return True
+        return None
+
+    observed_start = _linux_pid_start_time_unix_seconds(pid)
+    if observed_start is not None and abs(observed_start - expected_started_at_unix_seconds) > 1e-6:
+        # PID reuse: the currently alive process is not the lock holder recorded in the file.
+        return False
+    return True
 
 
 @contextmanager
@@ -139,7 +281,9 @@ def exclusive_write_lock(
         try:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
-            raise LockUnavailableError(lock_path) from exc
+            raise LockUnavailableError(lock_path, lock_file_path=abs_lock) from exc
+
+        _write_lock_holder_details(lock_file)
 
         try:
             _HELD_LOCK_COUNTS[resolved_lock] = _HELD_LOCK_COUNTS.get(resolved_lock, 0) + 1

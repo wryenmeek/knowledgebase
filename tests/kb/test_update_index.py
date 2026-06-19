@@ -96,9 +96,13 @@ Fixture page.
         for file_path in sorted(self.workspace.rglob("*")):
             if not file_path.is_file():
                 continue
-            digest_map[file_path.relative_to(self.workspace).as_posix()] = (
-                hashlib.sha256(file_path.read_bytes()).hexdigest()
-            )
+            relative_path = file_path.relative_to(self.workspace).as_posix()
+            if relative_path == "wiki/.kb_write.lock":
+                # Lock-file metadata is operational state (holder pid/start-time), not
+                # user-visible workspace content drift.
+                digest_map[relative_path] = hashlib.sha256(b"").hexdigest()
+                continue
+            digest_map[relative_path] = hashlib.sha256(file_path.read_bytes()).hexdigest()
         return digest_map
 
     def test_preview_is_deterministic_and_read_only(self) -> None:
