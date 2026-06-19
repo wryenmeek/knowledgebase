@@ -3,13 +3,26 @@
 from __future__ import annotations
 
 import json
-import unittest
 
 from scripts import init as init_script
 from scripts.kb import contracts
 
 
-class SharedContractsTests(unittest.TestCase):
+class _AssertMixin:
+    def assertEqual(self, left, right) -> None:
+        assert left == right
+
+    def assertIn(self, member, container) -> None:
+        assert member in container
+
+    def assertIsNotNone(self, value) -> None:
+        assert value is not None
+
+    def assertIsNone(self, value) -> None:
+        assert value is None
+
+
+class TestSharedContracts(_AssertMixin):
     def test_governed_artifact_contracts_cover_declared_state_targets(self) -> None:
         self.assertEqual(
             contracts.GOVERNED_ARTIFACT_IDS,
@@ -228,7 +241,7 @@ class SharedContractsTests(unittest.TestCase):
         self.assertIn(contracts.CUSTOMIZATIONS_LOCK_PATH, init_script.LOCK_FILES)
 
     def test_test_framework_ratchet_baseline_is_declared_and_exported(self) -> None:
-        self.assertEqual(contracts.MAX_UNITTEST_FILES, 59)
+        self.assertEqual(contracts.MAX_UNITTEST_FILES, 58)
         self.assertIn("MAX_UNITTEST_FILES", contracts.__all__)
 
     def test_reason_codes_include_spec_required_values(self) -> None:
@@ -268,7 +281,3 @@ class SharedContractsTests(unittest.TestCase):
             json.loads(envelope.to_json()),
             envelope_dict,
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

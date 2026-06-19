@@ -20,6 +20,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -30,6 +32,13 @@ jobs:
         run: |
           pip install --quiet ".[dev]" pre-commit
 
+      - name: Fetch PR base branch for ratchet diff
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin -- "$BASE_REF:refs/remotes/origin/$BASE_REF"
+
       - name: Run pre-commit on all files
         # Skip the detect-secrets hook in CI — it requires a committed
         # .secrets.baseline and the hook re-scans all files. The baseline
@@ -37,4 +46,10 @@ jobs:
         # run detect-secrets scan separately if desired.
         env:
           SKIP: detect-secrets
-        run: pre-commit run --all-files
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$BASE_REF" ]; then
+            export KB_TEST_FRAMEWORK_RATCHET_BASE_REF="origin/$BASE_REF"
+          fi
+          pre-commit run --all-files
