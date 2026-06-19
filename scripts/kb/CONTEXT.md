@@ -1,6 +1,6 @@
 ---
 scope: module
-last_updated: 2026-06-18
+last_updated: 2026-06-19
 ---
 
 # CONTEXT — scripts/kb/
