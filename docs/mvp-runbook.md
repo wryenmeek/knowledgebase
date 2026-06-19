@@ -182,7 +182,9 @@ python3 -m pytest tests/ -q --cov=scripts/kb --cov=scripts.validation._runtime_b
 Write-confirmation flags for optional-surface scripts follow
 [`ADR-030`](decisions/ADR-030-cli-write-confirmation.md): prefer `--apply`
 while legacy `--approval approved` remains a compatibility alias during the
-deprecation window.
+deprecation window (through 2026-12-31) for in-scope optional-surface writer
+surfaces. The equals-sign spelling (`--approval=approved`) is rejected; use
+`--apply` or the space-separated compatibility form.
 
 ## Wiki search semantic API contract (repo-local)
 
@@ -390,7 +392,8 @@ python3 scripts/kb/checkpoint_registry.py --bootstrap
 
 # 3. Operator confirms the report is correct.
 
-# 4. Apply bootstrap with explicit approval
+# 4. Apply bootstrap with explicit write confirmation
+#    (checkpoint_registry is a documented transitional special case)
 python3 scripts/kb/checkpoint_registry.py --bootstrap --apply \
   --approval approved
 ```

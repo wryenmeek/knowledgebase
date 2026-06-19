@@ -25,16 +25,28 @@ CLI entrypoints.
 1. `--apply` is the preferred write-confirmation spelling for write-capable
    optional-surface scripts.
 2. `--approval approved` remains a backward-compatible alias during a
-   deprecation window.
+   deprecation window through **2026-12-31** for in-scope optional-surface
+   scripts.
 3. Passing both forms in one invocation is invalid and must fail closed.
-4. The `SurfaceResult.approval` JSON field name remains unchanged for backward
+4. `--approval=...` (equals-sign spelling) is rejected; only
+   `--approval approved` is accepted during the compatibility window.
+5. The `SurfaceResult.approval` JSON field name remains unchanged for backward
    compatibility with existing CI/log consumers.
-5. The pattern is explicitly **not** a security boundary. It is a deliberate
+6. The pattern is explicitly **not** a security boundary. It is a deliberate
    write-confirmation and auditability control.
-6. Migration is enforced by a local ratchet hook
+7. Migration is enforced by a local ratchet hook
    (`scripts/hooks/check_approval_flag.py`) plus a repository baseline test
    (`tests/kb/test_approval_migration_ratchet.py` and
    `MAX_APPROVAL_FLAG_SCRIPTS`).
+8. Scope and removal criteria:
+   - In scope: optional-surface writer CLIs that currently use shared
+     write-confirmation parser plumbing.
+   - Transitional special case: `scripts/kb/checkpoint_registry.py` remains
+     grandfathered during this window because its bootstrap compatibility lane
+     is managed by its own migration slice.
+   - Removal criteria: by 2026-12-31, set `MAX_APPROVAL_FLAG_SCRIPTS == 0` and
+     remove compatibility-only runbook/workflow invocations that still require
+     `--approval approved`.
 
 ## Alternatives considered
 
@@ -57,6 +69,8 @@ CLI entrypoints.
 
 - Temporary dual-spelling support adds short-term complexity.
 - Ratchet exemptions are required for known transition surfaces.
+- Rejecting `--approval=...` may break legacy one-token invocations; callers
+  must use `--apply` or `--approval approved`.
 
 ## Migration and rollback
 
