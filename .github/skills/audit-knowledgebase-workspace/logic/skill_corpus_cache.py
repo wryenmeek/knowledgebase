@@ -30,6 +30,7 @@ CACHE_PAYLOAD_ENTRIES_KEY = "entries"
 ENTRY_FRONTMATTER_KEY = "frontmatter"
 ENTRY_FIRST_PARAGRAPH_KEY = "first_paragraph"
 ENTRY_MTIME_NS_KEY = "mtime_ns"
+READABLE_CACHE_STRATEGIES = frozenset({CACHE_STRATEGY, "hybrid_signature"})
 
 
 class SkillCorpusEntry(TypedDict):
@@ -108,6 +109,54 @@ def default_cache_dir() -> Path:
     return Path(__file__).resolve().parents[1] / ".cache"
 
 
+def resolve_skill_corpus_cache_path(
+    repo_root: str | Path,
+    *,
+    cache_dir: str | Path | None = None,
+) -> Path:
+    """Return the read-only skill-corpus cache path for an audit-workspace repo."""
+
+    repo_root_path = Path(repo_root).resolve()
+    skill_cache_dir = (
+        repo_root_path / ".github" / "skills" / "audit-knowledgebase-workspace" / ".cache"
+    )
+    requested_cache_dir = Path(cache_dir) if cache_dir is not None else skill_cache_dir
+    if not requested_cache_dir.is_absolute():
+        requested_cache_dir = repo_root_path / requested_cache_dir
+    if requested_cache_dir != skill_cache_dir:
+        raise ValueError(f"cache directory must be skill-local: {skill_cache_dir}")
+    cache_path = requested_cache_dir / CACHE_FILENAME
+    check_no_symlink_path(cache_path)
+    resolved_cache_path = cache_path.resolve(strict=False)
+    resolved_cache_dir = skill_cache_dir.resolve(strict=False)
+    if not resolved_cache_path.is_relative_to(resolved_cache_dir):
+        raise ValueError(f"cache path escapes skill-local cache directory: {cache_path}")
+    return cache_path
+
+
+def load_cached_skill_corpus(cache_path: str | Path) -> SkillCorpus:
+    """Strictly load an existing skill-corpus cache without writing or refreshing it."""
+
+    cache_path = Path(cache_path)
+    if not cache_path.is_file():
+        raise FileNotFoundError(f"cached skill-corpus not found: {cache_path}")
+    _check_cache_path(cache_path)
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("cached skill-corpus root must be a JSON object")
+
+    cache_strategy = payload.get(CACHE_PAYLOAD_STRATEGY_KEY)
+    entries = payload.get(CACHE_PAYLOAD_ENTRIES_KEY)
+    if CACHE_PAYLOAD_STRATEGY_KEY in payload or CACHE_PAYLOAD_ENTRIES_KEY in payload:
+        if not isinstance(cache_strategy, str) or cache_strategy not in READABLE_CACHE_STRATEGIES:
+            raise ValueError("cached skill-corpus root has invalid cache_strategy")
+        if not isinstance(entries, dict):
+            raise ValueError("cached skill-corpus root missing entries object")
+        return _coerce_cache_entries_strict(entries, cache_strategy=cache_strategy)
+
+    return _coerce_legacy_cache_entries_strict(payload)
+
+
 def _iter_skill_files(skill_root: Path) -> tuple[Path, ...]:
     skill_files: list[Path] = []
     for skill_path in sorted(skill_root.glob("*/SKILL.md")):
@@ -136,7 +185,7 @@ def _extract_first_paragraph(body: str) -> str:
     paragraph_lines: list[str] = []
     for line in body.splitlines():
         stripped = line.strip()
-        if not paragraph_lines and not line.strip():
+        if not paragraph_lines and not stripped:
             continue
         if not paragraph_lines and stripped.startswith("#"):
             continue
@@ -233,6 +282,31 @@ def _coerce_cache_entries(entries: dict[Any, Any], *, cache_strategy: str) -> Sk
     return cache
 
 
+def _coerce_cache_entries_strict(
+    entries: dict[Any, Any], *, cache_strategy: str
+) -> SkillCorpus:
+    corpus: SkillCorpus = {}
+    for cache_key, entry in entries.items():
+        if not isinstance(cache_key, str) or not isinstance(entry, dict):
+            raise ValueError("cached skill-corpus entries must be keyed JSON objects")
+        frontmatter = entry.get(ENTRY_FRONTMATTER_KEY)
+        first_paragraph = entry.get(ENTRY_FIRST_PARAGRAPH_KEY)
+        mtime_ns = entry.get(ENTRY_MTIME_NS_KEY)
+        if not isinstance(frontmatter, dict):
+            raise ValueError(f"cached skill-corpus entry missing frontmatter: {cache_key}")
+        if not isinstance(first_paragraph, str):
+            raise ValueError(f"cached skill-corpus entry missing first_paragraph: {cache_key}")
+        if not isinstance(mtime_ns, int) or isinstance(mtime_ns, bool):
+            raise ValueError(f"cached skill-corpus entry missing mtime_ns: {cache_key}")
+        corpus[cache_key] = {
+            "frontmatter": dict(frontmatter),
+            "first_paragraph": first_paragraph,
+            "mtime_ns": mtime_ns,
+            "cache_strategy": cache_strategy,
+        }
+    return corpus
+
+
 def _coerce_legacy_cache_entries(payload: dict[Any, Any]) -> SkillCorpus:
     cache: SkillCorpus = {}
     for key, value in payload.items():
@@ -240,6 +314,18 @@ def _coerce_legacy_cache_entries(payload: dict[Any, Any]) -> SkillCorpus:
         if isinstance(key, str) and entry is not None:
             cache[key] = entry
     return cache
+
+
+def _coerce_legacy_cache_entries_strict(payload: dict[Any, Any]) -> SkillCorpus:
+    corpus: SkillCorpus = {}
+    for cache_key, entry in payload.items():
+        if not isinstance(cache_key, str) or not isinstance(entry, dict):
+            raise ValueError("cached skill-corpus entries must be keyed JSON objects")
+        cache_strategy = entry.get(CACHE_PAYLOAD_STRATEGY_KEY)
+        if cache_strategy not in READABLE_CACHE_STRATEGIES:
+            raise ValueError(f"cached skill-corpus entry has invalid cache_strategy: {cache_key}")
+        corpus.update(_coerce_cache_entries_strict({cache_key: entry}, cache_strategy=cache_strategy))
+    return corpus
 
 
 def _coerce_cache_entry(value: Any, *, cache_strategy: str | None) -> SkillCorpusEntry | None:
@@ -292,8 +378,11 @@ __all__ = [
     "ENTRY_FIRST_PARAGRAPH_KEY",
     "ENTRY_FRONTMATTER_KEY",
     "ENTRY_MTIME_NS_KEY",
+    "READABLE_CACHE_STRATEGIES",
     "SkillCorpus",
     "SkillCorpusEntry",
     "default_cache_dir",
     "get_skill_corpus",
+    "load_cached_skill_corpus",
+    "resolve_skill_corpus_cache_path",
 ]

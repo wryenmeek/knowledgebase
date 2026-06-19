@@ -43,6 +43,8 @@ from scripts._optional_surface_common import (  # noqa: E402
     SurfaceResult,
     base_path_rules,
     looks_like_repo_root,
+    repo_relative,
+    sha256_file,
 )
 from scripts.kb import contracts, page_template_utils, path_utils, write_utils  # noqa: E402
 
@@ -62,6 +64,8 @@ ITEM_STATUSES = frozenset(
 )
 BATCH_STATUSES = frozenset({"running", "completed", "failed", "partial"})
 TERMINAL_BATCH_STATUSES = frozenset({"completed", "failed", "partial"})
+ARTIFACT_TYPE_VALUES = frozenset(artifact.value for artifact in contracts.ArtifactType)
+TRIGGER_VALUES = frozenset(trigger.value for trigger in contracts.TriggerType)
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 FP16_SUFFIX_RE = re.compile(r"^[a-z0-9][a-z0-9-]*-[0-9a-f]{16}$")
 SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -143,14 +147,6 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(65536):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _canonical_json(data: dict[str, Any]) -> str:
     return json.dumps(data, indent=2, sort_keys=True) + "\n"
 
@@ -198,7 +194,7 @@ def _is_hex64(value: Any) -> bool:
 def _validate_item_key_for_artifact(item_key: Any, artifact_type: Any) -> str:
     if not _is_single_line_text(item_key) or not isinstance(artifact_type, str):
         raise ValueError("item_key must be a non-empty string")
-    if artifact_type not in {artifact.value for artifact in contracts.ArtifactType}:
+    if artifact_type not in ARTIFACT_TYPE_VALUES:
         raise ValueError("artifact_type is unsupported")
     prefix = f"{artifact_type}:"
     if not item_key.startswith(prefix):
@@ -212,10 +208,6 @@ def _validate_item_key_for_artifact(item_key: Any, artifact_type: Any) -> str:
 def _slugify(value: str) -> str:
     slug = SLUG_RE.sub("-", value.casefold()).strip("-")
     return slug or "item"
-
-
-def _repo_relative(path: Path, repo_root: Path) -> str:
-    return path.relative_to(repo_root).as_posix()
 
 
 def _resolve_registry_path(repo_root: Path, raw_path: str) -> Path:
@@ -258,7 +250,7 @@ def _artifact_type_for_path(path: Path, repo_root: Path) -> str | None:
 
 
 def _item_key_for_page(path: Path, repo_root: Path, artifact_type: str) -> str:
-    rel = _repo_relative(path, repo_root)
+    rel = repo_relative(repo_root, path)
     text = path.read_text(encoding="utf-8")
     metadata = page_template_utils.parse_page_frontmatter(text)
     if artifact_type == contracts.ArtifactType.WIKI_ENTITY_PAGE.value:
@@ -282,7 +274,7 @@ def _scan_source_fingerprints(repo_root: Path) -> dict[str, str]:
         if not path.is_file():
             continue
         write_utils.check_no_symlink_path(path)
-        fingerprints[_repo_relative(path, repo_root)] = _sha256_file(path)
+        fingerprints[repo_relative(repo_root, path)] = sha256_file(path)
     return fingerprints
 
 
@@ -299,7 +291,7 @@ def _compute_dependency_fingerprint(repo_root: Path) -> str:
     for path in paths:
         write_utils.check_no_symlink_path(path)
     payload = [
-        f"{_repo_relative(path, repo_root)}\0{_sha256_file(path)}"
+        f"{repo_relative(repo_root, path)}\0{sha256_file(path)}"
         for path in sorted(paths)
     ]
     return _sha256_text("\n".join(payload))
@@ -327,7 +319,7 @@ def _candidate_item(path: Path, repo_root: Path, dependency_fingerprint: str, so
     artifact_type = _artifact_type_for_path(path, repo_root)
     if artifact_type is None:
         raise ValueError("unsupported wiki artifact path")
-    relative = _repo_relative(path, repo_root)
+    relative = repo_relative(repo_root, path)
     key = _item_key_for_page(path, repo_root, artifact_type)
     _, violations = page_template_utils.validate_page_template_path(
         relative,
@@ -386,7 +378,7 @@ def _build_bootstrap_registry(repo_root: Path) -> tuple[dict[str, Any], list[dic
             except (OSError, ValueError) as exc:
                 excluded.append(
                     {
-                        "path": _repo_relative(path, repo_root),
+                        "path": repo_relative(repo_root, path),
                         "status": "excluded",
                         "reason_code": "classification_failed",
                         "message": str(exc),
@@ -501,7 +493,7 @@ def _validate_batches(raw_batches: Any) -> list[str]:
             errors.append(f"duplicate batch_id: {batch_id}")
         else:
             seen.add(batch_id)
-        if batch.get("trigger") not in {trigger.value for trigger in contracts.TriggerType}:
+        if batch.get("trigger") not in TRIGGER_VALUES:
             errors.append(f"batches[{index}].trigger is unsupported")
         if not _is_single_line_text(batch.get("triggered_by")):
             errors.append(f"batches[{index}].triggered_by must be a non-empty string")
@@ -535,7 +527,6 @@ def _validate_items(raw_items: Any, repo_root: Path) -> list[str]:
     seen_keys: set[str] = set()
     seen_outputs: dict[str, int] = {}
     alias_owners: dict[str, int] = {}
-    artifact_values = {artifact.value for artifact in contracts.ArtifactType}
     required_fields = {
         "item_key",
         "output_path",
@@ -558,7 +549,7 @@ def _validate_items(raw_items: Any, repo_root: Path) -> list[str]:
             errors.append(f"items[{index}].{field} is required")
         key = item.get("item_key")
         artifact_type = item.get("artifact_type")
-        if artifact_type not in artifact_values:
+        if artifact_type not in ARTIFACT_TYPE_VALUES:
             errors.append(f"items[{index}].artifact_type is unsupported")
         else:
             try:
@@ -579,7 +570,7 @@ def _validate_items(raw_items: Any, repo_root: Path) -> list[str]:
         path_aliases = item.get("path_aliases")
         if not isinstance(path_aliases, list) or not all(isinstance(path, str) for path in path_aliases):
             errors.append(f"items[{index}].path_aliases must be an array of strings")
-        elif artifact_type in artifact_values:
+        elif artifact_type in ARTIFACT_TYPE_VALUES:
             for alias in path_aliases:
                 try:
                     normalized_alias = _validate_output_path(repo_root, alias, str(artifact_type))
@@ -873,9 +864,7 @@ def _enforce_batch_item_outcomes(
                 "partial batch requires at least one successful item and at least one unfinished or failed item",
             )
         return
-    if batch["status"] == "failed" and not any(
-        status == "failed" or status not in successful for status in statuses
-    ):
+    if batch["status"] == "failed" and not any(status not in successful for status in statuses):
         raise TransitionError(
             "illegal_transition",
             "failed batch requires a failed or unfinished planned item",
@@ -1100,29 +1089,7 @@ def _validate_completion(item: dict[str, Any], operation: dict[str, Any], repo_r
             raise TransitionError("fingerprint_mismatch", f"{field} does not match the claimed in-progress item")
 
 
-def verify_registry(
-    *,
-    repo_root: str | Path = ".",
-    registry_path: str = REGISTRY_PATH,
-    warn_only: bool = False,
-    log_warnings: bool = False,
-    approval: str = APPROVAL_NONE,
-) -> SurfaceResult:
-    """Validate registry parse, schema, size, and item-count telemetry.
-
-    Default verify is read-only and acquires no checkpoint lock; ``warn_only``
-    controls strict exit semantics. ``--log-warnings`` requires approval and
-    appends only warning telemetry to ``wiki/log.md`` under ``wiki/.kb_write.lock``.
-    Primary failures include ``invalid_input``, ``json_parse_failed``,
-    ``schema_validation_failed``, ``approval_required``, ``lock_unavailable``,
-    and ``write_failed``.
-    """
-    mode = "verify"
-    root = Path(repo_root).resolve()
-    try:
-        target = _resolve_registry_path(root, registry_path)
-    except (OSError, ValueError) as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code=REASON_CODE_INVALID_INPUT, message=str(exc))
+def _build_verify_summary(root: Path, target: Path) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "registry_path": REGISTRY_PATH,
         "file_size_bytes": 0,
@@ -1158,6 +1125,37 @@ def verify_registry(
         summary["warnings"].append("file_size_bytes exceeds CHECKPOINT_REGISTRY_SIZE_WARN_BYTES")
     if summary["file_size_bytes"] > contracts.CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES:
         summary["errors"].append("file_size_bytes exceeds CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES")
+    return summary
+
+
+def _emit_warning_log_entries(repo_root: Path, summary: dict[str, Any]) -> bool:
+    return _append_verify_warning(repo_root, summary)
+
+
+def verify_registry(
+    *,
+    repo_root: str | Path = ".",
+    registry_path: str = REGISTRY_PATH,
+    warn_only: bool = False,
+    log_warnings: bool = False,
+    approval: str = APPROVAL_NONE,
+) -> SurfaceResult:
+    """Validate registry parse, schema, size, and item-count telemetry.
+
+    Default verify is read-only and acquires no checkpoint lock; ``warn_only``
+    controls strict exit semantics. ``--log-warnings`` requires approval and
+    appends only warning telemetry to ``wiki/log.md`` under ``wiki/.kb_write.lock``.
+    Primary failures include ``invalid_input``, ``json_parse_failed``,
+    ``schema_validation_failed``, ``approval_required``, ``lock_unavailable``,
+    and ``write_failed``.
+    """
+    mode = "verify"
+    root = Path(repo_root).resolve()
+    try:
+        target = _resolve_registry_path(root, registry_path)
+    except (OSError, ValueError) as exc:
+        return _result(mode=mode, status=STATUS_FAIL, reason_code=REASON_CODE_INVALID_INPUT, message=str(exc))
+    summary = _build_verify_summary(root, target)
     if log_warnings and (summary["warnings"] or summary["errors"]):
         if approval != APPROVAL_APPROVED:
             return _result(
@@ -1171,7 +1169,7 @@ def verify_registry(
                 summary=summary,
             )
         try:
-            summary["log_appended"] = _append_verify_warning(root, summary)
+            summary["log_appended"] = _emit_warning_log_entries(root, summary)
         except write_utils.LockUnavailableError as exc:
             return _result(
                 mode=mode,

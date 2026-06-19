@@ -49,6 +49,10 @@ from scripts.kb.contracts import (
     WRITE_LOCK_PATH,
 )
 from skill_corpus_cache import CACHE_STRATEGY
+try:
+    from _paths import SAFE_REPO_RELATIVE_PATH_PATTERN, SAFE_REPO_RELATIVE_PATH_RE
+except ImportError:  # pragma: no cover - exercised when imported as a package
+    from ._paths import SAFE_REPO_RELATIVE_PATH_PATTERN, SAFE_REPO_RELATIVE_PATH_RE
 
 
 COMMAND_TIMEOUT_SECONDS = 10
@@ -91,13 +95,6 @@ SYMBOL_PLAIN_REFERENCE_RE = re.compile(
 )
 BACKTICK_CALL_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)\(\)`")
 BACKTICK_IDENTIFIER_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)`")
-SAFE_REPO_RELATIVE_PATH_PATTERN = (
-    r"^(?!.*[\s\x00-\x1F\x7F])(?!/)(?![A-Za-z]:)"
-    r"(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*(?:^|/)\.\.?($|/))"
-    r"[A-Za-z0-9._@+-]+(?:/[A-Za-z0-9._@+-]+)*$"
-)
-SAFE_REPO_RELATIVE_PATH_RE = re.compile(SAFE_REPO_RELATIVE_PATH_PATTERN)
-
 CommandRunner = Callable[
     [Sequence[str], Path, int],
     subprocess.CompletedProcess[str],
@@ -194,23 +191,24 @@ def generate_stale_findings(
                 )
             )
 
-    adr_statuses = build_adr_supersession_map(repo_root_path)
-    for adr_id in adr_references:
-        status = adr_statuses.get(adr_id)
-        if status is None:
-            continue
-        findings.append(
-            _finding(
-                source_file=normalized_source_file,
-                source_section=normalized_source_section,
-                rationale=(
-                    f"References {adr_id}, whose ## Status indicates it was superseded: "
-                    f"{status}."
-                ),
-                deletion_candidate=f"superseded ADR reference: {adr_id}",
-                cache_strategy=cache_strategy,
+    if adr_references:
+        adr_statuses = build_adr_supersession_map(repo_root_path)
+        for adr_id in adr_references:
+            status = adr_statuses.get(adr_id)
+            if status is None:
+                continue
+            findings.append(
+                _finding(
+                    source_file=normalized_source_file,
+                    source_section=normalized_source_section,
+                    rationale=(
+                        f"References {adr_id}, whose ## Status indicates it was superseded: "
+                        f"{status}."
+                    ),
+                    deletion_candidate=f"superseded ADR reference: {adr_id}",
+                    cache_strategy=cache_strategy,
+                )
             )
-        )
 
     return tuple(findings)
 

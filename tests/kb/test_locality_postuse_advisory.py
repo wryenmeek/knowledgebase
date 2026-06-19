@@ -279,6 +279,17 @@ def test_mixed_success_and_error_result_exits_without_warning() -> None:
     assert result.stdout == ""
 
 
+def test_conflicting_exit_code_aliases_treat_any_nonzero_as_failure() -> None:
+    payload = _successful_edit_payload("AGENTS.md")
+    payload["tool_result"] = {"returncode": 0, "exit_code": 1}
+
+    result = _run_hook(payload)
+
+    assert result.returncode == 0
+    assert result.stderr == ""
+    assert result.stdout == ""
+
+
 def test_hook_never_exits_nonzero_regardless_of_input() -> None:
     payloads: tuple[object | str, ...] = (
         _successful_edit_payload("AGENTS.md"),

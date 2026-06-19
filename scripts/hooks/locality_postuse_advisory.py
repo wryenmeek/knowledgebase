@@ -92,6 +92,7 @@ FAILURE_STATUSES = {
     "timeout",
 }
 SUCCESS_STATUSES = {"completed", "ok", "passed", "success", "succeeded"}
+EXIT_CODE_KEYS = ("returncode", "return_code", "exit_code", "status_code")
 
 
 def _read_payload_text() -> str:
@@ -200,10 +201,9 @@ def _explicit_success(value: Any) -> bool:
     for key in ("error", "exception", "traceback"):
         if value.get(key):
             return False
-    for key in ("returncode", "return_code", "exit_code", "status_code"):
-        code = value.get(key)
-        if isinstance(code, int) and code != 0:
-            return False
+    exit_code_success = _exit_code_success(value)
+    if exit_code_success is False:
+        return False
     for key in ("status", "outcome", "state"):
         status = value.get(key)
         if isinstance(status, str) and status.strip().lower() in FAILURE_STATUSES:
@@ -212,15 +212,24 @@ def _explicit_success(value: Any) -> bool:
     for key in ("success", "ok", "succeeded"):
         if key in value:
             return bool(value[key])
-    for key in ("returncode", "return_code", "exit_code", "status_code"):
-        code = value.get(key)
-        if isinstance(code, int):
-            return code == 0
+    if exit_code_success is not None:
+        return exit_code_success
     for key in ("status", "outcome", "state"):
         status = value.get(key)
         if isinstance(status, str) and status.strip().lower() in SUCCESS_STATUSES:
             return True
     return False
+
+
+def _exit_code_success(mapping: Mapping[str, Any]) -> bool | None:
+    saw_exit_code = False
+    for key in EXIT_CODE_KEYS:
+        code = mapping.get(key)
+        if isinstance(code, int):
+            saw_exit_code = True
+            if code != 0:
+                return False
+    return True if saw_exit_code else None
 
 
 def _tool_result_succeeded(payload: Mapping[str, Any]) -> bool:

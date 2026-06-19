@@ -31,29 +31,25 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from scripts.kb.write_utils import check_no_symlink_path
-
 try:
+    from _paths import SAFE_REPO_RELATIVE_PATH_RE
     from skill_corpus_cache import (
         CACHE_FILENAME,
-        CACHE_PAYLOAD_ENTRIES_KEY,
-        CACHE_PAYLOAD_STRATEGY_KEY,
         CACHE_STRATEGY,
-        ENTRY_FIRST_PARAGRAPH_KEY,
-        ENTRY_FRONTMATTER_KEY,
-        ENTRY_MTIME_NS_KEY,
+        READABLE_CACHE_STRATEGIES,
         SkillCorpus,
+        load_cached_skill_corpus,
+        resolve_skill_corpus_cache_path,
     )
 except ImportError:  # pragma: no cover - exercised when imported as a package
+    from ._paths import SAFE_REPO_RELATIVE_PATH_RE
     from .skill_corpus_cache import (
         CACHE_FILENAME,
-        CACHE_PAYLOAD_ENTRIES_KEY,
-        CACHE_PAYLOAD_STRATEGY_KEY,
         CACHE_STRATEGY,
-        ENTRY_FIRST_PARAGRAPH_KEY,
-        ENTRY_FRONTMATTER_KEY,
-        ENTRY_MTIME_NS_KEY,
+        READABLE_CACHE_STRATEGIES,
         SkillCorpus,
+        load_cached_skill_corpus,
+        resolve_skill_corpus_cache_path,
     )
 
 
@@ -66,12 +62,7 @@ GITHUB_MODELS_ENDPOINT = "https://models.inference.ai.azure.com"
 MODEL_ID = "gpt-4o-mini"
 ALLOWED_ENDPOINT_HOSTS = frozenset({"models.inference.ai.azure.com"})
 MIXED_CACHE_STRATEGY_PRIORITY = ("mtime_first_para", "hybrid_signature")
-VALID_CACHE_STRATEGIES = frozenset({"mtime_first_para", "hybrid_signature"})
-_REPO_RELATIVE_PATH_RE = re.compile(
-    r"^(?!.*[\s\x00-\x1F\x7F])(?!/)(?![A-Za-z]:)"
-    r"(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*(?:^|/)\.\.?($|/))"
-    r"[A-Za-z0-9._@+-]+(?:/[A-Za-z0-9._@+-]+)*$"
-)
+VALID_CACHE_STRATEGIES = READABLE_CACHE_STRATEGIES
 
 LLMCaller = Callable[[str], str]
 
@@ -189,11 +180,8 @@ def load_comparison_corpus(
     loaded_skill_corpus = (
         skill_corpus
         if skill_corpus is not None
-        else _load_cached_skill_corpus(
-            _cache_path(
-                repo_root_path=repo_root_path,
-                cache_dir=cache_dir,
-            )
+        else load_cached_skill_corpus(
+            resolve_skill_corpus_cache_path(repo_root_path, cache_dir=cache_dir)
         )
     )
 
@@ -573,80 +561,6 @@ def _iter_instruction_and_hook_artifacts(repo_root: Path) -> tuple[Path, ...]:
     return tuple(sorted(paths))
 
 
-def _cache_path(*, repo_root_path: Path, cache_dir: str | Path | None) -> Path:
-    default_cache_dir = (
-        repo_root_path / ".github" / "skills" / "audit-knowledgebase-workspace" / ".cache"
-    )
-    requested_cache_dir = Path(cache_dir) if cache_dir is not None else default_cache_dir
-    if not requested_cache_dir.is_absolute():
-        requested_cache_dir = repo_root_path / requested_cache_dir
-    if requested_cache_dir != default_cache_dir:
-        raise ValueError(f"cache directory must be skill-local: {default_cache_dir}")
-    cache_path = requested_cache_dir / CACHE_FILENAME
-    check_no_symlink_path(cache_path)
-    resolved_cache_path = cache_path.resolve(strict=False)
-    resolved_cache_dir = default_cache_dir.resolve(strict=False)
-    if not resolved_cache_path.is_relative_to(resolved_cache_dir):
-        raise ValueError(f"cache path escapes skill-local cache directory: {cache_path}")
-    return cache_path
-
-
-def _load_cached_skill_corpus(cache_path: Path) -> SkillCorpus:
-    if not cache_path.is_file():
-        raise FileNotFoundError(f"cached skill-corpus not found: {cache_path}")
-    payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("cached skill-corpus root must be a JSON object")
-
-    cache_strategy = payload.get(CACHE_PAYLOAD_STRATEGY_KEY)
-    entries = payload.get(CACHE_PAYLOAD_ENTRIES_KEY)
-    if CACHE_PAYLOAD_STRATEGY_KEY in payload or CACHE_PAYLOAD_ENTRIES_KEY in payload:
-        if not isinstance(cache_strategy, str) or cache_strategy not in VALID_CACHE_STRATEGIES:
-            raise ValueError("cached skill-corpus root has invalid cache_strategy")
-        if not isinstance(entries, dict):
-            raise ValueError("cached skill-corpus root missing entries object")
-        return _coerce_cached_skill_entries(entries, cache_strategy=cache_strategy)
-
-    return _coerce_legacy_cached_skill_entries(payload)
-
-
-def _coerce_cached_skill_entries(
-    entries: dict[Any, Any], *, cache_strategy: str
-) -> SkillCorpus:
-    corpus: SkillCorpus = {}
-    for cache_key, entry in entries.items():
-        if not isinstance(cache_key, str) or not isinstance(entry, dict):
-            raise ValueError("cached skill-corpus entries must be keyed JSON objects")
-        frontmatter = entry.get(ENTRY_FRONTMATTER_KEY)
-        first_paragraph = entry.get(ENTRY_FIRST_PARAGRAPH_KEY)
-        mtime_ns = entry.get(ENTRY_MTIME_NS_KEY)
-        if not isinstance(frontmatter, dict):
-            raise ValueError(f"cached skill-corpus entry missing frontmatter: {cache_key}")
-        if not isinstance(first_paragraph, str):
-            raise ValueError(f"cached skill-corpus entry missing first_paragraph: {cache_key}")
-        if not isinstance(mtime_ns, int) or isinstance(mtime_ns, bool):
-            raise ValueError(f"cached skill-corpus entry missing mtime_ns: {cache_key}")
-        corpus[cache_key] = {
-            "frontmatter": dict(frontmatter),
-            "first_paragraph": first_paragraph,
-            "mtime_ns": mtime_ns,
-            "cache_strategy": cache_strategy,
-        }
-    return corpus
-
-
-def _coerce_legacy_cached_skill_entries(payload: dict[Any, Any]) -> SkillCorpus:
-    corpus: SkillCorpus = {}
-    for cache_key, entry in payload.items():
-        if not isinstance(cache_key, str) or not isinstance(entry, dict):
-            raise ValueError("cached skill-corpus entries must be keyed JSON objects")
-        cache_strategy = entry.get(CACHE_PAYLOAD_STRATEGY_KEY)
-        if cache_strategy not in VALID_CACHE_STRATEGIES:
-            raise ValueError(f"cached skill-corpus entry has invalid cache_strategy: {cache_key}")
-        corpus.update(_coerce_cached_skill_entries({cache_key: entry}, cache_strategy=cache_strategy))
-    return corpus
-
-
 def _bounded_files(repo_root: Path, root: Path, pattern: str) -> list[Path]:
     files: list[Path] = []
     if root.is_symlink():
@@ -705,7 +619,7 @@ def _safe_suggested_path(value: Any, fallback: str) -> str:
 
 
 def _is_schema_safe_path(value: str) -> bool:
-    return _REPO_RELATIVE_PATH_RE.search(value) is not None
+    return SAFE_REPO_RELATIVE_PATH_RE.search(value) is not None
 
 
 def _string_or_default(value: Any, default: str) -> str:
@@ -744,12 +658,6 @@ def _validate_source_file(repo_root: Path, source_file: str) -> str:
     return source_path.relative_to(repo_root).as_posix()
 
 
-def _read_source_text(repo_root: Path, source_file: str) -> str:
-    source_file = _validate_source_file(repo_root, source_file)
-    source_path = repo_root / source_file
-    return source_path.read_text(encoding="utf-8")
-
-
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Generate cited redundant-up-the-ladder deletion candidates."
@@ -780,7 +688,9 @@ def run_cli(argv: list[str] | None = None, *, output_stream: Any = sys.stdout) -
     repo_root = Path(args.repo_root).resolve()
     try:
         canonical_source_file = _validate_source_file(repo_root, args.source_file)
-        source_text = args.source_text or _read_source_text(repo_root, canonical_source_file)
+        source_text = args.source_text or (repo_root / canonical_source_file).read_text(
+            encoding="utf-8"
+        )
         result = generate_redundancy_findings(
             repo_root=repo_root,
             source_file=canonical_source_file,
