@@ -408,7 +408,10 @@ def _acquire_sibling_governance_lock(
                 if sibling_resolved in _HELD_LOCK_COUNTS:
                     if _can_cohold_with_held_sibling(lock_path, sibling_lock_path):
                         continue
-                    raise LockUnavailableError(sibling_lock_path)
+                    raise LockUnavailableError(
+                        sibling_lock_path,
+                        lock_file_path=repo_root / sibling_lock_path,
+                    )
                 try:
                     _, _, sibling_lock_file = _open_lock_file(
                         repo_root,
@@ -418,12 +421,18 @@ def _acquire_sibling_governance_lock(
                 except FileNotFoundError:
                     continue
                 except OSError as exc:
-                    raise LockUnavailableError(sibling_lock_path) from exc
+                    raise LockUnavailableError(
+                        sibling_lock_path,
+                        lock_file_path=repo_root / sibling_lock_path,
+                    ) from exc
                 with sibling_lock_file:
                     try:
                         fcntl.flock(sibling_lock_file.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
                     except OSError as exc:
-                        raise LockUnavailableError(sibling_lock_path) from exc
+                        raise LockUnavailableError(
+                            sibling_lock_path,
+                            lock_file_path=repo_root / sibling_lock_path,
+                        ) from exc
                     finally:
                         with contextlib.suppress(OSError):
                             fcntl.flock(sibling_lock_file.fileno(), fcntl.LOCK_UN)
