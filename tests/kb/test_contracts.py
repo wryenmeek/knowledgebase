@@ -136,6 +136,55 @@ class SharedContractsTests(unittest.TestCase):
         self.assertIsNone(
             contracts.governed_artifact_contract_by_pattern("../wiki/log.md")
         )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("wiki/../raw/processed/SPEC.md")
+        )
+
+    def test_governed_artifact_contract_by_pattern_rejects_platform_specific_paths(
+        self,
+    ) -> None:
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern(
+                r"wiki\..\.github/copilot-instructions.md"
+            )
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("\\\\server\\share\\foo")
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("C:\\wiki\\index.md")
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("C:/wiki/index.md")
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("C:wiki/index.md")
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("/wiki/index.md")
+        )
+
+    def test_governed_artifact_contract_by_pattern_matches_all_declared_artifacts(
+        self,
+    ) -> None:
+        representative_paths = {
+            "github-source-registry": "raw/github-sources/example.source-registry.json",
+            "external-asset": "raw/assets/example/repo/abc123/file.md",
+            "rejection-record": "raw/rejected/example--a1b2c3d4.rejection.md",
+        }
+        dynamic_pattern_ids = {
+            artifact.artifact_id
+            for artifact in contracts.GOVERNED_ARTIFACT_CONTRACTS
+            if artifact.path_pattern
+        }
+        self.assertEqual(set(representative_paths), dynamic_pattern_ids)
+
+        for artifact in contracts.GOVERNED_ARTIFACT_CONTRACTS:
+            path = representative_paths.get(artifact.artifact_id, artifact.path)
+            matched = contracts.governed_artifact_contract_by_pattern(path)
+            self.assertIsNotNone(matched, msg=f"expected match for {artifact.artifact_id}")
+            assert matched is not None
+            self.assertEqual(matched.artifact_id, artifact.artifact_id)
 
     def test_governed_artifact_contract_details_are_explicit(self) -> None:
         log_contract = contracts.governed_artifact_contract("wiki/log.md")
