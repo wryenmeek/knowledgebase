@@ -284,7 +284,12 @@ def governed_artifact_contract_by_pattern(path: str) -> GovernedArtifactContract
         return None  # Reject Windows separators/UNC forms
     if path.startswith("/"):
         return None  # Reject absolute paths
-    if len(path) >= 2 and path[0].isalpha() and path[1] == ":":
+    if (
+        len(path) >= 2
+        and path[1] == ":"
+        and path[0].isascii()
+        and path[0].isalpha()
+    ):
         return None  # Reject drive-prefixed paths (e.g., C:foo or C:/foo)
     if any(component == ".." for component in path.split("/") if component):
         return None  # Reject traversal paths

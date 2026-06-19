@@ -166,6 +166,12 @@ class SharedContractsTests(unittest.TestCase):
             "external-asset": "raw/assets/example/repo/abc123/file.md",
             "rejection-record": "raw/rejected/example--a1b2c3d4.rejection.md",
         }
+        dynamic_pattern_ids = {
+            artifact.artifact_id
+            for artifact in contracts.GOVERNED_ARTIFACT_CONTRACTS
+            if artifact.path_pattern
+        }
+        self.assertEqual(set(representative_paths), dynamic_pattern_ids)
 
         for artifact in contracts.GOVERNED_ARTIFACT_CONTRACTS:
             path = representative_paths.get(artifact.artifact_id, artifact.path)
