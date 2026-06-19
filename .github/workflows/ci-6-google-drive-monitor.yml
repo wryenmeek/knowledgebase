@@ -211,7 +211,7 @@ jobs:
           fetch_start="$(date -u +%s)"
           python -m scripts.drive_monitor.fetch_content \
             --drift-report drift-report.json \
-            --approval approved
+            --apply
           fetch_end="$(date -u +%s)"
           fetch_duration="$((fetch_end - fetch_start))"
 
@@ -447,7 +447,7 @@ jobs:
           # The full drift-report.json includes HITL entries that must NOT be auto-synthesized.
           python -m scripts.drive_monitor.synthesize_diff \
             --drift-report afk-entries.json \
-            --approval approved
+            --apply
           synthesize_end="$(date -u +%s)"
           synthesize_duration="$((synthesize_end - synthesize_start))"
 
@@ -567,7 +567,7 @@ jobs:
           advance_start="$(date -u +%s)"
           python -m scripts.drive_monitor.advance_cursor \
             --drift-report drift-report.json \
-            --approval approved
+            --apply
           advance_end="$(date -u +%s)"
           advance_duration="$((advance_end - advance_start))"
 

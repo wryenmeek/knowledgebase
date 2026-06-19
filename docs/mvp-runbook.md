@@ -172,12 +172,19 @@ python3 scripts/kb/batch_persist_query.py \
 # 7) wiki coverage analytics (Phase 4)
 # summary mode (read-only):
 python3 scripts/reporting/coverage_report.py --mode summary
-# persist mode (approval-gated; writes wiki/reports/coverage-report-*.json):
-python3 scripts/reporting/coverage_report.py --mode persist --approval approved
+# persist mode (write-confirmation gated; writes wiki/reports/coverage-report-*.json):
+python3 scripts/reporting/coverage_report.py --mode persist --apply
 
 # 8) regression/unit/integration workflow checks (≥90% coverage gate enforced in CI-2)
 python3 -m pytest tests/ -q --cov=scripts/kb --cov=scripts.validation._runtime_budget --cov-fail-under=90
 ```
+
+Write-confirmation flags for optional-surface scripts follow
+[`ADR-030`](decisions/ADR-030-cli-write-confirmation.md): prefer `--apply`
+while legacy `--approval approved` remains a compatibility alias during the
+deprecation window (through 2026-12-31) for in-scope optional-surface writer
+surfaces. The equals-sign spelling (`--approval=approved`) is rejected; use
+`--apply` or the space-separated compatibility form.
 
 ## Wiki search semantic API contract (repo-local)
 
@@ -385,7 +392,8 @@ python3 scripts/kb/checkpoint_registry.py --bootstrap
 
 # 3. Operator confirms the report is correct.
 
-# 4. Apply bootstrap with explicit approval
+# 4. Apply bootstrap with explicit write confirmation
+#    (checkpoint_registry is a documented transitional special case)
 python3 scripts/kb/checkpoint_registry.py --bootstrap --apply \
   --approval approved
 ```
@@ -544,8 +552,8 @@ python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict
 | **CI-1** (`.github/workflows/ci-1-gatekeeper.yml`) | trusted-trigger gatekeeper/handoff for `raw/inbox/**` | run local ingest → update_index → lint; open/update PR manually; keep fail-closed behavior and required checks. |
 | **CI-2** (`.github/workflows/ci-2-analyst-diagnostics.yml`) | read-only diagnostics (`validate_wiki_governance`, `check_doc_freshness`, `content_quality_report`, `check_issue_closure_evidence` with forward-only cutover, `lint_wiki --strict`, dependency audit, secret scan, and test suite); triggers on `pull_request`, `push` to `main`, and `workflow_dispatch` | run the same diagnostics locally (`python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py --quiet`, `python3 -m scripts.validation.check_doc_freshness --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 --failures-only`, `python3 scripts/reporting/content_quality_report.py --mode summary --path wiki --failures-only`, `python3 -m scripts.validation.check_issue_closure_evidence --lookback-days 3650 --issue-limit 500 --closed-after 2026-05-25T00:00:00Z`, `python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict`, `python -m pip install --quiet 'pip>=26.1' pip-audit && pip-audit --desc on --ignore-vuln CVE-2026-3219`, `gitleaks detect --source . --config .gitleaks.toml --redact --no-banner`, `python3 -m pytest tests/ -q --cov=scripts/kb --cov=scripts.validation._runtime_budget --cov-fail-under=90`), attach findings to PR/issue; workflow-level permissions stay `actions/checks/contents: read` with `issues: read` scoped to the `analyst-diagnostics` job; no repo-write automation needed. |
 | **CI-4** (`.github/workflows/ci-4-framework-writer.yml`) | framework-writer: staged agent-generated content for `docs/**` and `.github/skills/**`; `workflow_dispatch` only; approval-gated | trigger `workflow_dispatch` manually after generating staged content; requires `ci4-framework-approval` environment gating; only allowlisted paths (`docs/**`, `.github/skills/**`) may be written. |
-| **CI-5** (`.github/workflows/ci-5-github-monitor.yml`) | GitHub source monitor: daily schedule (cron `30 6 * * *`, 06:30 UTC) + `repository_dispatch` (type `upstream-source-updated`) + drift detection (read-only) + PR-producing fetch/synthesize path; repository_dispatch now fail-closes unless actor is trusted (`CI5_TRUSTED_DISPATCH_ACTORS`) and minimal payload contract fields are valid (`source_kind=github`, `delivery_id`, `upstream_repo`); optional `registry_path` hints from `repository_dispatch` payload or `workflow_dispatch` input run targeted mode only when allowlisted (`raw/github-sources/*.source-registry.json` + existing file), otherwise CI-5 logs explicit full-scan fallback diagnostics, writes fallback telemetry (`runtime-metrics/fallback-telemetry.json`), and emits warning annotations for `repository_dispatch` invalid-hint fallback (escalated on rerun attempts for repeated invalid hints); writes `raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**` | run `scripts/github_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; open PR for any changes. See ADR-015 and ADR-012 for governance rules. |
-| **CI-6** (`.github/workflows/ci-6-google-drive-monitor.yml`) | Google Drive source monitor: weekly schedule (cron `0 8 * * 1`, Mon 08:00 UTC) + `repository_dispatch` (type `drive-source-updated`) + drift detection (read-only) + approval-gated fetch/synthesize path; workflow-level concurrency key is `ci-6-drive-monitor-${{ github.ref }}-${{ github.event.client_payload.channel_id || 'none' }}-${{ github.event.client_payload.resource_id || 'none' }}-${{ github.event.client_payload.change_id || 'none' }}-${{ github.event.client_payload.file_id || 'none' }}` and manual `workflow_dispatch` runs can scope to `inputs.registry_path`; writes`raw/assets/**`,`raw/drive-sources/**`, bounded`wiki/**` | run `scripts/drive_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--approval approved`; advance cursor with `advance_cursor.py --approval approved`. See ADR-021 for governance rules. |
+| **CI-5** (`.github/workflows/ci-5-github-monitor.yml`) | GitHub source monitor: daily schedule (cron `30 6 * * *`, 06:30 UTC) + `repository_dispatch` (type `upstream-source-updated`) + drift detection (read-only) + PR-producing fetch/synthesize path; repository_dispatch now fail-closes unless actor is trusted (`CI5_TRUSTED_DISPATCH_ACTORS`) and minimal payload contract fields are valid (`source_kind=github`, `delivery_id`, `upstream_repo`); optional `registry_path` hints from `repository_dispatch` payload or `workflow_dispatch` input run targeted mode only when allowlisted (`raw/github-sources/*.source-registry.json` + existing file), otherwise CI-5 logs explicit full-scan fallback diagnostics, writes fallback telemetry (`runtime-metrics/fallback-telemetry.json`), and emits warning annotations for `repository_dispatch` invalid-hint fallback (escalated on rerun attempts for repeated invalid hints); writes `raw/assets/**`, `raw/github-sources/**`, bounded `wiki/**` | run `scripts/github_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--apply`; open PR for any changes. See ADR-015 and ADR-012 for governance rules. |
+| **CI-6** (`.github/workflows/ci-6-google-drive-monitor.yml`) | Google Drive source monitor: weekly schedule (cron `0 8 * * 1`, Mon 08:00 UTC) + `repository_dispatch` (type `drive-source-updated`) + drift detection (read-only) + approval-gated fetch/synthesize path; workflow-level concurrency key is `ci-6-drive-monitor-${{ github.ref }}-${{ github.event.client_payload.channel_id || 'none' }}-${{ github.event.client_payload.resource_id || 'none' }}-${{ github.event.client_payload.change_id || 'none' }}-${{ github.event.client_payload.file_id || 'none' }}` and manual `workflow_dispatch` runs can scope to `inputs.registry_path`; writes`raw/assets/**`,`raw/drive-sources/**`, bounded`wiki/**` | run `scripts/drive_monitor/check_drift.py` and `classify_drift.py` locally to inspect drift; run `fetch_content.py` and `synthesize_diff.py` locally with `--apply`; advance cursor with `advance_cursor.py --apply`. See ADR-021 for governance rules. |
 
 - **CI-3 manual dispatch note:** `maintainer_approved` remains a required attestation input for `workflow_dispatch`, manual runs are gated by protected-environment reviewer approval (`ci3-manual-approval`), and preflight hard-blocks dispatch commits that include sensitive control-plane paths (`.github/workflows/**`, `.github/skills/**`, `.github/agents/**`, `.github/extensions/**`, `scripts/**`, `schema/**`, `AGENTS.md`, `pyproject.toml`).
 

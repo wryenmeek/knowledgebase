@@ -312,8 +312,12 @@ class TestSharedContracts(_AssertMixin):
         self.assertIn(contracts.GOVERNANCE_META_LOCK_PATH, init_script.LOCK_FILES)
 
     def test_test_framework_ratchet_baseline_is_declared_and_exported(self) -> None:
-        self.assertEqual(contracts.MAX_UNITTEST_FILES, 57)
+        self.assertEqual(contracts.MAX_UNITTEST_FILES, 56)
         self.assertIn("MAX_UNITTEST_FILES", contracts.__all__)
+
+    def test_approval_flag_ratchet_baseline_is_declared_and_exported(self) -> None:
+        self.assertEqual(contracts.MAX_APPROVAL_FLAG_SCRIPTS, 8)
+        self.assertIn("MAX_APPROVAL_FLAG_SCRIPTS", contracts.__all__)
 
     def test_reason_codes_include_spec_required_values(self) -> None:
         self.assertIn("lock_unavailable", contracts.REASON_CODES)

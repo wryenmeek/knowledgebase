@@ -17,10 +17,10 @@ Usage::
 
     python -m scripts.drive_monitor.fetch_content \\
         --drift-report drift-report.json \\
-        --approval approved \\
+        --apply \\
         [--repo-root /path/to/repo]
 
-Requires ``--approval approved`` for any write operation.  Authentication:
+Requires explicit write confirmation for any write operation. Authentication:
 set ``GDRIVE_SA_KEY`` (service account JSON key content) in the environment.
 """
 
@@ -37,6 +37,7 @@ from scripts._optional_surface_common import (
     APPROVAL_NONE,
     STATUS_FAIL,
     STATUS_PASS,
+    add_approval_arg,
     JsonArgumentParser,
     SurfaceResult,
     approval_required_result,
@@ -356,12 +357,7 @@ def _build_parser() -> JsonArgumentParser:
         default=".",
         help="Repository root directory (default: current directory).",
     )
-    parser.add_argument(
-        "--approval",
-        metavar="APPROVAL",
-        default=APPROVAL_NONE,
-        help="Must be 'approved' to perform writes.",
-    )
+    add_approval_arg(parser)
     return parser
 
 
