@@ -97,7 +97,7 @@ CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES = 10 * 1024 * 1024
 
 # ADR-029 pytest migration ratchet. Decrement after each unittest-to-pytest
 # migration; never raise without an ADR amendment.
-MAX_UNITTEST_FILES = 60
+MAX_UNITTEST_FILES = 58
 
 
 class TriggerType(StrEnum):
