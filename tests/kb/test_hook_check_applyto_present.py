@@ -13,6 +13,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK_MODULE = "scripts.hooks.check_instructions_applyto_present"
+FIXTURE_DIR = REPO_ROOT / "tests/fixtures/qa-ab"
 
 
 def _run_git(repo: Path, *args: str) -> None:
@@ -52,6 +53,10 @@ def _run_hook(repo: Path, *paths: str) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
     )
+
+
+def _fixture_text(name: str) -> str:
+    return (FIXTURE_DIR / name).read_text(encoding="utf-8")
 
 
 def test_staged_instruction_file_without_applyto_exits_1(tmp_path: Path) -> None:
@@ -557,3 +562,27 @@ def test_multiline_yaml_list_applyto_with_empty_items_exits_1(tmp_path: Path) ->
 
     assert result.returncode == 1
     assert "empty applyTo" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_code", "error_fragment"),
+    (
+        ("applyto-empty.instructions.md", 1, "empty applyTo"),
+        ("applyto-invalid-regex.instructions.md", 0, ""),
+        ("applyto-missing.instructions.md", 1, "missing required non-empty applyTo"),
+    ),
+)
+def test_qa_ab_applyto_adversarial_fixtures(
+    tmp_path: Path, fixture_name: str, expected_code: int, error_fragment: str
+) -> None:
+    repo = _init_repo(tmp_path)
+    rel_path = ".github/instructions/qa-ab.instructions.md"
+    _stage_file(repo, rel_path, _fixture_text(fixture_name))
+
+    result = _run_hook(repo, rel_path)
+
+    assert result.returncode == expected_code
+    if error_fragment:
+        assert error_fragment in result.stderr
+    else:
+        assert result.stderr == ""

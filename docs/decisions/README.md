@@ -11,7 +11,7 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-002](ADR-002-frontmatter-and-sourceref-contract.md) | Require frontmatter schema and canonical SourceRef provenance | Accepted |
 | [ADR-003](ADR-003-policy-gated-query-persistence.md) | Enforce policy-gated query persistence with machine-readable envelopes | Accepted |
 | [ADR-004](ADR-004-split-ci-workflow-governance.md) | Split CI governance into gatekeeper, analyst, and PR-producing workflows | Accepted — extended by ADR-015; extended by ADR-021 |
-| [ADR-005](ADR-005-write-concurrency-guards.md) | Enforce write concurrency with workflow group and local file lock | Accepted |
+| [ADR-005](ADR-005-write-concurrency-guards.md) | Enforce write concurrency with workflow group and local file lock | Accepted — amended in-place |
 | [ADR-006](ADR-006-authoritative-source-boundary.md) | Restrict authoritative ingestion scope to repository-local inputs | Accepted — extended by ADR-021 |
 | [ADR-007](ADR-007-control-plane-layering-and-packaging.md) | Layer the wiki-curation control plane over deterministic scripts | Accepted — amended in-place |
 | [ADR-008](ADR-008-agent-writes-to-framework-paths.md) | Authorize agent write paths for `.github/skills/**` and `docs/**` | Accepted |
@@ -35,4 +35,4 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-026](ADR-026-wiki-processing-checkpoint-registry.md) | Wiki processing checkpoint registry for resumed and revalidated synthesis | Accepted — extended by ADR-027; amended in-place |
 | [ADR-027](ADR-027-infrastructure-validation-trigger-model.md) | Infrastructure validation trigger model for CI-3 | Accepted |
 | [ADR-028](ADR-028-instruction-locality-ladder.md) | Instruction locality ladder for the knowledgebase AI ecosystem | Accepted (Phase 1.5 compliance-evidence prerequisite explicitly waived — see § Open questions). |
-| [ADR-029](ADR-029-test-framework-conventions.md) | Test framework conventions | Accepted |
+| [ADR-029](ADR-029-test-framework-conventions.md) | Test framework conventions | Accepted — amended in-place |

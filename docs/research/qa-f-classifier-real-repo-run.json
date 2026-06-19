@@ -1,0 +1,57 @@
+{
+  "assembled_finding_count": 0,
+  "assembled_findings": [],
+  "cache_strategy_verification": {
+    "all_emitted_findings_include_cache_strategy": true,
+    "missing_cache_strategy_count": 0
+  },
+  "classifier_scope": [
+    ".github/copilot-instructions.md",
+    "AGENTS.md"
+  ],
+  "friction_query_templates": {
+    "all_templates_include_time_filter": true,
+    "template_count": 5,
+    "template_keys": [
+      "chronicle_commits",
+      "hook_bypasses",
+      "repeated_context_loads",
+      "repeated_user_prompts",
+      "retry_loops"
+    ]
+  },
+  "gate_start_commit_sha": "c0b96cd5fd5ffb11eab6ea4d40ba0663bcf164c9",
+  "invocation": {
+    "assembled_run": "python3 (importlib) stale_generator + redundancy_generator + friction_queries templates",
+    "gh_issue_state_stub": "OPEN (offline deterministic command_runner for stale_generator gh issue probes)"
+  },
+  "repository": "wryenmeek/knowledgebase",
+  "source_runs": [
+    {
+      "redundancy_generator": {
+        "finding_count": 0,
+        "llm_mode": "deterministic-fixture-no-claims",
+        "soft_skipped": false
+      },
+      "source_file": ".github/copilot-instructions.md",
+      "source_sha256": "475d8284207b74b26e2c28c6cc64c82d2429780af9a59851e598cddcb5c05a0a",
+      "stale_generator": {
+        "error": "ValueError: instruction_text exceeds deterministic stale-generator input limit",
+        "finding_count": 0
+      }
+    },
+    {
+      "redundancy_generator": {
+        "finding_count": 0,
+        "llm_mode": "deterministic-fixture-no-claims",
+        "soft_skipped": false
+      },
+      "source_file": "AGENTS.md",
+      "source_sha256": "d979f5c010cede0c373a365b05d7b1ecc5a649e619f77475b4150dd4d17c01db",
+      "stale_generator": {
+        "error": "ValueError: instruction_text exceeds deterministic stale-generator input limit",
+        "finding_count": 0
+      }
+    }
+  ]
+}

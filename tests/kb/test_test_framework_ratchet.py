@@ -92,61 +92,22 @@ def test_hook_detects_unittest_testcase_styles() -> None:
             ]
         )
     )
+    assert check_test_framework.contains_unittest_testcase(
+        "\n".join(
+            [
+                "import unittest",
+                "Case = unittest.TestCase",
+                "class TestAlias(Case):",
+                "    pass",
+            ]
+        )
+    )
     assert not check_test_framework.contains_unittest_testcase(
         "def test_pytest_style():\n    assert 1 == 1\n"
     )
     assert not check_test_framework.contains_unittest_testcase(
         'def test_docs():\n    text = "unittest.' + 'TestCase example"\n    assert text\n'
     )
-
-
-def test_hook_ignores_comment_and_docstring_only_changes() -> None:
-    old = "\n".join(
-        [
-            '"""old module docs"""',
-            "# old comment",
-            "def test_x():",
-            "    assert 1 == 1",
-        ]
-    )
-    new = "\n".join(
-        [
-            '"""new module docs"""',
-            "# new comment",
-            "def test_x():",
-            "    assert 1 == 1",
-        ]
-    )
-
-    assert not check_test_framework._test_logic_changed(old, new)
-
-
-def test_hook_ignores_inline_comment_and_formatting_only_changes() -> None:
-    old = "def test_x():\n    value = 1  # old comment\n    assert value == 1\n"
-    new = "def test_x():\n  value = 1  # new comment\n  assert value == 1\n"
-
-    assert not check_test_framework._test_logic_changed(old, new)
-
-
-def test_hook_treats_non_docstring_triple_quoted_strings_as_logic() -> None:
-    old = 'def test_x():\n    payload = """old"""\n    assert payload\n'
-    new = 'def test_x():\n    payload = """new"""\n    assert payload\n'
-
-    assert check_test_framework._test_logic_changed(old, new)
-
-
-def test_hook_treats_hash_lines_inside_strings_as_logic() -> None:
-    old = 'def test_x():\n    payload = """\\n# old\\n"""\n    assert payload\n'
-    new = 'def test_x():\n    payload = """\\n# new\\n"""\n    assert payload\n'
-
-    assert check_test_framework._test_logic_changed(old, new)
-
-
-def test_hook_detects_test_logic_changes() -> None:
-    old = "def test_x():\n    assert 1 == 1\n"
-    new = "def test_x():\n    assert 2 == 2\n"
-
-    assert check_test_framework._test_logic_changed(old, new)
 
 
 def test_hook_rejects_new_unittest_style_test(monkeypatch, capsys) -> None:
@@ -167,17 +128,24 @@ def test_hook_rejects_new_unittest_style_test(monkeypatch, capsys) -> None:
 
 
 def test_hook_parses_copied_and_renamed_test_paths(monkeypatch) -> None:
-    git_output = "\n".join(
+    captured_args = []
+    git_output = "\0".join(
         [
-            "C100\ttests/source_test.py\ttests/copied_test.py",
-            "R100\tlegacy/old_test.py\ttests/renamed_test.py",
-            "M\ttests/modified_test.py",
+            "C100",
+            "tests/source_test.py",
+            "tests/copied_test.py",
+            "R100",
+            "legacy/old_test.py",
+            "tests/renamed_test.py",
+            "M",
+            "tests/modified_test.py",
+            "",
         ]
     )
     monkeypatch.setattr(
         check_test_framework,
         "_run_git",
-        lambda *args: (0, git_output, ""),
+        lambda *args: (captured_args.append(args) or (0, git_output, "")),
     )
 
     staged, error = check_test_framework._staged_test_paths()
@@ -192,6 +160,7 @@ def test_hook_parses_copied_and_renamed_test_paths(monkeypatch) -> None:
         ),
         check_test_framework.StagedTestPath("M", "tests/modified_test.py"),
     ]
+    assert "-z" in captured_args[0]
 
 
 def test_hook_requests_rename_and_copy_detection(monkeypatch) -> None:
@@ -207,6 +176,7 @@ def test_hook_requests_rename_and_copy_detection(monkeypatch) -> None:
 
     assert staged == []
     assert error is None
+    assert "-z" in captured_args[0]
     assert "--find-renames" in captured_args[0]
     assert "--find-copies" in captured_args[0]
 
@@ -235,7 +205,7 @@ def test_hook_rejects_copied_unittest_style_test(monkeypatch, capsys) -> None:
     assert "new tests must use pytest" in captured.err
 
 
-def test_hook_rejects_modified_unittest_style_test_logic(monkeypatch, capsys) -> None:
+def test_hook_rejects_any_modified_unittest_style_test(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         check_test_framework,
         "_staged_test_paths",
@@ -243,15 +213,74 @@ def test_hook_rejects_modified_unittest_style_test_logic(monkeypatch, capsys) ->
     )
     monkeypatch.setattr(
         check_test_framework,
-        "_get_staged_content",
-        lambda path: (_dotted_case_source().replace("1, 1", "2, 2"), None),
+        "_get_current_content",
+        lambda path, base_ref: (_dotted_case_source(), None),
     )
     monkeypatch.setattr(
         check_test_framework,
-        "_get_head_content",
-        lambda path: (_dotted_case_source(), None),
+        "_get_previous_content",
+        lambda path, base_ref: (_dotted_case_source().replace("1, 1", "1, 2"), None),
     )
 
     assert check_test_framework.main([]) == 1
     captured = capsys.readouterr()
-    assert "Migrate this file to pytest" in captured.err
+    assert "non-docstring changes" in captured.err
+
+
+def test_hook_allows_docstring_only_change_on_existing_unittest_file(
+    monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr(
+        check_test_framework,
+        "_staged_test_paths",
+        lambda: ([check_test_framework.StagedTestPath("M", "tests/old_test.py")], None),
+    )
+    monkeypatch.setattr(
+        check_test_framework,
+        "_get_previous_content",
+        lambda path, base_ref: (
+            "import unittest\nclass TestOld(unittest.TestCase):\n    def test_x(self):\n        \"\"\"old\"\"\"\n        self.assertEqual(1, 1)\n",
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        check_test_framework,
+        "_get_current_content",
+        lambda path, base_ref: (
+            "import unittest\nclass TestOld(unittest.TestCase):\n    def test_x(self):\n        \"\"\"new\"\"\"\n        self.assertEqual(1, 1)\n",
+            None,
+        ),
+    )
+
+    assert check_test_framework.main([]) == 0
+    captured = capsys.readouterr()
+    assert "ERROR:" not in captured.err
+
+
+def test_hook_allows_modified_file_after_pytest_migration(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        check_test_framework,
+        "_staged_test_paths",
+        lambda: ([check_test_framework.StagedTestPath("M", "tests/old_test.py")], None),
+    )
+    monkeypatch.setattr(
+        check_test_framework,
+        "_get_previous_content",
+        lambda path, base_ref: (_dotted_case_source(), None),
+    )
+    monkeypatch.setattr(
+        check_test_framework,
+        "_get_current_content",
+        lambda path, base_ref: ("def test_now_pytest_style():\n    assert 1 == 1\n", None),
+    )
+
+    assert check_test_framework.main([]) == 0
+    captured = capsys.readouterr()
+    assert "ERROR:" not in captured.err
+
+
+def test_hook_uses_ci_diff_mode_when_base_ref_env_is_set(monkeypatch) -> None:
+    monkeypatch.setenv("KB_TEST_FRAMEWORK_RATCHET_BASE_REF", "origin/main")
+    monkeypatch.setattr(check_test_framework, "_ci_test_paths", lambda base_ref: ([], None))
+    monkeypatch.setattr(check_test_framework, "_staged_test_paths", lambda: ([], "unexpected"))
+    assert check_test_framework.main([]) == 0

@@ -320,6 +320,22 @@ class AuditWorkspaceRedundancyGeneratorTests(RuntimeWorkspaceTestCase):
         self.assertFalse(result["soft_skipped"])
         self.assertEqual(result["findings"], [])
 
+    def test_nonexistent_near_match_skill_citation_is_dropped_silently(self) -> None:
+        claims = [
+            {
+                "rationale": "Near-match skill path should not pass mandatory citation checks.",
+                "expected_token_efficiency_rank": 0,
+                "citation": {
+                    "artifact_path": ".github/skills/context-engineeringg/SKILL.md",
+                    "snippet": "Scoped skill covers the same review handoff.",
+                },
+            }
+        ]
+        result = self._generate_with_response({"claims": claims})
+
+        self.assertFalse(result["soft_skipped"])
+        self.assertEqual(result["findings"], [])
+
     def test_claim_with_path_escape_citation_is_dropped_silently(self) -> None:
         result = self._generate_with_response(
             {

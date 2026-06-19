@@ -1,7 +1,7 @@
 # ADR-005: Enforce write concurrency with workflow group and local file lock
 
 ## Status
-Accepted
+Accepted — amended in-place: governance sibling meta-lock protocol (see § Amendment)
 
 ## Date
 2026-04-12
@@ -42,6 +42,23 @@ Lock contention must fail closed, return non-zero, and emit
 - Write race conditions are substantially reduced.
 - Failure mode is explicit and diagnosable.
 - Automation remains deterministic under parallel triggering conditions.
+
+## Amendment
+
+- **Date:** 2026-06-19
+- **What changed:** The sibling governance lock set (`wiki/.kb_write.lock`,
+  `raw/.rejection-registry.lock`, `.github/.customizations.lock`,
+  `raw/.github-sources.lock`, `raw/.drive-sources.lock`,
+  `raw/.wiki-processing-checkpoint.lock`) now acquires under a shared meta-lock
+  protocol using `raw/.governance-meta.lock`: acquire meta-lock, probe other
+  sibling locks with `LOCK_SH | LOCK_NB`, acquire target sibling lock, then
+  release meta-lock while retaining the target lock for the critical section.
+- **Why:** Entry-time checks alone could not prevent cross-process races where one
+  process held `.github/.customizations.lock` while another later acquired a sibling
+  governance lock.
+- **What did not change:** Existing stale unlocked lock-file reclaim behavior for
+  sibling lock files and ADR-012/ADR-021 lock-ordering rules for GitHub/Drive
+  monitor locks (`wiki/.kb_write.lock` acquired before monitor registry locks).
 
 ## References
 
