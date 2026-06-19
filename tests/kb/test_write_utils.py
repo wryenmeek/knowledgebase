@@ -7,12 +7,13 @@ import json
 import os
 import tempfile
 import time
-import unittest
 from pathlib import Path
 import subprocess
 import sys
 import textwrap
 from unittest.mock import patch
+
+import pytest
 
 from scripts._optional_surface_common import lock_unavailable_result
 from scripts.kb import contracts
@@ -716,13 +717,13 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             )
 
 
-class CheckNoSymlinkPathTests(unittest.TestCase):
-    def setUp(self) -> None:
+class CheckNoSymlinkPathTests:
+    def setup_method(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         # Resolve to canonical path; on macOS /var is a symlink to /private/var
         self.tmp_path = Path(self._tmp.name).resolve()
 
-    def tearDown(self) -> None:
+    def teardown_method(self) -> None:
         self._tmp.cleanup()
 
     def test_plain_file_passes(self) -> None:
@@ -740,7 +741,7 @@ class CheckNoSymlinkPathTests(unittest.TestCase):
         target.write_text("data", encoding="utf-8")
         link = self.tmp_path / "link.txt"
         link.symlink_to(target)
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             check_no_symlink_path(link)
 
     def test_symlinked_parent_raises(self) -> None:
@@ -749,21 +750,21 @@ class CheckNoSymlinkPathTests(unittest.TestCase):
         link_dir = self.tmp_path / "link_dir"
         link_dir.symlink_to(real_dir)
         child = link_dir / "file.txt"
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             check_no_symlink_path(child)
 
     def test_is_in_public_api(self) -> None:
-        self.assertIn("check_no_symlink_path", write_utils.__all__)
+        assert "check_no_symlink_path" in write_utils.__all__
 
 
-class WriteTextCapturingPreviousSafeSymlinkTests(unittest.TestCase):
+class WriteTextCapturingPreviousSafeSymlinkTests:
     """Regression tests: write_text_capturing_previous_safe must reject symlinked paths."""
 
-    def setUp(self) -> None:
+    def setup_method(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self._tmp.name).resolve()
 
-    def tearDown(self) -> None:
+    def teardown_method(self) -> None:
         self._tmp.cleanup()
 
     def test_rejects_symlink_at_target_path(self) -> None:
@@ -773,11 +774,11 @@ class WriteTextCapturingPreviousSafeSymlinkTests(unittest.TestCase):
         link = self.tmp_path / "link.md"
         link.symlink_to(real_file)
 
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             write_utils.write_text_capturing_previous_safe(link, "updated\n")
 
         # Original file must be untouched.
-        self.assertEqual(real_file.read_text(encoding="utf-8"), "original\n")
+        assert real_file.read_text(encoding="utf-8") == "original\n"
 
     def test_rejects_symlinked_parent_directory(self) -> None:
         """write_text_capturing_previous_safe must raise OSError when a parent dir is a symlink."""
@@ -787,7 +788,7 @@ class WriteTextCapturingPreviousSafeSymlinkTests(unittest.TestCase):
         link_dir.symlink_to(real_dir)
         target = link_dir / "file.md"
 
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             write_utils.write_text_capturing_previous_safe(target, "data\n")
 
     def test_plain_path_succeeds(self) -> None:
@@ -795,32 +796,32 @@ class WriteTextCapturingPreviousSafeSymlinkTests(unittest.TestCase):
         target = self.tmp_path / "subdir" / "page.md"
         target.parent.mkdir()
         write_utils.write_text_capturing_previous_safe(target, "content\n")
-        self.assertEqual(target.read_text(encoding="utf-8"), "content\n")
+        assert target.read_text(encoding="utf-8") == "content\n"
 
 
-class ExclusiveCreateWriteOnceTests(unittest.TestCase):
-    def setUp(self) -> None:
+class ExclusiveCreateWriteOnceTests:
+    def setup_method(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self._tmp.name).resolve()
 
-    def tearDown(self) -> None:
+    def teardown_method(self) -> None:
         self._tmp.cleanup()
 
     def test_creates_new_file_in_new_parent_dirs(self) -> None:
         target = self.tmp_path / "a" / "b" / "c.bin"
         write_utils.exclusive_create_write_once(target, b"hello")
-        self.assertEqual(target.read_bytes(), b"hello")
+        assert target.read_bytes() == b"hello"
 
     def test_idempotent_same_bytes(self) -> None:
         target = self.tmp_path / "asset.bin"
         write_utils.exclusive_create_write_once(target, b"data")
         write_utils.exclusive_create_write_once(target, b"data")  # second call: no-op
-        self.assertEqual(target.read_bytes(), b"data")
+        assert target.read_bytes() == b"data"
 
     def test_raises_on_byte_mismatch(self) -> None:
         target = self.tmp_path / "asset.bin"
         write_utils.exclusive_create_write_once(target, b"original")
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             write_utils.exclusive_create_write_once(target, b"different")
 
     def test_raises_on_symlink_path(self) -> None:
@@ -828,7 +829,7 @@ class ExclusiveCreateWriteOnceTests(unittest.TestCase):
         real.write_bytes(b"content")
         link = self.tmp_path / "link.bin"
         link.symlink_to(real)
-        with self.assertRaises(OSError):
+        with pytest.raises(OSError):
             write_utils.exclusive_create_write_once(link, b"content")
 
     def test_no_temp_file_remains_on_success(self) -> None:
@@ -836,11 +837,7 @@ class ExclusiveCreateWriteOnceTests(unittest.TestCase):
         write_utils.exclusive_create_write_once(target, b"hello")
         # Only the target file should exist; no .asset.bin.* temp files.
         files = list(self.tmp_path.iterdir())
-        self.assertEqual([target], files)
+        assert [target] == files
 
     def test_is_in_public_api(self) -> None:
-        self.assertIn("exclusive_create_write_once", write_utils.__all__)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert "exclusive_create_write_once" in write_utils.__all__
