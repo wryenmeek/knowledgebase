@@ -373,7 +373,7 @@ The pre-commit hook (`check_context_md_format.py`) validates these exact section
 
 ### Parallel fleet agent file ownership
 
-When dispatching parallel sub-agents (via `task` tool), explicitly partition file ownership so no two agents commit to the same file. Cross-agent regressions are invisible — each agent sees a peer's breakage as "pre-existing." If two tasks must touch the same file, serialize them or assign one agent as the sole owner of that file.
+`AGENTS.md` (especially the write-surface matrix) is the highest-collision file in parallel fleet dispatches. For two or more implementation agents touching matrix rows, assign ownership by **specific row target** in each prompt, require `git fetch origin && git rebase origin/main` immediately before commit, and on `AGENTS.md` conflict re-apply the owned row in the correct surface-family region before finishing.
 
 ### Sub-agent SQL limitations
 
@@ -539,7 +539,7 @@ This parallels the quality-pass-chain skill but uses custom agents for richer, d
 
 ### Post-remediation docs/customizations audit pair
 
-After landing cross-functional remediation commits, proactively run `documentation-and-adrs` and `audit-knowledgebase-workspace` to identify documentation/customization cascades by commit. Trigger this pair automatically for issue slices that modify `.github/workflows/**`, `AGENTS.md`, `schema/**`, `docs/decisions/ADR-*.md`, or write-capable script surfaces under `scripts/**`. Remediate P0–P2 findings in-session; track deferred P3+ items in GitHub Issues before completion.
+For any session that merged one or more PRs, run `documentation-and-adrs` and `audit-knowledgebase-workspace` **before the first `task_complete`** against the full landed range (`<first-merged-PR-base>..HEAD`, where `<first-merged-PR-base>` is the base commit of the first PR merged chronologically in that session on the target branch). File uncovered gaps as `ready-for-agent` follow-up issues and remediate P0–P2 findings in-session.
 
 ### Auto-remediate P0–P2 findings after cross-functional review
 
