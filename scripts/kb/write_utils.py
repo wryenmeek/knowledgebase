@@ -153,16 +153,22 @@ class LockUnavailableError(RuntimeError):
 
 
 class _LockHolderDetails:
+    """Parsed lock-holder metadata from a lock file line."""
+
     def __init__(self, pid: int, started_at_unix_seconds: float) -> None:
         self.pid = pid
         self.started_at_unix_seconds = started_at_unix_seconds
 
 
 def _format_unix_seconds_utc(unix_seconds: float) -> str:
+    """Render unix seconds as UTC ISO-8601 (`YYYY-MM-DDTHH:MM:SSZ`)."""
+
     return datetime.fromtimestamp(unix_seconds, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _linux_boot_time_unix_seconds() -> float | None:
+    """Return Linux boot time from `/proc/stat` (`btime`), else ``None``."""
+
     try:
         with Path("/proc/stat").open(encoding="utf-8") as handle:
             for line in handle:
@@ -174,6 +180,8 @@ def _linux_boot_time_unix_seconds() -> float | None:
 
 
 def _linux_pid_start_time_unix_seconds(pid: int) -> float | None:
+    """Return Linux process start time as unix seconds, else ``None``."""
+
     if pid <= 0:
         return None
     boot_time = _linux_boot_time_unix_seconds()
@@ -198,6 +206,8 @@ def _linux_pid_start_time_unix_seconds(pid: int) -> float | None:
 
 
 def _current_process_start_time_unix_seconds() -> float:
+    """Return current-process start time, falling back to ``time.time()``."""
+
     started_at = _linux_pid_start_time_unix_seconds(os.getpid())
     if started_at is not None:
         return started_at
@@ -205,6 +215,8 @@ def _current_process_start_time_unix_seconds() -> float:
 
 
 def _write_lock_holder_details(lock_file: TextIO) -> None:
+    """Overwrite lock metadata with ``<pid>\\t<start_time_unix_seconds>``."""
+
     holder_pid = os.getpid()
     holder_started_at = _current_process_start_time_unix_seconds()
     lock_file.seek(0)
@@ -214,6 +226,11 @@ def _write_lock_holder_details(lock_file: TextIO) -> None:
 
 
 def _read_lock_holder_details(lock_file_path: Path) -> _LockHolderDetails | None:
+    """Parse lock metadata from ``lock_file_path``.
+
+    Returns ``None`` when the file cannot be read, is empty, or is malformed.
+    """
+
     try:
         line = lock_file_path.read_text(encoding="utf-8").splitlines()[0].strip()
     except IndexError:
@@ -235,6 +252,8 @@ def _read_lock_holder_details(lock_file_path: Path) -> _LockHolderDetails | None
 
 
 def _holder_process_is_alive(pid: int, *, expected_started_at_unix_seconds: float) -> bool | None:
+    """Return holder liveness: ``True`` alive, ``False`` dead/reused, ``None`` unknown."""
+
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -256,6 +275,8 @@ def _holder_process_is_alive(pid: int, *, expected_started_at_unix_seconds: floa
 
 
 def _pid_start_time_tolerance_seconds() -> float:
+    """Return start-time comparison tolerance based on Linux clock-tick precision."""
+
     try:
         ticks_per_second = float(int(os.sysconf("SC_CLK_TCK")))
     except (OSError, ValueError, TypeError):
