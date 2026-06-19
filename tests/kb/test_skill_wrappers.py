@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 from pathlib import Path
 import tempfile
@@ -93,6 +94,27 @@ VALIDATOR_WRAPPER_PATH = (
     / "logic"
     / "run_deterministic_validators.py"
 )
+
+
+def _expected_repo_name(repo_root: Path = REPO_ROOT) -> str:
+    try:
+        repo_identity = importlib.import_module("scripts.kb.repo_identity")
+    except ModuleNotFoundError as exc:
+        if exc.name != "scripts.kb.repo_identity":
+            raise
+    else:
+        repo_name_fn = getattr(repo_identity, "default_repo_name", None) or getattr(
+            repo_identity, "_default_repo_name", None
+        )
+        if repo_name_fn is not None:
+            return repo_name_fn(repo_root)
+
+    module = _load_module(
+        "sync_knowledgebase_state_repo_name_expectation", SYNC_WRAPPER_PATH
+    )
+    return module._default_repo_name(repo_root)
+
+
 class ValidateWikiGovernanceWrapperTests(HarnessAssertionsTestCase):
     def test_validator_allowlist_matches_approved_post_mvp_checks(self) -> None:
         module = _load_module("validate_wiki_governance_allowlist", VALIDATE_WRAPPER_PATH)
@@ -413,7 +435,7 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
                     "--repo-owner",
                     "local",
                     "--repo-name",
-                    "knowledgebase",
+                    _expected_repo_name(),
                 ],
             ],
         )
@@ -535,7 +557,7 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
                     "--repo-owner",
                     "local",
                     "--repo-name",
-                    "knowledgebase",
+                    _expected_repo_name(),
                 ],
                 [
                     module.sys.executable,
@@ -554,7 +576,7 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
                     "--repo-owner",
                     "local",
                     "--repo-name",
-                    "knowledgebase",
+                    _expected_repo_name(),
                 ],
             ],
         )
@@ -580,7 +602,7 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
                 "--repo-owner",
                 "local",
                 "--repo-name",
-                "knowledgebase",
+                _expected_repo_name(),
             ],
         )
         self.assertEqual(calls[2][-1], "--write")
@@ -592,7 +614,7 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
                 "--repo-owner",
                 "local",
                 "--repo-name",
-                "knowledgebase",
+                _expected_repo_name(),
             ],
         )
 
@@ -1104,7 +1126,7 @@ class RunDeterministicValidatorsWrapperTests(HarnessAssertionsTestCase):
                     "--repo-owner",
                     "local",
                     "--repo-name",
-                    "knowledgebase",
+                    _expected_repo_name(),
                 ],
             ],
         )
