@@ -155,6 +155,12 @@ class SharedContractsTests(unittest.TestCase):
             contracts.governed_artifact_contract_by_pattern("C:\\wiki\\index.md")
         )
         self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("C:/wiki/index.md")
+        )
+        self.assertIsNone(
+            contracts.governed_artifact_contract_by_pattern("C:wiki/index.md")
+        )
+        self.assertIsNone(
             contracts.governed_artifact_contract_by_pattern("/wiki/index.md")
         )
 
