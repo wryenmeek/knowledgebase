@@ -87,10 +87,10 @@ async function withEnvAsync(
 }
 
 describe("mutation diagnostics classification", () => {
-  test("classifies FAILED_PRECONDITION as retryable", () => {
+  test("classifies account-binding FAILED_PRECONDITION as retryable failed_precondition", () => {
     const classified = classifyMutationError({
       status: 400,
-      message: "FAILED_PRECONDITION: source precondition not met",
+      message: "FAILED_PRECONDITION: Google Account not registered — source precondition not met",
     });
 
     expect(classified.category).toBe("failed_precondition");
@@ -120,15 +120,57 @@ describe("mutation diagnostics classification", () => {
     expect(network.retryable).toBe(true);
   });
 
-  test("classifies FAILED_PRECONDITION via code even when message is generic", () => {
+  test("classifies bare FAILED_PRECONDITION code (generic message) as quota_saturation", () => {
     const classified = classifyMutationError({
       code: "FAILED_PRECONDITION",
       message: "request failed",
     });
 
+    expect(classified.category).toBe("quota_saturation");
+    expect(classified.retryable).toBe(false);
+    expect(classified.errorCode).toBe("FAILED_PRECONDITION");
+  });
+
+  test("classifies bare FAILED_PRECONDITION body as quota_saturation (soft-warn)", () => {
+    const classified = classifyMutationError({
+      status: 400,
+      message: "FAILED_PRECONDITION",
+    });
+
+    expect(classified.category).toBe("quota_saturation");
+    expect(classified.retryable).toBe(false);
+  });
+
+  test("classifies explicit quota-signal FAILED_PRECONDITION body as quota_saturation", () => {
+    const classified = classifyMutationError({
+      status: 400,
+      message: "FAILED_PRECONDITION: Quota exceeded for Jules sessions",
+    });
+
+    expect(classified.category).toBe("quota_saturation");
+    expect(classified.retryable).toBe(false);
+  });
+
+  test("classifies account-binding FAILED_PRECONDITION body as failed_precondition (hard-fail)", () => {
+    const classified = classifyMutationError({
+      status: 400,
+      message:
+        "FAILED_PRECONDITION: This Google Account is not registered. Please register your GitHub App.",
+    });
+
     expect(classified.category).toBe("failed_precondition");
     expect(classified.retryable).toBe(true);
-    expect(classified.errorCode).toBe("FAILED_PRECONDITION");
+  });
+
+  test("classifies mixed (account-binding + quota) FAILED_PRECONDITION body as failed_precondition (account binding wins)", () => {
+    const classified = classifyMutationError({
+      status: 400,
+      message:
+        "FAILED_PRECONDITION: Google Account quota exceeded — GitHub App not authorized.",
+    });
+
+    expect(classified.category).toBe("failed_precondition");
+    expect(classified.retryable).toBe(true);
   });
 });
 
@@ -153,7 +195,7 @@ describe("mutation diagnostics redaction", () => {
 });
 
 describe("mutation retry behavior", () => {
-  test("retries FAILED_PRECONDITION once and then succeeds", async () => {
+  test("retries account-binding FAILED_PRECONDITION once and then succeeds", async () => {
     let attempts = 0;
     const envelopes = [] as Array<{ retrying: boolean }>;
 
@@ -165,7 +207,7 @@ describe("mutation retry behavior", () => {
         if (attempts === 1) {
           throw {
             status: 400,
-            message: "FAILED_PRECONDITION transient backend state",
+            message: "FAILED_PRECONDITION: Google Account transient backend state",
           };
         }
         return "ok";
@@ -193,7 +235,7 @@ describe("mutation retry behavior", () => {
           attempts++;
           throw {
             status: 400,
-            message: "FAILED_PRECONDITION persistent",
+            message: "FAILED_PRECONDITION: GitHub App persistent precondition",
           };
         },
         sleep: async () => {},
@@ -254,7 +296,7 @@ describe("mutation retry behavior", () => {
           attempts++;
           throw {
             status: 400,
-            message: "FAILED_PRECONDITION persistent",
+            message: "FAILED_PRECONDITION: Google Account persistent precondition",
           };
         },
         sleep: async () => {},

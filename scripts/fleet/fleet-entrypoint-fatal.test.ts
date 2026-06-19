@@ -23,9 +23,13 @@ const fatalHandlersPromise = (async () => {
 function withFatalCapture(run: () => void): { output: string } {
   const messages: string[] = [];
   const originalError = console.error;
+  const originalLog = console.log;
   const originalExit = process.exit;
 
   console.error = (...args: unknown[]) => {
+    messages.push(args.map((value) => String(value)).join(" "));
+  };
+  console.log = (...args: unknown[]) => {
     messages.push(args.map((value) => String(value)).join(" "));
   };
   process.exit = ((code?: number) => {
@@ -36,6 +40,7 @@ function withFatalCapture(run: () => void): { output: string } {
     run();
   } finally {
     console.error = originalError;
+    console.log = originalLog;
     process.exit = originalExit;
   }
 
@@ -57,6 +62,25 @@ function makeMutationFailure(operation: string): MutationFailureError {
     message: "Authentication failed for token ***REDACTED***",
     hint: "Check credentials.",
     root_cause_path: ["verify token"],
+  };
+  return new MutationFailureError(operation, [envelope]);
+}
+
+function makeQuotaSaturationFailure(operation: string): MutationFailureError {
+  const envelope: SanitizedErrorEnvelope = {
+    contract: MUTATION_EXECUTION_CONTRACT,
+    operation,
+    attempt: 1,
+    max_attempts: 1,
+    classification: "quota_saturation",
+    retryable: false,
+    retrying: false,
+    retry_delay_ms: null,
+    status_code: 400,
+    error_code: "FAILED_PRECONDITION",
+    message: "FAILED_PRECONDITION",
+    hint: "Jules per-account session quota saturated.",
+    root_cause_path: ["Re-run after quota resets."],
   };
   return new MutationFailureError(operation, [envelope]);
 }
@@ -96,5 +120,29 @@ describe("fleet entrypoint mutation fatal handling", () => {
     expect(capture.output).toContain("Jules merge re-dispatch hard-failed after bounded retries");
     expect(capture.output).toContain('"contract"');
     expect(capture.output).toContain("***REDACTED***");
+  });
+
+  test("fleet-plan fatal handler routes quota_saturation to ::warning + exit 0", async () => {
+    const { handlePlanFatal } = await fatalHandlersPromise;
+    const error = makeQuotaSaturationFailure("fleet-plan:jules.run");
+    const capture = withFatalCapture(() => {
+      expect(() => handlePlanFatal(error)).toThrow("EXIT_0");
+    });
+
+    expect(capture.output).toContain("::warning::");
+    expect(capture.output).toContain("quota");
+    expect(capture.output).toContain('"classification":"quota_saturation"');
+  });
+
+  test("fleet-dispatch fatal handler routes quota_saturation to ::warning + exit 0", async () => {
+    const { handleDispatchFatal } = await fatalHandlersPromise;
+    const error = makeQuotaSaturationFailure("fleet-dispatch:jules.run");
+    const capture = withFatalCapture(() => {
+      expect(() => handleDispatchFatal(error)).toThrow("EXIT_0");
+    });
+
+    expect(capture.output).toContain("::warning::");
+    expect(capture.output).toContain("quota");
+    expect(capture.output).toContain('"classification":"quota_saturation"');
   });
 });

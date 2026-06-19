@@ -28,11 +28,21 @@ export const MUTATION_EXECUTION_CONTRACT = Object.freeze({
 
 export type MutationErrorClass =
   | "failed_precondition"
+  | "quota_saturation"
   | "auth"
   | "permission"
   | "rate_limit"
   | "network"
   | "unknown";
+
+/**
+ * Account-binding signals that indicate a genuine FAILED_PRECONDITION (hard-fail).
+ * If none of these are present in a FAILED_PRECONDITION body, the error is
+ * reclassified as quota_saturation (soft-warn, exit 0).
+ * Reversibility: remove this constant and revert classifyFromSignals to always
+ * return "failed_precondition" for FAILED_PRECONDITION bodies.
+ */
+const ACCOUNT_BINDING_RE = /GOOGLE ACCOUNT|GITHUB APP/i;
 
 interface MutationCategoryDetails {
   readonly retryable: boolean;
@@ -49,6 +59,16 @@ const MUTATION_CATEGORY_DETAILS: Record<MutationErrorClass, MutationCategoryDeta
       "Confirm source.github is owner/repo and FLEET_BASE_BRANCH points to an existing branch.",
       "Retry bounded attempts to absorb transient Jules precondition lag.",
       "If retries are exhausted, escalate provider-side with sanitized_error_envelope.",
+    ],
+  },
+  quota_saturation: {
+    retryable: false,
+    hint: "Jules per-account session quota saturated. Fleet run is skipped; re-run after quota resets (typically within 24 hours). No code or configuration change is needed.",
+    rootCausePath: [
+      "Per-account Jules session cap reached; no account-binding error signal was present in the response body.",
+      "This is a transient quota condition — no code or configuration change is needed.",
+      "Re-run fleet dispatch after quota resets (typically within 24 hours).",
+      "If saturation persists beyond 48 hours, escalate with sanitized_error_envelope evidence.",
     ],
   },
   auth: {
@@ -296,7 +316,10 @@ function extractErrorCode(error: unknown, upperMessage: string): string | null {
 
 function classifyFromSignals(statusCode: number | null, upper: string): MutationErrorClass {
   if (upper.includes("FAILED_PRECONDITION") || (statusCode === 400 && upper.includes("PRECONDITION"))) {
-    return "failed_precondition";
+    // Account-binding signals (e.g. unregistered Google account, GitHub App mis-config)
+    // represent a genuine hard-fail precondition that requires operator remediation.
+    // A bare body with no such signal is quota saturation — soft-warn, not hard-fail.
+    return ACCOUNT_BINDING_RE.test(upper) ? "failed_precondition" : "quota_saturation";
   }
   if (
     statusCode === 401 ||
