@@ -258,12 +258,14 @@ def main(argv: list[str] | None = None) -> int:
                 staged_text = file_path.read_text(encoding="utf-8")
                 read_error = None
             else:
-                staged_text, read_error = "", f"{staged_path.path}: cannot read worktree content"
+                staged_text, read_error = "", f"{staged_path.path}: worktree file does not exist"
         else:
             staged_text, read_error = _get_staged_content(staged_path.path)
         if read_error is not None:
             failures.append(read_error)
             continue
+        # Enforce equals-sign rejection before exemptions so transitional
+        # compatibility files cannot silently keep the legacy equals syntax.
         if (
             _contains_approval_equals(staged_text)
             and _migration_deadline_passed()
