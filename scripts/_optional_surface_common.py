@@ -423,11 +423,33 @@ def add_common_surface_args(
     if include_path:
         parser.add_argument("--path", action="append", default=[])
     if include_approval:
-        parser.add_argument(
-            "--approval",
-            choices=(APPROVAL_NONE, APPROVAL_APPROVED),
-            default=APPROVAL_NONE,
-        )
+        add_approval_arg(parser)
+
+
+def add_approval_arg(parser: argparse.ArgumentParser) -> None:
+    """Attach the legacy approval gate argument."""
+    parser.add_argument(
+        "--approval",
+        choices=(APPROVAL_NONE, APPROVAL_APPROVED),
+        default=APPROVAL_NONE,
+    )
+
+
+def normalize_apply_alias(argv: Sequence[str]) -> list[str]:
+    """Map ``--apply`` to legacy ``--approval approved`` for deprecation window."""
+    args = list(argv)
+    if "--apply" not in args:
+        return args
+    if "--approval" in args:
+        raise ValueError("--apply cannot be combined with --approval")
+
+    normalized: list[str] = []
+    for token in args:
+        if token == "--apply":
+            normalized.extend(["--approval", APPROVAL_APPROVED])
+            continue
+        normalized.append(token)
+    return normalized
 
 
 def run_surface_cli(
@@ -443,7 +465,8 @@ def run_surface_cli(
     """Shared CLI shell: parse args, invoke runner, emit canonical JSON, return exit code."""
 
     try:
-        args = parser_factory().parse_args(list(argv) if argv is not None else None)
+        raw_argv = list(argv) if argv is not None else list(sys.argv[1:])
+        args = parser_factory().parse_args(normalize_apply_alias(raw_argv))
     except ValueError as exc:
         result = invalid_input_result(
             surface=surface,

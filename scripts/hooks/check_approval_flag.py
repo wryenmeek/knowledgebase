@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""Git hook: ratchet scripts away from legacy approval-flag spelling."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import subprocess
+import sys
+
+ADR_REFERENCE = "ADR-030"
+_APPROVAL_TOKEN = "--" + "approval"
+
+# Transitional exemptions:
+# - scripts/_optional_surface_common.py owns compatibility alias handling.
+# - scripts/kb/checkpoint_registry.py already uses --apply for bootstrap semantics.
+_EXEMPT_PATHS = frozenset({
+    "scripts/_optional_surface_common.py",
+    "scripts/kb/checkpoint_registry.py",
+})
+
+
+@dataclass(frozen=True, slots=True)
+class StagedScriptPath:
+    status: str
+    path: str
+    old_path: str | None = None
+
+
+def _run_git(*args: str) -> tuple[int, str, str]:
+    result = subprocess.run(
+        ["git", *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
+def _normalize_path(path: str) -> str:
+    normalized = path.strip()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
+
+
+def _is_scripts_python_path(path: str) -> bool:
+    parts = path.split("/")
+    return (
+        path.startswith("scripts/")
+        and path.endswith(".py")
+        and "__pycache__" not in parts
+        and ".." not in parts
+        and "" not in parts
+    )
+
+
+def _staged_script_paths() -> tuple[list[StagedScriptPath], str | None]:
+    rc, out, err = _run_git(
+        "diff",
+        "--cached",
+        "--name-status",
+        "--find-renames",
+        "--find-copies",
+        "--",
+        "scripts",
+    )
+    if rc != 0:
+        return [], f"cannot enumerate staged script paths: {err.strip() or out.strip()}"
+
+    staged: list[StagedScriptPath] = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            return [], f"unexpected git name-status line: {line!r}"
+        status = parts[0]
+        status_code = status[:1]
+        path = _normalize_path(parts[-1])
+        old_path = (
+            _normalize_path(parts[1])
+            if status_code in {"C", "R"} and len(parts) >= 3
+            else None
+        )
+        if status_code in {"A", "C", "M", "R"} and _is_scripts_python_path(path):
+            staged.append(StagedScriptPath(status=status, path=path, old_path=old_path))
+    return staged, None
+
+
+def _get_staged_content(path: str) -> tuple[str, str | None]:
+    rc, out, err = _run_git("show", f":{path}")
+    if rc != 0:
+        return "", f"{path}: cannot read staged content: {err.strip() or out.strip()}"
+    return out, None
+
+
+def _contains_approval_flag(text: str) -> bool:
+    return _APPROVAL_TOKEN in text
+
+
+def main(argv: list[str] | None = None) -> int:
+    _ = argv
+    staged_paths, staged_error = _staged_script_paths()
+    if staged_error is not None:
+        print(f"ERROR: {staged_error}", file=sys.stderr)
+        return 1
+
+    failures: list[str] = []
+    for staged_path in staged_paths:
+        if staged_path.path in _EXEMPT_PATHS:
+            continue
+        staged_text, read_error = _get_staged_content(staged_path.path)
+        if read_error is not None:
+            failures.append(read_error)
+            continue
+        if not _contains_approval_flag(staged_text):
+            continue
+        status_code = staged_path.status[:1]
+        if status_code == "A":
+            failures.append(
+                f"{staged_path.path}: new scripts may not introduce legacy {_APPROVAL_TOKEN}; "
+                "use --apply"
+            )
+        else:
+            failures.append(
+                f"{staged_path.path}: modified legacy script still uses {_APPROVAL_TOKEN}; "
+                "migrate to --apply in the same change"
+            )
+
+    if failures:
+        print(
+            "ERROR: approval-flag migration ratchet (ADR-030)",
+            file=sys.stderr,
+        )
+        for failure in failures:
+            print(f"  - {failure}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

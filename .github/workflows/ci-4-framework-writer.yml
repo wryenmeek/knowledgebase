@@ -221,13 +221,13 @@ jobs:
             python3 scripts/context/fill_context_pages.py \
               --mode apply \
               --staged-fills-path "${STAGED_MANIFEST_PATH}" \
-              --approval approved
+              --apply
           elif [[ "${DISPATCH_MODE}" == "generate-docs" ]]; then
             echo "[CI-4] Invoking generate_docs.py apply mode"
             python3 scripts/maintenance/generate_docs.py \
               --mode apply \
               --staged-docs-path "${STAGED_MANIFEST_PATH}" \
-              --approval approved
+              --apply
           else
             echo "::error::reject:mode:unrecognised_dispatch_mode:${DISPATCH_MODE}" >&2
             exit 1

@@ -63,6 +63,11 @@ Before implementing any new helper, check these five canonical modules. See ADR-
 This split is intentional: it isolates trust checks, diagnostics, and write operations
 so permission scope can stay minimal for each path.
 
+For write-capable optional-surface CLI entrypoints, write confirmation follows
+[`ADR-030`](decisions/ADR-030-cli-write-confirmation.md): `--apply` is the
+preferred spelling, and `--approval approved` remains a compatibility alias
+during migration.
+
 ## Fleet orchestration
 
 `scripts/fleet/` is a **separate TypeScript/Bun runtime** that integrates with the
