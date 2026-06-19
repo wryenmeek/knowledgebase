@@ -17,6 +17,10 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 }
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
+_FRONTMATTER_BLOCK_RE = re.compile(
+    r"^[ \t]*---[ \t]*\r?\n(.*?(?:\r?\n|(?<=\n)))^[ \t]*---[ \t]*(?:\r?\n|$)",
+    re.MULTILINE | re.DOTALL
+)
 
 TOPICAL_NAMESPACES: frozenset[str] = frozenset({"sources", "entities", "concepts", "analyses"})
 
@@ -120,12 +124,25 @@ def validate_page_template_path(
 
 
 def extract_frontmatter(text: str) -> tuple[str | None, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    """Extract a YAML frontmatter block and the body from a markdown document.
+
+    Returns a tuple of (frontmatter, body). If no frontmatter block is found,
+    returns (None, original_text).
+    """
+    if not text.lstrip(" \t").startswith("---"):
         return None, text
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
+
+    match = _FRONTMATTER_BLOCK_RE.match(text)
+    if match:
+        fm = match.group(1)
+        # Strip exact matched trailing newline from frontmatter block
+        if fm.endswith("\r\n"):
+            fm = fm[:-2]
+        elif fm.endswith("\n"):
+            fm = fm[:-1]
+
+        body = text[match.end():]
+        return fm, body
     return None, text
 
 
