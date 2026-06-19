@@ -42,7 +42,7 @@ on:
         type: string
         required: true
       source_filter:
-        description: "Source scope for archive. Use 'sources/github/wryenmeek/knowledgebase' for this repo. Required when apply=true (the script exits non-zero if apply=true and this is empty)."
+        description: "Source scope for archive. Use 'sources/github/wryenmeek/knowledgebase' for this repo. When apply=true, this must be non-empty — the shell step only passes --source-filter when non-empty, so an empty value with apply=true will cause the script to exit non-zero."
         type: string
         default: "sources/github/wryenmeek/knowledgebase"
       apply:
