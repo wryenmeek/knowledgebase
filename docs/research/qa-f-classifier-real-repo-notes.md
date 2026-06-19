@@ -1,8 +1,14 @@
 # QA-F classifier real-repo prep notes
 
 - Gate-start commit SHA: `c0b96cd5fd5ffb11eab6ea4d40ba0663bcf164c9`
-- Findings artifact: `/home/runner/work/knowledgebase/knowledgebase/docs/research/qa-f-classifier-real-repo-findings.json`
+- Run artifact (envelope): `/home/runner/work/knowledgebase/knowledgebase/docs/research/qa-f-classifier-real-repo-run.json`
 - Real-repo scope: `.github/copilot-instructions.md`, `AGENTS.md`
+- Parent validation path: see issue #198 for QA-F operator closure checks (this run artifact is prep evidence for that gate).
+
+## Run-envelope schema note
+
+- `qa-f-classifier-real-repo-run.json` is an execution envelope (`gate_start_commit_sha`, `source_runs`, `friction_query_templates`, `assembled_findings`, etc.), not a single `finding.schema.json` root instance.
+- `.github/skills/audit-knowledgebase-workspace/schema/finding.schema.json` applies to each emitted entry inside `assembled_findings[]`.
 
 ## Invocation used
 
@@ -17,7 +23,7 @@ from pathlib import Path
 
 repo = Path('/home/runner/work/knowledgebase/knowledgebase').resolve()
 logic = repo / '.github' / 'skills' / 'audit-knowledgebase-workspace' / 'logic'
-out_path = repo / 'docs' / 'research' / 'qa-f-classifier-real-repo-findings.json'
+out_path = repo / 'docs' / 'research' / 'qa-f-classifier-real-repo-run.json'
 gate_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip()
 
 def load(name: str, path: Path):
@@ -162,9 +168,9 @@ PY
 Reviewed `/home/runner/work/knowledgebase/knowledgebase/.github/skills/audit-knowledgebase-workspace/logic/friction_queries.py` templates.
 
 - Injection hardening:
-  - `repo` input is validated by `_REPO_PATTERN` and then quoted by `_repo_literal()`.
-  - `days` is type-checked and range-bounded (`1..365`) before interval interpolation.
+  - `repo` input is validated by `_REPO_PATTERN` (`friction_queries.py:41`) and then quoted by `_repo_literal()` (`friction_queries.py:480-483`).
+  - `days` is type-checked and range-bounded (`1..365`) by `_validate_days()` (`friction_queries.py:472-477`) before interval interpolation in `_interval()` (`friction_queries.py:467-470`).
   - No caller-controlled freeform SQL fragments are accepted.
 - Mandatory time-filter coverage:
-  - Every template’s `primary` and `broader` SQL includes `> now() - INTERVAL '<N> days'` predicates.
-  - Additional bounded windows exist for retry-loop matching (`RETRY_WINDOW_MINUTES`).
+  - Every template’s `primary` and `broader` SQL includes `> now() - INTERVAL '<N> days'` predicates (interval factory: `friction_queries.py:467-470`; template builders: `friction_queries.py:48-176`).
+  - Additional bounded windows exist for retry-loop matching via `RETRY_WINDOW_MINUTES` (`friction_queries.py:40`, `friction_queries.py:421`).
