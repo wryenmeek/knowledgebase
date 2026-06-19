@@ -78,6 +78,17 @@ DRIVE_SOURCES_LOCK_PATH = "raw/.drive-sources.lock"
 CHECKPOINT_REGISTRY_LOCK_PATH = "raw/.wiki-processing-checkpoint.lock"
 # ADR-028 — instruction-locality ladder; sibling pattern per ADR-005 / ADR-013.
 CUSTOMIZATIONS_LOCK_PATH = ".github/.customizations.lock"
+GOVERNANCE_META_LOCK_PATH = "raw/.governance-meta.lock"
+GOVERNANCE_SIBLING_LOCKS: frozenset[str] = frozenset(
+    {
+        WRITE_LOCK_PATH,
+        REJECTION_REGISTRY_LOCK_PATH,
+        CUSTOMIZATIONS_LOCK_PATH,
+        GITHUB_SOURCES_LOCK_PATH,
+        DRIVE_SOURCES_LOCK_PATH,
+        CHECKPOINT_REGISTRY_LOCK_PATH,
+    }
+)
 
 # Exact basenames of all governance lock files. Derived from the path constants
 # above so that this frozenset stays in sync automatically (ADR-011: single
@@ -90,6 +101,7 @@ GOVERNANCE_LOCK_FILES: frozenset[str] = frozenset({
     _os.path.basename(DRIVE_SOURCES_LOCK_PATH),
     _os.path.basename(CHECKPOINT_REGISTRY_LOCK_PATH),
     _os.path.basename(CUSTOMIZATIONS_LOCK_PATH),
+    _os.path.basename(GOVERNANCE_META_LOCK_PATH),
 })
 
 CHECKPOINT_REGISTRY_SIZE_WARN_BYTES = 5 * 1024 * 1024
@@ -97,7 +109,7 @@ CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES = 10 * 1024 * 1024
 
 # ADR-029 pytest migration ratchet. Decrement after each unittest-to-pytest
 # migration; never raise without an ADR amendment.
-MAX_UNITTEST_FILES = 60
+MAX_UNITTEST_FILES = 58
 
 
 class TriggerType(StrEnum):
@@ -280,7 +292,18 @@ def governed_artifact_contract_by_pattern(path: str) -> GovernedArtifactContract
     Use this for dynamic artifact paths (e.g., per-repo registry files, per-commit
     asset paths) where the exact path is not known at contract-declaration time.
     """
-    if ".." in path.split("/"):
+    if "\\" in path:
+        return None  # Reject Windows separators/UNC forms
+    if path.startswith("/"):
+        return None  # Reject absolute paths
+    if (
+        len(path) >= 2
+        and path[1] == ":"
+        and path[0].isascii()
+        and path[0].isalpha()
+    ):
+        return None  # Reject drive-prefixed paths (e.g., C:foo or C:/foo)
+    if any(component == ".." for component in path.split("/") if component):
         return None  # Reject traversal paths
     exact = _GOVERNED_ARTIFACTS_BY_PATH.get(path)
     if exact is not None:
@@ -409,6 +432,8 @@ __all__ = [
     "GITHUB_MONITOR_WRITE_ALLOWLIST_PATHS",
     "CUSTOMIZATIONS_LOCK_PATH",
     "GITHUB_SOURCES_LOCK_PATH",
+    "GOVERNANCE_META_LOCK_PATH",
+    "GOVERNANCE_SIBLING_LOCKS",
     "CHECKPOINT_REGISTRY_LOCK_PATH",
     "CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES",
     "CHECKPOINT_REGISTRY_SIZE_WARN_BYTES",

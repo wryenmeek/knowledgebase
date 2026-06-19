@@ -484,6 +484,19 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("ADR-028", ".github/hooks/hooks.json"),
         "Hard-fail behavior": ("exit 0", "no warning", "stdout advisory", "never block"),
     },
+    "scripts/hooks/locality_ratchet_redirect_hook.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Read-only / prerequisite paths": (
+            "UserPromptSubmit",
+            "hook event name",
+            "meta-rule override context block",
+            "/chronicle improve",
+        ),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("ADR-028", ".github/hooks/hooks.json"),
+        "Hard-fail behavior": ("exit 0", "no output", "stdout-only context injection", "never block"),
+    },
     "scripts/drive_monitor/**": {
         "Runtime mode": ("read-only only", "blocking-only"),
         "Writable paths": ("raw/assets/gdrive/**", "raw/drive-sources/**", "wiki/**"),

@@ -4,7 +4,7 @@
 
 ## Status
 
-Accepted
+Accepted — amended in-place: strict pytest ratchet baseline updated to 58 and CI diff enforcement added (see § Amendment)
 
 ## Context
 
@@ -25,24 +25,22 @@ Adopt **pytest** as the canonical test framework for new and changed tests.
 Enforcement has two layers:
 
 1. A local hook (`scripts/hooks/check_test_framework.py`) blocks newly staged
-   unittest-style test files and blocks test-logic changes to existing
-   unittest-style files until the touched file is migrated to pytest. In #224,
-   the hook implementation lands first; registration in `.pre-commit-config.yaml`
-   and `.github/hooks/hooks.json`, plus the `AGENTS.md` write-surface matrix row,
-   is deferred to the parent consolidation step.
+   unittest-style test files and blocks non-docstring staged modifications to
+   existing unittest-style files until the touched file is migrated to pytest.
 2. A CI ratchet test (`tests/kb/test_test_framework_ratchet.py`) asserts the
    repository-wide unittest-style file count equals
-   `scripts.kb.contracts.MAX_UNITTEST_FILES`, preventing stale slack after a
-   migration.
+   `scripts.kb.contracts.MAX_UNITTEST_FILES`, so each migration must decrement
+   the baseline in the same change.
 
 ### Open question resolutions from #181
 
 1. **Strict block vs. soft prompt on modification:** choose **strict**. Any
-   staged test-logic modification to an existing unittest-style test file must
-   migrate that file to pytest in the same change. This avoids a broad
+   staged non-docstring modification to an existing unittest-style test file
+   must migrate that file to pytest in the same change. This avoids a broad
    soft-warning path and forces incremental migration on every substantive
-   touch. The local operator escape hatch is `--no-verify`; the CI ratchet still
-   catches accidental count increases.
+   touch. The local operator escape hatch is `--no-verify`; CI now exports
+   `KB_TEST_FRAMEWORK_RATCHET_BASE_REF` so the hook evaluates PR diffs in
+   `pre-commit run --all-files` mode too.
 2. **Migration helper:** out of scope for this ADR. A helper may be proposed as a
    future enhancement after the ratchet proves useful.
 3. **`tests/kb/test_framework_*` migration timing:** deferred to a dedicated PR.
@@ -50,8 +48,8 @@ Enforcement has two layers:
    `python3 -m unittest tests.kb.test_framework_*` fast-path commands until that
    migration lands.
 
-After the proof-of-concept migration in #224, the initial ratchet baseline is
-`MAX_UNITTEST_FILES = 60`.
+After the latest proof-of-concept migration, the ratchet baseline is
+`MAX_UNITTEST_FILES = 58`.
 
 ## Alternatives considered
 
@@ -75,12 +73,10 @@ After the proof-of-concept migration in #224, the initial ratchet baseline is
 
 ### Negative
 
-- Contributors touching legacy tests must pay the migration cost before making
-  otherwise small test-logic changes.
-- The hook needs explicit registration in both `.pre-commit-config.yaml` and
-  `.github/hooks/hooks.json`, and `AGENTS.md` needs a write-surface matrix row;
-  that wiring is intentionally deferred to the #224 consolidation step owned
-  outside this slice.
+- Contributors touching legacy unittest-style tests must migrate those files in
+  the same change.
+- The hook must remain wired in `.pre-commit-config.yaml` and CI (`.github/workflows/pre-commit.yml`)
+  so PR-diff enforcement stays active when contributors skip local hooks.
 
 ### Operational
 
@@ -114,6 +110,18 @@ future ADR.
   manual migrations reveal common rewrite patterns?
 - Which dedicated PR will migrate `tests/kb/test_framework_*` and retire the
   runbook's unittest fast-path commands?
+
+## Amendment
+
+- **Date:** 2026-06-19
+- **What changed:** Updated ratchet semantics to require exact baseline parity
+  (`count == MAX_UNITTEST_FILES`), clarified that non-docstring modifications
+  to legacy unittest files are blocked unless migrated in the same change, and
+  documented CI PR-diff enforcement via `KB_TEST_FRAMEWORK_RATCHET_BASE_REF`.
+- **Why:** The strict migration guard needed parity between local pre-commit and
+  CI `--all-files` mode, plus explicit no-slack baseline enforcement.
+- **What did not change:** Pytest remains the canonical framework, migrations are
+  still incremental, and `MAX_UNITTEST_FILES` can only move downward.
 
 ## References
 
