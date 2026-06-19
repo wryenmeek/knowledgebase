@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -311,9 +312,46 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                 write_utils.lock_unavailable_reason(contracts.GOVERNANCE_META_LOCK_PATH),
             },
         )
+        # The meta-lock is a persistent sentinel; it must remain on disk.
         self.assertTrue(
             (self.workspace_root / contracts.GOVERNANCE_META_LOCK_PATH).exists()
         )
+
+    def test_meta_lock_file_is_created_when_missing_and_persists(self) -> None:
+        meta_lock_path = self.workspace_root / contracts.GOVERNANCE_META_LOCK_PATH
+        with contextlib.suppress(FileNotFoundError):
+            meta_lock_path.unlink()
+
+        with write_utils.exclusive_write_lock(
+            self.workspace_root,
+            lock_path=contracts.CUSTOMIZATIONS_LOCK_PATH,
+        ):
+            self.assertTrue(meta_lock_path.exists())
+
+        self.assertTrue(meta_lock_path.exists())
+
+    def test_write_lock_allows_same_process_nesting_for_monitor_registry_locks(self) -> None:
+        with write_utils.exclusive_write_lock(self.workspace_root):
+            with write_utils.exclusive_write_lock(
+                self.workspace_root,
+                lock_path=contracts.GITHUB_SOURCES_LOCK_PATH,
+            ):
+                self.assertTrue(
+                    write_utils.is_write_lock_held(
+                        self.workspace_root,
+                        lock_path=contracts.GITHUB_SOURCES_LOCK_PATH,
+                    )
+                )
+            with write_utils.exclusive_write_lock(
+                self.workspace_root,
+                lock_path=contracts.DRIVE_SOURCES_LOCK_PATH,
+            ):
+                self.assertTrue(
+                    write_utils.is_write_lock_held(
+                        self.workspace_root,
+                        lock_path=contracts.DRIVE_SOURCES_LOCK_PATH,
+                    )
+                )
 
     def test_governed_artifact_helpers_report_append_only_log_contract(self) -> None:
         contract = write_utils.governed_artifact_contract_for_path("wiki/log.md")
