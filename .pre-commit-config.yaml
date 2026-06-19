@@ -54,6 +54,13 @@ repos:
         args: [--commit-msg-file]
         pass_filenames: true
 
+      - id: test-framework-ratchet
+        name: pytest canonical framework ratchet (block new unittest.TestCase tests)
+        language: python
+        entry: python -m scripts.hooks.check_test_framework
+        stages: [pre-commit]
+        pass_filenames: false
+
       - id: sourceref-format
         name: SourceRef citation format validation
         language: python

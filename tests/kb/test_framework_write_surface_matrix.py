@@ -447,6 +447,28 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("docs/ideas",),
         "Hard-fail behavior": ("stub", "raw/inbox", "wiki/sources", "fail closed"),
     },
+    "scripts/hooks/check_test_framework.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Read-only / prerequisite paths": (
+            "tests/**/*.py",
+            "git diff --cached",
+            "git show",
+            "unittest.TestCase",
+            "from unittest import TestCase",
+            "import unittest",
+        ),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": (
+            "ADR-029",
+            "MAX_UNITTEST_FILES",
+            "tests/kb/test_test_framework_ratchet.py",
+        ),
+        "Hard-fail behavior": (
+            "unittest.TestCase",
+            "fail closed",
+        ),
+    },
     "scripts/hooks/locality_postuse_advisory.py": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "forbidden"),
