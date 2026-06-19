@@ -31,6 +31,13 @@ Do not use `npm install`. This project requires Bun.
 | `FLEET_ALLOW_NO_CHECKS` | No | Allow merge to proceed when PR has zero check runs (`false` by default; fail-closed). |
 | `FLEET_PENDING_DATE` | No | Fleet date override (`YYYY_MM_DD`) so dispatch/merge can target a prior planning day. Invalid format fails preflight. |
 
+> **Note:** Bun does **not** auto-load `.env` files. Export variables explicitly before running scripts locally:
+> ```bash
+> export $(grep JULES_API_KEY .env | xargs) && bun run jules-account-probe.ts
+> # or for the archive tool:
+> export $(grep JULES_API_KEY .env | xargs) && bun run archive-stale-sessions.ts --older-than-days 7 --repo current
+> ```
+
 ## Scripts
 
 ### `bun analyze` — inspect open issues (read-only)
@@ -186,24 +193,31 @@ Requires `JULES_API_KEY`. Also available as a GitHub Actions workflow:
 
 ```bash
 # Dry-run (default): shows what would be archived, no side effects
-bun run archive-stale-sessions.ts --older-than-days 7 --state inProgress
+bun run archive-stale-sessions.ts --older-than-days 7 --state inProgress --repo current
 
-# Apply: actually archive
-bun run archive-stale-sessions.ts --older-than-days 7 --apply
+# Apply: archive stale sessions for this repo (deny-by-default: source scope is required with --apply)
+bun run archive-stale-sessions.ts --older-than-days 7 --repo current --apply
 
-# Scope to a specific repo source
+# Scope to a specific repo source via explicit source filter
 bun run archive-stale-sessions.ts \
   --older-than-days 3 \
   --state inProgress \
   --source-filter sources/github/wryenmeek/knowledgebase \
   --apply
+
+# Account-wide: archive across all repos (explicit opt-in)
+bun run archive-stale-sessions.ts --older-than-days 7 --repo all --apply
 ```
 
 Flags:
 - `--older-than-days N` — **required**; minimum age in days (no default to prevent mass-archive)
 - `--state <state>` — session state filter (default: `inProgress`)
-- `--source-filter <source-id>` — optional; scope to one source
+- `--repo current` — shorthand for `sources/github/wryenmeek/knowledgebase`
+- `--repo all` — account-wide archive (explicit opt-in; no source filter applied)
+- `--source-filter <source-id>` — explicit source ID
 - `--apply` — perform real archive calls; omit for dry-run
+
+**Safety rule:** `--apply` requires an explicit source scope (`--repo current`, `--repo all`, or `--source-filter`). Omitting all three exits non-zero to prevent accidental account-wide archive.
 
 Uses `jules.session(id).archive()` per SDK pattern (SDK over REST for mutations).
 NOTE: Jules has no cancel endpoint; archive is the correct removal mechanism.

@@ -19,11 +19,19 @@
  *   - Dry-run by default; pass --apply to actually archive.
  *   - --older-than-days N is required (no default) to avoid mass-archive.
  *   - --state inProgress is the default state filter.
- *   - --source-filter <source-id> optionally scopes to one source.
+ *   - Source scope is REQUIRED when --apply is used (deny-by-default):
+ *       --repo current          shorthand for sources/github/wryenmeek/knowledgebase
+ *       --repo all              account-wide (explicit opt-in for cross-repo operations)
+ *       --source-filter <id>    explicit source ID
+ *     Omitting a source scope with --apply exits with a non-zero status.
+ *     Dry-run without a source scope is allowed for read-only inspection.
  *
  * Usage:
  *   bun run scripts/fleet/archive-stale-sessions.ts \
- *     --older-than-days 7 [--state inProgress] [--source-filter sources/github/owner/repo] [--apply]
+ *     --older-than-days 7 --repo current [--state inProgress] [--apply]
+ *
+ *   bun run scripts/fleet/archive-stale-sessions.ts \
+ *     --older-than-days 7 --source-filter sources/github/owner/repo [--apply]
  *
  * Output: structured JSON envelope written to stdout.
  *
@@ -35,13 +43,21 @@ import { jules } from "@google/jules-sdk";
 import type { JulesClient, SessionResource, SessionState } from "@google/jules-sdk";
 import { assertFleetEnvironment } from "./env.js";
 
+/** Canonical source identifier for this repository. */
+export const CURRENT_REPO_SOURCE = "sources/github/wryenmeek/knowledgebase";
+
 export interface ArchiveCliArgs {
   /** Session state to filter on. Default: "inProgress". */
   state: SessionState;
   /** Only archive sessions older than this many days. Required. */
   olderThanDays: number;
-  /** Optional source filter (e.g. "sources/github/owner/repo"). */
+  /** Source filter (e.g. "sources/github/owner/repo"). Undefined means no source filter. */
   sourceFilter: string | undefined;
+  /**
+   * When true, the operator explicitly opted in to account-wide archive via
+   * `--repo all`. Required alongside `apply` if `sourceFilter` is undefined.
+   */
+  repoAll: boolean;
   /** If false (default), dry-run only — no actual archive calls. */
   apply: boolean;
 }
@@ -61,6 +77,7 @@ export interface ArchiveEnvelope {
     state: string;
     olderThanDays: number;
     sourceFilter: string | undefined;
+    repoAll: boolean;
   };
   candidates: ArchivedSessionEntry[];
   archived: ArchivedSessionEntry[];
@@ -86,6 +103,7 @@ export function parseCliArgs(argv: string[]): ArchiveCliArgs {
   let state: SessionState = "inProgress";
   let olderThanDays: number | undefined;
   let sourceFilter: string | undefined;
+  let repoAll = false;
   let apply = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -102,6 +120,17 @@ export function parseCliArgs(argv: string[]): ArchiveCliArgs {
       olderThanDays = parsed;
     } else if (arg === "--source-filter" && argv[i + 1]) {
       sourceFilter = argv[++i];
+    } else if (arg === "--repo" && argv[i + 1]) {
+      const repoVal = argv[++i];
+      if (repoVal === "current") {
+        sourceFilter = CURRENT_REPO_SOURCE;
+      } else if (repoVal === "all") {
+        repoAll = true;
+      } else {
+        throw new Error(
+          `--repo must be "current" or "all"; got: "${repoVal}"`
+        );
+      }
     } else if (arg === "--apply") {
       apply = true;
     }
@@ -113,7 +142,14 @@ export function parseCliArgs(argv: string[]): ArchiveCliArgs {
     );
   }
 
-  return { state, olderThanDays, sourceFilter, apply };
+  if (apply && sourceFilter === undefined && !repoAll) {
+    throw new Error(
+      "--apply requires an explicit source scope to prevent accidental account-wide archive. " +
+        "Use --repo current (this repo), --source-filter <source-id>, or --repo all (account-wide)."
+    );
+  }
+
+  return { state, olderThanDays, sourceFilter, repoAll, apply };
 }
 
 export async function archiveStaleSessions(
@@ -178,6 +214,7 @@ export async function archiveStaleSessions(
       state: args.state,
       olderThanDays: args.olderThanDays,
       sourceFilter: args.sourceFilter,
+      repoAll: args.repoAll,
     },
     candidates,
     archived,

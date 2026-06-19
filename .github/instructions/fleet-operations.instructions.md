@@ -65,21 +65,37 @@ intend to archive:
 bun run archive-stale-sessions.ts \
   --older-than-days 3 \
   --state inProgress \
-  --source-filter sources/github/wryenmeek/knowledgebase
+  --repo current
 ```
 
 This prints a JSON envelope with `candidates` (what would be archived) but
-makes no actual changes.
+makes no actual changes. Dry-run does not require a source scope, but always
+specify one anyway to confirm the right sessions are selected.
 
 ### Step 4: Apply the archive
 
-Once the dry-run output looks correct, add `--apply`:
+Once the dry-run output looks correct, add `--apply`. Source scope is
+**required** with `--apply` — omitting it exits non-zero:
 
 ```bash
+# Archive sessions for this repo only (recommended):
+bun run archive-stale-sessions.ts \
+  --older-than-days 3 \
+  --state inProgress \
+  --repo current \
+  --apply
+
+# To scope to an explicit source ID instead of the shorthand:
 bun run archive-stale-sessions.ts \
   --older-than-days 3 \
   --state inProgress \
   --source-filter sources/github/wryenmeek/knowledgebase \
+  --apply
+
+# To archive across all sources on the account (use with care):
+bun run archive-stale-sessions.ts \
+  --older-than-days 3 \
+  --repo all \
   --apply
 ```
 
@@ -126,13 +142,20 @@ Never use `new Jules()`, `Jules({ apiKey })`, or `jules.createSession()`.
 ### Scope session iteration to the target repo
 
 `jules.sessions()` returns sessions across **all** repositories on the account.
-Filter by source to avoid accidentally archiving sessions from other repos:
+The archive tool enforces source scoping for `--apply` (deny-by-default):
 
 ```bash
+# Shorthand for this repo:
+--repo current
+
+# Explicit source ID:
 --source-filter sources/github/wryenmeek/knowledgebase
+
+# Account-wide explicit opt-in:
+--repo all
 ```
 
-Or in code:
+In code:
 ```typescript
 for await (const session of jules.sessions()) {
   if (session.sourceContext?.source !== 'sources/github/wryenmeek/knowledgebase') continue;
@@ -163,7 +186,7 @@ step-scoped secret binding rule).
 |---|---|---|---|
 | `state` | `inProgress` | no | State filter |
 | `older_than_days` | — | **yes** | Minimum age in days (required to prevent mass-archive) |
-| `source_filter` | `""` | no | Source scope (e.g. `sources/github/wryenmeek/knowledgebase`) |
+| `source_filter` | `sources/github/wryenmeek/knowledgebase` | no (but required with `apply=true`) | Source scope. Required when `apply=true`; the script exits non-zero if apply=true and this is empty. |
 | `apply` | `false` | no | Set to `true` to archive; default is dry-run |
 
 All inputs are routed through `env:` blocks before use in `run:` steps to

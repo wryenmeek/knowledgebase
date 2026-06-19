@@ -21,7 +21,9 @@
 # Inputs:
 #   state         — session state to filter on (default: inProgress)
 #   older_than_days — required; minimum age in days (no default to avoid mass-archive)
-#   source_filter — optional source ID to scope the archive (e.g. sources/github/owner/repo)
+#   source_filter — source ID to scope the archive (default: sources/github/wryenmeek/knowledgebase)
+#                   Required when apply=true; the script exits non-zero if apply=true and this is empty.
+#                   Use 'sources/github/owner/repo' for other repos, or leave as default for this repo.
 #   apply         — set to "true" to perform real archive calls (default: false / dry-run)
 #
 # SECURITY: all inputs are routed through env: blocks before use in run: steps
@@ -40,9 +42,9 @@ on:
         type: string
         required: true
       source_filter:
-        description: "Optional: scope to a specific source (e.g. sources/github/owner/repo)"
+        description: "Source scope for archive. Use 'sources/github/wryenmeek/knowledgebase' for this repo. Required when apply=true (the script exits non-zero if apply=true and this is empty)."
         type: string
-        default: ""
+        default: "sources/github/wryenmeek/knowledgebase"
       apply:
         description: "Set to true to perform real archive calls (default: false = dry-run)"
         type: boolean

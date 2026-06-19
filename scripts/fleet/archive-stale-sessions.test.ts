@@ -17,6 +17,7 @@ import type { JulesClient, SessionResource } from "@google/jules-sdk";
 import {
   archiveStaleSessions,
   parseCliArgs,
+  CURRENT_REPO_SOURCE,
   type ArchiveCliArgs,
 } from "./archive-stale-sessions.ts";
 
@@ -82,6 +83,7 @@ const DEFAULT_ARGS: ArchiveCliArgs = {
   state: "inProgress",
   olderThanDays: 7,
   sourceFilter: undefined,
+  repoAll: false,
   apply: false,
 };
 
@@ -131,9 +133,61 @@ describe("parseCliArgs", () => {
     expect(args.sourceFilter).toBe("sources/github/myorg/myrepo");
   });
 
-  test("parses --apply flag", () => {
-    const args = parseCliArgs(["--older-than-days", "3", "--apply"]);
+  test("parses --apply flag with --repo current", () => {
+    const args = parseCliArgs([
+      "--older-than-days",
+      "3",
+      "--repo",
+      "current",
+      "--apply",
+    ]);
     expect(args.apply).toBe(true);
+    expect(args.sourceFilter).toBe(CURRENT_REPO_SOURCE);
+  });
+
+  test("--apply without source scope fails closed", () => {
+    expect(() =>
+      parseCliArgs(["--older-than-days", "7", "--apply"])
+    ).toThrow("--apply requires an explicit source scope");
+  });
+
+  test("--apply with --repo current succeeds and resolves to this repo", () => {
+    const args = parseCliArgs([
+      "--older-than-days",
+      "7",
+      "--repo",
+      "current",
+      "--apply",
+    ]);
+    expect(args.apply).toBe(true);
+    expect(args.sourceFilter).toBe(CURRENT_REPO_SOURCE);
+    expect(args.repoAll).toBe(false);
+  });
+
+  test("--apply with --repo all succeeds and sets repoAll=true", () => {
+    const args = parseCliArgs([
+      "--older-than-days",
+      "7",
+      "--repo",
+      "all",
+      "--apply",
+    ]);
+    expect(args.apply).toBe(true);
+    expect(args.sourceFilter).toBeUndefined();
+    expect(args.repoAll).toBe(true);
+  });
+
+  test("--repo with invalid value throws", () => {
+    expect(() =>
+      parseCliArgs(["--older-than-days", "7", "--repo", "unknown"])
+    ).toThrow('--repo must be "current" or "all"');
+  });
+
+  test("dry-run without source scope is allowed", () => {
+    const args = parseCliArgs(["--older-than-days", "7"]);
+    expect(args.apply).toBe(false);
+    expect(args.sourceFilter).toBeUndefined();
+    expect(args.repoAll).toBe(false);
   });
 });
 
@@ -165,7 +219,11 @@ describe("archiveStaleSessions", () => {
     ];
     const client = makeMockClient(sessions, archiveMock);
 
-    const args: ArchiveCliArgs = { ...DEFAULT_ARGS, apply: true };
+    const args: ArchiveCliArgs = {
+      ...DEFAULT_ARGS,
+      sourceFilter: "sources/github/myorg/myrepo",
+      apply: true,
+    };
     const result = await archiveStaleSessions(client, args);
 
     expect(result.dryRun).toBe(false);
@@ -237,12 +295,16 @@ describe("archiveStaleSessions", () => {
       }
     });
     const sessions = [
-      makeSession({ id: "ok-session", state: "inProgress", createTime: daysAgo(10) }),
-      makeSession({ id: "error-session", state: "inProgress", createTime: daysAgo(10) }),
+      makeSession({ id: "ok-session", state: "inProgress", createTime: daysAgo(10), sourceContext: { source: "sources/github/myorg/myrepo" } }),
+      makeSession({ id: "error-session", state: "inProgress", createTime: daysAgo(10), sourceContext: { source: "sources/github/myorg/myrepo" } }),
     ];
     const client = makeMockClient(sessions, archiveMock);
 
-    const args: ArchiveCliArgs = { ...DEFAULT_ARGS, apply: true };
+    const args: ArchiveCliArgs = {
+      ...DEFAULT_ARGS,
+      sourceFilter: "sources/github/myorg/myrepo",
+      apply: true,
+    };
     const result = await archiveStaleSessions(client, args);
 
     expect(result.archived).toHaveLength(1);
@@ -258,6 +320,7 @@ describe("archiveStaleSessions", () => {
       state: "paused",
       olderThanDays: 14,
       sourceFilter: "sources/github/myorg/myrepo",
+      repoAll: false,
       apply: false,
     };
     const result = await archiveStaleSessions(client, args);
@@ -265,14 +328,83 @@ describe("archiveStaleSessions", () => {
     expect(result.filters.state).toBe("paused");
     expect(result.filters.olderThanDays).toBe(14);
     expect(result.filters.sourceFilter).toBe("sources/github/myorg/myrepo");
+    expect(result.filters.repoAll).toBe(false);
     expect(result.ranAt).toBeString();
+  });
+
+  test("mixed-repo sessions: apply with source filter skips non-matching repos", async () => {
+    const archiveMock = mock(async (_id: string) => {});
+    const sessions = [
+      makeSession({
+        id: "knowledgebase-session",
+        state: "inProgress",
+        createTime: daysAgo(10),
+        sourceContext: { source: CURRENT_REPO_SOURCE },
+      }),
+      makeSession({
+        id: "other-repo-session",
+        state: "inProgress",
+        createTime: daysAgo(10),
+        sourceContext: { source: "sources/github/wryenmeek/hot-springs-island" },
+      }),
+    ];
+    const client = makeMockClient(sessions, archiveMock);
+
+    const args: ArchiveCliArgs = {
+      ...DEFAULT_ARGS,
+      sourceFilter: CURRENT_REPO_SOURCE,
+      apply: true,
+    };
+    const result = await archiveStaleSessions(client, args);
+
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]!.sessionId).toBe("knowledgebase-session");
+    expect(result.archived).toHaveLength(1);
+    expect(result.archived[0]!.sessionId).toBe("knowledgebase-session");
+    expect(archiveMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("--repo all (repoAll=true) archives across all sources", async () => {
+    const archiveMock = mock(async (_id: string) => {});
+    const sessions = [
+      makeSession({
+        id: "repo-a-session",
+        state: "inProgress",
+        createTime: daysAgo(10),
+        sourceContext: { source: "sources/github/org/repo-a" },
+      }),
+      makeSession({
+        id: "repo-b-session",
+        state: "inProgress",
+        createTime: daysAgo(10),
+        sourceContext: { source: "sources/github/org/repo-b" },
+      }),
+    ];
+    const client = makeMockClient(sessions, archiveMock);
+
+    const args: ArchiveCliArgs = {
+      ...DEFAULT_ARGS,
+      sourceFilter: undefined,
+      repoAll: true,
+      apply: true,
+    };
+    const result = await archiveStaleSessions(client, args);
+
+    expect(result.candidates).toHaveLength(2);
+    expect(result.archived).toHaveLength(2);
+    expect(result.filters.repoAll).toBe(true);
+    expect(archiveMock).toHaveBeenCalledTimes(2);
   });
 
   test("no archive when candidates list is empty", async () => {
     const archiveMock = mock(async (_id: string) => {});
     const client = makeMockClient([], archiveMock);
 
-    const args: ArchiveCliArgs = { ...DEFAULT_ARGS, apply: true };
+    const args: ArchiveCliArgs = {
+      ...DEFAULT_ARGS,
+      sourceFilter: "sources/github/myorg/myrepo",
+      apply: true,
+    };
     const result = await archiveStaleSessions(client, args);
 
     expect(result.candidates).toHaveLength(0);
