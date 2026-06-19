@@ -128,6 +128,7 @@ def test_hook_rejects_new_unittest_style_test(monkeypatch, capsys) -> None:
 
 
 def test_hook_parses_copied_and_renamed_test_paths(monkeypatch) -> None:
+    captured_args = []
     git_output = "\0".join(
         [
             "C100",
@@ -144,7 +145,7 @@ def test_hook_parses_copied_and_renamed_test_paths(monkeypatch) -> None:
     monkeypatch.setattr(
         check_test_framework,
         "_run_git",
-        lambda *args: (0, git_output, ""),
+        lambda *args: (captured_args.append(args) or (0, git_output, "")),
     )
 
     staged, error = check_test_framework._staged_test_paths()
@@ -159,6 +160,7 @@ def test_hook_parses_copied_and_renamed_test_paths(monkeypatch) -> None:
         ),
         check_test_framework.StagedTestPath("M", "tests/modified_test.py"),
     ]
+    assert "-z" in captured_args[0]
 
 
 def test_hook_requests_rename_and_copy_detection(monkeypatch) -> None:
