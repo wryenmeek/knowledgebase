@@ -35,3 +35,15 @@
 ## 2026-06-19 - [Performance] Regex for markdown frontmatter extraction
 **Learning:** Avoid using `str.splitlines()` on an entire large text file just to extract a small header (e.g., markdown frontmatter). This completely tokenizes the string into memory row-by-row, creating massive latency and memory overhead.
 **Action:** Use a fast-path literal check (e.g., `text.lstrip(" \t").startswith("---")`) combined with a targeted regular expression (`_FRONTMATTER_BLOCK_RE.match(text)`) for targeted extraction.
+
+## 2026-06-20 - [Performance] Avoid `splitlines()` for frontmatter validation
+**Learning:** Using `splitlines()` on an entire markdown document merely to validate its opening `---` delimiter incurs an unnecessary memory and CPU overhead by tokenizing the whole file into an array of lines. For multi-megabyte repositories spanning thousands of wiki pages, this sequence runs in the hot-path and stacks latency before concurrent mapping fully distributes.
+**Action:** Replace `text.splitlines()[0]` validations with targeted fast-path evaluations like `text.lstrip(" \t").startswith("---")` combined with checking for newline limits (e.g., ensuring `text[3]` is `\n` or `\r`), completely averting the memory penalty without altering exact matching logic.
+
+## 2026-06-20 - [Performance] Safe O(1) frontmatter line extraction
+**Learning:** While `text.lstrip().startswith()` is fast, it allocates a full copy of the trailing string if there *are* leading characters to strip, defeating memory optimizations for multi-megabyte files.
+**Action:** Use `text.partition('\n')[0].strip()` instead. It creates at most a tiny string containing just the first line, evaluating the condition safely and consistently in O(1) memory and time.
+
+## 2026-06-20 - [Performance] True O(1) memory frontmatter line extraction
+**Learning:** `text.partition('\n')` creates a tuple of three strings, meaning it still allocates a copy of the entire remainder of the string (the third element) in memory, which is O(N) space and defeats the purpose for large files.
+**Action:** Use `text[:text.find("\n")]` to isolate the first line. This avoids allocating the remainder of the string, achieving true O(1) memory overhead. Handle the `-1` case where there are no newlines to ensure correctness.

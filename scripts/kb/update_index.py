@@ -68,8 +68,13 @@ class PageSummary:
 
 
 def _require_frontmatter(markdown_text: str, page_path: Path) -> str:
-    lines = markdown_text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    # OPTIMIZATION: Avoid tokenizing the entire file with splitlines() just to
+    # check the first line. Using find("\n") avoids allocating the remainder
+    # of the string (unlike partition) achieving O(1) memory overhead. We handle
+    # the rare case where no newline exists by checking the whole string.
+    newline_idx = markdown_text.find("\n")
+    first_line = markdown_text[:newline_idx] if newline_idx != -1 else markdown_text
+    if first_line.strip() != "---":
         raise IndexGenerationError(
             f"{page_path}: missing YAML frontmatter start delimiter (ensure the file begins with '---')"
         )
