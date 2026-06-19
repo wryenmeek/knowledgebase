@@ -446,14 +446,44 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         with (
             patch.object(write_utils.sys, "platform", "darwin"),
             patch.object(write_utils.os, "kill", return_value=None),
-            patch.object(write_utils, "_pid_start_time_unix_seconds", return_value=100.5),
+            patch.object(write_utils, "_pid_start_time_tolerance_seconds", return_value=1.0),
         ):
-            holder_alive = write_utils._holder_process_is_alive(
-                4242,
-                expected_started_at_unix_seconds=100.0,
-            )
+            for observed, expected_alive in (
+                (100.0, True),  # exact coarse-second match
+                (101.0, False),  # coarse-second rollover -> reused PID
+            ):
+                with self.subTest(observed=observed, expected_alive=expected_alive):
+                    with patch.object(
+                        write_utils,
+                        "_pid_start_time_unix_seconds",
+                        return_value=observed,
+                    ):
+                        holder_alive = write_utils._holder_process_is_alive(
+                            4242,
+                            expected_started_at_unix_seconds=100.0,
+                        )
+                    self.assertEqual(holder_alive, expected_alive)
 
-        self.assertFalse(holder_alive)
+    def test_darwin_pid_start_time_uses_c_locale(self) -> None:
+        with (
+            patch.object(write_utils.sys, "platform", "darwin"),
+            patch.object(
+                write_utils.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(
+                    args=["ps"],
+                    returncode=0,
+                    stdout="Thu Jun 19 12:34:56 2026\n",
+                    stderr="",
+                ),
+            ) as run_mock,
+        ):
+            started_at = write_utils._pid_start_time_unix_seconds(1234)
+
+        self.assertIsInstance(started_at, float)
+        self.assertIsNotNone(started_at)
+        env = run_mock.call_args.kwargs.get("env", {})
+        self.assertEqual(env.get("LC_TIME"), "C")
 
     def test_lock_unavailable_error_unreadable_lock_file_falls_back(self) -> None:
         with patch.object(Path, "read_text", side_effect=OSError("denied")):
