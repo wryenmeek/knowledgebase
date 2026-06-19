@@ -8,16 +8,15 @@ from dataclasses import dataclass
 from enum import StrEnum
 import json
 from pathlib import Path, PurePosixPath
-import re
 import subprocess
 import sys
 from typing import Sequence
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
-    sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-from scripts.kb import sourceref
-
 REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT))
+from scripts.kb import sourceref
+from scripts.kb.repo_identity import default_repo_name
+
 REPO_OWNER = "local"
 _RAW_PATH_PREFIXES: tuple[str, ...] = ("raw/inbox/", "raw/processed/", "raw/assets/")
 
@@ -69,7 +68,7 @@ def build_sourceref_citation(
         )
 
     normalized_repo_root = Path(repo_root).resolve()
-    resolved_repo_name = repo_name or _default_repo_name(normalized_repo_root)
+    resolved_repo_name = repo_name or default_repo_name(normalized_repo_root)
     resolved_git_sha = _resolve_git_ref(normalized_repo_root, git_ref)
     artifact_bytes = _read_revision_bytes(
         normalized_repo_root,
@@ -125,10 +124,6 @@ def _normalize_source_path(value: str | Path) -> str:
             "source path must not contain traversal segments",
         )
     return PurePosixPath(raw_value).as_posix()
-
-
-def _default_repo_name(repo_root: Path) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]", "-", repo_root.name) or "repo"
 
 
 def _resolve_git_ref(repo_root: Path, git_ref: str) -> str:

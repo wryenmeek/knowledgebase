@@ -7,35 +7,18 @@ from dataclasses import dataclass
 from enum import StrEnum
 import json
 from pathlib import Path
-import re
 import subprocess
 import sys
 from typing import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT))
+from scripts.kb.repo_identity import default_repo_name
+
 REPO_OWNER = "local"
 
 
-def _default_repo_name(repo_root: Path) -> str:
-    try:
-        completed = subprocess.run(
-            ["git", "-C", str(repo_root), "config", "--get", "remote.origin.url"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-    except (OSError, subprocess.SubprocessError):
-        remote_name = ""
-    else:
-        remote_url = completed.stdout.strip() if completed.returncode == 0 else ""
-        remote_name = remote_url.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
-        if remote_name.endswith(".git"):
-            remote_name = remote_name[:-4]
-    return re.sub(r"[^A-Za-z0-9_.-]", "-", remote_name or repo_root.name) or "repo"
-
-
-REPO_NAME = _default_repo_name(REPO_ROOT)
+REPO_NAME = default_repo_name(REPO_ROOT)
 
 
 @dataclass(frozen=True, slots=True)

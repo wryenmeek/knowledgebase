@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import importlib
 import os
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+
+from scripts.kb.repo_identity import default_repo_name
 
 from tests.kb.harnesses import (
     HarnessAssertionsTestCase,
@@ -97,22 +98,7 @@ VALIDATOR_WRAPPER_PATH = (
 
 
 def _expected_repo_name(repo_root: Path = REPO_ROOT) -> str:
-    try:
-        repo_identity = importlib.import_module("scripts.kb.repo_identity")
-    except ModuleNotFoundError as exc:
-        if exc.name != "scripts.kb.repo_identity":
-            raise
-    else:
-        repo_name_fn = getattr(repo_identity, "default_repo_name", None) or getattr(
-            repo_identity, "_default_repo_name", None
-        )
-        if repo_name_fn is not None:
-            return repo_name_fn(repo_root)
-
-    module = _load_module(
-        "sync_knowledgebase_state_repo_name_expectation", SYNC_WRAPPER_PATH
-    )
-    return module._default_repo_name(repo_root)
+    return default_repo_name(repo_root)
 
 
 class ValidateWikiGovernanceWrapperTests(HarnessAssertionsTestCase):

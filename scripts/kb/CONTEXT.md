@@ -1,6 +1,6 @@
 ---
 scope: module
-last_updated: 2026-06-15
+last_updated: 2026-06-18
 ---
 
 # CONTEXT — scripts/kb/
@@ -24,6 +24,7 @@ Vocabulary for the canonical utility module layer. All agent context for work in
 | page_template_utils | Module containing frontmatter parsing, heading extraction, namespace constants, and wiki-page structural helpers. The first place to look before implementing any frontmatter or page-structure logic (ADR-011). |
 | qmd_preflight | `scripts/kb/qmd_preflight.py` — prerequisite check that the `.qmd/index` exists before any index-writing operation can proceed. |
 | rejection_validators | Module for validating rejection registry records. Used by the `log-intake-rejection` skill and `raw/rejected/` writes (ADR-013). |
+| repo_identity | Module for canonical repository-name fallback logic shared by skill logic and SourceRef builders. |
 | REQUIRED_SKILL_FIELDS | Pre-commit fast-path subset for SKILL.md frontmatter, declared in `page_template_utils.py`. |
 | REQUIRED_WIKI_FIELDS | Pre-commit fast-path subset of `REQUIRED_FRONTMATTER_KEYS` declared in `page_template_utils.py`. Used by `check_frontmatter` hook. Keep in sync via drift-guard comment. |
 | run_surface_cli | The CLI entrypoint helper in `scripts/_optional_surface_common.py`. All surfaces that emit structured JSON results use this. |
@@ -57,6 +58,7 @@ Vocabulary for the canonical utility module layer. All agent context for work in
 | `path_utils.py` | `normalize_repo_relative_path()` and path safety helpers. |
 | `qmd_preflight.py` | `.qmd/index` prerequisite check for index operations. |
 | `rejection_validators.py` | Rejection registry record validation for `raw/rejected/` writes. |
+| `repo_identity.py` | Canonical repository-name fallback helper for standard checkouts, linked worktrees, bare clones, and detached HEAD. |
 | `sourceref.py` | SourceRef parsing, validation, `SOURCEREF_RE` regex. |
 | `update_index.py` | Index regeneration (requires `qmd_preflight` check first). |
 | `write_utils.py` | Safe file writes, locks, symlink checks, atomic replace, write-once creation. |
