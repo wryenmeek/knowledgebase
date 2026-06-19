@@ -11,6 +11,8 @@ import hashlib
 import os
 from os import PathLike
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import time
 from typing import Iterator, Sequence, TextIO
@@ -92,6 +94,7 @@ class LockUnavailableError(RuntimeError):
     holder_pid: int | None
     holder_alive: bool | None
     holder_started_at: str | None
+    holder_context_hash: str | None
 
     def __init__(
         self,
@@ -103,6 +106,7 @@ class LockUnavailableError(RuntimeError):
         self.holder_pid = None
         self.holder_alive = None
         self.holder_started_at = None
+        self.holder_context_hash = None
 
         holder_details = _read_lock_holder_details(lock_file_path or Path(lock_path))
         if holder_details is None:
@@ -111,24 +115,35 @@ class LockUnavailableError(RuntimeError):
 
         self.holder_pid = holder_details.pid
         self.holder_started_at = _format_unix_seconds_utc(holder_details.started_at_unix_seconds)
+        self.holder_context_hash = _lock_holder_context_hash(holder_details)
         holder_alive = _holder_process_is_alive(
             holder_details.pid,
             expected_started_at_unix_seconds=holder_details.started_at_unix_seconds,
         )
         self.holder_alive = holder_alive
 
+        hash_hint = self.holder_context_hash or "unavailable"
+        inspect_hint = (
+            f"inspect {lock_path} directly for holder metadata"
+            if lock_path
+            else "inspect the lock file directly for holder metadata"
+        )
         if holder_alive is True:
             super().__init__(
-                f"{self.failure_reason} — holder PID {holder_details.pid} alive since "
-                f"{self.holder_started_at}; retry shortly"
+                f"{self.failure_reason} — lock contention active "
+                f"(context sha256:{hash_hint}); retry shortly and {inspect_hint}"
             )
             return
         if holder_alive is False:
             super().__init__(
-                f"{self.failure_reason} — stale lock from dead PID {holder_details.pid}; safe to remove"
+                f"{self.failure_reason} — lock contention active but holder metadata appears stale/reused "
+                f"(context sha256:{hash_hint}); retry and {inspect_hint}"
             )
             return
-        super().__init__(f"{self.failure_reason} — {_LOCK_UNAVAILABLE_HINT}")
+        super().__init__(
+            f"{self.failure_reason} — lock contention active with unverifiable holder metadata "
+            f"(context sha256:{hash_hint}); {inspect_hint}"
+        )
 
 
 class _LockHolderDetails:
@@ -143,6 +158,16 @@ def _format_unix_seconds_utc(unix_seconds: float) -> str:
     """Render unix seconds as UTC ISO-8601 (`YYYY-MM-DDTHH:MM:SSZ`)."""
 
     return datetime.fromtimestamp(unix_seconds, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _lock_holder_context_hash(holder_details: _LockHolderDetails) -> str:
+    """Return canonical lock-holder context hash as lower-case 64-hex SHA-256.
+
+    Canonical payload format is exactly ``<pid>\\t<start_time_unix_seconds:.6f>\\n``.
+    """
+
+    canonical_payload = f"{holder_details.pid}\t{holder_details.started_at_unix_seconds:.6f}\n"
+    return hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
 
 
 def _linux_boot_time_unix_seconds() -> float | None:
@@ -184,10 +209,47 @@ def _linux_pid_start_time_unix_seconds(pid: int) -> float | None:
     return boot_time + (start_ticks / ticks_per_second)
 
 
+def _darwin_pid_start_time_unix_seconds(pid: int) -> float | None:
+    """Return Darwin process start time as unix seconds, else ``None``."""
+
+    if pid <= 0:
+        return None
+    try:
+        completed = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(pid)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lstart_text = completed.stdout.strip()
+    if not lstart_text:
+        return None
+    try:
+        parsed = datetime.strptime(lstart_text, "%a %b %d %H:%M:%S %Y")
+    except ValueError:
+        return None
+    local_tz = datetime.now().astimezone().tzinfo
+    if local_tz is None:
+        return None
+    return parsed.replace(tzinfo=local_tz).timestamp()
+
+
+def _pid_start_time_unix_seconds(pid: int) -> float | None:
+    """Return platform-aware process start time as unix seconds, else ``None``."""
+
+    if sys.platform.startswith("linux"):
+        return _linux_pid_start_time_unix_seconds(pid)
+    if sys.platform == "darwin":
+        return _darwin_pid_start_time_unix_seconds(pid)
+    return None
+
+
 def _current_process_start_time_unix_seconds() -> float:
     """Return current-process start time, falling back to ``time.time()``."""
 
-    started_at = _linux_pid_start_time_unix_seconds(os.getpid())
+    started_at = _pid_start_time_unix_seconds(os.getpid())
     if started_at is not None:
         return started_at
     return time.time()
@@ -246,8 +308,13 @@ def _holder_process_is_alive(pid: int, *, expected_started_at_unix_seconds: floa
             return True
         return None
 
-    observed_start = _linux_pid_start_time_unix_seconds(pid)
-    if observed_start is not None and abs(observed_start - expected_started_at_unix_seconds) > _pid_start_time_tolerance_seconds():
+    observed_start = _pid_start_time_unix_seconds(pid)
+    if observed_start is None:
+        return None
+    if (
+        abs(observed_start - expected_started_at_unix_seconds)
+        >= _pid_start_time_tolerance_seconds()
+    ):
         # PID reuse: the currently alive process is not the lock holder recorded in the file.
         return False
     return True
@@ -256,13 +323,17 @@ def _holder_process_is_alive(pid: int, *, expected_started_at_unix_seconds: floa
 def _pid_start_time_tolerance_seconds() -> float:
     """Return start-time comparison tolerance based on Linux clock-tick precision."""
 
-    try:
-        ticks_per_second = float(int(os.sysconf("SC_CLK_TCK")))
-    except (OSError, ValueError, TypeError):
-        return 0.01
-    if ticks_per_second <= 0:
-        return 0.01
-    return 1.0 / ticks_per_second
+    if sys.platform.startswith("linux"):
+        try:
+            ticks_per_second = float(int(os.sysconf("SC_CLK_TCK")))
+        except (OSError, ValueError, TypeError):
+            return 1e-6
+        if ticks_per_second <= 0:
+            return 1e-6
+        return max(1e-6, 0.5 / ticks_per_second)
+    if sys.platform == "darwin":
+        return 1e-6
+    return 1e-6
 
 
 @contextmanager
