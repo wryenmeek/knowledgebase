@@ -42,19 +42,29 @@ defect (tracked in issue #82, cross-referenced with `wryenmeek/hot-springs-islan
 ## Decision
 
 Introduce a `quota_saturation` sub-class of `MutationErrorClass` and a
-sub-classifier in `classifyFromSignals`:
+sub-classifier in `classifyFromSignals` with the following signal-precedence
+ordering (per wryenmeek/hot-springs-island#595 final implementation):
 
-1. **Account-binding signal present** (`GOOGLE ACCOUNT` or `GITHUB APP` in the
-   upper-cased error body) → classify as `failed_precondition` (retryable,
-   hard-fail after retries). This preserves the existing behavior for genuine
-   account mis-configuration.
+1. **Explicit quota signals** (`QUOTA`, `SESSION LIMIT/CAP`, `SATURATED` in the
+   upper-cased body) → classify as `quota_saturation` (non-retryable, soft-warn).
+   This wins before any account-binding check, so a message like
+   "quota exceeded for this Google Account / GitHub App" is correctly treated as
+   a quota event rather than a configuration fault.
 
-2. **No account-binding signal** (bare body or quota-signaling body) →
-   classify as `quota_saturation` (non-retryable, soft-warn).
+2. **Mismatch-specific account-binding signals** (`NOT REGISTERED`, `UNREGISTERED`,
+   `ACCOUNT ... NOT AUTHORIZED`, `ACCOUNT MISMATCH`) → classify as
+   `failed_precondition` (retryable, hard-fail after retries).
+   This preserves the existing behavior for genuine account mis-configuration.
+   Broad noun matches (`GOOGLE ACCOUNT`, `GITHUB APP` alone) are intentionally
+   excluded — they appear in quota messages and do not indicate a config fault.
 
-The sub-classifier constant is `ACCOUNT_BINDING_RE = /GOOGLE ACCOUNT|GITHUB APP/i`
-in `mutation-diagnostics.ts`. Extending the signal set is a one-line change
-to this constant.
+3. **Default (bare body, no recognisable signal)** → classify as `quota_saturation`
+   (non-retryable, soft-warn). This covers the production Jules API response shape
+   `{"code":400,"message":"Precondition check failed.","status":"FAILED_PRECONDITION"}`
+   which carries no additional diagnostic text during quota saturation.
+
+The classifier constants are `QUOTA_SIGNAL_RE` and `ACCOUNT_MISMATCH_RE` in
+`mutation-diagnostics.ts`. Extending either signal set is a one-line change.
 
 ### `quota_saturation` routing
 
@@ -95,9 +105,10 @@ All other `MutationFailureError` classifications retain the existing
 ## Reversibility
 
 One-line revert: in `classifyFromSignals`, change the `FAILED_PRECONDITION`
-branch to always return `"failed_precondition"` instead of conditionally
-returning `"quota_saturation"`. The `quota_saturation` category entry and
-its routing in `handleFleetFatalError` can then be removed independently.
+branch to always return `"failed_precondition"` instead of the three-step
+quota/account-mismatch/default check. The `QUOTA_SIGNAL_RE`, `ACCOUNT_MISMATCH_RE`
+constants, the `quota_saturation` category entry, and its routing in
+`handleFleetFatalError` can then be removed independently.
 
 ## References
 

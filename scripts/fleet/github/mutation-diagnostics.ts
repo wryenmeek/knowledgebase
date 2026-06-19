@@ -36,13 +36,29 @@ export type MutationErrorClass =
   | "unknown";
 
 /**
- * Account-binding signals that indicate a genuine FAILED_PRECONDITION (hard-fail).
- * If none of these are present in a FAILED_PRECONDITION body, the error is
- * reclassified as quota_saturation (soft-warn, exit 0).
- * Reversibility: remove this constant and revert classifyFromSignals to always
- * return "failed_precondition" for FAILED_PRECONDITION bodies.
+ * Explicit quota-saturation signals that win before any account-binding check.
+ * A body containing any of these is classified as quota_saturation even if it
+ * also mentions a Google Account or GitHub App.
+ *
+ * Ordering (per wryenmeek/hot-springs-island#595 final classifier):
+ *   1. QUOTA_SIGNAL_RE matches → quota_saturation
+ *   2. ACCOUNT_MISMATCH_RE matches → failed_precondition
+ *   3. Default (bare body) → quota_saturation
+ *
+ * Reversibility: revert classifyFromSignals to always return "failed_precondition"
+ * for FAILED_PRECONDITION bodies and remove both constants.
  */
-const ACCOUNT_BINDING_RE = /GOOGLE ACCOUNT|GITHUB APP/i;
+const QUOTA_SIGNAL_RE = /\bQUOTA\b|SESSION.{0,30}\b(LIMIT|CAP)\b|SATURATED/i;
+
+/**
+ * Mismatch-specific account-binding signals that indicate a genuine registration
+ * or configuration error requiring operator remediation (hard-fail).
+ * Broad noun matches ("GOOGLE ACCOUNT", "GITHUB APP" alone) are intentionally
+ * excluded — quota messages frequently reference those nouns without implying
+ * a configuration fault.
+ * Source: wryenmeek/hot-springs-island#595 final classifier ordering.
+ */
+const ACCOUNT_MISMATCH_RE = /NOT REGISTERED|UNREGISTERED|ACCOUNT[^.]{0,60}NOT AUTHORIZED|ACCOUNT.*MISMATCH|REGISTRATION.*REQUIRED/i;
 
 interface MutationCategoryDetails {
   readonly retryable: boolean;
@@ -264,8 +280,12 @@ function extractStatusCode(error: unknown): number | null {
   const candidates = [
     toNumberValue(record.status),
     toNumberValue(record.statusCode),
+    // record.code may carry an HTTP status code (e.g. {"code":400,"status":"FAILED_PRECONDITION"})
+    toNumberValue(record.code),
     toNumberValue(nestedError?.status),
     toNumberValue(nestedError?.statusCode),
+    // nestedError.code may carry gRPC status code (e.g. {"error":{"code":9,"status":"FAILED_PRECONDITION"}})
+    toNumberValue(nestedError?.code),
     toNumberValue(response?.status),
     toNumberValue(cause?.status),
     toNumberValue(cause?.statusCode),
@@ -287,7 +307,11 @@ function extractErrorCode(error: unknown, upperMessage: string): string | null {
 
   const candidates = [
     toStringValue(record?.code),
+    // record.status may carry the canonical gRPC/HTTP status name (e.g. {"status":"FAILED_PRECONDITION"})
+    toStringValue(record?.status),
     toStringValue(nestedError?.code),
+    // nestedError.status: canonical name in nested error objects (e.g. {"error":{"status":"FAILED_PRECONDITION"}})
+    toStringValue(nestedError?.status),
     toStringValue(response?.code),
     toStringValue(cause?.code),
   ];
@@ -316,10 +340,13 @@ function extractErrorCode(error: unknown, upperMessage: string): string | null {
 
 function classifyFromSignals(statusCode: number | null, upper: string): MutationErrorClass {
   if (upper.includes("FAILED_PRECONDITION") || (statusCode === 400 && upper.includes("PRECONDITION"))) {
-    // Account-binding signals (e.g. unregistered Google account, GitHub App mis-config)
-    // represent a genuine hard-fail precondition that requires operator remediation.
-    // A bare body with no such signal is quota saturation — soft-warn, not hard-fail.
-    return ACCOUNT_BINDING_RE.test(upper) ? "failed_precondition" : "quota_saturation";
+    // Ordering (per wryenmeek/hot-springs-island#595 final classifier):
+    //   1. Explicit quota signals win first → quota_saturation (even if account nouns are present).
+    //   2. Mismatch-specific account-binding signals → failed_precondition (hard-fail, retryable).
+    //   3. Default (bare body, no recognisable signals) → quota_saturation (soft-warn, exit 0).
+    if (QUOTA_SIGNAL_RE.test(upper)) return "quota_saturation";
+    if (ACCOUNT_MISMATCH_RE.test(upper)) return "failed_precondition";
+    return "quota_saturation";
   }
   if (
     statusCode === 401 ||

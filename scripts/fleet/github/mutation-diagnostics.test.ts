@@ -1,3 +1,17 @@
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import { describe, expect, test } from "bun:test";
 import {
   assertMutationPreflight,
@@ -162,15 +176,54 @@ describe("mutation diagnostics classification", () => {
     expect(classified.retryable).toBe(true);
   });
 
-  test("classifies mixed (account-binding + quota) FAILED_PRECONDITION body as failed_precondition (account binding wins)", () => {
+  test("classifies mixed (quota signal + account nouns) FAILED_PRECONDITION as quota_saturation (quota wins)", () => {
+    // quota signals win before account-binding checks (HSI #595 final ordering).
+    // A message that references a Google Account or GitHub App in the context of
+    // a quota error is still a quota saturation event, not a config fault.
     const classified = classifyMutationError({
       status: 400,
       message:
         "FAILED_PRECONDITION: Google Account quota exceeded — GitHub App not authorized.",
     });
 
-    expect(classified.category).toBe("failed_precondition");
-    expect(classified.retryable).toBe(true);
+    expect(classified.category).toBe("quota_saturation");
+    expect(classified.retryable).toBe(false);
+  });
+
+  // Real upstream Jules API bare-JSON error shapes (wryenmeek/hot-springs-island#595).
+  // The SDK may return: {"code":400,"message":"Precondition check failed.","status":"FAILED_PRECONDITION"}
+  test("classifies bare upstream JSON shape (code+status) as quota_saturation", () => {
+    const classified = classifyMutationError({
+      code: 400,
+      message: "Precondition check failed.",
+      status: "FAILED_PRECONDITION",
+    });
+
+    expect(classified.category).toBe("quota_saturation");
+    expect(classified.retryable).toBe(false);
+    expect(classified.errorCode).toBe("FAILED_PRECONDITION");
+  });
+
+  // gRPC error envelope: {"error":{"code":9,"message":"FAILED_PRECONDITION","status":"FAILED_PRECONDITION"}}
+  test("classifies nested gRPC error envelope as quota_saturation", () => {
+    const classified = classifyMutationError({
+      error: { code: 9, message: "FAILED_PRECONDITION", status: "FAILED_PRECONDITION" },
+    });
+
+    expect(classified.category).toBe("quota_saturation");
+    expect(classified.retryable).toBe(false);
+    expect(classified.errorCode).toBe("FAILED_PRECONDITION");
+  });
+
+  // gRPC envelope with generic message but FAILED_PRECONDITION in status field
+  test("classifies nested gRPC bare body (generic message, FAILED_PRECONDITION status) as quota_saturation", () => {
+    const classified = classifyMutationError({
+      error: { code: 9, message: "Precondition check failed.", status: "FAILED_PRECONDITION" },
+    });
+
+    expect(classified.category).toBe("quota_saturation");
+    expect(classified.retryable).toBe(false);
+    expect(classified.errorCode).toBe("FAILED_PRECONDITION");
   });
 });
 
@@ -207,7 +260,7 @@ describe("mutation retry behavior", () => {
         if (attempts === 1) {
           throw {
             status: 400,
-            message: "FAILED_PRECONDITION: Google Account transient backend state",
+            message: "FAILED_PRECONDITION: Google Account not registered — source precondition not met",
           };
         }
         return "ok";
@@ -235,7 +288,7 @@ describe("mutation retry behavior", () => {
           attempts++;
           throw {
             status: 400,
-            message: "FAILED_PRECONDITION: GitHub App persistent precondition",
+            message: "FAILED_PRECONDITION: GitHub App not registered — account mismatch detected",
           };
         },
         sleep: async () => {},
@@ -296,7 +349,7 @@ describe("mutation retry behavior", () => {
           attempts++;
           throw {
             status: 400,
-            message: "FAILED_PRECONDITION: Google Account persistent precondition",
+            message: "FAILED_PRECONDITION: Google Account not registered — persistent account mismatch",
           };
         },
         sleep: async () => {},
