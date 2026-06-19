@@ -1,0 +1,5 @@
+Add global rule
+
+Context about why this remained always-on.
+
+Locality-4-Justification: applies before scoped context can load
