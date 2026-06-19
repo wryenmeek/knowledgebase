@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import unittest
 
 
 AGENTS_PATH = Path("AGENTS.md")
@@ -612,76 +611,61 @@ def _parse_markdown_table(section_text: str) -> list[dict[str, str]]:
     return rows
 
 
-class FrameworkWriteSurfaceMatrixTests(unittest.TestCase):
-    def test_agents_write_surface_matrix_declares_current_and_future_surfaces(self) -> None:
-        agents_text = AGENTS_PATH.read_text(encoding="utf-8")
-        matrix_rows = _parse_markdown_table(
-            _extract_markdown_section(agents_text, WRITE_SURFACE_MATRIX_HEADING)
-        )
-        surfaces = [row["Surface"] for row in matrix_rows]
-        self.assertEqual(
-            len(surfaces),
-            len(set(surfaces)),
-            "AGENTS.md write-surface matrix must not contain duplicate Surface rows",
-        )
-        self.assertEqual(
-            surfaces.count("scripts/kb/checkpoint_registry.py"),
-            1,
-            "AGENTS.md must declare exactly one row for scripts/kb/checkpoint_registry.py",
-        )
-        rows_by_surface = {row["Surface"]: row for row in matrix_rows}
+def test_agents_write_surface_matrix_declares_current_and_future_surfaces() -> None:
+    agents_text = AGENTS_PATH.read_text(encoding="utf-8")
+    matrix_rows = _parse_markdown_table(
+        _extract_markdown_section(agents_text, WRITE_SURFACE_MATRIX_HEADING)
+    )
+    surfaces = [row["Surface"] for row in matrix_rows]
+    assert len(surfaces) == len(set(surfaces)), (
+        "AGENTS.md write-surface matrix must not contain duplicate Surface rows"
+    )
+    assert surfaces.count("scripts/kb/checkpoint_registry.py") == 1, (
+        "AGENTS.md must declare exactly one row for scripts/kb/checkpoint_registry.py"
+    )
+    rows_by_surface = {row["Surface"]: row for row in matrix_rows}
 
-        self.assertEqual(
-            set(rows_by_surface),
-            set(EXPECTED_WRITE_SURFACE_MATRIX_ROWS),
-            "AGENTS.md write-surface matrix must cover every declared skill-local and scripts/** surface",
-        )
+    assert set(rows_by_surface) == set(EXPECTED_WRITE_SURFACE_MATRIX_ROWS), (
+        "AGENTS.md write-surface matrix must cover every declared skill-local and scripts/** surface"
+    )
 
-        for surface, expectations in EXPECTED_WRITE_SURFACE_MATRIX_ROWS.items():
-            row = rows_by_surface[surface]
-            for column, required_snippets in expectations.items():
-                with self.subTest(surface=surface, column=column):
-                    normalized_column = row[column].lower()
-                    for snippet in required_snippets:
-                        self.assertIn(
-                            snippet.lower(),
-                            normalized_column,
-                            f"{surface} row must mention '{snippet}' in column '{column}'",
-                        )
-
-    def test_existing_skill_logic_directories_are_declared_in_agents_matrix(self) -> None:
-        agents_text = AGENTS_PATH.read_text(encoding="utf-8")
-        matrix_rows = _parse_markdown_table(
-            _extract_markdown_section(agents_text, WRITE_SURFACE_MATRIX_HEADING)
-        )
-        declared_surfaces = {row["Surface"] for row in matrix_rows}
-        expected_skill_surfaces = {
-            f".github/skills/{logic_dir.parent.name}/logic/**"
-            for logic_dir in Path(".github/skills").glob("*/logic")
-            if logic_dir.is_dir()
-        }
-
-        self.assertTrue(expected_skill_surfaces, "Expected at least one skill logic directory")
-        self.assertTrue(
-            expected_skill_surfaces.issubset(declared_surfaces),
-            "Every current .github/skills/*/logic directory must have a matrix row in AGENTS.md",
-        )
-
-    def test_agents_matrix_preserves_fail_closed_policy_for_protected_paths(self) -> None:
-        agents_text = AGENTS_PATH.read_text(encoding="utf-8")
-        required_controls = (
-            "New surfaces without a row are undeclared and must hard-fail",
-            "Unsupported checks, missing prerequisites, or partial validator results are hard failures",
-            "protected/write path",
-            "deny-by-default",
-        )
-        for control in required_controls:
-            self.assertIn(
-                control,
-                agents_text,
-                f"AGENTS.md must preserve fail-closed policy language: {control}",
-            )
+    for surface, expectations in EXPECTED_WRITE_SURFACE_MATRIX_ROWS.items():
+        row = rows_by_surface[surface]
+        for column, required_snippets in expectations.items():
+            normalized_column = row[column].lower()
+            for snippet in required_snippets:
+                assert snippet.lower() in normalized_column, (
+                    f"{surface} row must mention '{snippet}' in column '{column}'"
+                )
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_existing_skill_logic_directories_are_declared_in_agents_matrix() -> None:
+    agents_text = AGENTS_PATH.read_text(encoding="utf-8")
+    matrix_rows = _parse_markdown_table(
+        _extract_markdown_section(agents_text, WRITE_SURFACE_MATRIX_HEADING)
+    )
+    declared_surfaces = {row["Surface"] for row in matrix_rows}
+    expected_skill_surfaces = {
+        f".github/skills/{logic_dir.parent.name}/logic/**"
+        for logic_dir in Path(".github/skills").glob("*/logic")
+        if logic_dir.is_dir()
+    }
+
+    assert expected_skill_surfaces, "Expected at least one skill logic directory"
+    assert expected_skill_surfaces.issubset(declared_surfaces), (
+        "Every current .github/skills/*/logic directory must have a matrix row in AGENTS.md"
+    )
+
+
+def test_agents_matrix_preserves_fail_closed_policy_for_protected_paths() -> None:
+    agents_text = AGENTS_PATH.read_text(encoding="utf-8")
+    required_controls = (
+        "New surfaces without a row are undeclared and must hard-fail",
+        "Unsupported checks, missing prerequisites, or partial validator results are hard failures",
+        "protected/write path",
+        "deny-by-default",
+    )
+    for control in required_controls:
+        assert control in agents_text, (
+            f"AGENTS.md must preserve fail-closed policy language: {control}"
+        )
