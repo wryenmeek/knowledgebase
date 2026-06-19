@@ -227,6 +227,10 @@ class SharedContractsTests(unittest.TestCase):
         self.assertIn(".customizations.lock", contracts.GOVERNANCE_LOCK_FILES)
         self.assertIn(contracts.CUSTOMIZATIONS_LOCK_PATH, init_script.LOCK_FILES)
 
+    def test_test_framework_ratchet_baseline_is_declared_and_exported(self) -> None:
+        self.assertEqual(contracts.MAX_UNITTEST_FILES, 60)
+        self.assertIn("MAX_UNITTEST_FILES", contracts.__all__)
+
     def test_reason_codes_include_spec_required_values(self) -> None:
         self.assertIn("lock_unavailable", contracts.REASON_CODES)
         self.assertIn("prereq_missing:ghaw_readiness", contracts.REASON_CODES)

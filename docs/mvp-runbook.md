@@ -250,9 +250,16 @@ python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.p
 # write-capable governed sync after mode-specific checks pass
 python3 .github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py --write-index
 
-# focused framework test suite, including wrapper-boundary coverage
+# primary local test suite (pytest is canonical; see ADR-029)
+python3 -m pytest tests/
+
+# fast-path framework suite for files whose unittest migration is deferred
 python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_framework_write_surface_matrix tests.kb.test_skill_wrappers
 ```
+
+The unittest command above is a focused compatibility fast path for framework
+boundary files that still migrate under the pytest ratchet; prefer
+`python3 -m pytest tests/` for broad local verification.
 
 Framework test entrypoints already present under `tests/kb/`:
 
@@ -269,6 +276,7 @@ Framework test entrypoints already present under `tests/kb/`:
 
 | Coverage lane | Authoritative entrypoint | Approval / operating note |
 |---|---|---|
+| Primary all-tests suite | `python3 -m pytest tests/` | Canonical local verification command per ADR-029; use before merge unless a narrower debugging loop is explicitly being run. |
 | Framework contract suites | `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_framework_write_surface_matrix` | Run whenever framework docs, skills, agents, or the `AGENTS.md` write-surface matrix change. |
 | Wrapper behavior suite | `python3 -m unittest tests.kb.test_skill_wrappers` | Confirms the fixed wrapper order, allowlists, and fail-closed execution envelope. |
 | Helper surface suites | `python3 -m unittest tests.kb.test_context_import_helpers tests.kb.test_documentation_helpers tests.kb.test_validate_source_registry tests.kb.test_validate_wiki_topology tests.kb.test_harnesses` | Covers skill-local helper contracts without widening repo-write authority. |
@@ -288,7 +296,11 @@ Framework test entrypoints already present under `tests/kb/`:
 The matrix in [`docs/ideas/spec.md`](ideas/spec.md#verification-matrix-and-ci-migration-rules)
 is the planning authority for post-MVP verification expansion. It does **not**
 change today's runtime or CI enforcement. Until a later phase is explicitly
-approved, keep these existing MVP suites green:
+approved, keep the primary pytest command and these existing fast-path MVP
+suites green:
+
+- Primary all-tests suite:
+  `python3 -m pytest tests/`
 
 - Framework contract suites:
   `python3 -m unittest tests.kb.test_framework_contracts tests.kb.test_framework_skills tests.kb.test_framework_agents tests.kb.test_framework_references tests.kb.test_framework_write_surface_matrix`

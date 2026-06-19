@@ -95,6 +95,10 @@ GOVERNANCE_LOCK_FILES: frozenset[str] = frozenset({
 CHECKPOINT_REGISTRY_SIZE_WARN_BYTES = 5 * 1024 * 1024
 CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES = 10 * 1024 * 1024
 
+# ADR-029 pytest migration ratchet. Decrement after each unittest-to-pytest
+# migration; never raise without an ADR amendment.
+MAX_UNITTEST_FILES = 60
+
 
 class TriggerType(StrEnum):
     """Checkpoint registry trigger types from ADR-026/ADR-027."""
@@ -408,6 +412,7 @@ __all__ = [
     "CHECKPOINT_REGISTRY_LOCK_PATH",
     "CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES",
     "CHECKPOINT_REGISTRY_SIZE_WARN_BYTES",
+    "MAX_UNITTEST_FILES",
     "DEPENDENCY_FINGERPRINT_SOURCES",
     "DRIVE_SOURCES_LOCK_PATH",
     "DRIVE_MONITOR_WRITE_ALLOWLIST_PATHS",
