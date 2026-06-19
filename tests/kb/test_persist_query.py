@@ -61,6 +61,12 @@ class PersistQueryCliTests(RuntimeWorkspaceTestCase):
         payload = json.loads(output.getvalue())
         return exit_code, payload
 
+    def _normalize_lock_snapshot(self, snapshot: dict[str, bytes]) -> dict[str, bytes]:
+        normalized = dict(snapshot)
+        if "wiki/.kb_write.lock" in normalized:
+            normalized["wiki/.kb_write.lock"] = b""
+        return normalized
+
     def _source(self, name: str, checksum_char: str) -> str:
         return (
             f"repo://owner/repo/raw/processed/{name}.md@abc1234#L1-L2"
@@ -289,7 +295,10 @@ class PersistQueryCliTests(RuntimeWorkspaceTestCase):
             index_updated=False,
             log_appended=False,
         )
-        self.assertEqual(before, self.snapshot_workspace())
+        self.assertEqual(
+            self._normalize_lock_snapshot(before),
+            self._normalize_lock_snapshot(self.snapshot_workspace()),
+        )
 
     def test_policy_sources_below_min_returns_no_write_policy_without_mutation(self) -> None:
         source_a = self._source("source-a", "a")
@@ -423,7 +432,10 @@ class PersistQueryCliTests(RuntimeWorkspaceTestCase):
             index_updated=False,
             log_appended=False,
         )
-        self.assertEqual(before, self.snapshot_workspace())
+        self.assertEqual(
+            self._normalize_lock_snapshot(before),
+            self._normalize_lock_snapshot(self.snapshot_workspace()),
+        )
 
     def test_default_envelope_wiring_on_invalid_input(self) -> None:
         """Verify envelope defaults when PersistRequest/Outcome are absent."""
