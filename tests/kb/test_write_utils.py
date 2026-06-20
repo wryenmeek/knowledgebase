@@ -12,6 +12,8 @@ import subprocess
 import sys
 import textwrap
 from unittest.mock import patch
+import unittest
+from datetime import datetime
 
 import pytest
 
@@ -377,6 +379,24 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertIn("context sha256:", probe_result["message"])
         self.assertIn(contracts.WRITE_LOCK_PATH, probe_result["message"])
         self.assertNotIn(str(os.getpid()), probe_result["message"])
+
+class DarwinTimezoneFallbackTests(unittest.TestCase):
+    def test_darwin_timezone_fallback_when_tz_zero(self) -> None:
+        with patch("sys.platform", "darwin"):
+            with patch("os.environ", {}):
+                with patch("subprocess.run") as mock_run:
+                    mock_result = unittest.mock.Mock()
+                    mock_result.stdout = "Thu Jan  1 00:00:00 1970\n"
+                    mock_run.return_value = mock_result
+                    with patch("scripts.kb.write_utils.datetime") as mock_datetime:
+                        mock_now = mock_datetime.now.return_value
+                        mock_now.astimezone.return_value.tzinfo = None
+                        mock_datetime.strptime = datetime.strptime
+                        with patch("time.mktime") as mock_mktime:
+                            mock_mktime.return_value = 0.0
+                            result = write_utils._darwin_pid_start_time_unix_seconds(1234)
+                            mock_mktime.assert_called_once()
+                            self.assertEqual(result, 0.0)
 
     def test_lock_unavailable_error_reports_dead_holder(self) -> None:
         lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
@@ -841,3 +861,22 @@ class ExclusiveCreateWriteOnceTests:
 
     def test_is_in_public_api(self) -> None:
         assert "exclusive_create_write_once" in write_utils.__all__
+
+
+class DarwinTimezoneFallbackTests(unittest.TestCase):
+    def test_darwin_timezone_fallback_when_tz_zero(self) -> None:
+        with patch("sys.platform", "darwin"):
+            with patch("os.environ", {}):
+                with patch("subprocess.run") as mock_run:
+                    mock_result = unittest.mock.Mock()
+                    mock_result.stdout = "Thu Jan  1 00:00:00 1970\n"
+                    mock_run.return_value = mock_result
+                    with patch("scripts.kb.write_utils.datetime") as mock_datetime:
+                        mock_now = mock_datetime.now.return_value
+                        mock_now.astimezone.return_value.tzinfo = None
+                        mock_datetime.strptime = datetime.strptime
+                        with patch("time.mktime") as mock_mktime:
+                            mock_mktime.return_value = 0.0
+                            result = write_utils._darwin_pid_start_time_unix_seconds(1234)
+                            mock_mktime.assert_called_once()
+                            self.assertEqual(result, 0.0)

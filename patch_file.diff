@@ -1,0 +1,40 @@
+--- scripts/kb/write_utils.py
++++ scripts/kb/write_utils.py
+@@ -239,7 +239,7 @@
+         ps_env = dict(os.environ)
+         ps_env["LC_TIME"] = "C"
+         completed = subprocess.run(
+-            ["ps", "-o", "lstart=", "-p", str(pid)],
++            ["/bin/ps", "-o", "lstart=", "-p", str(pid)],
+             check=True,
+             capture_output=True,
+             text=True,
+@@ -256,6 +256,7 @@
+         return None
+     local_tz = datetime.now().astimezone().tzinfo
+     if local_tz is None:
++        return time.mktime(parsed.timetuple())
+-        return parsed.replace(tzinfo=timezone.utc).timestamp()
+     return parsed.replace(tzinfo=local_tz).timestamp()
+
+@@ -300,7 +301,7 @@
+         line = lock_file_path.read_text(encoding="utf-8").splitlines()[0].strip()
+     except IndexError:
+         return None
+-    except OSError:
++    except (OSError, UnicodeDecodeError):
+         return None
+
+     if not line:
+@@ -399,7 +400,10 @@
+         try:
+             fcntl.flock(meta_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+         except OSError as exc:
+-            raise LockUnavailableError(contracts.GOVERNANCE_META_LOCK_PATH) from exc
++            raise LockUnavailableError(
++                contracts.GOVERNANCE_META_LOCK_PATH,
++                lock_file_path=repo_root / contracts.GOVERNANCE_META_LOCK_PATH,
++            ) from exc
+         try:
+             for sibling_lock_path in sorted(contracts.GOVERNANCE_SIBLING_LOCKS):
+                 if sibling_lock_path == lock_path:
