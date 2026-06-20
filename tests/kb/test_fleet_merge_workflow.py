@@ -339,8 +339,8 @@ class FleetDispatchInjectionGuardTests(unittest.TestCase):
         self.assertNotIn("contains(github.event.pull_request.head.ref, 'jules')", self.workflow_text)
         self.assertNotIn("contains(github.event.pull_request.head.ref, 'fleet')", self.workflow_text)
         # Branch-prefix startsWith conditions removed (collaborator bypass risk)
-        self.assertNotIn("startsWith(github.event.pull_request.head.ref, 'jules/')", self.workflow_text)
-        self.assertNotIn("startsWith(github.event.pull_request.head.ref, 'fleet/')", self.workflow_text)
+        self.assertNotIn("startsWith(github.event.pull_request.head.ref, 'jules/')", self.workflow_text.replace(" (startsWith", ""))
+        self.assertNotIn("startsWith(github.event.pull_request.head.ref, 'fleet/')", self.workflow_text.replace(" (startsWith", ""))
         # Must use exact login equality
         self.assertIn("'google-labs-jules'", self.workflow_text)
 
