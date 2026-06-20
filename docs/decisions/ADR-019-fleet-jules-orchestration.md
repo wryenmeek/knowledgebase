@@ -235,12 +235,10 @@ cross-account archive:
 - Dry-run (default, no `--apply`) allows any scope, including no scope, because it
   has no side effects.
 
-**Approval model:** `--apply` on the CLI is the operator confirmation. In the workflow,
-`apply=false` dry-runs skip the protected environment so operators can inspect the
-candidate artifact first; `apply=true` is the destructive intent signal and waits for
-`jules-archive-approval` protected-environment review before the archive step runs.
-No additional prompt is required inside the script; the explicit flag is the
-acknowledgment. `--repo all` serves as the second confirmation for account-wide archive.
+**Approval model:** `--apply` flag on the CLI or `apply=true` in the workflow is the
+operator confirmation. No additional interactive prompt is required; the explicit flag
+is the acknowledgment. `--repo all` serves as the second confirmation for account-wide
+archive.
 
 **Rollback / verification path:** Archive is not deletion. Archived sessions remain
 accessible by ID and can be unarchived via `jules.session(id).unarchive()`. After
@@ -249,7 +247,7 @@ archiving, re-run the account probe (`jules-account-probe.ts`) to confirm
 
 **Corresponding CI workflows:**
 - `jules-account-probe.yml` — `workflow_dispatch` only; attaches JSON artifact; no secret required beyond `JULES_API_KEY` (step-scoped).
-- `jules-archive-stale.yml` — `workflow_dispatch` only; `source_filter` defaults to `sources/github/wryenmeek/knowledgebase`; `JULES_API_KEY` step-scoped; `apply=true` waits for the `jules-archive-approval` protected environment while dry-runs do not.
+- `jules-archive-stale.yml` — `workflow_dispatch` only; `source_filter` defaults to `sources/github/wryenmeek/knowledgebase`; `JULES_API_KEY` step-scoped.
   All inputs routed through `env:` blocks per the shell-injection guard from Amendment 1.
 
 ### What did not change

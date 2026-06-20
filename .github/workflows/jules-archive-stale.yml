@@ -56,8 +56,7 @@ permissions:
 jobs:
   archive:
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ inputs.apply == true && 'jules-archive-approval' || '' }}
+    environment: ${{ inputs.apply == 'true' && 'jules-archive-approval' || '' }}
     concurrency:
       group: jules-archive-stale-${{ inputs.apply }}
       cancel-in-progress: false
