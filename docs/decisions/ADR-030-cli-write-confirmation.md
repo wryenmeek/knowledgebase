@@ -79,7 +79,12 @@ Migration:
 1. Prefer `--apply` in workflows and runbook commands.
 2. When touching scripts that still spell `--approval`, migrate that script in
    the same change.
-3. Decrement `MAX_APPROVAL_FLAG_SCRIPTS` as legacy usage drops.
+3. Decrement `MAX_APPROVAL_FLAG_SCRIPTS` in `scripts/kb/contracts.py` in the
+   same commit that migrates or removes a legacy `--approval` script. The
+   ratchet test enforces strict equality (`==`, tightened from `<=` in PR #317),
+   so an off-by-one in either direction hard-fails CI — adding a non-exempt
+   script without decrementing fails, and decrementing without removing a
+   script also fails. The strict-equality form prevents silent ratchet drift.
 
 Rollback:
 

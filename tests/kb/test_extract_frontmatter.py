@@ -1,3 +1,14 @@
+"""Byte-level contract tests for `extract_frontmatter`.
+
+Covers happy-path LF + CRLF inputs, leading whitespace, empty frontmatter,
+missing/unclosed delimiters, and the file-ends-at-closing-delim edge case.
+The `name` parameter on each case is plumbed only as a pytest-generated
+test ID label; it is not asserted in the test body.
+
+BOM-prefixed inputs (UTF-8 `\\ufeff` lead) are NOT covered here — tracked
+separately in the BOM-handling follow-up issue (see v-test P1 finding,
+2026-06-20).
+"""
 import pytest
 from scripts.kb.page_template_utils import extract_frontmatter
 

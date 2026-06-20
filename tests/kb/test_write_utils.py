@@ -522,13 +522,31 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                     stderr="",
                 ),
             ),
-            patch.object(write_utils.time, "timezone", 0),
+            # Note: previously patched write_utils.time.timezone to 0 to exercise
+            # a `if time.timezone:` falsy guard, but that guard was removed
+            # (PR #314 review feedback — see v-test P2 finding 2026-06-20).
+            # The current implementation unconditionally falls back to
+            # time.mktime when local_tz is None, so the timezone patch was
+            # dead code. Strengthen the mktime assertion below instead.
             patch.object(write_utils.time, "mktime", return_value=12345.0) as mktime_mock,
         ):
             started_at = write_utils._darwin_pid_start_time_unix_seconds(1234)
 
         self.assertEqual(started_at, 12345.0)
         mktime_mock.assert_called_once()
+        # Strengthened: pin what gets passed to mktime so a refactor that
+        # accidentally rewires the call site (e.g., passing wrong tuple)
+        # is caught.
+        call_args = mktime_mock.call_args
+        self.assertIsNotNone(call_args, "mktime should have been called with arguments")
+        self.assertEqual(len(call_args.args), 1, "mktime takes exactly one positional arg")
+        # The arg should be a time.struct_time produced by .timetuple().
+        # struct_time has tm_year/tm_mon/tm_mday/tm_hour/tm_min/tm_sec attributes.
+        passed_struct = call_args.args[0]
+        self.assertTrue(
+            hasattr(passed_struct, "tm_year"),
+            f"mktime should be called with a struct_time, got {type(passed_struct).__name__}",
+        )
 
     def test_lock_unavailable_error_unreadable_lock_file_falls_back(self) -> None:
         with patch.object(Path, "read_text", side_effect=OSError("denied")):
