@@ -244,6 +244,8 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                     probe_result["failure_reason"],
                     write_utils.lock_unavailable_reason(held_lock),
                 )
+                self.assertTrue(probe_result["holder_alive"])
+                self.assertRegex(str(probe_result["holder_context_hash"]), r"^[0-9a-f]{64}$")
 
     def test_sibling_governance_lock_fails_when_customizations_lock_is_held(self) -> None:
         for attempted_lock in sorted(
@@ -265,6 +267,8 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                     probe_result["failure_reason"],
                     write_utils.lock_unavailable_reason(contracts.CUSTOMIZATIONS_LOCK_PATH),
                 )
+                self.assertTrue(probe_result["holder_alive"])
+                self.assertRegex(str(probe_result["holder_context_hash"]), r"^[0-9a-f]{64}$")
 
     def test_governance_lock_uses_meta_lock_even_with_noncanonical_target_path(self) -> None:
         noncanonical_write_lock_path = "wiki/../wiki/.kb_write.lock"
