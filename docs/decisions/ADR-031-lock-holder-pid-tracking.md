@@ -69,6 +69,10 @@ Lock-file bytes are governance-internal runtime metadata. No
 `governed_artifact_contract_for_path()` row claims lock-file contents, so this
 change does not alter governed artifact contracts.
 
+## Related decisions
+
+- [ADR-005](ADR-005-write-concurrency-guards.md) — Enforce write concurrency with workflow group and local file lock. This ADR extends ADR-005's `lock_unavailable` envelope with holder PID/start-time metadata for actionable diagnostics. ADR-005's status was updated to reflect the bidirectional cross-reference (2026-06-20).
+
 ## References
 
 - GitHub issue #183

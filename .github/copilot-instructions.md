@@ -535,7 +535,7 @@ After non-trivial implementation work, **proactively run** a cross-functional re
 
 This parallels the quality-pass-chain skill but uses custom agents for richer, domain-specific review.
 
-**Hard rule: `task_complete` is blocked on implementation tasks** until `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` have all been dispatched and any P0–P2 findings remediated. Do not call `task_complete` for any session that created or modified `scripts/**`, `tests/**`, or `.github/skills/**/logic/**` without having run this review first.
+**Hard rule: `task_complete` is blocked on implementation tasks** until `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` have all been dispatched and any P0–P2 findings remediated. Do not call `task_complete` for any session that created or modified `scripts/**`, `tests/**`, `.github/skills/**/logic/**`, or `.github/workflows/**` without having run this review first.
 
 ### Post-remediation docs/customizations audit pair
 

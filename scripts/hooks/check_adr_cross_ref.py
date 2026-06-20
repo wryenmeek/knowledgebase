@@ -86,8 +86,13 @@ def main(argv: list[str]) -> int:
                 continue  # Status line is unchanged; no cascade needed.
 
         # Status line changed (or file is new). Check if it signals amendment/extension.
+        # Match all inflections: amended/amends/amending, extended/extends/extending,
+        # plus the canonical past-participle forms ("extended by", "amended in-place").
+        # The earlier formulation only checked "amended"/"extended" literals, which
+        # silently bypassed cascade enforcement when an ADR used the active-voice
+        # "extends ADR-NNN" wording (v-docs audit, 2026-06-20).
         new_status_lower = new_status.lower()
-        if "amended" in new_status_lower or "extended" in new_status_lower:
+        if re.search(r"\b(amend|extend)(s|ed|ing)?\b", new_status_lower):
             if not readme_staged:
                 failures.append(
                     f"  {adr_path}\n"

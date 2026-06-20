@@ -1,7 +1,7 @@
 # ADR-005: Enforce write concurrency with workflow group and local file lock
 
 ## Status
-Accepted — amended in-place: governance sibling meta-lock protocol (see § Amendment)
+Accepted — amended in-place; extended by ADR-031: governance sibling meta-lock protocol (see § Amendment)
 
 ## Date
 2026-04-12

@@ -247,7 +247,7 @@ archiving, re-run the account probe (`jules-account-probe.ts`) to confirm
 
 **Corresponding CI workflows:**
 - `jules-account-probe.yml` — `workflow_dispatch` only; attaches JSON artifact; no secret required beyond `JULES_API_KEY` (step-scoped).
-- `jules-archive-stale.yml` — `workflow_dispatch` only; `source_filter` defaults to `sources/github/wryenmeek/knowledgebase`; `JULES_API_KEY` step-scoped.
+- `jules-archive-stale.yml` — `workflow_dispatch` only; `source_filter` defaults to `sources/github/wryenmeek/knowledgebase` (surrounding whitespace trimmed, whitespace-only rejected per PR #315); `JULES_API_KEY` step-scoped. Apply runs gate on the `jules-archive-approval` GitHub environment (PR #312 + v-sec follow-up — environment expression uses boolean-truthy `${{ inputs.apply && 'jules-archive-approval' || '' }}`, NOT the type-mismatched `inputs.apply == 'true'` which silently never engages). Concurrency partitions by `inputs.apply` with `cancel-in-progress: false`.
   All inputs routed through `env:` blocks per the shell-injection guard from Amendment 1.
 
 ### What did not change

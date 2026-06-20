@@ -186,12 +186,36 @@ step-scoped secret binding rule).
 |---|---|---|---|
 | `state` | `inProgress` | no | State filter |
 | `older_than_days` | — | **yes** | Minimum age in days (required to prevent mass-archive) |
-| `source_filter` | `sources/github/wryenmeek/knowledgebase` | no (but required with `apply=true`) | Source scope. Required when `apply=true`; the script exits non-zero if apply=true and this is empty. |
+| `source_filter` | `sources/github/wryenmeek/knowledgebase` | no (but required with `apply=true`) | Source scope. Required when `apply=true`; the script exits non-zero if apply=true and this is empty. Surrounding whitespace is trimmed; whitespace-only values are rejected with `--source-filter requires a non-empty value` (PR #315). |
 | `apply` | `false` | no | Set to `true` to archive; default is dry-run |
 
 All inputs are routed through `env:` blocks before use in `run:` steps to
 prevent shell injection (per the GitHub Actions shell injection guard in
 `.github/copilot-instructions.md`).
+
+**Runtime gates (added 2026-06-20 in PR #312 + v-sec follow-up):**
+
+- **Environment approval (apply only):** when `apply=true`, the `archive` job
+  runs inside the `jules-archive-approval` GitHub environment and is blocked
+  until a configured reviewer approves the deployment. Dry-runs (`apply=false`,
+  the default) skip the environment entirely. The conditional expression is
+  `${{ inputs.apply && 'jules-archive-approval' || '' }}` — note the
+  comparison is **boolean-truthy**, NOT `inputs.apply == 'true'` (that earlier
+  form silently never engaged because the GH Actions expression evaluator
+  type-mismatch coerced the string `'true'` to NaN when comparing against the
+  boolean input, so the ternary always picked the empty branch). Configure
+  reviewers in repo Settings → Environments → `jules-archive-approval`.
+
+- **Concurrency partitioning by input:** the job uses
+  `group: jules-archive-stale-${{ inputs.apply }}` with
+  `cancel-in-progress: false`. Dry-run and apply requests land in separate
+  queues (`...-stale-false` and `...-stale-true`), so a long-running dry-run
+  does not delay an apply. Successive runs with the same `apply` value queue
+  rather than cancel each other. **Intentional asymmetry:** dry-run can run
+  concurrently with an in-flight apply (the dry-run output may list sessions
+  the apply has already archived — operational TOCTOU window, acceptable
+  because dry-run does not mutate). If strict mutual exclusion is needed,
+  drop the `${{ inputs.apply }}` suffix from the group key.
 
 ---
 
