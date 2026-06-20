@@ -25,7 +25,7 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-016](ADR-016-pre-commit-hooks-governance.md) | Use `pre-commit` framework for local governance hooks *(amended — reversed from raw git hooks)* | Accepted — amended in-place |
 | [ADR-017](ADR-017-agent-persona-category-taxonomy.md) | Two-category agent persona taxonomy (kb-workflow / dev-support) | Accepted — amended in-place |
 | [ADR-018](ADR-018-context-md-vocabulary-pattern.md) | CONTEXT.md files as structured agent-vocabulary artifacts | Accepted |
-| [ADR-019](ADR-019-fleet-jules-orchestration.md) | Jules-based fleet orchestration for parallel issue-to-PR dispatch | Accepted — amended in-place: Phase 3 merge trigger and security hardening; amended in-place: ops tooling safety contract |
+| [ADR-019](ADR-019-fleet-jules-orchestration.md) | Jules-based fleet orchestration for parallel issue-to-PR dispatch | Accepted — amended in-place: Phase 3 merge trigger and security hardening; amended in-place: ops tooling safety contract; extended by Amendment 3 |
 | [ADR-020](ADR-020-post-mvp-package-family-criteria.md) | Criteria for approving post-MVP script package families | Accepted |
 | [ADR-021](ADR-021-google-drive-source-monitoring.md) | Google Drive source monitoring pipeline | Accepted — amended in-place |
 | [ADR-022](ADR-022-afk-uses-scripts-hitl-uses-copilot-cli.md) | AFK automation uses deterministic scripts; Copilot CLI reserved for HITL | Accepted — amended in-place |

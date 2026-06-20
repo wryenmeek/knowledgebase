@@ -104,7 +104,7 @@ jobs:
               echo "is_planning_merge=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            DETECTED_DATE=$(printf '%s' "$PENDING_DATA" | sed -n '3p')
+            DETECTED_DATE=$(printf '%s' "$PENDING_DATA" | sed -n '3p' | tr -d '\r')
             if [ -z "$DETECTED_DATE" ]; then
               echo "ℹ️  workflow_dispatch: fleet-state pending_session missing date. Skipping."
               echo "is_planning_merge=false" >> "$GITHUB_OUTPUT"
@@ -112,8 +112,12 @@ jobs:
             fi
             # Validate detected date is YYYY_MM_DD shape to keep the path
             # construction safe from injection via fleet-state mutation.
+            # Anchored regex (^...$) is load-bearing — a weakened pattern
+            # would let DETECTED_DATE="2020_01_01_../../etc" slip past and
+            # build ".fleet/2020_01_01_../../etc/issue_tasks.json". The
+            # file-existence check below is a backstop, not a substitute.
             if ! printf '%s' "$DETECTED_DATE" | grep -qE '^[0-9]{4}_[0-9]{2}_[0-9]{2}$'; then
-              echo "⚠️  workflow_dispatch: fleet-state pending_date ($DETECTED_DATE) is not YYYY_MM_DD. Refusing to dispatch."
+              echo "⚠️  workflow_dispatch: fleet-state pending_date ($DETECTED_DATE) is not YYYY_MM_DD (also check for stray CRLF). Refusing to dispatch."
               echo "is_planning_merge=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -156,9 +160,24 @@ jobs:
       - name: Read pending session info from fleet-state
         if: steps.detect.outputs.is_planning_merge == 'true'
         id: session
+        env:
+          # SECURITY: route detect-step output through env: rather than inline
+          # ${{ ... }} substitution in run:. Currently safe because detected_date
+          # is validated against ^[0-9]{4}_[0-9]{2}_[0-9]{2}$ on both event paths,
+          # but the inline substitution is performed before the shell parses
+          # the line, so any future weakening of the upstream regex becomes a
+          # quote-escape injection. env-routing matches the dispatch step's
+          # documented pattern (and the AGENTS.md guidance under "GitHub Actions
+          # shell injection guard"). Cross-functional security review of Layers
+          # 6-8 (2026-06-20).
+          DETECTED_DATE: ${{ steps.detect.outputs.detected_date }}
         run: |
           set -euo pipefail
-          git fetch origin fleet-state 2>/dev/null || true
+          if ! git fetch origin fleet-state; then
+            echo "⚠️  fetch of fleet-state failed; treating as absent (no dispatch this cycle)."
+            echo "have_session=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if ! git rev-parse origin/fleet-state >/dev/null 2>&1; then
             echo "ℹ️  No fleet-state branch. Cannot resolve base branch. Skipping."
             echo "have_session=false" >> "$GITHUB_OUTPUT"
@@ -171,14 +190,43 @@ jobs:
             exit 0
           fi
 
-          PENDING_SESSION_ID=$(printf '%s' "$PENDING_DATA" | sed -n '1p')
-          PENDING_BASE=$(printf '%s' "$PENDING_DATA" | sed -n '2p')
-          PENDING_DATE_STATE=$(printf '%s' "$PENDING_DATA" | sed -n '3p')
+          PENDING_SESSION_ID=$(printf '%s' "$PENDING_DATA" | sed -n '1p' | tr -d '\r')
+          PENDING_BASE=$(printf '%s' "$PENDING_DATA" | sed -n '2p' | tr -d '\r')
+          PENDING_DATE_STATE=$(printf '%s' "$PENDING_DATA" | sed -n '3p' | tr -d '\r')
+
+          # SECURITY: PENDING_BASE flows downstream into the dispatch step as
+          # FLEET_BASE_BRANCH and is consumed by a fast-forward fetch of that
+          # ref. The git option-parsing terminator on that fetch blocks
+          # git-flag injection, but does NOT prevent the value from being a
+          # perfectly valid refspec pointing at an attacker-controlled branch.
+          # If that branch is a fast-forward descendant of main, the fetch
+          # succeeds and the runner ends up executing attacker code (with
+          # JULES_API_KEY and GITHUB_TOKEN in env) on the dispatch step.
+          #
+          # fleet-state is an unprotected branch — anyone with repo-write
+          # access can mutate it. So we enforce that PENDING_BASE is exactly
+          # "main" (the documented protected branch the planning artifact
+          # always lands on). This is stricter than a regex shape check and
+          # closes the entire refspec-substitution class.
+          #
+          # If a future operating mode genuinely needs a non-main base, replace
+          # this hard pin with a regex shape check plus an allowlist (see
+          # cross-functional security review of Layers 6-8, 2026-06-20).
+          if [ "$PENDING_BASE" != "main" ]; then
+            echo "⚠️  fleet-state pending_base ($PENDING_BASE) is not 'main'. Refusing to dispatch — only 'main' is allowed as the fleet base branch."
+            echo "have_session=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           # Cross-check: the detected planning artifact's date must match
-          # fleet-state's pending_date. This prevents accidental dispatch
-          # on a manual import or replay of an old artifact.
-          DETECTED_DATE="${{ steps.detect.outputs.detected_date }}"
+          # fleet-state's pending_date. On the push event path this catches
+          # drift between what landed on main and what fleet-state expects
+          # (manual import / replay attempts). On the workflow_dispatch path
+          # both values trace back to fleet-state's pending_date, so this
+          # comparison is structurally identical and only verifies internal
+          # consistency — the load-bearing guards on that path are the
+          # artifact file-existence check in the detect step and the
+          # PENDING_BASE pin above.
           if [ "$PENDING_DATE_STATE" != "$DETECTED_DATE" ]; then
             echo "⚠️  fleet-state pending_date ($PENDING_DATE_STATE) does not match detected planning artifact date ($DETECTED_DATE). Skipping dispatch to avoid ambiguity."
             echo "have_session=false" >> "$GITHUB_OUTPUT"
@@ -252,13 +300,19 @@ jobs:
           FLEET_PENDING_DATE: ${{ steps.session.outputs.pending_date }}
         run: |
           set -euo pipefail
-          # We already checked out main at the start of the job, but the
-          # planning artifact landed on main as part of this very push, so
-          # the checkout SHA is current. No additional pull needed before
-          # invoking fleet-dispatch.ts — keep the same defensive git pull
-          # with -- terminator that Phase 2a's earlier dispatch step used,
-          # to match the security review precedent (FLEET_BASE_BRANCH is
-          # still fleet-state-sourced and must be treated as untrusted).
+          # Two paths reach this step:
+          #   - push: the planning artifact landed on main as part of this
+          #     very push, so the initial checkout SHA already contains it.
+          #   - workflow_dispatch: intervening commits may have landed
+          #     between the planning PR merge and the operator firing this
+          #     workflow, so the initial checkout SHA is potentially behind
+          #     origin/main.
+          # The git pull below covers both — defensive on the push path,
+          # load-bearing on the workflow_dispatch path. The session step has
+          # already pinned PENDING_BASE to exactly "main", so the refspec is
+          # known-safe at this point (not attacker-controlled). The --
+          # terminator is retained as defense-in-depth in case the pinning
+          # is ever relaxed.
           # SECURITY: -- terminates git option parsing so a crafted FLEET_BASE_BRANCH
           # (from unprotected fleet-state) cannot inject git flags like --upload-pack.
           git pull --ff-only origin -- "$FLEET_BASE_BRANCH"
