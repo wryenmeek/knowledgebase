@@ -264,8 +264,8 @@ def main(argv: list[str] | None = None) -> int:
         if read_error is not None:
             failures.append(read_error)
             continue
-        if staged_path.path in _EXEMPT_PATHS:
-            continue
+        # Enforce equals-sign rejection before exemptions so transitional
+        # compatibility files cannot silently keep the legacy equals syntax.
         if (
             _contains_approval_equals(staged_text)
             and _migration_deadline_passed()
@@ -274,6 +274,8 @@ def main(argv: list[str] | None = None) -> int:
                 f"{staged_path.path}: {_APPROVAL_EQUALS_TOKEN}<value> is forbidden after "
                 f"{APPROVAL_EQUALS_REJECTION_DEADLINE.isoformat()}; use --apply"
             )
+            continue
+        if staged_path.path in _EXEMPT_PATHS:
             continue
         if not _contains_approval_flag(staged_text):
             continue

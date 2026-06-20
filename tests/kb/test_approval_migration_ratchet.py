@@ -160,3 +160,27 @@ def test_hook_rejects_approval_equals_after_deadline(monkeypatch, capsys) -> Non
     assert check_approval_flag.main([]) == 1
     captured = capsys.readouterr()
     assert "--approval=<value> is forbidden after" in captured.err
+
+
+def test_hook_rejects_approval_equals_for_fake_exempt_path(monkeypatch, capsys) -> None:
+    exempt_path = "scripts/fake_exempt.py"
+    monkeypatch.setattr(check_approval_flag, "_EXEMPT_PATHS", frozenset({exempt_path}))
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_staged_script_paths",
+        lambda: ([check_approval_flag.StagedScriptPath("M", exempt_path)], None),
+    )
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_get_staged_content",
+        lambda path: ('argv = ["--approval=approved"]\n', None),
+    )
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_migration_deadline_passed",
+        lambda today=None: True,
+    )
+
+    assert check_approval_flag.main([]) == 1
+    captured = capsys.readouterr()
+    assert "--approval=<value> is forbidden after" in captured.err
