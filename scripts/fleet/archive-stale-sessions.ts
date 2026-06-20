@@ -120,10 +120,12 @@ export function parseCliArgs(argv: string[]): ArchiveCliArgs {
       olderThanDays = parsed;
     } else if (arg === "--source-filter") {
       const value = argv[++i];
-      if (value === undefined || value.trim().length === 0) {
+      const trimmedValue = value?.trim();
+      if (trimmedValue === undefined || trimmedValue.length === 0) {
         throw new Error("--source-filter requires a non-empty value");
       }
-      sourceFilter = value;
+      // Trim defensively so copy-paste whitespace does not break exact source matching.
+      sourceFilter = trimmedValue;
     } else if (arg === "--repo" && argv[i + 1]) {
       const repoVal = argv[++i];
       if (repoVal === "current") {
