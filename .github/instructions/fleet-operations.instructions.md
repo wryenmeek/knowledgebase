@@ -189,6 +189,11 @@ step-scoped secret binding rule).
 | `source_filter` | `sources/github/wryenmeek/knowledgebase` | no (but required with `apply=true`) | Source scope. Required when `apply=true`; the script exits non-zero if apply=true and this is empty. |
 | `apply` | `false` | no | Set to `true` to archive; default is dry-run |
 
+Dry-runs (`apply=false`) run without the protected approval environment so
+operators can inspect the candidate artifact first. Destructive runs
+(`apply=true`) wait for the `jules-archive-approval` protected environment
+before the archive step executes.
+
 All inputs are routed through `env:` blocks before use in `run:` steps to
 prevent shell injection (per the GitHub Actions shell injection guard in
 `.github/copilot-instructions.md`).
