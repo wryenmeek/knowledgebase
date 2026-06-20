@@ -133,6 +133,16 @@ describe("parseCliArgs", () => {
     expect(args.sourceFilter).toBe("sources/github/myorg/myrepo");
   });
 
+  test("trims copy-paste whitespace from --source-filter", () => {
+    const args = parseCliArgs([
+      "--older-than-days",
+      "3",
+      "--source-filter",
+      "  sources/github/myorg/myrepo\n",
+    ]);
+    expect(args.sourceFilter).toBe("sources/github/myorg/myrepo");
+  });
+
   test("--apply with whitespace-only --source-filter is denied", () => {
     expect(() =>
       parseCliArgs(["--older-than-days", "7", "--source-filter", "   ", "--apply"])
