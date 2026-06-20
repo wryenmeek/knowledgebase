@@ -199,13 +199,22 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -B fleet-state origin/fleet-state
-          rm -f .fleet/.pending_session
-          git add .fleet/.pending_session
-          if git diff --cached --quiet; then
-            echo "Nothing to clear in fleet-state."
-          else
+          # .fleet/** is gitignored on the working tree (so dated planning
+          # subdirs Jules writes locally don't accidentally leak in via
+          # `git add .`). But .fleet/.pending_session IS tracked on the
+          # fleet-state branch — it's the control-plane file we need to
+          # delete here. `git rm` operates on tracked entries in the index
+          # and is unaffected by .gitignore matching, so it's the correct
+          # primitive for staging a tracked-but-ignored deletion. (`git add
+          # <ignored-path>` would error with "path is ignored" — observed
+          # 2026-06-20 during the first end-to-end Phase 2b run, see Layer 7
+          # in Issue #82's diagnostic trail.)
+          if git ls-files --error-unmatch .fleet/.pending_session >/dev/null 2>&1; then
+            git rm .fleet/.pending_session
             git commit -m "chore(fleet): clear pending session after planning PR merged"
             git push origin fleet-state
+          else
+            echo "Nothing to clear in fleet-state (.fleet/.pending_session not tracked)."
           fi
 
       - name: Setup Bun

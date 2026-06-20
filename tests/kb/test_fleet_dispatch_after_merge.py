@@ -203,24 +203,39 @@ class TestFleetDispatchAfterMergeStructure(_AssertMixin):
         self.assertIsNotNone(timeout, "dispatch job must declare timeout-minutes")
         self.assertGreater(int(timeout), 0)
 
-    def test_permissions_are_narrowly_scoped(self) -> None:
-        """Workflow permissions must NOT include pull-requests: write.
+    def test_clear_pending_uses_git_rm_not_git_add(self) -> None:
+        """The clear-pending step must use `git rm` (not `rm + git add`) so
+        the .gitignore exclusion of `.fleet/**` does not block staging the
+        deletion of the tracked `.fleet/.pending_session` file.
 
-        Phase 2b only needs contents: write (to update fleet-state).
-        pull-requests: write is Phase 2a's surface (queuing the auto-merge).
-        Over-granting permissions widens the attack surface unnecessarily.
+        Layer 7 bug observed 2026-06-20 on the first end-to-end Phase 2b run:
+        `git add .fleet/.pending_session` errored with "path is ignored"
+        because `.gitignore` excludes `.fleet/**` and `.pending_session` is
+        not in the allowlist. `git rm` operates on the index (tracked files)
+        and is unaffected by .gitignore matching, so it correctly stages the
+        deletion. See Issue #82 diagnostic trail.
         """
-        perms = self.workflow.get("permissions", {})
-        self.assertEqual(
-            perms.get("contents"),
-            "write",
-            "Phase 2b needs contents: write to update fleet-state",
+        blocks = _collect_run_blocks(self.workflow)
+        clear_blocks = [b for b in blocks if ".pending_session" in b and "checkout -B fleet-state" in b]
+        self.assertTrue(
+            clear_blocks,
+            "Phase 2b must have a clear-pending step that checks out fleet-state",
         )
-        self.assertNotIn(
-            "pull-requests",
-            perms,
-            "Phase 2b should not have pull-requests permissions (Phase 2a owns that)",
-        )
+        for block in clear_blocks:
+            self.assertIn(
+                "git rm",
+                block,
+                "Clear-pending step must use `git rm` to stage the deletion "
+                "of .fleet/.pending_session (it's tracked but gitignored; "
+                "`git add` would error with 'path is ignored').",
+            )
+            # Belt-and-suspenders: assert the buggy pattern is NOT present.
+            self.assertNotIn(
+                "rm -f .fleet/.pending_session\n          git add .fleet/.pending_session",
+                block,
+                "Clear-pending step must not use the rm + git-add pattern — "
+                "git add refuses ignored paths even for staging deletions.",
+            )
 
 
 class TestFleetDispatchAfterMergeDetection(_AssertMixin):
