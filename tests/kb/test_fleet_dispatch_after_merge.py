@@ -40,6 +40,38 @@ def _collect_run_blocks(workflow: dict) -> list[str]:
     return runs
 
 
+def _slice_workflow_dispatch_branch(run_block: str) -> str:
+    """Extract just the workflow_dispatch branch of the detect step's run: block.
+
+    Slices the lines between `if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then`
+    and the matching closing `fi`. Returns "" if the branching pattern isn't
+    present. Used by the contract tests so they can assert on the
+    workflow_dispatch branch in isolation, without picking up substring
+    matches from the adjacent push-event branch in the same shell script
+    (cross-functional test-engineer review of Layers 6-8, 2026-06-20).
+    """
+    lines = run_block.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if 'github.event_name' in line and 'workflow_dispatch' in line and 'if' in line and 'then' in line:
+            start = i
+            break
+    if start is None:
+        return ""
+    # Walk forward, tracking shell `if/fi` nesting depth so a nested `if`
+    # inside the wf_dispatch branch doesn't close us early.
+    depth = 1
+    for j in range(start + 1, len(lines)):
+        stripped = lines[j].strip()
+        if stripped.startswith("if ") and stripped.endswith("; then"):
+            depth += 1
+        elif stripped == "fi":
+            depth -= 1
+            if depth == 0:
+                return "\n".join(lines[start : j + 1])
+    return ""
+
+
 class _AssertMixin:
     """unittest-compatible assertion methods backed by plain `assert`.
 
@@ -203,6 +235,56 @@ class TestFleetDispatchAfterMergeStructure(_AssertMixin):
         self.assertIsNotNone(timeout, "dispatch job must declare timeout-minutes")
         self.assertGreater(int(timeout), 0)
 
+    def test_permissions_are_narrowly_scoped(self) -> None:
+        """Workflow permissions must be an explicit enumerated allowlist.
+
+        Phase 2b currently needs:
+          - `contents: write` — to commit and push the `.pending_session`
+            deletion to fleet-state, and to fast-forward main during the
+            dispatch step's `git pull`.
+
+        Anything else (notably `pull-requests: write` — Phase 2a's surface
+        for queuing the planning-PR auto-merge — and `actions: write`,
+        `id-token: write`, `packages: write`, etc.) over-grants and must
+        be added through a deliberate amendment to this contract test, not
+        slipped in alongside an unrelated change. Set-equality (not a
+        per-scope blocklist) is what protects against the next "just one
+        more permission" change landing without review — the prior
+        formulation (`assertNotIn("pull-requests", perms)`) did not
+        generalize and let this contract drift unnoticed once before.
+
+        Note on Issue #311 / Layer 9: `issues: write` is intentionally
+        NOT granted yet. fleet-dispatch.ts wants it for posting per-task
+        tracker comments on the target issues, but the cross-functional
+        security review of Layers 6-8 (2026-06-20) recommended deferring
+        the widening until Issue #310 (the `FLEET_BASE_BRANCH` shape
+        validation + GH-App-token rework) lands first. Granting
+        `issues: write` while the fleet-state base-branch input is
+        still parseable as an arbitrary refspec compounds the blast
+        radius (issue spam / hostile bodies / label manipulation). When
+        Issue #311 ships after #310, update this test to assert
+        `{contents, issues}` and document the dependency in the commit
+        message.
+
+        History note: this test was silently deleted in commit `51acc01`
+        (the Layer 7 git-rm fix) when a new test was inadvertently
+        overwritten into the same line range. Restored 2026-06-20 with
+        a stronger set-equality formulation per the cross-functional
+        review of Layers 6-8.
+        """
+        perms = self.workflow.get("permissions", {})
+        self.assertEqual(
+            set(perms.keys()),
+            {"contents"},
+            "Phase 2b permissions must enumerate exactly {contents}. "
+            "Any addition or removal must amend this test deliberately.",
+        )
+        self.assertEqual(
+            perms.get("contents"),
+            "write",
+            "Phase 2b needs contents: write to update fleet-state and pull main",
+        )
+
     def test_clear_pending_uses_git_rm_not_git_add(self) -> None:
         """The clear-pending step must use `git rm` (not `rm + git add`) so
         the .gitignore exclusion of `.fleet/**` does not block staging the
@@ -229,12 +311,16 @@ class TestFleetDispatchAfterMergeStructure(_AssertMixin):
                 "of .fleet/.pending_session (it's tracked but gitignored; "
                 "`git add` would error with 'path is ignored').",
             )
-            # Belt-and-suspenders: assert the buggy pattern is NOT present.
+            # Whitespace-tolerant negative assertion: forbid the bug pattern
+            # regardless of indentation. The earlier formulation pinned a
+            # specific 10-space indent and would silently bypass on reformat
+            # (code-reviewer P2 finding 2026-06-20).
             self.assertNotIn(
-                "rm -f .fleet/.pending_session\n          git add .fleet/.pending_session",
+                "git add .fleet/.pending_session",
                 block,
-                "Clear-pending step must not use the rm + git-add pattern — "
-                "git add refuses ignored paths even for staging deletions.",
+                "Clear-pending step must not call `git add` on .pending_session "
+                "anywhere — git refuses ignored paths even for staging "
+                "deletions. Use `git rm` instead.",
             )
 
     def test_clear_pending_restores_main_for_downstream_steps(self) -> None:
@@ -346,6 +432,14 @@ class TestFleetDispatchAfterMergeDetection(_AssertMixin):
         (YYYY_MM_DD) before constructing the artifact path, and confirms the
         artifact file exists on main before proceeding — that replaces the
         diff-based filter as the safety guard for this code path.
+
+        Test discipline (added 2026-06-20 per cross-functional review):
+        instead of just searching the whole script for substrings (which can
+        match strings in adjacent push-event scope), slice out the lines
+        between `if [ ... = "workflow_dispatch" ]; then` and the matching
+        closing `fi`, and assert against THAT slice only. This catches
+        refactors that would re-introduce HEAD~1 diff into the
+        workflow_dispatch branch.
         """
         blocks = _collect_run_blocks(self.workflow)
         dispatch_blocks = [b for b in blocks if "workflow_dispatch" in b and "github.event_name" in b]
@@ -357,25 +451,45 @@ class TestFleetDispatchAfterMergeDetection(_AssertMixin):
             "commits land on main).",
         )
         for block in dispatch_blocks:
+            wf_dispatch_slice = _slice_workflow_dispatch_branch(block)
+            self.assertTrue(
+                wf_dispatch_slice,
+                "Expected to find the workflow_dispatch branch (between "
+                "the `if [ ... = \"workflow_dispatch\" ]` and matching `fi`) "
+                "inside the detect step's run: block",
+            )
             self.assertIn(
-                "pending_session",
-                block,
-                "workflow_dispatch detection must resolve the artifact path "
-                "via fleet-state's pending_session, not via HEAD~1 diff",
+                "git show origin/fleet-state:.fleet/.pending_session",
+                wf_dispatch_slice,
+                "workflow_dispatch branch must read .pending_session from "
+                "fleet-state — that's the whole point of bypassing the "
+                "HEAD~1 diff (intervening commits would defeat it).",
+            )
+            self.assertNotIn(
+                "git diff",
+                wf_dispatch_slice,
+                "workflow_dispatch branch must NOT use git diff — that "
+                "defeats the entire Layer 6 fix. Use fleet-state's "
+                "pending_date as the artifact resolver instead.",
             )
             self.assertIn(
                 "is_planning_merge=false",
-                block,
+                wf_dispatch_slice,
                 "workflow_dispatch detection must fail closed (exit with "
-                "is_planning_merge=false) when fleet-state is missing or "
-                "the artifact is not present on main",
+                "is_planning_merge=false) on every error branch",
             )
 
     def test_workflow_dispatch_detection_validates_date_shape(self) -> None:
         """workflow_dispatch detection constructs a filesystem path from the
         fleet-state pending_date. The date must be validated against the
-        YYYY_MM_DD shape before path construction to prevent fleet-state
-        mutation from steering reads outside .fleet/<date>/.
+        ANCHORED YYYY_MM_DD shape before path construction to prevent
+        fleet-state mutation from steering reads outside .fleet/<date>/.
+
+        Without the `^...$` anchors, DETECTED_DATE="2020_01_01_../../etc"
+        would slip past the shape check and the artifact path resolver
+        would attempt `.fleet/2020_01_01_../../etc/issue_tasks.json`. The
+        downstream file-existence check is a backstop, not a substitute
+        for input validation.
 
         fleet-state is an unprotected branch; treat its contents as untrusted
         input even for read-only path construction.
@@ -384,12 +498,74 @@ class TestFleetDispatchAfterMergeDetection(_AssertMixin):
         dispatch_blocks = [b for b in blocks if "workflow_dispatch" in b and "github.event_name" in b]
         self.assertTrue(dispatch_blocks)
         for block in dispatch_blocks:
+            wf_dispatch_slice = _slice_workflow_dispatch_branch(block)
+            self.assertTrue(wf_dispatch_slice)
+            # Anchored form is load-bearing — the prior assertion accepted
+            # the bare character class without anchors, which would allow
+            # path traversal via a weakened regex (code-reviewer P1 finding).
             self.assertIn(
-                "[0-9]{4}_[0-9]{2}_[0-9]{2}",
-                block,
+                "^[0-9]{4}_[0-9]{2}_[0-9]{2}$",
+                wf_dispatch_slice,
                 "workflow_dispatch detection must validate pending_date "
-                "against the YYYY_MM_DD shape before constructing a "
-                ".fleet/<date>/issue_tasks.json path",
+                "against the ANCHORED ^[0-9]{4}_[0-9]{2}_[0-9]{2}$ shape. "
+                "Without anchors, path traversal via DETECTED_DATE is "
+                "possible (the file-existence backstop is not sufficient).",
+            )
+
+    def test_workflow_dispatch_detection_requires_artifact_file_exists(self) -> None:
+        """The workflow_dispatch detection branch must verify the constructed
+        artifact path exists on main before proceeding. This is the second
+        guard the Layer 6 fix claims (the first is the YYYY_MM_DD shape
+        check). Without it, a fleet-state pending_date pointing at a
+        plausibly-shaped but absent date would advance through detection
+        and only fail later in the dispatch step (with more side effects
+        already in flight)."""
+        blocks = _collect_run_blocks(self.workflow)
+        dispatch_blocks = [b for b in blocks if "workflow_dispatch" in b and "github.event_name" in b]
+        self.assertTrue(dispatch_blocks)
+        for block in dispatch_blocks:
+            wf_dispatch_slice = _slice_workflow_dispatch_branch(block)
+            self.assertTrue(wf_dispatch_slice)
+            self.assertIn(
+                '[ ! -f "$ARTIFACT_PATH" ]',
+                wf_dispatch_slice,
+                "workflow_dispatch detection must guard against the artifact "
+                "file being absent on main (e.g., manual import of a "
+                "pending_session pointing at a never-merged date). Without "
+                "this, dispatch advances and fails later with side effects.",
+            )
+
+    def test_pending_base_pinned_to_main(self) -> None:
+        """PENDING_BASE from fleet-state must be pinned to exactly 'main'
+        before being propagated as pending_base / FLEET_BASE_BRANCH.
+
+        Security HIGH (cross-functional review, 2026-06-20): without this
+        pin, an insider with repo-write access can mutate fleet-state's
+        pending_base to an attacker-controlled branch name (e.g., a topic
+        branch they pushed which is a strict descendant of main). The
+        dispatch step's `git pull --ff-only origin -- "$FLEET_BASE_BRANCH"`
+        then fast-forwards main to the attacker's tip, and the subsequent
+        `bun fleet-dispatch.ts` runs attacker code with JULES_API_KEY and
+        GITHUB_TOKEN in env. The `--` terminator blocks git-flag injection
+        but does NOT prevent a valid-but-hostile refspec.
+
+        The strict-equality pin closes the entire refspec-substitution
+        class. If a future operating mode needs a non-main base, replace
+        with a shape regex + explicit allowlist (and amend this test).
+        """
+        blocks = _collect_run_blocks(self.workflow)
+        session_blocks = [b for b in blocks if "PENDING_BASE=" in b]
+        self.assertTrue(
+            session_blocks,
+            "Expected to find a step that extracts PENDING_BASE from fleet-state",
+        )
+        for block in session_blocks:
+            self.assertIn(
+                '"$PENDING_BASE" != "main"',
+                block,
+                "PENDING_BASE must be checked against the literal 'main' "
+                "before being propagated downstream as FLEET_BASE_BRANCH "
+                "(security HIGH — see test docstring).",
             )
 
 

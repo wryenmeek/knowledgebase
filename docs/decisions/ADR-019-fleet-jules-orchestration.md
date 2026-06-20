@@ -1,7 +1,7 @@
 # ADR-019: Jules-based fleet orchestration for parallel issue-to-PR dispatch
 
 ## Status
-Accepted — amended in-place: Phase 3 merge trigger changed to event-driven and security hardened (see § Amendment)
+Accepted — amended in-place: Phase 3 merge trigger changed to event-driven and security hardened (see § Amendment); extended by Amendment 3 (Phase 2 split + GITHUB_TOKEN merge-handoff diagnostic trail, 2026-06-20)
 
 ## Date
 2026-04-27
@@ -260,14 +260,63 @@ archiving, re-run the account probe (`jules-account-probe.ts`) to confirm
 
 - [ADR-032](ADR-032-fleet-quota-saturation-soft-warn.md) - Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION
 
+## Amendment 3
+
+### Date
+2026-06-20
+
+### What changed
+
+Phase 2 was split into two sub-phases (2a and 2b) to eliminate a race between branch protection's required CI-2 check and a synchronous merge step. The split exposed an end-to-end pipeline that depended on a `push`-event handoff between Actions runs — which GitHub Actions intentionally suppresses when the originating push is authored by `GITHUB_TOKEN`. Layers 5 through 9 of the diagnostic trail (Issue #82) capture the full sequence; layers 5 through 8 are remediated; layers 6 (root architectural fix) and 9 (issues:write permission) are tracked as Issues #310 and #311.
+
+**Phase 2 sub-phases (replaces the prior single Phase 2):**
+
+- **Phase 2a — Queue auto-merge of planning PR** (`.github/workflows/fleet-dispatch.yml`, `pull_request` opened/reopened): identifies the Jules planning PR via fleet-state's pending session ID, queues `gh pr merge --auto --squash --delete-branch`, exits. The merge is queued, not synchronous; it lands once branch-protection required checks (notably CI-2 diagnostics) finish.
+
+- **Phase 2b — Detect, clear, and dispatch** (`.github/workflows/fleet-dispatch-after-merge.yml`, `push` to main path-filtered to `.fleet/*/issue_tasks.json`, plus `workflow_dispatch`): detects the newly-added planning artifact, cross-checks against fleet-state, clears `.fleet/.pending_session`, restores main, runs `fleet-dispatch.ts` to spawn one Jules session per task.
+
+### Pipeline diagnostic timeline (Layers 1–9)
+
+| Layer | Symptom | Root cause | Fix | Commit / Issue |
+|---|---|---|---|---|
+| 1 | `fleet-plan.ts` returned `FAILED_PRECONDITION` from Jules SDK on every cron run | Suspected cap of 1 inProgress Jules session per account (tentative — see "Status" below) | Archived the single stuck 95-day session; cron immediately succeeded | `PR #297` (account-probe + stale-archive tools); Issue #82 |
+| 2 | Planning PRs opened with 0 changed files (artifact silently excluded) | `.gitignore` rule `.fleet/` excluded all dated planning subdirs (added accidentally in checkpoint commit `50e9d68`, 2026-05-23) | Tightened to `.fleet/**` with explicit allowlist for `issue_tasks.json`, `issue_tasks.md`, `sessions.json`; Bun regression test in `scripts/fleet/fleet-plan-gitignore.test.ts` | `96299ec` |
+| 3 | Phase 2a dispatch step skipped every Jules-authored planning PR | Author identity filter `user.login == 'google-labs-jules'` no longer matched — Jules's auth model shifted to PAT-based posting, so PR opener is the operator (`github.repository_owner`) while commits stay `google-labs-jules[bot]` | Widened filter to allow both `google-labs-jules` (historical bot) and `github.repository_owner` (PAT-based); kept login-equality only (no branch-prefix bypass) | `37c84fa` |
+| 4 | Phase 2a's synchronous `gh pr merge --squash` lost a race against branch protection's CI-2 required check (~5s after PR open vs ~90s to complete CI-2) | Single workflow tried to merge synchronously without waiting for required checks | Split Phase 2 into 2a (queue `--auto` merge, exit) + 2b (push trigger, detect + dispatch). Separate concurrency groups so phases never block each other. Contract tests in `tests/kb/test_fleet_dispatch_after_merge.py` | `f49769c` |
+| 5 | Phase 2a auto-merge step failed with `GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)` | Repo setting `allow_auto_merge` was `false` | Enabled via `gh api -X PATCH repos/wryenmeek/knowledgebase -f allow_auto_merge=true` | (repo setting — no commit) |
+| 6 | Planning PR auto-merged by `app/github-actions` cleanly, but zero workflow runs fired on the resulting merge commit `ce3bd0e` (Phase 2b never triggered) | GitHub Actions suppresses `push`/`pull_request`/`check_suite`/etc. workflow runs for events authored by `GITHUB_TOKEN` (documented exceptions: `workflow_dispatch`, `repository_dispatch`) | **Interim**: added `workflow_dispatch:` trigger to Phase 2b with `github.event_name` branching in the detect step (resolves artifact via fleet-state pending_date when triggered manually, since intervening commits may push the artifact outside the HEAD~1 diff window). **Permanent fix**: switch Phase 2a to a GitHub App installation token so pushes aren't treated as GITHUB_TOKEN events | `49a6d52`; tracked as Issue #310 |
+| 7 | Phase 2b clear-pending step failed with `fatal: The following paths are ignored by one of your .gitignore files: .fleet` | The Layer 2 `.gitignore` tightening excluded the entire `.fleet/` tree, so `git add .fleet/.pending_session` refused the ignored path even when staging a deletion | Switched from `rm + git add` to `git rm` (operates on the index, not the working tree, so unaffected by gitignore matching). Wrapped in `git ls-files --error-unmatch` to detect tracked state idempotently | `51acc01` |
+| 8 | Phase 2b dispatch step failed with `fatal: Not possible to fast-forward, aborting` | Clear-pending step started with `git checkout -B fleet-state` and never switched back to main; dispatch's `git pull --ff-only origin -- main` then tried to fast-forward fleet-state to main (divergent branches) | Appended `git checkout main` to the end of clear-pending so downstream steps start on main | `0e55f12` |
+| 9 | All per-issue tracker-comment postings from `fleet-dispatch.ts` failed with `Resource not accessible by integration` | Phase 2b declares `permissions: contents: write` only; the Issues API requires `issues: write` | Deferred — adding `issues: write` while the Layer 6 architectural fix is still open compounds blast radius (security review recommendation). Functional dispatch unaffected; only operator telemetry degraded | Tracked as Issue #311 |
+
+**Phase 2b fleet-state input handling (added in `49a6d52` and tightened in the cross-functional remediation pass):**
+
+- `pending_date` (line 3 of `.fleet/.pending_session`): validated against `^[0-9]{4}_[0-9]{2}_[0-9]{2}$` before any path construction. CRLF stripped via `tr -d '\r'`.
+- `pending_base` (line 2): pinned to exactly `main`. The `--` git option terminator on the downstream `git pull` blocks flag injection but does NOT block valid-but-hostile refspecs pointing at fast-forward-descendant attacker branches; the hard pin closes that class entirely. Documented as a HIGH-confidence security HIGH in the cross-functional review.
+- `pending_session_id` (line 1): propagated as the dispatch session ID; no path construction so no shape check beyond CRLF stripping.
+- `${{ steps.detect.outputs.detected_date }}`: routed through `env: DETECTED_DATE` rather than inline `${{...}}` in `run:` blocks, per the same shell-injection guard as Amendment 1's `FLEET_BASE_BRANCH` / `FLEET_PENDING_DATE` pattern.
+
+### Cap-of-1-inProgress hypothesis (Layer 1) — status
+
+Tentative as of 2026-04-29. The hypothesis was that Jules's API rejects new `jules.run()` calls with `FAILED_PRECONDITION` whenever ANY inProgress session exists in the account. Subsequent observations on 2026-06-20 contradicted this: planning runs at 03:24, 05:10, and 08:53 UTC all succeeded with multiple inProgress sessions present (the 18:03 dispatch alone created 6). Reclassifying as "unconfirmed, deprioritized" — no further action unless the failure recurs. If the recurrence pattern surfaces, the recommended next step is to codify a fleet-plan preflight that probes and archives any inProgress session older than 24 hours before invoking `jules.run()`.
+
+### What did not change
+
+- The three-phase fleet orchestration pattern (Plan → Dispatch → Merge) is unchanged at the conceptual level — Phase 2 was split into 2a and 2b internally but Plan-Dispatch-Merge is still the operator-facing model.
+- The Jules SDK usage contract is unchanged.
+- Phase 3 merge contract (`fleet-merge.yml` via `workflow_run`) is unchanged. `workflow_run` triggers fire from runs authored by `GITHUB_TOKEN`, so Phase 3 does not suffer the Layer 6 suppression — confirmed during the same diagnostic pass.
+- Phase 1 (`fleet-plan.yml`) is unchanged.
+- Security conventions from Amendment 1 (injection guard, step-scoped secrets, etc.) are unchanged and extended (PENDING_BASE pin, CRLF stripping, env-routing for the detect step's `${{ steps... }}` interpolations).
+
 ## References
 
 - `scripts/fleet/` — TypeScript/Bun fleet orchestration scripts
 - `scripts/fleet/jules-account-probe.ts` — read-only Jules account health diagnostic
 - `scripts/fleet/archive-stale-sessions.ts` — stale session archive with deny-by-default scoping
 - `.github/workflows/fleet-plan.yml` — Phase 1 scheduled planning pipeline
-- `.github/workflows/fleet-dispatch.yml` — Phase 2 dispatch pipeline (triggered by plan PR merge)
-- `.github/workflows/fleet-merge.yml` — sequential PR merge pipeline
+- `.github/workflows/fleet-dispatch.yml` — Phase 2a queue-auto-merge pipeline (triggered by plan PR opened)
+- `.github/workflows/fleet-dispatch-after-merge.yml` — Phase 2b detect + dispatch pipeline (triggered by push to main or workflow_dispatch)
+- `.github/workflows/fleet-merge.yml` — sequential PR merge pipeline (Phase 3, via workflow_run)
 - `.github/workflows/jules-account-probe.yml` — read-only account diagnostic workflow
 - `.github/workflows/jules-archive-stale.yml` — archive workflow (manual dispatch)
 - `.github/instructions/fleet-operations.instructions.md` — operator runbook
