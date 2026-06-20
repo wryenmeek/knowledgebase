@@ -1,0 +1,355 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-06-20T05:26:39.507361+00:00",
+  "root_causes": [
+    {
+      "id": "rc-8-format",
+      "title": ".jules/bolt.md format inconsistency",
+      "severity": "low",
+      "issues": [
+        305
+      ],
+      "files": [
+        ".jules/bolt.md"
+      ],
+      "description": "**Code path:** `.jules/bolt.md`\n\n**Mechanism:** The file mixes older elaborated learning formats with the new exact format `## YYYY-MM-DD - [Title]\\n**Learning:** [Insight]\\n**Action:** [How to apply next time]`.\n\n**Root cause:** Lack of enforcement for exact memory formatting.",
+      "solution_summary": "**Proposed implementation:** Reformat all older entries to match the canonical format.",
+      "test_plan": "Verify the markdown file strictly complies with the regex `^## \\d{4}-\\d{2}-\\d{2} - \\[.+\\]\\n\\*\\*Learning:\\*\\* .+\\n\\*\\*Action:\\*\\* .+$` for every block.",
+      "edge_cases": "Line breaks inside `Learning` or `Action` values might break simple regex validations, but manual formatting should safely preserve markdown paragraphs."
+    },
+    {
+      "id": "rc-1-workflows",
+      "title": "jules-archive-stale.yml missing environment and concurrency gate",
+      "severity": "medium",
+      "issues": [
+        306,
+        305
+      ],
+      "files": [
+        ".github/workflows/jules-archive-stale.yml"
+      ],
+      "description": "**Code path:** `.github/workflows/jules-archive-stale.yml:57-61`\n\n**Mechanism:**\nThe destructive `jules-archive-stale.yml` workflow lacks an `environment:` approval gate for the `archive` job. Additionally, it lacks a `concurrency:` block, meaning two rapid manual runs can race to mass-archive sessions. \n```yaml\n  archive:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    steps:\n```\n\n**Root cause:** Missing workflow-level environment gate and concurrency grouping for a destructive script.",
+      "solution_summary": "**Proposed implementation:** Add `environment: jules-archive-approval` to the `archive` job, and `concurrency: group: jules-archive-stale, cancel-in-progress: false` to the workflow level.",
+      "test_plan": "1. Parse the YAML file and assert `environment: jules-archive-approval` is present under the `archive` job.\n2. Assert the concurrency block is present at the top level of the file.",
+      "edge_cases": "YAML parsing issues could occur if the file is poorly formatted, but standard git diff patching should handle this safely. Assuming `jules-archive-approval` environment exists in settings."
+    },
+    {
+      "id": "rc-6-adr-polish",
+      "title": "ADR documentation quality polish",
+      "severity": "medium",
+      "issues": [
+        304,
+        305
+      ],
+      "files": [
+        "docs/decisions/ADR-032-fleet-quota-saturation-soft-warn.md",
+        "docs/decisions/README.md",
+        "docs/decisions/ADR-005-write-concurrency-guards.md",
+        "docs/decisions/ADR-019-fleet-jules-orchestration.md",
+        "docs/decisions/ADR-031-lock-holder-pid-tracking.md",
+        "docs/decisions/ADR-030-cli-write-confirmation.md"
+      ],
+      "description": "**Code path:** `docs/decisions/ADR-032-fleet-quota-saturation-soft-warn.md` and others.\n\n**Mechanism:** ADRs lack standard sections:\n- ADR-032 lacks `## Alternatives considered`\n- ADR-031 in README does not state `extends ADR-005`\n- ADR-005 lacks `## Related decisions` backref to ADR-031\n- ADR-019 lacks backref to ADR-032\n- ADR-030 lacks backref to ADR-022 and ADR-005\n- `wryenmeek/hot-springs-island#595` shorthand url dead-ends.\n\n**Root cause:** Documentation process missed connecting back-references and alternative considerations.",
+      "solution_summary": "**Proposed implementation:** Add the missing headers, full URLs, and references explicitly to each file.",
+      "test_plan": "Validate the Markdown files to ensure the sections are present and links are correctly formatted.",
+      "edge_cases": "None, text only."
+    },
+    {
+      "id": "rc-7-diagnostics",
+      "title": "extractStatusCode gRPC code confusion and handleMergeFatal test",
+      "severity": "medium",
+      "issues": [
+        305
+      ],
+      "files": [
+        "scripts/fleet/github/mutation-diagnostics.ts"
+      ],
+      "description": "**Code path:** `scripts/fleet/github/mutation-diagnostics.ts:284`\n\n**Mechanism:** `extractStatusCode` reads `record.code` blindly as a number. For gRPC errors, this is `9`, which is mapped as `statusCode = 9`, colliding with HTTP space potentially. Additionally, `handleMergeFatal` quota_saturation path is untested.\n\n**Root cause:** extractStatusCode assumes `.code` is always an HTTP status. Test coverage gap for quota saturation in merge fatal handler.",
+      "solution_summary": "**Proposed implementation:** Extract grpc error into `grpcCode` rather than blindly casting `record.code` as HTTP code. Add tests for `handleMergeFatal` quota saturation.",
+      "test_plan": "Ensure `extractStatusCode` correctly separates gRPC from HTTP codes in `mutation-diagnostics.test.ts`. Verify the new `fleet-entrypoint-fatal.test.ts` block runs successfully.",
+      "edge_cases": "Errors might have overlapping properties; verify `record.code` safely defaults."
+    },
+    {
+      "id": "rc-2-frontmatter",
+      "title": "extract_frontmatter lacks tests and byte contract documentation",
+      "severity": "high",
+      "issues": [
+        303
+      ],
+      "files": [
+        "scripts/kb/page_template_utils.py"
+      ],
+      "description": "**Code path:** `scripts/kb/page_template_utils.py:135-146`\n**Mechanism:** The regex `_FRONTMATTER_BLOCK_RE` was introduced recently but lacks tests covering the body byte contract, notably CRLF mapping.\n```python\n        if fm.endswith(\"\\r\\n\"):\n            fm = fm[:-2]\n        elif fm.endswith(\"\\n\"):\n            fm = fm[:-1]\n        body = text[match.end():]\n```\n**Root cause:** The extraction byte parity behavior is not documented nor tested, introducing regression risks.",
+      "solution_summary": "**Proposed implementation:** Document the byte contract in the docstring. Add comprehensive unit tests in `tests/kb/test_extract_frontmatter.py` covering LF, CRLF, unclosed, empty frontmatter etc.",
+      "test_plan": "Test cases in `tests/kb/test_extract_frontmatter.py`:\n1. Happy LF: `---\\nfm\\n---\\nbody\\n` -> `('fm', 'body\\n')`\n2. Happy CRLF: `---\\r\\nfm\\r\\n---\\r\\nbody\\r\\n` -> `('fm', 'body\\r\\n')`\n3. Empty frontmatter: `---\\n---\\nbody\\n` -> `('', 'body\\n')`\n4. No frontmatter pass-through returns `(None, original_text)`\n5. Unclosed delim returns `(None, original_text)`\n6. `---` in mid-body does not re-trigger.",
+      "edge_cases": "Regex may be slow on huge files, but testing must ensure `extract_frontmatter` matches exactly the byte contract established by prior implementation without memory leaks."
+    },
+    {
+      "id": "rc-3-write-utils",
+      "title": "write_utils lock holder issues and test coverage gaps",
+      "severity": "high",
+      "issues": [
+        302,
+        305
+      ],
+      "files": [
+        "scripts/kb/write_utils.py"
+      ],
+      "description": "**Code path:** `scripts/kb/write_utils.py:402`, `300`, `279`, `319`\n\n**Mechanism:**\n1. At line 402, `LockUnavailableError(contracts.GOVERNANCE_META_LOCK_PATH)` does not pass `lock_file_path=...`, falling back to `cwd` resolution, failing holder introspection when not in root.\n2. `_read_lock_holder_details` doesn't catch `UnicodeDecodeError`.\n3. `_darwin_pid_start_time_unix_seconds` fallback at line 279 returns `time.time()`, shifting by local UTC offset since ps is local time.\n4. `_linux_pid_start_time_unix_seconds` and `_holder_process_is_alive` error branches (like EPERM) are completely untested.\n\n**Root cause:** Flawed lock metadata introspection and gaps in testing error branches.",
+      "solution_summary": "**Proposed implementation:** Pass `lock_file_path` to `LockUnavailableError` meta lock, catch `UnicodeDecodeError`, fix Darwin time fallback. Extend tests in `test_write_utils.py` to cover `_linux_pid_start_time_unix_seconds` parser and `PermissionError` paths in `_holder_process_is_alive`.",
+      "test_plan": "1. Assert `holder_alive` and `holder_context_hash` in `test_sibling_governance_lock_fails_when_customizations_lock_is_held`.\n2. Mock `os.kill` to raise `PermissionError` and `OSError` with `errno.EPERM` to ensure `_holder_process_is_alive` returns `True`.\n3. Mock `os.kill` to raise `OSError` with unknown errno to ensure it returns `None`.\n4. Mock `Path.read_text` for `/proc/pid/stat` to cover Linux stat parsing edge cases.",
+      "edge_cases": "Darwin time fallback using `time.time()` was problematic; returning `None` instead disables start-time verification fallback safely. `os.kill` mock tests must clean up patches to avoid polluting other tests."
+    },
+    {
+      "id": "rc-4-archive-cli",
+      "title": "archive-stale-sessions CLI arg parsing bugs",
+      "severity": "high",
+      "issues": [
+        301,
+        305
+      ],
+      "files": [
+        "scripts/fleet/archive-stale-sessions.ts"
+      ],
+      "description": "**Code path:** `scripts/fleet/archive-stale-sessions.ts:121`\n\n**Mechanism:** \n```typescript\n} else if (arg === \"--source-filter\" && argv[i + 1]) {\n```\nEmpty or whitespace strings bypass validation because an empty string is falsy but whitespace is truthy, bypassing the explicit apply gate logic later.\n\n**Root cause:** Flawed logic relying on JS truthiness instead of explicit trimming and length checking. Also, order-dependent overrides were untested.",
+      "solution_summary": "**Proposed implementation:** Explicitly check for undefined or whitespace-only values when parsing `--source-filter`. Add test coverage for order-dependent overrides.",
+      "test_plan": "1. Invoke `parseCliArgs` with `--source-filter \"   \" --apply` and expect Error to be thrown.\n2. Invoke with `--source-filter \"\"` and expect Error.\n3. Test `--repo all --source-filter X` and verify `sourceFilter` is `X` and `repoAll` is `true` independent of argument order.",
+      "edge_cases": "Ensure argument index `i` is properly incremented when reading the value. Unhandled arguments might throw, which is expected."
+    },
+    {
+      "id": "rc-5-approval-hooks",
+      "title": "check_approval_flag.py and alias bugs & test coverage",
+      "severity": "high",
+      "issues": [
+        300,
+        305
+      ],
+      "files": [
+        "scripts/hooks/check_approval_flag.py",
+        "scripts/_optional_surface_common.py"
+      ],
+      "description": "**Code path:** `scripts/hooks/check_approval_flag.py:271-277`, `tests/kb/test_approval_migration_ratchet.py:31`\n\n**Mechanism:**\n1. The deadline check fires before the exemption check, causing the alias script to be rejected after the deadline.\n2. The ratchet test checks `len(files) <= MAX_APPROVAL_FLAG_SCRIPTS` instead of `==`.\n3. `_contains_approval_flag` has false positives for substrings.\n4. Payload-path gating and BEFORE deadline equality check are untested.\n5. `normalize_apply_alias` lacks alias coverage matrix testing.\n\n**Root cause:** Logic order bug for exemptions, weak `<=` assertion, and missing test coverage for edge paths.",
+      "solution_summary": "**Proposed implementation:** Move exemption check above equals-form check, change `<=` to `==` in `test_approval_migration_ratchet.py`, and remove dead code in `normalize_apply_alias`. Add tests for payload-path gating and alias matrix.",
+      "test_plan": "1. Assert `test_approval_flag_script_count_does_not_exceed_contract` uses `==`.\n2. Ensure alias file changes pass the hook by moving the exemption check higher.\n3. Test `_payload_script_paths` failure short-circuit and `env` var precedence.\n4. Add matrix-style test iterating `EXPECTED_WRITE_SURFACE_MATRIX_ROWS` for `--apply` aliases.",
+      "edge_cases": "Exemptions bypassing the deadline check must only apply to `_EXEMPT_PATHS` (the alias script itself)."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "rc-8-format",
+      "title": ".jules/bolt.md format inconsistency",
+      "root_cause": "rc-8-format",
+      "issues": [
+        305
+      ],
+      "files": [
+        ".jules/bolt.md"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "A highly detailed, code-rich, self-contained prompt for a coding agent. \nYou must fix issues [305] relating to .jules/bolt.md format inconsistency.\nThe root cause explanation: **Code path:** `.jules/bolt.md`\n\n**Mechanism:** The file mixes older elaborated learning formats with the new exact format `## YYYY-MM-DD - [Title]\\n**Learning:** [Insight]\\n**Action:** [How to apply next time]`.\n\n**Root cause:** Lack of enforcement for exact memory formatting.\nProposed Implementation Details: Reformat `.jules/bolt.md` to strictly follow:\n`## YYYY-MM-DD - [Title]`\n`**Learning:** [Insight]`\n`**Action:** [How to apply next time]`\nDo not lose information, just convert formats.\nTest Scenarios: Verify the markdown file strictly complies with the regex `^## \\d{4}-\\d{2}-\\d{2} - \\[.+\\]\\n\\*\\*Learning:\\*\\* .+\\n\\*\\*Action:\\*\\* .+$` for every block.\nEdge Cases: Line breaks inside `Learning` or `Action` values might break simple regex validations, but manual formatting should safely preserve markdown paragraphs.\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "rc-1-workflows",
+      "title": "jules-archive-stale.yml missing environment and concurrency gate",
+      "root_cause": "rc-1-workflows",
+      "issues": [
+        306,
+        305
+      ],
+      "files": [
+        ".github/workflows/jules-archive-stale.yml"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "medium",
+      "prompt": "A highly detailed, code-rich, self-contained prompt for a coding agent. \nYou must fix issues [306, 305] relating to jules-archive-stale.yml missing environment and concurrency gate.\nThe root cause explanation: **Code path:** `.github/workflows/jules-archive-stale.yml:57-61`\n\n**Mechanism:**\nThe destructive `jules-archive-stale.yml` workflow lacks an `environment:` approval gate for the `archive` job. Additionally, it lacks a `concurrency:` block, meaning two rapid manual runs can race to mass-archive sessions. \n```yaml\n  archive:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    steps:\n```\n\n**Root cause:** Missing workflow-level environment gate and concurrency grouping for a destructive script.\nProposed Implementation Details: Add `environment: jules-archive-approval` to the `archive` job in `.github/workflows/jules-archive-stale.yml`. \nAlso add `concurrency: group: jules-archive-stale, cancel-in-progress: false` at the workflow root.\n\n```diff\nname: Jules Archive Stale Sessions\non:\n  workflow_dispatch:\n    inputs:\n...\n+concurrency: group: jules-archive-stale, cancel-in-progress: false\njobs:\n  archive:\n+   environment: jules-archive-approval\n    runs-on: ubuntu-latest\n```\nTest Scenarios: 1. Parse the YAML file and assert `environment: jules-archive-approval` is present under the `archive` job.\n2. Assert the concurrency block is present at the top level of the file.\nEdge Cases: YAML parsing issues could occur if the file is poorly formatted, but standard git diff patching should handle this safely. Assuming `jules-archive-approval` environment exists in settings.\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "rc-6-adr-polish",
+      "title": "ADR documentation quality polish",
+      "root_cause": "rc-6-adr-polish",
+      "issues": [
+        304,
+        305
+      ],
+      "files": [
+        "docs/decisions/ADR-032-fleet-quota-saturation-soft-warn.md",
+        "docs/decisions/README.md",
+        "docs/decisions/ADR-005-write-concurrency-guards.md",
+        "docs/decisions/ADR-019-fleet-jules-orchestration.md",
+        "docs/decisions/ADR-031-lock-holder-pid-tracking.md",
+        "docs/decisions/ADR-030-cli-write-confirmation.md"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "medium",
+      "prompt": "A highly detailed, code-rich, self-contained prompt for a coding agent. \nYou must fix issues [304, 305] relating to ADR documentation quality polish.\nThe root cause explanation: **Code path:** `docs/decisions/ADR-032-fleet-quota-saturation-soft-warn.md` and others.\n\n**Mechanism:** ADRs lack standard sections:\n- ADR-032 lacks `## Alternatives considered`\n- ADR-031 in README does not state `extends ADR-005`\n- ADR-005 lacks `## Related decisions` backref to ADR-031\n- ADR-019 lacks backref to ADR-032\n- ADR-030 lacks backref to ADR-022 and ADR-005\n- `wryenmeek/hot-springs-island#595` shorthand url dead-ends.\n\n**Root cause:** Documentation process missed connecting back-references and alternative considerations.\nProposed Implementation Details: In `ADR-032`, add `## Alternatives considered` with (a) Mirror HSI #595, (b) Keep failed_precondition and suppress exit 1, (c) Do nothing. Replace shorthand URL with full GitHub issue URL.\nIn `README.md`, update ADR-031 to `Accepted \u2014 extends ADR-005`. Soften preamble to `derived from SPEC.md and tracked GitHub issues`.\nIn `ADR-005`, add `## Related decisions` linking to `ADR-031-lock-holder-pid-tracking.md`.\nIn `ADR-019`, add `## Related decisions` linking to `ADR-032-fleet-quota-saturation-soft-warn.md`.\nAdjust section ordering in ADR-031 (Alternatives before Consequences). Document privacy tradeoff.\nIn `ADR-030`, add `## Related decisions` linking to ADR-022 and ADR-005.\nTest Scenarios: Validate the Markdown files to ensure the sections are present and links are correctly formatted.\nEdge Cases: None, text only.\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "rc-7-diagnostics",
+      "title": "extractStatusCode gRPC code confusion and handleMergeFatal test",
+      "root_cause": "rc-7-diagnostics",
+      "issues": [
+        305
+      ],
+      "files": [
+        "scripts/fleet/github/mutation-diagnostics.ts"
+      ],
+      "new_files": [],
+      "test_files": [
+        "scripts/fleet/github/mutation-diagnostics.test.ts",
+        "scripts/fleet/fleet-entrypoint-fatal.test.ts"
+      ],
+      "risk": "medium",
+      "prompt": "A highly detailed, code-rich, self-contained prompt for a coding agent. \nYou must fix issues [305] relating to extractStatusCode gRPC code confusion and handleMergeFatal test.\nThe root cause explanation: **Code path:** `scripts/fleet/github/mutation-diagnostics.ts:284`\n\n**Mechanism:** `extractStatusCode` reads `record.code` blindly as a number. For gRPC errors, this is `9`, which is mapped as `statusCode = 9`, colliding with HTTP space potentially. Additionally, `handleMergeFatal` quota_saturation path is untested.\n\n**Root cause:** extractStatusCode assumes `.code` is always an HTTP status. Test coverage gap for quota saturation in merge fatal handler.\nProposed Implementation Details: In `extractStatusCode` inside `mutation-diagnostics.ts`, do not read `record.code` blindly into `statusCode` candidates unless verifying it's an HTTP format. We will extract grpc codes to a new property `grpcCode` on the output object if `record.code` is a small integer (< 100). Or just remove it from `candidates` array.\nIn `fleet-entrypoint-fatal.test.ts`, add:\n```typescript\n  test(\"fleet-merge fatal handler routes quota_saturation to ::warning + exit 0\", async () => {\n    const { handleMergeFatal } = await fatalHandlersPromise;\n    const error = makeQuotaSaturationFailure(\"fleet-merge:jules.run:task-1\");\n    const capture = withFatalCapture(() => {\n      expect(() => handleMergeFatal(error)).toThrow(\"EXIT_0\");\n    });\n    expect(capture.output).toContain(\"::warning::\");\n    expect(capture.output).toContain(\"quota\");\n    expect(capture.output).toContain('\"classification\":\"quota_saturation\"');\n  });\n```\nTest Scenarios: Ensure `extractStatusCode` correctly separates gRPC from HTTP codes in `mutation-diagnostics.test.ts`. Verify the new `fleet-entrypoint-fatal.test.ts` block runs successfully.\nEdge Cases: Errors might have overlapping properties; verify `record.code` safely defaults.\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "rc-2-frontmatter",
+      "title": "extract_frontmatter lacks tests and byte contract documentation",
+      "root_cause": "rc-2-frontmatter",
+      "issues": [
+        303
+      ],
+      "files": [
+        "scripts/kb/page_template_utils.py"
+      ],
+      "new_files": [
+        "tests/kb/test_extract_frontmatter.py"
+      ],
+      "test_files": [
+        "tests/kb/test_extract_frontmatter.py"
+      ],
+      "risk": "high",
+      "prompt": "A highly detailed, code-rich, self-contained prompt for a coding agent. \nYou must fix issues [303] relating to extract_frontmatter lacks tests and byte contract documentation.\nThe root cause explanation: **Code path:** `scripts/kb/page_template_utils.py:135-146`\n**Mechanism:** The regex `_FRONTMATTER_BLOCK_RE` was introduced recently but lacks tests covering the body byte contract, notably CRLF mapping.\n```python\n        if fm.endswith(\"\\r\\n\"):\n            fm = fm[:-2]\n        elif fm.endswith(\"\\n\"):\n            fm = fm[:-1]\n        body = text[match.end():]\n```\n**Root cause:** The extraction byte parity behavior is not documented nor tested, introducing regression risks.\nProposed Implementation Details: Modify `scripts/kb/page_template_utils.py` to add a docstring to `extract_frontmatter` detailing its byte contract (e.g. preserves trailing newlines and CRLF precisely).\nCreate `tests/kb/test_extract_frontmatter.py` using standard unittest/pytest to test:\n- LF\n- CRLF (`---\r\nfm\r\n---\r\nbody\r\n`)\n- Leading whitespace\n- Empty frontmatter\n- Unclosed delim\n\n```diff\n def extract_frontmatter(text: str) -> tuple[str | None, str]:\n+    \"\"\"Extract frontmatter and body, preserving body newlines and CRLF exactly.\"\"\"\n     match = _FRONTMATTER_BLOCK_RE.match(text)\n```\nTest Scenarios: Test cases in `tests/kb/test_extract_frontmatter.py`:\n1. Happy LF: `---\\nfm\\n---\\nbody\\n` -> `('fm', 'body\\n')`\n2. Happy CRLF: `---\\r\\nfm\\r\\n---\\r\\nbody\\r\\n` -> `('fm', 'body\\r\\n')`\n3. Empty frontmatter: `---\\n---\\nbody\\n` -> `('', 'body\\n')`\n4. No frontmatter pass-through returns `(None, original_text)`\n5. Unclosed delim returns `(None, original_text)`\n6. `---` in mid-body does not re-trigger.\nEdge Cases: Regex may be slow on huge files, but testing must ensure `extract_frontmatter` matches exactly the byte contract established by prior implementation without memory leaks.\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "rc-3-write-utils",
+      "title": "write_utils lock holder issues and test coverage gaps",
+      "root_cause": "rc-3-write-utils",
+      "issues": [
+        302,
+        305
+      ],
+      "files": [
+        "scripts/kb/write_utils.py"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_write_utils.py"
+      ],
+      "risk": "high",
+      "prompt": "A highly detailed, code-rich, self-contained prompt for a coding agent. \nYou must fix issues [302, 305] relating to write_utils lock holder issues and test coverage gaps.\nThe root cause explanation: **Code path:** `scripts/kb/write_utils.py:402`, `300`, `279`, `319`\n\n**Mechanism:**\n1. At line 402, `LockUnavailableError(contracts.GOVERNANCE_META_LOCK_PATH)` does not pass `lock_file_path=...`, falling back to `cwd` resolution, failing holder introspection when not in root.\n2. `_read_lock_holder_details` doesn't catch `UnicodeDecodeError`.\n3. `_darwin_pid_start_time_unix_seconds` fallback at line 279 returns `time.time()`, shifting by local UTC offset since ps is local time.\n4. `_linux_pid_start_time_unix_seconds` and `_holder_process_is_alive` error branches (like EPERM) are completely untested.\n\n**Root cause:** Flawed lock metadata introspection and gaps in testing error branches.\nProposed Implementation Details: Fix 1:\n```diff\n-            raise LockUnavailableError(contracts.GOVERNANCE_META_LOCK_PATH) from exc\n+            raise LockUnavailableError(contracts.GOVERNANCE_META_LOCK_PATH, lock_file_path=repo_root / contracts.GOVERNANCE_META_LOCK_PATH) from exc\n```\n\nFix 2:\n```diff\n-    except OSError:\n+    except (OSError, UnicodeDecodeError):\n         return None\n```\n\nFix 3: Darwin fallback fix\n```diff\n def _current_process_start_time_unix_seconds() -> float:\n-    return time.time()\n+    return None\n```\n\nFix 4: Add coverage for Linux `/proc/<pid>/stat` parser and `PermissionError`/`unknown errno` paths for `_holder_process_is_alive` in `test_write_utils.py` using `unittest.mock.patch`.\nTest Scenarios: 1. Assert `holder_alive` and `holder_context_hash` in `test_sibling_governance_lock_fails_when_customizations_lock_is_held`.\n2. Mock `os.kill` to raise `PermissionError` and `OSError` with `errno.EPERM` to ensure `_holder_process_is_alive` returns `True`.\n3. Mock `os.kill` to raise `OSError` with unknown errno to ensure it returns `None`.\n4. Mock `Path.read_text` for `/proc/pid/stat` to cover Linux stat parsing edge cases.\nEdge Cases: Darwin time fallback using `time.time()` was problematic; returning `None` instead disables start-time verification fallback safely. `os.kill` mock tests must clean up patches to avoid polluting other tests.\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "rc-4-archive-cli",
+      "title": "archive-stale-sessions CLI arg parsing bugs",
+      "root_cause": "rc-4-archive-cli",
+      "issues": [
+        301,
+        305
+      ],
+      "files": [
+        "scripts/fleet/archive-stale-sessions.ts"
+      ],
+      "new_files": [],
+      "test_files": [
+        "scripts/fleet/archive-stale-sessions.test.ts"
+      ],
+      "risk": "high",
+      "prompt": "A highly detailed, code-rich, self-contained prompt for a coding agent. \nYou must fix issues [301, 305] relating to archive-stale-sessions CLI arg parsing bugs.\nThe root cause explanation: **Code path:** `scripts/fleet/archive-stale-sessions.ts:121`\n\n**Mechanism:** \n```typescript\n} else if (arg === \"--source-filter\" && argv[i + 1]) {\n```\nEmpty or whitespace strings bypass validation because an empty string is falsy but whitespace is truthy, bypassing the explicit apply gate logic later.\n\n**Root cause:** Flawed logic relying on JS truthiness instead of explicit trimming and length checking. Also, order-dependent overrides were untested.\nProposed Implementation Details: Change `parseCliArgs`:\n```typescript\n} else if (arg === \"--source-filter\") {\n  const value = argv[++i];\n  if (value === undefined || value.trim().length === 0) {\n    throw new Error(\"--source-filter requires a non-empty value\");\n  }\n  sourceFilter = value;\n}\n```\nAdd testing in `scripts/fleet/archive-stale-sessions.test.ts` for empty, whitespace-only inputs, and order dependent overwrite (`--repo current --source-filter X` vs `--source-filter X --repo current`).\nTest Scenarios: 1. Invoke `parseCliArgs` with `--source-filter \"   \" --apply` and expect Error to be thrown.\n2. Invoke with `--source-filter \"\"` and expect Error.\n3. Test `--repo all --source-filter X` and verify `sourceFilter` is `X` and `repoAll` is `true` independent of argument order.\nEdge Cases: Ensure argument index `i` is properly incremented when reading the value. Unhandled arguments might throw, which is expected.\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "rc-5-approval-hooks",
+      "title": "check_approval_flag.py and alias bugs & test coverage",
+      "root_cause": "rc-5-approval-hooks",
+      "issues": [
+        300,
+        305
+      ],
+      "files": [
+        "scripts/hooks/check_approval_flag.py",
+        "scripts/_optional_surface_common.py"
+      ],
+      "new_files": [
+        "tests/kb/test_check_approval_flag.py"
+      ],
+      "test_files": [
+        "tests/kb/test_approval_migration_ratchet.py",
+        "tests/kb/test_contracts.py",
+        "tests/kb/test_optional_surface_scripts.py",
+        "tests/kb/test_check_approval_flag.py"
+      ],
+      "risk": "high",
+      "prompt": "A highly detailed, code-rich, self-contained prompt for a coding agent. \nYou must fix issues [300, 305] relating to check_approval_flag.py and alias bugs & test coverage.\nThe root cause explanation: **Code path:** `scripts/hooks/check_approval_flag.py:271-277`, `tests/kb/test_approval_migration_ratchet.py:31`\n\n**Mechanism:**\n1. The deadline check fires before the exemption check, causing the alias script to be rejected after the deadline.\n2. The ratchet test checks `len(files) <= MAX_APPROVAL_FLAG_SCRIPTS` instead of `==`.\n3. `_contains_approval_flag` has false positives for substrings.\n4. Payload-path gating and BEFORE deadline equality check are untested.\n5. `normalize_apply_alias` lacks alias coverage matrix testing.\n\n**Root cause:** Logic order bug for exemptions, weak `<=` assertion, and missing test coverage for edge paths.\nProposed Implementation Details: In `scripts/hooks/check_approval_flag.py`:\nMove `if staged_path.path in _EXEMPT_PATHS: continue` BEFORE the equals-form check (`if _contains_approval_equals(staged_text) ...`).\n\nIn `tests/kb/test_approval_migration_ratchet.py`:\n```diff\n-    assert len(files) <= MAX_APPROVAL_FLAG_SCRIPTS\n+    assert len(files) == MAX_APPROVAL_FLAG_SCRIPTS\n```\n\nIn `scripts/_optional_surface_common.py`, remove the dead duplicate check at line 456:\n```diff\n-    if \"--approval\" in args or any(token.startswith(\"--approval=\") for token in args):\n-        raise ValueError(\"--apply cannot be combined with --approval\")\n```\n\nAdd tests in `tests/kb/test_optional_surface_scripts.py` for alias matrix logic. Add coverage for `check_approval_flag.py` BEFORE deadline.\nTest Scenarios: 1. Assert `test_approval_flag_script_count_does_not_exceed_contract` uses `==`.\n2. Ensure alias file changes pass the hook by moving the exemption check higher.\n3. Test `_payload_script_paths` failure short-circuit and `env` var precedence.\n4. Add matrix-style test iterating `EXPECTED_WRITE_SURFACE_MATRIX_ROWS` for `--apply` aliases.\nEdge Cases: Exemptions bypassing the deadline check must only apply to `_EXEMPT_PATHS` (the alias script itself).\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [
+    {
+      "issue": 212,
+      "reason": "Requires human-in-the-loop Phase 7 validation by comparing fresh VS Code Copilot Chat session with CLI session.",
+      "suggested_owner": "QA Engineer / Operator"
+    },
+    {
+      "issue": 207,
+      "reason": "Requires adversarial QA gate validating the read-only classifier with manual audit of findings.",
+      "suggested_owner": "QA Engineer / Operator"
+    },
+    {
+      "issue": 198,
+      "reason": "Requires human adversarial QA gate and cross-functional review chain (code-reviewer, security-auditor, solutions-architect).",
+      "suggested_owner": "QA Engineer / Security Auditor"
+    },
+    {
+      "issue": 196,
+      "reason": "Requires manual phase 1.5 spike to empirically measure agent compliance rate via manual CLI session and VS Code Copilot Chat.",
+      "suggested_owner": "QA Engineer"
+    },
+    {
+      "issue": 194,
+      "reason": "Requires manual phase 0 spike with fresh CLI 1.0.60 session to validate hook firing and override behavior.",
+      "suggested_owner": "QA Engineer"
+    },
+    {
+      "issue": 188,
+      "reason": "Requires HITL operator step to review reconciliation report and approve bootstrap application (--approval approved).",
+      "suggested_owner": "HITL Operator"
+    },
+    {
+      "issue": 156,
+      "reason": "Requires human decision for deployment platform, operational ownership model, and security controls for semantic query API.",
+      "suggested_owner": "Solutions Architect / Tech Lead"
+    },
+    {
+      "issue": 82,
+      "reason": "Requires external investigation of JULES_API_KEY entitlement, account/project linkage, and provider-side preconditions.",
+      "suggested_owner": "Platform Engineer"
+    }
+  ],
+  "file_ownership": {
+    ".jules/bolt.md": "rc-8-format",
+    ".github/workflows/jules-archive-stale.yml": "rc-1-workflows",
+    "docs/decisions/ADR-032-fleet-quota-saturation-soft-warn.md": "rc-6-adr-polish",
+    "docs/decisions/README.md": "rc-6-adr-polish",
+    "docs/decisions/ADR-005-write-concurrency-guards.md": "rc-6-adr-polish",
+    "docs/decisions/ADR-019-fleet-jules-orchestration.md": "rc-6-adr-polish",
+    "docs/decisions/ADR-031-lock-holder-pid-tracking.md": "rc-6-adr-polish",
+    "docs/decisions/ADR-030-cli-write-confirmation.md": "rc-6-adr-polish",
+    "scripts/fleet/github/mutation-diagnostics.ts": "rc-7-diagnostics",
+    "scripts/fleet/github/mutation-diagnostics.test.ts": "rc-7-diagnostics",
+    "scripts/fleet/fleet-entrypoint-fatal.test.ts": "rc-7-diagnostics",
+    "scripts/kb/page_template_utils.py": "rc-2-frontmatter",
+    "tests/kb/test_extract_frontmatter.py": "rc-2-frontmatter",
+    "scripts/kb/write_utils.py": "rc-3-write-utils",
+    "tests/kb/test_write_utils.py": "rc-3-write-utils",
+    "scripts/fleet/archive-stale-sessions.ts": "rc-4-archive-cli",
+    "scripts/fleet/archive-stale-sessions.test.ts": "rc-4-archive-cli",
+    "scripts/hooks/check_approval_flag.py": "rc-5-approval-hooks",
+    "scripts/_optional_surface_common.py": "rc-5-approval-hooks",
+    "tests/kb/test_approval_migration_ratchet.py": "rc-5-approval-hooks",
+    "tests/kb/test_contracts.py": "rc-5-approval-hooks",
+    "tests/kb/test_optional_surface_scripts.py": "rc-5-approval-hooks",
+    "tests/kb/test_check_approval_flag.py": "rc-5-approval-hooks"
+  }
+}
