@@ -127,7 +127,7 @@ def extract_frontmatter(text: str) -> tuple[str | None, str]:
     """Extract a YAML frontmatter block and the body from a markdown document.
 
     Returns a tuple of (frontmatter, body). If no frontmatter block is found,
-    returns (None, original_text). The original body bytes (including CRLF and
+    returns (None, original_text). The original body characters (including CRLF and
     trailing newlines) are preserved verbatim.
     """
     if not text.lstrip(" \t").startswith("---"):
