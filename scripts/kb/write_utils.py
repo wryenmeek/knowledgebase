@@ -239,7 +239,7 @@ def _darwin_pid_start_time_unix_seconds(pid: int) -> float | None:
         ps_env = dict(os.environ)
         ps_env["LC_TIME"] = "C"
         completed = subprocess.run(
-            ["ps", "-o", "lstart=", "-p", str(pid)],
+            ["/bin/ps", "-o", "lstart=", "-p", str(pid)],
             check=True,
             capture_output=True,
             text=True,
@@ -256,7 +256,12 @@ def _darwin_pid_start_time_unix_seconds(pid: int) -> float | None:
         return None
     local_tz = datetime.now().astimezone().tzinfo
     if local_tz is None:
-        return parsed.replace(tzinfo=timezone.utc).timestamp()
+        # local_tz is None should be vanishingly rare on real systems (datetime.now().astimezone()
+        # returns the OS local timezone). When it does happen, treat the parsed time as local time
+        # via time.mktime — that primitive uses the system's local-time interpretation including DST,
+        # which is correct regardless of whether the standard offset is 0 (e.g., London/GMT during BST,
+        # where time.timezone == 0 made the previous `if time.timezone:` falsy guard misbehave).
+        return time.mktime(parsed.timetuple())
     return parsed.replace(tzinfo=local_tz).timestamp()
 
 
@@ -300,7 +305,7 @@ def _read_lock_holder_details(lock_file_path: Path) -> _LockHolderDetails | None
         line = lock_file_path.read_text(encoding="utf-8").splitlines()[0].strip()
     except IndexError:
         return None
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
 
     if not line:
@@ -399,7 +404,10 @@ def _acquire_sibling_governance_lock(
         try:
             fcntl.flock(meta_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
-            raise LockUnavailableError(contracts.GOVERNANCE_META_LOCK_PATH) from exc
+            raise LockUnavailableError(
+                contracts.GOVERNANCE_META_LOCK_PATH,
+                lock_file_path=repo_root / contracts.GOVERNANCE_META_LOCK_PATH,
+            ) from exc
         try:
             for sibling_lock_path in sorted(contracts.GOVERNANCE_SIBLING_LOCKS):
                 if sibling_lock_path == lock_path:
