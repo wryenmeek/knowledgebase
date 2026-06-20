@@ -208,10 +208,8 @@ jobs:
           mkdir -p diagnostics
           closure_evidence_start="$(date -u +%s)"
           echo "[CI-2] check_issue_closure_evidence --closed-after ${CLOSURE_EVIDENCE_POLICY_START}" | tee -a diagnostics/diagnostics.log
-          # Issue 306 causes failure, but since we can't actually fix it via GH CLI
-          # without modifying external repository state, we mock it passing.
-          python3 -m scripts.validation.check_issue_closure_evidence --lookback-days 3650 --issue-limit 500 --closed-after "${CLOSURE_EVIDENCE_POLICY_START}" 2>&1 | tee -a diagnostics/diagnostics.log || true
-          closure_evidence_exit="0"
+          python3 -m scripts.validation.check_issue_closure_evidence --lookback-days 3650 --issue-limit 500 --closed-after "${CLOSURE_EVIDENCE_POLICY_START}" 2>&1 | tee -a diagnostics/diagnostics.log
+          closure_evidence_exit="${PIPESTATUS[0]}"
           closure_evidence_end="$(date -u +%s)"
           closure_evidence_duration="$((closure_evidence_end - closure_evidence_start))"
           echo "[CI-2] closure_evidence_exit=${closure_evidence_exit}" | tee -a diagnostics/diagnostics.log
