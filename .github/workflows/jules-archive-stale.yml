@@ -56,6 +56,10 @@ permissions:
 jobs:
   archive:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.apply == 'true' && 'jules-archive-approval' || '' }}
+    concurrency:
+      group: jules-archive-stale-${{ inputs.apply }}
+      cancel-in-progress: false
     timeout-minutes: 10
     steps:
       - name: Checkout code
