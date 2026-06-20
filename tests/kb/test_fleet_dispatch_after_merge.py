@@ -134,6 +134,29 @@ class TestFleetDispatchAfterMergeTrigger(_AssertMixin):
         """
         self.assertNotIn("pull_request", self.on_block)
 
+    def test_trigger_supports_workflow_dispatch_escape_hatch(self) -> None:
+        """Phase 2b must expose workflow_dispatch as the operator escape hatch.
+
+        Background (Layer 6): GitHub suppresses every workflow that would
+        normally fire from a `push` event when the push was authored by the
+        repository's GITHUB_TOKEN (see GitHub Actions docs on triggering
+        workflows from other workflows). Phase 2a queues `gh pr merge --auto`
+        using the default GITHUB_TOKEN, so the resulting squash-merge push to
+        main does NOT fire any push-triggered workflows — including this one.
+        Until Phase 2a switches to a non-GITHUB_TOKEN identity (GitHub App
+        token recommended; see Issue #310), the operator must manually
+        trigger this workflow with `gh workflow run` after the planning PR
+        auto-merges. The workflow_dispatch trigger is the supported entry
+        point for that recovery flow.
+        """
+        self.assertIn(
+            "workflow_dispatch",
+            self.on_block,
+            "Phase 2b must expose workflow_dispatch so an operator can "
+            "manually dispatch after a GITHUB_TOKEN-authored auto-merge "
+            "(which would otherwise suppress the push event). See Layer 6.",
+        )
+
 
 class TestFleetDispatchAfterMergeStructure(_AssertMixin):
     """Job structure contracts for Phase 2b."""
@@ -266,6 +289,67 @@ class TestFleetDispatchAfterMergeDetection(_AssertMixin):
             self.workflow_text,
             "Phase 2b must read .pending_session from fleet-state",
         )
+
+    def test_workflow_dispatch_detection_uses_fleet_state_not_diff(self) -> None:
+        """For workflow_dispatch (the Layer 6 escape hatch), detection must
+        branch on github.event_name and resolve the artifact via fleet-state's
+        pending_date rather than the HEAD~1 diff.
+
+        Reason: when an operator triggers this workflow manually after Phase 2a's
+        GITHUB_TOKEN-authored auto-merge, intervening commits may have landed on
+        main between the planning PR merge and the manual trigger. HEAD~1 would
+        then point at an unrelated commit and the diff-based detection would
+        skip silently. The fleet-state-derived path is the correct primitive.
+
+        Security: the fleet-state-derived path validates the pending_date shape
+        (YYYY_MM_DD) before constructing the artifact path, and confirms the
+        artifact file exists on main before proceeding — that replaces the
+        diff-based filter as the safety guard for this code path.
+        """
+        blocks = _collect_run_blocks(self.workflow)
+        dispatch_blocks = [b for b in blocks if "workflow_dispatch" in b and "github.event_name" in b]
+        self.assertTrue(
+            dispatch_blocks,
+            "Phase 2b must branch detection on github.event_name = "
+            "workflow_dispatch so the manual escape hatch does not rely on "
+            "the HEAD~1 diff (which can miss the artifact after intervening "
+            "commits land on main).",
+        )
+        for block in dispatch_blocks:
+            self.assertIn(
+                "pending_session",
+                block,
+                "workflow_dispatch detection must resolve the artifact path "
+                "via fleet-state's pending_session, not via HEAD~1 diff",
+            )
+            self.assertIn(
+                "is_planning_merge=false",
+                block,
+                "workflow_dispatch detection must fail closed (exit with "
+                "is_planning_merge=false) when fleet-state is missing or "
+                "the artifact is not present on main",
+            )
+
+    def test_workflow_dispatch_detection_validates_date_shape(self) -> None:
+        """workflow_dispatch detection constructs a filesystem path from the
+        fleet-state pending_date. The date must be validated against the
+        YYYY_MM_DD shape before path construction to prevent fleet-state
+        mutation from steering reads outside .fleet/<date>/.
+
+        fleet-state is an unprotected branch; treat its contents as untrusted
+        input even for read-only path construction.
+        """
+        blocks = _collect_run_blocks(self.workflow)
+        dispatch_blocks = [b for b in blocks if "workflow_dispatch" in b and "github.event_name" in b]
+        self.assertTrue(dispatch_blocks)
+        for block in dispatch_blocks:
+            self.assertIn(
+                "[0-9]{4}_[0-9]{2}_[0-9]{2}",
+                block,
+                "workflow_dispatch detection must validate pending_date "
+                "against the YYYY_MM_DD shape before constructing a "
+                ".fleet/<date>/issue_tasks.json path",
+            )
 
 
 class TestFleetDispatchAfterMergeInjectionGuard(_AssertMixin):

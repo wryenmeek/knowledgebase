@@ -43,6 +43,16 @@
 #     This covers the case where a planning PR was merged manually after
 #     fleet-state was cleared, or where this workflow is re-run on an
 #     older push event.
+#   - `workflow_dispatch` is the operator escape hatch. It exists because
+#     GitHub suppresses `push` event workflow runs when the push was
+#     authored by GITHUB_TOKEN (e.g., Phase 2a's `gh pr merge --auto` from
+#     within Actions). Phase 2b therefore won't auto-fire on every
+#     planning-PR merge until Phase 2a switches to a non-GITHUB_TOKEN
+#     identity (GitHub App token recommended — see Issue #310, Layer 6).
+#     Until then, an operator runs `gh workflow run
+#     fleet-dispatch-after-merge.yml --ref main` after the planning PR
+#     auto-merges, and the same detect/cross-check/dispatch path runs as
+#     for a normal push.
 name: Fleet Dispatch After Merge
 
 on:
@@ -50,6 +60,7 @@ on:
     branches: [main]
     paths:
       - ".fleet/*/issue_tasks.json"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -74,10 +85,56 @@ jobs:
         id: detect
         run: |
           set -euo pipefail
-          # List files added in this push (compared to HEAD~1). The path
-          # filter on the trigger already narrowed us here, but we re-check
-          # against the exact pattern so a touched (not added) tasks file
-          # doesn't re-fire dispatch on subsequent pushes.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # workflow_dispatch (operator escape hatch): skip the HEAD~1 diff
+            # because intervening commits on main may have landed between the
+            # planning PR merge and the operator triggering this workflow.
+            # Resolve the artifact via fleet-state's pending_date and verify
+            # the file exists on main — that's the security guard that
+            # replaces the diff-based detection for this code path.
+            git fetch origin fleet-state 2>/dev/null || true
+            if ! git rev-parse origin/fleet-state >/dev/null 2>&1; then
+              echo "ℹ️  workflow_dispatch: no fleet-state branch. Cannot resolve pending_date. Skipping."
+              echo "is_planning_merge=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            PENDING_DATA=$(git show origin/fleet-state:.fleet/.pending_session 2>/dev/null || echo "")
+            if [ -z "$PENDING_DATA" ]; then
+              echo "ℹ️  workflow_dispatch: no pending session in fleet-state. Nothing to dispatch."
+              echo "is_planning_merge=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            DETECTED_DATE=$(printf '%s' "$PENDING_DATA" | sed -n '3p')
+            if [ -z "$DETECTED_DATE" ]; then
+              echo "ℹ️  workflow_dispatch: fleet-state pending_session missing date. Skipping."
+              echo "is_planning_merge=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # Validate detected date is YYYY_MM_DD shape to keep the path
+            # construction safe from injection via fleet-state mutation.
+            if ! printf '%s' "$DETECTED_DATE" | grep -qE '^[0-9]{4}_[0-9]{2}_[0-9]{2}$'; then
+              echo "⚠️  workflow_dispatch: fleet-state pending_date ($DETECTED_DATE) is not YYYY_MM_DD. Refusing to dispatch."
+              echo "is_planning_merge=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            ARTIFACT_PATH=".fleet/${DETECTED_DATE}/issue_tasks.json"
+            if [ ! -f "$ARTIFACT_PATH" ]; then
+              echo "ℹ️  workflow_dispatch: planning artifact $ARTIFACT_PATH not present on main. Skipping."
+              echo "is_planning_merge=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "✅ workflow_dispatch: planning artifact $ARTIFACT_PATH found (date=$DETECTED_DATE)"
+            {
+              echo "is_planning_merge=true"
+              echo "detected_date=$DETECTED_DATE"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # push event: use the original diff-based detection. List files added
+          # in this push (compared to HEAD~1). The path filter on the trigger
+          # already narrowed us here, but we re-check against the exact pattern
+          # so a touched (not added) tasks file doesn't re-fire dispatch on
+          # subsequent pushes.
           ADDED=$(git diff --name-only --diff-filter=A HEAD~1 HEAD \
             | grep -E '^\.fleet/[0-9_]+/issue_tasks\.json$' || true)
           if [ -z "$ADDED" ]; then
