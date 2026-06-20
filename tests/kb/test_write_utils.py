@@ -491,6 +491,45 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         env = run_mock.call_args.kwargs.get("env", {})
         self.assertEqual(env.get("LC_TIME"), "C")
 
+    def test_darwin_pid_start_time_uses_mktime_when_local_timezone_missing(self) -> None:
+        real_datetime = write_utils.datetime
+
+        class NoLocalTimezoneDateTime:
+            @staticmethod
+            def strptime(*args: object, **kwargs: object) -> object:
+                return real_datetime.strptime(*args, **kwargs)
+
+            @staticmethod
+            def now() -> object:
+                class NoLocalTimezoneNow:
+                    def astimezone(self) -> object:
+                        class NoLocalTimezone:
+                            tzinfo = None
+
+                        return NoLocalTimezone()
+
+                return NoLocalTimezoneNow()
+
+        with (
+            patch.object(write_utils, "datetime", NoLocalTimezoneDateTime),
+            patch.object(
+                write_utils.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(
+                    args=["ps"],
+                    returncode=0,
+                    stdout="Thu Jun 19 12:34:56 2026\n",
+                    stderr="",
+                ),
+            ),
+            patch.object(write_utils.time, "timezone", 0),
+            patch.object(write_utils.time, "mktime", return_value=12345.0) as mktime_mock,
+        ):
+            started_at = write_utils._darwin_pid_start_time_unix_seconds(1234)
+
+        self.assertEqual(started_at, 12345.0)
+        mktime_mock.assert_called_once()
+
     def test_lock_unavailable_error_unreadable_lock_file_falls_back(self) -> None:
         with patch.object(Path, "read_text", side_effect=OSError("denied")):
             exc = write_utils.LockUnavailableError(contracts.WRITE_LOCK_PATH)

@@ -256,9 +256,12 @@ def _darwin_pid_start_time_unix_seconds(pid: int) -> float | None:
         return None
     local_tz = datetime.now().astimezone().tzinfo
     if local_tz is None:
-        if time.timezone:
-            return time.mktime(parsed.timetuple())
-        return parsed.replace(tzinfo=timezone.utc).timestamp()
+        # local_tz is None should be vanishingly rare on real systems (datetime.now().astimezone()
+        # returns the OS local timezone). When it does happen, treat the parsed time as local time
+        # via time.mktime — that primitive uses the system's local-time interpretation including DST,
+        # which is correct regardless of whether the standard offset is 0 (e.g., London/GMT during BST,
+        # where time.timezone == 0 made the previous `if time.timezone:` falsy guard misbehave).
+        return time.mktime(parsed.timetuple())
     return parsed.replace(tzinfo=local_tz).timestamp()
 
 
