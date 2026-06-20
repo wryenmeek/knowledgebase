@@ -483,7 +483,10 @@ def _validate_batches(raw_batches: Any) -> list[str]:
         if not isinstance(batch, dict):
             errors.append(f"batches[{index}] must be an object")
             continue
-        missing = required_fields - set(batch)
+        # ⚡ Bolt: Using dictionary view set operations (e.g., set - dict.keys())
+        # is more efficient than explicit set conversion (set - set(dict))
+        # as it avoids redundant intermediate set object creation.
+        missing = required_fields - batch.keys()
         for field in sorted(missing):
             errors.append(f"batches[{index}].{field} is required")
         batch_id = batch.get("batch_id")
@@ -544,7 +547,10 @@ def _validate_items(raw_items: Any, repo_root: Path) -> list[str]:
         if not isinstance(item, dict):
             errors.append(f"items[{index}] must be an object")
             continue
-        missing = required_fields - set(item)
+        # ⚡ Bolt: Using dictionary view set operations (e.g., set - dict.keys())
+        # is more efficient than explicit set conversion (set - set(dict))
+        # as it avoids redundant intermediate set object creation.
+        missing = required_fields - item.keys()
         for field in sorted(missing):
             errors.append(f"items[{index}].{field} is required")
         key = item.get("item_key")

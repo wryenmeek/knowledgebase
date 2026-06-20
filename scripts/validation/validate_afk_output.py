@@ -111,7 +111,10 @@ def validate_afk_output(
     # sub-field may change per ADR-014 §4.
     changed_fields: list[str] = []
     disallowed: list[str] = []
-    all_keys = set(orig_fm) | set(prop_fm)
+    # ⚡ Bolt: Using dictionary view set operations (e.g., d1.keys() | d2.keys())
+    # is more efficient than explicit set conversion (set(d1) | set(d2)) as it
+    # avoids redundant intermediate set object creation.
+    all_keys = orig_fm.keys() | prop_fm.keys()
     for key in all_keys:
         if orig_fm.get(key) != prop_fm.get(key):
             changed_fields.append(key)
@@ -122,7 +125,7 @@ def validate_afk_output(
                     orig_qa = {}
                 if not isinstance(prop_qa, dict):
                     prop_qa = {}
-                for qa_key in set(orig_qa) | set(prop_qa):
+                for qa_key in orig_qa.keys() | prop_qa.keys():
                     if qa_key != "freshness_date" and orig_qa.get(qa_key) != prop_qa.get(qa_key):
                         disallowed.append(f"quality_assessment.{qa_key}")
             elif key not in _AFK_ALLOWED_FIELDS:

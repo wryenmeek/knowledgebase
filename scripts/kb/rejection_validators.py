@@ -110,7 +110,10 @@ def validate_frontmatter(fields: dict[str, Any]) -> list[str]:
     required = {"slug", "sha256", "rejected_date", "source_path",
                 "rejection_reason", "rejection_category", "reviewed_by",
                 "reconsidered_date"}
-    missing = required - set(fields.keys())
+    # ⚡ Bolt: Using dictionary view set operations (e.g., set - dict.keys())
+    # is more efficient than explicit set conversion (set - set(dict.keys()))
+    # as it avoids redundant intermediate set object creation.
+    missing = required - fields.keys()
     if missing:
         errors.append(f"missing required frontmatter fields: {sorted(missing)}")
 
