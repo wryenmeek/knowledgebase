@@ -38,36 +38,34 @@ concurrency:
 
 jobs:
   dispatch:
-    # Pre-filter: only allocate a runner for plausibly-Jules-authored planning
-    # PRs. Three trust layers (all must pass):
-    #   1. PR opener (user.login) is the Jules bot OR the repository owner.
-    #      Jules currently posts the planning PR via the operator's PAT, so the
-    #      opener is the human owner, not the bot. The 'google-labs-jules'
-    #      branch is preserved in case Jules's auth model flips back to the
-    #      bot identity.
-    #   2. Branch follows one of the known Jules planning prefixes
-    #      (issue-analysis-output-<session_id>, fleet-triage-tasks-<session_id>,
-    #      or the legacy jules/ and fleet/ prefixes). This is defense in depth
-    #      against a collaborator opening an unrelated PR that would otherwise
-    #      burn a runner before the session-ID step gates it out.
-    #   3. (Downstream, in the "Check if this PR is the fleet planning PR"
-    #      step below.) The session ID encoded in the branch name OR PR body
-    #      must match .fleet/.pending_session on the fleet-state branch. This
-    #      is the authoritative gate that no collaborator can spoof without
-    #      first reading the unprotected fleet-state branch and crafting a
-    #      branch name with the exact pending session ID.
+    # Pre-filter: only allocate a runner for plausibly-Jules-authored PRs.
     #
-    # Earlier this filter was just `user.login == 'google-labs-jules'` (committed
-    # 2026-05-18). Jules's auth model shifted to PAT-based posting at some point
-    # after that, silently skipping every planning PR for weeks. See PR #308 /
-    # Issue #82 diagnosis trail (2026-06-20).
+    # Two-identity login check (downstream session-ID check is the real gate):
+    #   1. 'google-labs-jules' — the historical bot identity, preserved in
+    #      case Jules's auth model flips back to bot-as-opener.
+    #   2. github.repository_owner — covers the current PAT-based model where
+    #      Jules posts the planning PR via the operator's PAT, making the
+    #      opener the human owner. Using github.repository_owner (not a
+    #      hardcoded username) keeps the filter portable across forks/transfers.
+    #
+    # The May 18 filter (committed in afb1035) was just
+    # `user.login == 'google-labs-jules'`. Jules's auth model shifted to
+    # PAT-based posting some time after that, silently skipping every Jules
+    # planning PR for weeks (observed across #299, #307, #308). The
+    # broadened identity check above restores dispatch.
+    #
+    # The downstream "Check if this PR is the fleet planning PR" step compares
+    # the session ID encoded in the branch/body to .fleet/.pending_session and
+    # short-circuits any PR that doesn't match — so widening the opener filter
+    # cannot trigger dispatch on unrelated PRs. The test in
+    # tests/kb/test_fleet_merge_workflow.py (FleetDispatchInjectionGuardTests
+    # .test_author_filter_uses_login_equality_only) still enforces the
+    # "no branch-prefix bypass" contract.
+    #
+    # Refs: PR #308, Issue #82 diagnosis (2026-06-20).
     if: |
-      (github.event.pull_request.user.login == 'google-labs-jules' ||
-       github.event.pull_request.user.login == github.repository_owner) &&
-      (startsWith(github.event.pull_request.head.ref, 'issue-analysis-output-') ||
-       startsWith(github.event.pull_request.head.ref, 'fleet-triage-tasks-') ||
-       startsWith(github.event.pull_request.head.ref, 'jules/') ||
-       startsWith(github.event.pull_request.head.ref, 'fleet/'))
+      github.event.pull_request.user.login == 'google-labs-jules' ||
+      github.event.pull_request.user.login == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
