@@ -118,8 +118,12 @@ export function parseCliArgs(argv: string[]): ArchiveCliArgs {
         );
       }
       olderThanDays = parsed;
-    } else if (arg === "--source-filter" && argv[i + 1]) {
-      sourceFilter = argv[++i];
+    } else if (arg === "--source-filter") {
+      const value = argv[++i];
+      if (value === undefined || value.trim().length === 0) {
+        throw new Error("--source-filter requires a non-empty value");
+      }
+      sourceFilter = value;
     } else if (arg === "--repo" && argv[i + 1]) {
       const repoVal = argv[++i];
       if (repoVal === "current") {
