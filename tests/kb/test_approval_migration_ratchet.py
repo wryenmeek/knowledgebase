@@ -28,7 +28,7 @@ def _legacy_approval_script_files() -> list[Path]:
 
 def test_approval_flag_script_count_does_not_exceed_contract() -> None:
     files = _legacy_approval_script_files()
-    assert len(files) <= MAX_APPROVAL_FLAG_SCRIPTS, (
+    assert len(files) == MAX_APPROVAL_FLAG_SCRIPTS, (
         f"{len(files)} scripts still use --approval but MAX_APPROVAL_FLAG_SCRIPTS="
         f"{MAX_APPROVAL_FLAG_SCRIPTS}: "
         + ", ".join(path.relative_to(REPO_ROOT).as_posix() for path in files)
@@ -144,7 +144,7 @@ def test_hook_rejects_approval_equals_after_deadline(monkeypatch, capsys) -> Non
     monkeypatch.setattr(
         check_approval_flag,
         "_staged_script_paths",
-        lambda: ([check_approval_flag.StagedScriptPath("M", "scripts/_optional_surface_common.py")], None),
+        lambda: ([check_approval_flag.StagedScriptPath("M", "scripts/drive_monitor/advance_cursor.py")], None),
     )
     monkeypatch.setattr(
         check_approval_flag,
