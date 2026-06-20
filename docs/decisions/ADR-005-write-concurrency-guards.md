@@ -60,6 +60,10 @@ Lock contention must fail closed, return non-zero, and emit
   sibling lock files and ADR-012/ADR-021 lock-ordering rules for GitHub/Drive
   monitor locks (`wiki/.kb_write.lock` acquired before monitor registry locks).
 
+## Related decisions
+
+- [ADR-031](ADR-031-lock-holder-pid-tracking.md) - Lock holder PID/start-time tracking for lock-unavailable UX
+
 ## References
 
 - `raw/processed/SPEC.md` (Assumptions and Defaults; Concurrency controls; Runtime prerequisite checks; CI quality gate requirements)

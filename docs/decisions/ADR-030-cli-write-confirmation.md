@@ -86,6 +86,11 @@ Rollback:
 - Keep `--apply` support and continue accepting `--approval approved` alias if
   a regression appears; do not remove default-deny behavior.
 
+## Related decisions
+
+- [ADR-005](ADR-005-write-concurrency-guards.md) - Enforce write concurrency with workflow group and local file lock
+- [ADR-022](ADR-022-afk-uses-scripts-hitl-uses-copilot-cli.md) - AFK automation uses deterministic scripts; Copilot CLI reserved for HITL
+
 ## References
 
 - GitHub issue #182

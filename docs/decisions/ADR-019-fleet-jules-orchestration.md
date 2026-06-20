@@ -256,6 +256,10 @@ archiving, re-run the account probe (`jules-account-probe.ts`) to confirm
 - The Jules SDK usage contract is unchanged.
 - Security conventions from Amendment 1 (injection guard, step-scoped secrets, etc.) are unchanged.
 
+## Related decisions
+
+- [ADR-032](ADR-032-fleet-quota-saturation-soft-warn.md) - Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION
+
 ## References
 
 - `scripts/fleet/` — TypeScript/Bun fleet orchestration scripts
