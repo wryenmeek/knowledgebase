@@ -1,0 +1,191 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# .github/workflows/fleet-dispatch-after-merge.yml
+#
+# Phase 2b of the fleet pipeline (event-driven, ~3 min):
+#   Triggered when a planning artifact lands on main (typically from
+#   Phase 2a's queued auto-merge of the Jules planning PR). Detects the
+#   newly-added .fleet/<date>/issue_tasks.json, cross-checks against the
+#   pending session in fleet-state, then:
+#     1. Clears .fleet/.pending_session from fleet-state so the next plan
+#        cycle starts clean.
+#     2. Pulls the freshly merged main with the planning artifacts.
+#     3. Runs fleet-dispatch.ts to spawn one Jules agent session per task.
+#
+# Why this is split from fleet-dispatch.yml (Phase 2a):
+#   Branch protection on main requires the CI-2 diagnostics check to pass
+#   before merge, but CI-2 takes ~90s while the planning-PR-opened event
+#   fires immediately. Earlier the merge step ran synchronously and raced
+#   (and lost) to CI-2, silently failing every dispatch. The two-phase
+#   split lets Phase 2a queue an auto-merge and exit, while this workflow
+#   waits for the actual `push` event when the merge finally lands.
+#
+# Trigger correctness notes:
+#   - `push: branches: [main]` with the path filter narrows the trigger
+#     surface so non-planning pushes don't spin up the runner.
+#   - The first step still cross-checks the actually-added file against
+#     fleet-state's pending_date — direct push of a planning-artifact-shaped
+#     file (e.g., a manual revert/cherry-pick) won't trigger dispatch unless
+#     the date matches the active pending session.
+#   - If fleet-state has no pending session, the workflow exits cleanly.
+#     This covers the case where a planning PR was merged manually after
+#     fleet-state was cleared, or where this workflow is re-run on an
+#     older push event.
+name: Fleet Dispatch After Merge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".fleet/*/issue_tasks.json"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fleet-dispatch-after-merge
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: main
+          # fetch-depth: 2 lets us diff HEAD vs HEAD~1 to detect what landed.
+          fetch-depth: 2
+
+      - name: Detect newly-added planning artifact
+        id: detect
+        run: |
+          set -euo pipefail
+          # List files added in this push (compared to HEAD~1). The path
+          # filter on the trigger already narrowed us here, but we re-check
+          # against the exact pattern so a touched (not added) tasks file
+          # doesn't re-fire dispatch on subsequent pushes.
+          ADDED=$(git diff --name-only --diff-filter=A HEAD~1 HEAD \
+            | grep -E '^\.fleet/[0-9_]+/issue_tasks\.json$' || true)
+          if [ -z "$ADDED" ]; then
+            echo "ℹ️  No new planning artifact added in this push. Skipping."
+            echo "is_planning_merge=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # If multiple planning artifacts landed in one push (unusual but
+          # possible for a manual import), take the first one and let
+          # the cross-check against fleet-state's pending_date confirm it.
+          ARTIFACT_PATH=$(echo "$ADDED" | head -1)
+          DETECTED_DATE=$(echo "$ARTIFACT_PATH" | sed -nE 's|^\.fleet/([0-9_]+)/.*|\1|p')
+          echo "✅ Planning artifact landed: $ARTIFACT_PATH (date=$DETECTED_DATE)"
+          {
+            echo "is_planning_merge=true"
+            echo "detected_date=$DETECTED_DATE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Read pending session info from fleet-state
+        if: steps.detect.outputs.is_planning_merge == 'true'
+        id: session
+        run: |
+          set -euo pipefail
+          git fetch origin fleet-state 2>/dev/null || true
+          if ! git rev-parse origin/fleet-state >/dev/null 2>&1; then
+            echo "ℹ️  No fleet-state branch. Cannot resolve base branch. Skipping."
+            echo "have_session=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          PENDING_DATA=$(git show origin/fleet-state:.fleet/.pending_session 2>/dev/null || echo "")
+          if [ -z "$PENDING_DATA" ]; then
+            echo "ℹ️  No pending session in fleet-state. The planning PR may have been merged manually or in a prior cycle. Skipping dispatch."
+            echo "have_session=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PENDING_SESSION_ID=$(printf '%s' "$PENDING_DATA" | sed -n '1p')
+          PENDING_BASE=$(printf '%s' "$PENDING_DATA" | sed -n '2p')
+          PENDING_DATE_STATE=$(printf '%s' "$PENDING_DATA" | sed -n '3p')
+
+          # Cross-check: the detected planning artifact's date must match
+          # fleet-state's pending_date. This prevents accidental dispatch
+          # on a manual import or replay of an old artifact.
+          DETECTED_DATE="${{ steps.detect.outputs.detected_date }}"
+          if [ "$PENDING_DATE_STATE" != "$DETECTED_DATE" ]; then
+            echo "⚠️  fleet-state pending_date ($PENDING_DATE_STATE) does not match detected planning artifact date ($DETECTED_DATE). Skipping dispatch to avoid ambiguity."
+            echo "have_session=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "✅ Pending session: $PENDING_SESSION_ID, base: $PENDING_BASE, date: $PENDING_DATE_STATE"
+          {
+            echo "have_session=true"
+            echo "pending_session=$PENDING_SESSION_ID"
+            echo "pending_base=$PENDING_BASE"
+            echo "pending_date=$PENDING_DATE_STATE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Clear pending session file
+        if: steps.session.outputs.have_session == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B fleet-state origin/fleet-state
+          rm -f .fleet/.pending_session
+          git add .fleet/.pending_session
+          if git diff --cached --quiet; then
+            echo "Nothing to clear in fleet-state."
+          else
+            git commit -m "chore(fleet): clear pending session after planning PR merged"
+            git push origin fleet-state
+          fi
+
+      - name: Setup Bun
+        if: steps.session.outputs.have_session == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.1"
+
+      - name: Install fleet dependencies
+        if: steps.session.outputs.have_session == 'true'
+        working-directory: scripts/fleet
+        run: bun install
+
+      - name: Dispatch task sessions
+        if: steps.session.outputs.have_session == 'true'
+        working-directory: scripts/fleet
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # SECURITY: pending_base (→ FLEET_BASE_BRANCH) originates from the
+          # unprotected fleet-state branch. Use env-var indirection (same as
+          # FLEET_PENDING_DATE) so GitHub Actions does not expand it before the
+          # shell runs. The git pull uses -- to prevent flag injection.
+          FLEET_BASE_BRANCH: ${{ steps.session.outputs.pending_base }}
+          # SECURITY: pending_date is read from the unprotected fleet-state branch;
+          # pass through env var to prevent shell injection via expression expansion.
+          FLEET_PENDING_DATE: ${{ steps.session.outputs.pending_date }}
+        run: |
+          set -euo pipefail
+          # We already checked out main at the start of the job, but the
+          # planning artifact landed on main as part of this very push, so
+          # the checkout SHA is current. No additional pull needed before
+          # invoking fleet-dispatch.ts — keep the same defensive git pull
+          # with -- terminator that Phase 2a's earlier dispatch step used,
+          # to match the security review precedent (FLEET_BASE_BRANCH is
+          # still fleet-state-sourced and must be treated as untrusted).
+          # SECURITY: -- terminates git option parsing so a crafted FLEET_BASE_BRANCH
+          # (from unprotected fleet-state) cannot inject git flags like --upload-pack.
+          git pull --ff-only origin -- "$FLEET_BASE_BRANCH"
+          bun fleet-dispatch.ts

@@ -14,14 +14,27 @@
 
 # .github/workflows/fleet-dispatch.yml
 #
-# Phase 2 of the fleet pipeline (event-driven, ~2 min):
+# Phase 2a of the fleet pipeline (event-driven, ~30s):
 #   Triggered when any PR is opened. Checks whether it is the Jules planning
 #   PR for the pending session stored in .fleet/.pending_session. If so:
-#     1. Merges the planning PR into the base branch.
-#     2. Removes .fleet/.pending_session so the next plan cycle is clean.
-#     3. Runs fleet-dispatch.ts to spawn one Jules session per task.
+#     1. Queues an auto-merge of the planning PR (`gh pr merge --auto`).
+#        The merge happens AFTER all branch-protection requirements pass
+#        (e.g., the CI-2 diagnostics check), not immediately.
+#   This workflow does NOT clear .fleet/.pending_session or fan out the
+#   per-task agent dispatch — those happen in Phase 2b, the companion
+#   fleet-dispatch-after-merge.yml workflow which triggers on `push` to main
+#   when the planning artifact lands.
+#
+# The two-phase split exists because branch protection requires the CI-2
+# diagnostics check to pass before merge, but CI-2 takes ~90s while the
+# planning-PR-opened event fires immediately. Earlier this workflow ran
+# `gh pr merge --squash` synchronously and raced (and lost) to CI-2,
+# silently failing every dispatch. See Issue #82 Layer 4 diagnosis trail.
 #
 # Phase 1 (fleet-plan.yml) runs on a schedule and writes .fleet/.pending_session.
+# Phase 2a (this workflow) queues the planning-PR merge.
+# Phase 2b (fleet-dispatch-after-merge.yml) clears .pending_session and fans
+# out the per-task agent sessions once the planning artifact lands on main.
 name: Fleet Dispatch
 
 on:
@@ -67,14 +80,15 @@ jobs:
       github.event.pull_request.user.login == 'google-labs-jules' ||
       github.event.pull_request.user.login == github.repository_owner
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Checkout base branch
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          # Always check out main (not the PR head) so we can run fleet-dispatch.ts.
+          # Check out main only to read fleet-state for session ID matching.
+          # Phase 2a no longer runs fleet-dispatch.ts (moved to Phase 2b).
           ref: main
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Check if this PR is the fleet planning PR
         id: check
@@ -100,78 +114,28 @@ jobs:
           fi
 
           PENDING_SESSION_ID=$(printf '%s' "$PENDING_DATA" | sed -n '1p')
-          PENDING_BASE=$(printf '%s' "$PENDING_DATA" | sed -n '2p')
-          PENDING_DATE=$(printf '%s' "$PENDING_DATA" | sed -n '3p')
 
           # Match: session ID appears in PR body OR in the branch name.
           if echo "$PR_BODY" | grep -qF "$PENDING_SESSION_ID" || \
              echo "$PR_BRANCH" | grep -qF "$PENDING_SESSION_ID"; then
             echo "✅ PR #$PR_NUMBER matches pending session $PENDING_SESSION_ID"
-            {
-              echo "is_fleet_pr=true"
-              echo "pending_session=$PENDING_SESSION_ID"
-              echo "pending_base=$PENDING_BASE"
-              echo "pending_date=$PENDING_DATE"
-            } >> "$GITHUB_OUTPUT"
+            echo "is_fleet_pr=true" >> "$GITHUB_OUTPUT"
           else
             echo "ℹ️  PR #$PR_NUMBER (branch: $PR_BRANCH) does not match pending session $PENDING_SESSION_ID. Skipping."
             echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Merge planning PR
+      - name: Queue auto-merge of planning PR
         if: steps.check.outputs.is_fleet_pr == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          gh pr merge "$PR_NUMBER" --squash --delete-branch
-          echo "✅ Planning PR #$PR_NUMBER merged."
-
-      - name: Clear pending session file
-        if: steps.check.outputs.is_fleet_pr == 'true'
-        run: |
-          set -euo pipefail
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -B fleet-state origin/fleet-state
-          rm -f .fleet/.pending_session
-          git add .fleet/.pending_session
-          if git diff --cached --quiet; then
-            echo "Nothing to clear in fleet-state."
-          else
-            git commit -m "chore(fleet): clear pending session after planning PR merged"
-            git push origin fleet-state
-          fi
-
-      - name: Setup Bun
-        if: steps.check.outputs.is_fleet_pr == 'true'
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.1"
-
-      - name: Install fleet dependencies
-        if: steps.check.outputs.is_fleet_pr == 'true'
-        working-directory: scripts/fleet
-        run: bun install
-
-      - name: Dispatch task sessions
-        if: steps.check.outputs.is_fleet_pr == 'true'
-        working-directory: scripts/fleet
-        env:
-          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # SECURITY: pending_base (→ FLEET_BASE_BRANCH) originates from the
-          # unprotected fleet-state branch. Use env-var indirection (same as
-          # FLEET_PENDING_DATE) so GitHub Actions does not expand it before the
-          # shell runs. The git pull uses -- to prevent flag injection.
-          FLEET_BASE_BRANCH: ${{ steps.check.outputs.pending_base }}
-          # SECURITY: pending_date is read from the unprotected fleet-state branch;
-          # pass through env var to prevent shell injection via expression expansion.
-          FLEET_PENDING_DATE: ${{ steps.check.outputs.pending_date }}
-        run: |
-          set -euo pipefail
-          # SECURITY: -- terminates git option parsing so a crafted FLEET_BASE_BRANCH
-          # (from unprotected fleet-state) cannot inject git flags like --upload-pack.
-          git pull --ff-only origin -- "$FLEET_BASE_BRANCH"
-          bun fleet-dispatch.ts
+          # --auto queues the merge so it happens after all branch-protection
+          # required checks pass (notably CI-2 diagnostics). This avoids the
+          # earlier race where the synchronous --squash merge fired before
+          # CI-2 finished and lost. Phase 2b (fleet-dispatch-after-merge.yml)
+          # picks up from the `push` event when the merge eventually lands.
+          gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
+          echo "✅ Planning PR #$PR_NUMBER queued for auto-merge. Phase 2b will dispatch once merge lands."
