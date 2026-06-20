@@ -237,6 +237,32 @@ class TestFleetDispatchAfterMergeStructure(_AssertMixin):
                 "git add refuses ignored paths even for staging deletions.",
             )
 
+    def test_clear_pending_restores_main_for_downstream_steps(self) -> None:
+        """After the clear-pending step switches to fleet-state to commit the
+        deletion, it must switch back to main before exiting. Subsequent
+        steps (Install fleet dependencies, Dispatch task sessions) need to
+        be on main to access the planning artifact and to fast-forward
+        against `$FLEET_BASE_BRANCH`.
+
+        Layer 8 bug observed 2026-06-20 on the first end-to-end Phase 2b run
+        after Layer 7 fix landed: dispatch step ran `git pull --ff-only
+        origin -- main` while still on fleet-state, which failed with
+        "fatal: Not possible to fast-forward, aborting" because fleet-state
+        and main are divergent branches.
+        """
+        blocks = _collect_run_blocks(self.workflow)
+        clear_blocks = [b for b in blocks if ".pending_session" in b and "checkout -B fleet-state" in b]
+        self.assertTrue(clear_blocks)
+        for block in clear_blocks:
+            self.assertIn(
+                "git checkout main",
+                block,
+                "Clear-pending step must restore main at the end so the "
+                "dispatch step's `git pull --ff-only origin -- main` does "
+                "not fail with 'Not possible to fast-forward' (the step "
+                "starts on fleet-state which is divergent from main).",
+            )
+
 
 class TestFleetDispatchAfterMergeDetection(_AssertMixin):
     """Detection-step correctness — Phase 2b must only dispatch on real planning merges."""

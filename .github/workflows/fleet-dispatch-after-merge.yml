@@ -216,6 +216,14 @@ jobs:
           else
             echo "Nothing to clear in fleet-state (.fleet/.pending_session not tracked)."
           fi
+          # Restore main for downstream steps. The dispatch step runs
+          # `git pull --ff-only origin -- "$FLEET_BASE_BRANCH"` and reads
+          # the planning artifact at `.fleet/<date>/issue_tasks.json` — both
+          # require being on main. Without this restore the pull fails with
+          # "fatal: Not possible to fast-forward, aborting" because
+          # fleet-state and main are divergent branches (Layer 8 fix,
+          # observed 2026-06-20 on the first end-to-end Phase 2b run).
+          git checkout main
 
       - name: Setup Bun
         if: steps.session.outputs.have_session == 'true'
