@@ -35,3 +35,6 @@
 ## 2026-06-19 - [Performance] Regex for markdown frontmatter extraction
 **Learning:** Avoid using `str.splitlines()` on an entire large text file just to extract a small header (e.g., markdown frontmatter). This completely tokenizes the string into memory row-by-row, creating massive latency and memory overhead.
 **Action:** Use a fast-path literal check (e.g., `text.lstrip(" \t").startswith("---")`) combined with a targeted regular expression (`_FRONTMATTER_BLOCK_RE.match(text)`) for targeted extraction.
+## 2026-06-20 - [Test Boundary Adherence for Ratchets]
+**Learning:** Repository-wide configuration contracts, metric baselines, and ratchets (e.g., `MAX_APPROVAL_FLAG_SCRIPTS`, `MAX_UNITTEST_FILES`) are centralized in `scripts/kb/contracts.py` and strictly validated by unit tests in `tests/kb/test_contracts.py`. Changes to ratchet values must be updated in both files.
+**Action:** When updating a ratchet test file (e.g., changing from `<=` to `==`), also modify its contract testing baseline in `test_contracts.py` to match the exact current value to satisfy file boundaries safely.
