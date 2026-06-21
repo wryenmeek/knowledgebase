@@ -25,6 +25,38 @@ from tests.kb.harnesses import RuntimeWorkspaceTestCase
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_exclusive_write_lock_open_failure_reads_holder_metadata_from_absolute_lock_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    lock_path = contracts.WRITE_LOCK_PATH
+    read_paths: list[Path] = []
+
+    def fail_open_lock_file(
+        _repo_root: Path,
+        _lock_path: str,
+        *,
+        create: bool,
+    ) -> tuple[Path, Path, object]:
+        raise OSError("cannot open lock")
+
+    def record_holder_metadata_path(lock_file_path: Path) -> None:
+        read_paths.append(lock_file_path)
+        return None
+
+    monkeypatch.setattr(write_utils, "_open_lock_file", fail_open_lock_file)
+    monkeypatch.setattr(write_utils, "_read_lock_holder_details", record_holder_metadata_path)
+
+    with pytest.raises(write_utils.LockUnavailableError):
+        with write_utils.exclusive_write_lock(repo_root, lock_path=lock_path):
+            pass
+
+    assert read_paths == [repo_root.resolve(strict=False) / lock_path]
+    assert read_paths[0].is_absolute()
+
+
 class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
     def setUp(self) -> None:
         super().setUp()

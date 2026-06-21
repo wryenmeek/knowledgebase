@@ -242,6 +242,8 @@ class TestFleetDispatchAfterMergeStructure(_AssertMixin):
           - `contents: write` — to commit and push the `.pending_session`
             deletion to fleet-state, and to fast-forward main during the
             dispatch step's `git pull`.
+          - `issues: write` — to post per-task tracker comments on the
+            GitHub issues handled by each dispatched Jules session.
 
         Anything else (notably `pull-requests: write` — Phase 2a's surface
         for queuing the planning-PR auto-merge — and `actions: write`,
@@ -253,18 +255,9 @@ class TestFleetDispatchAfterMergeStructure(_AssertMixin):
         formulation (`assertNotIn("pull-requests", perms)`) did not
         generalize and let this contract drift unnoticed once before.
 
-        Note on Issue #311 / Layer 9: `issues: write` is intentionally
-        NOT granted yet. fleet-dispatch.ts wants it for posting per-task
-        tracker comments on the target issues, but the cross-functional
-        security review of Layers 6-8 (2026-06-20) recommended deferring
-        the widening until Issue #310 (the `FLEET_BASE_BRANCH` shape
-        validation + GH-App-token rework) lands first. Granting
-        `issues: write` while the fleet-state base-branch input is
-        still parseable as an arbitrary refspec compounds the blast
-        radius (issue spam / hostile bodies / label manipulation). When
-        Issue #311 ships after #310, update this test to assert
-        `{contents, issues}` and document the dependency in the commit
-        message.
+        Issue #311 grants `issues: write` specifically for dispatch
+        comment-posting. `pull-requests: write` remains forbidden because
+        Phase 2a owns planning-PR auto-merge.
 
         History note: this test was silently deleted in commit `51acc01`
         (the Layer 7 git-rm fix) when a new test was inadvertently
@@ -273,16 +266,27 @@ class TestFleetDispatchAfterMergeStructure(_AssertMixin):
         review of Layers 6-8.
         """
         perms = self.workflow.get("permissions", {})
+        # Issue #311: fleet-dispatch.ts comments on target issues via GITHUB_TOKEN.
         self.assertEqual(
             set(perms.keys()),
-            {"contents"},
-            "Phase 2b permissions must enumerate exactly {contents}. "
+            {"contents", "issues"},
+            "Phase 2b permissions must enumerate exactly {contents, issues}. "
             "Any addition or removal must amend this test deliberately.",
+        )
+        self.assertNotIn(
+            "pull-requests",
+            perms,
+            "Phase 2b must not request pull-requests: write; Phase 2a owns PR auto-merge.",
         )
         self.assertEqual(
             perms.get("contents"),
             "write",
             "Phase 2b needs contents: write to update fleet-state and pull main",
+        )
+        self.assertEqual(
+            perms.get("issues"),
+            "write",
+            "Phase 2b needs issues: write to post per-task dispatch comments",
         )
 
     def test_clear_pending_uses_git_rm_not_git_add(self) -> None:

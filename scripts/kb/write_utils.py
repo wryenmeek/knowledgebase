@@ -488,7 +488,7 @@ def exclusive_write_lock(
     try:
         abs_lock, resolved_lock, lock_file = _open_lock_file(root, lock_path, create=True)
     except OSError as exc:
-        raise LockUnavailableError(lock_path) from exc
+        raise LockUnavailableError(lock_path, lock_file_path=abs_lock) from exc
 
     resolved_sibling_locks = _resolved_governance_sibling_locks(root)
     canonical_lock_path = resolved_sibling_locks.get(resolved_lock)
