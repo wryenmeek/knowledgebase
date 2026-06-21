@@ -125,17 +125,61 @@ jobs:
             echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Issue #310: secrets cannot be referenced directly in step `if:`
+      # conditionals, so detect optional GitHub App credentials from
+      # step-scoped env first and gate token creation on this output.
+      - name: Detect GitHub App auto-merge credentials
+        id: app-token-inputs
+        if: steps.check.outputs.is_fleet_pr == 'true'
+        env:
+          GH_APP_ID: ${{ secrets.GH_APP_ID }}
+          GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "$GH_APP_ID" ] && [ -n "$GH_APP_PRIVATE_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Issue #310: App-authored auto-merges should produce normal push events
+      # so Phase 2b can fire automatically. Keep this optional until the
+      # operator provisions GH_APP_ID and GH_APP_PRIVATE_KEY.
+      - name: Create GitHub App token for auto-merge
+        id: app-token
+        if: steps.app-token-inputs.outputs.available == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Queue auto-merge of planning PR
         if: steps.check.outputs.is_fleet_pr == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          APP_TOKEN_AVAILABLE: ${{ steps.app-token-inputs.outputs.available }}
+          APP_TOKEN_CREATED: ${{ steps.app-token.outputs.token != '' }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
+          if [ "$APP_TOKEN_AVAILABLE" = "true" ] && [ "$APP_TOKEN_CREATED" = "true" ]; then
+            TOKEN_MODE="github_app"
+            echo "✅ Issue #310: using GitHub App installation token for planning PR auto-merge."
+          else
+            TOKEN_MODE="github_token"
+            echo "::warning title=Issue #310 GitHub App token fallback::Using GITHUB_TOKEN for planning PR auto-merge; Layer 6 push-trigger suppression persists until GH_APP_ID/GH_APP_PRIVATE_KEY are provisioned and valid."
+          fi
           # --auto queues the merge so it happens after all branch-protection
           # required checks pass (notably CI-2 diagnostics). This avoids the
           # earlier race where the synchronous --squash merge fired before
           # CI-2 finished and lost. Phase 2b (fleet-dispatch-after-merge.yml)
           # picks up from the `push` event when the merge eventually lands.
           gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
-          echo "✅ Planning PR #$PR_NUMBER queued for auto-merge. Phase 2b will dispatch once merge lands."
+          if [ "$TOKEN_MODE" = "github_app" ]; then
+            echo "✅ Planning PR #$PR_NUMBER queued with GitHub App token. Phase 2b should dispatch once merge lands."
+          else
+            echo "✅ Planning PR #$PR_NUMBER queued with GITHUB_TOKEN fallback. Use the Phase 2b workflow_dispatch escape hatch if no push-triggered run appears."
+          fi

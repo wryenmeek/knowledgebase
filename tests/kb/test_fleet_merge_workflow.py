@@ -391,6 +391,57 @@ class TestFleetDispatchInjectionGuard(_AssertMixin):
             "until branch-protection required checks pass",
         )
 
+    def test_phase_2a_creates_github_app_token_when_credentials_exist(self) -> None:
+        """Issue #310: Phase 2a should mint an App token when operator secrets exist."""
+        steps = self.workflow["jobs"]["dispatch"]["steps"]
+        detect_step = next((step for step in steps if step.get("id") == "app-token-inputs"), None)
+        self.assertIsNotNone(detect_step, "Phase 2a must detect optional GitHub App credentials")
+        self.assertEqual(detect_step.get("if"), "steps.check.outputs.is_fleet_pr == 'true'")
+        self.assertEqual(detect_step.get("env", {}).get("GH_APP_ID"), "${{ secrets.GH_APP_ID }}")
+        self.assertEqual(
+            detect_step.get("env", {}).get("GH_APP_PRIVATE_KEY"),
+            "${{ secrets.GH_APP_PRIVATE_KEY }}",
+        )
+
+        app_token_step = next((step for step in steps if step.get("id") == "app-token"), None)
+        self.assertIsNotNone(app_token_step, "Phase 2a must create a GitHub App token when available")
+        uses = app_token_step.get("uses", "")
+        self.assertIn("actions/create-github-app-token@", uses)
+        self.assertNotIn(
+            "@v",
+            uses,
+            "actions/create-github-app-token must be pinned by full commit SHA, not version tag",
+        )
+        self.assertEqual(app_token_step.get("if"), "steps.app-token-inputs.outputs.available == 'true'")
+        self.assertEqual(app_token_step.get("with", {}).get("app-id"), "${{ secrets.GH_APP_ID }}")
+        self.assertEqual(
+            app_token_step.get("with", {}).get("private-key"),
+            "${{ secrets.GH_APP_PRIVATE_KEY }}",
+        )
+
+    def test_phase_2a_auto_merge_prefers_app_token_with_github_token_fallback(self) -> None:
+        """Issue #310: auto-merge should use App token output when present."""
+        steps = self.workflow["jobs"]["dispatch"]["steps"]
+        auto_merge_step = next(
+            (step for step in steps if step.get("name") == "Queue auto-merge of planning PR"),
+            None,
+        )
+        self.assertIsNotNone(auto_merge_step, "Phase 2a must keep the auto-merge step")
+        env = auto_merge_step.get("env", {})
+        self.assertEqual(
+            env.get("GH_TOKEN"),
+            "${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}",
+            "Phase 2a must prefer the App token and only fall back to GITHUB_TOKEN",
+        )
+        self.assertEqual(
+            env.get("APP_TOKEN_AVAILABLE"),
+            "${{ steps.app-token-inputs.outputs.available }}",
+        )
+        run = auto_merge_step.get("run", "")
+        self.assertIn("::warning", run)
+        self.assertIn("Issue #310", run)
+        self.assertIn("Layer 6", run)
+
 
 class TestBunVersionPin(_AssertMixin):
     """Assert bun-version is pinned to a specific version (not 'latest') across
