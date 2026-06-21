@@ -76,8 +76,7 @@ change does not alter governed artifact contracts.
 - [`ADR-005`](ADR-005-write-concurrency-guards.md) — Enforce write
   concurrency with workflow group and local file lock. This ADR extends
   `ADR-005`'s `lock_unavailable` envelope with holder PID/start-time metadata
-  for actionable diagnostics. `ADR-005`'s status was updated to reflect the
-  bidirectional cross-reference (2026-06-20).
+  for actionable diagnostics.
 
 ## References
 

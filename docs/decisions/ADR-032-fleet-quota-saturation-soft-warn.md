@@ -1,7 +1,7 @@
 # ADR-032: Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION
 
 ## Status
-Accepted
+Accepted — extends ADR-019
 
 ## Date
 2026-06-19
@@ -124,6 +124,12 @@ branch to always return `"failed_precondition"` instead of the three-step
 quota/account-mismatch/default check. The `QUOTA_SIGNAL_RE`, `ACCOUNT_MISMATCH_RE`
 constants, the `quota_saturation` category entry, and its routing in
 `handleFleetFatalError` can then be removed independently.
+
+## Related decisions
+
+- [`ADR-019`](ADR-019-fleet-jules-orchestration.md) — Fleet orchestration defines
+  the Jules dispatch and merge surface that this ADR extends with
+  quota-saturation error classification and exit-0 soft-warn behavior.
 
 ## References
 
