@@ -147,7 +147,12 @@ def extract_frontmatter(text: str) -> tuple[str | None, str]:
     # their frontmatter (the bare `lstrip(" \t")` below would not catch it).
     if text.startswith("\ufeff"):
         text = text[1:]
-    if not text.lstrip(" \t").startswith("---"):
+
+    # OPTIMIZATION: Isolate the first line using .find() before calling .lstrip()
+    # to avoid allocating a massive new string copy if `text` is large.
+    newline_pos = text.find('\n')
+    first_line = text if newline_pos == -1 else text[:newline_pos]
+    if not first_line.lstrip(" \t\r").startswith("---"):
         return None, text
 
     match = _FRONTMATTER_BLOCK_RE.match(text)
