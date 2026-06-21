@@ -526,6 +526,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": (".github/hooks/hooks.json",),
         "Hard-fail behavior": ("malformed JSON", "fail closed", "evidence", "cross-functional-reviewed", "BYPASS_CROSS_FUNCTIONAL_REVIEW"),
     },
+    "tests/kb/fleet_dispatch_harness.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "tmp_path"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": (".github/workflows/fleet-dispatch-after-merge.yml", "ADR-019"),
+        "Hard-fail behavior": ("malformed YAML", "missing step name", "subprocess timeout", "tmp_path"),
+    },
     "scripts/drive_monitor/**": {
         "Runtime mode": ("read-only only", "blocking-only"),
         "Writable paths": ("raw/assets/gdrive/**", "raw/drive-sources/**", "wiki/**"),
