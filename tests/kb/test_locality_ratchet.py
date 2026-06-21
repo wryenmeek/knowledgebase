@@ -89,6 +89,10 @@ def _commit(repo: Path, subject: str, trailer: str | None = None) -> None:
     _run_git(repo, *command)
 
 
+def _rev_parse(repo: Path, revision: str = "HEAD") -> str:
+    return _run_git(repo, "rev-parse", revision).stdout.strip()
+
+
 def _init_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -108,9 +112,14 @@ def _run_hook(
     commit_message: str | None = None,
     commit_msg_file: Path | None = None,
     stdin_text: str | None = None,
+    env_overrides: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT)
+    for name in ("GITHUB_EVENT_NAME", "GITHUB_HEAD_REF", "GITHUB_PR_HEAD_SHA"):
+        env.pop(name, None)
+    if env_overrides is not None:
+        env.update(env_overrides)
     command = [sys.executable, "-m", HOOK_MODULE]
     if commit_message is not None:
         command.extend(["--commit-message", commit_message])
@@ -378,6 +387,167 @@ def test_no_arg_staged_locality_4_addition_exits_1(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert COPILOT_PATH in result.stderr
     assert "Locality-4-Justification:" in result.stderr
+
+
+def _create_pull_request_merge_commit(
+    repo: Path,
+    *,
+    trailer: str | None = "Locality-4-Justification: applies before scoped context can load",
+    remote_ref_commit: str | None = None,
+) -> tuple[str, str]:
+    base_branch = _run_git(repo, "branch", "--show-current").stdout.strip()
+    _run_git(repo, "checkout", "-b", "feature")
+    _stage(repo, COPILOT_PATH, COPILOT_BASE + "\nNew always-on rule.\n")
+    _commit(repo, "Add PR global rule", trailer)
+    pull_request_head = _rev_parse(repo)
+    _run_git(repo, "checkout", base_branch)
+    _run_git(repo, "merge", "--no-ff", "feature", "-m", "Merge feature into base")
+    merge_commit = _rev_parse(repo)
+    _run_git(
+        repo,
+        "update-ref",
+        "refs/remotes/origin/feature",
+        remote_ref_commit or pull_request_head,
+    )
+    assert merge_commit != pull_request_head
+    return merge_commit, pull_request_head
+
+
+def test_pull_request_merge_commit_reads_trailer_from_resolvable_head_ref(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path)
+    _create_pull_request_merge_commit(repo)
+
+    result = _run_hook(
+        repo,
+        COPILOT_PATH,
+        env_overrides={
+            "GITHUB_EVENT_NAME": "pull_request",
+            "GITHUB_HEAD_REF": "feature",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+
+
+def test_pull_request_merge_commit_reads_trailer_from_head_sha(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path)
+    _merge_commit, pull_request_head = _create_pull_request_merge_commit(repo)
+
+    result = _run_hook(
+        repo,
+        COPILOT_PATH,
+        env_overrides={
+            "GITHUB_EVENT_NAME": "pull_request",
+            "GITHUB_PR_HEAD_SHA": pull_request_head,
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+
+
+def test_pull_request_head_ref_must_match_merge_second_parent(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path)
+    base_branch = _run_git(repo, "branch", "--show-current").stdout.strip()
+    _run_git(repo, "checkout", "-b", "unrelated-with-trailer")
+    _stage(repo, COPILOT_PATH, COPILOT_BASE + "\nUnrelated always-on rule.\n")
+    _commit(
+        repo,
+        "Add unrelated global rule",
+        "Locality-4-Justification: unrelated branch must not authorize PR head",
+    )
+    unrelated_head = _rev_parse(repo)
+    _run_git(repo, "checkout", base_branch)
+    _create_pull_request_merge_commit(
+        repo, trailer=None, remote_ref_commit=unrelated_head
+    )
+
+    result = _run_hook(
+        repo,
+        COPILOT_PATH,
+        env_overrides={
+            "GITHUB_EVENT_NAME": "pull_request",
+            "GITHUB_HEAD_REF": "feature",
+        },
+    )
+
+    assert result.returncode == 1
+    assert (
+        f"{COPILOT_PATH}: HEAD commit has net-positive gated-region delta"
+        in result.stderr
+    )
+    assert "without Locality-4-Justification: trailer" in result.stderr
+
+
+def test_pull_request_merge_commit_without_head_ref_falls_back_to_head(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path)
+    _create_pull_request_merge_commit(repo)
+
+    result = _run_hook(
+        repo,
+        COPILOT_PATH,
+        env_overrides={"GITHUB_EVENT_NAME": "pull_request"},
+    )
+
+    assert result.returncode == 1
+    assert (
+        f"{COPILOT_PATH}: HEAD commit has net-positive gated-region delta"
+        in result.stderr
+    )
+    assert "without Locality-4-Justification: trailer" in result.stderr
+
+
+def test_local_clean_index_rerun_ignores_head_ref_without_pull_request_event(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path)
+    _create_pull_request_merge_commit(repo)
+
+    result = _run_hook(
+        repo,
+        COPILOT_PATH,
+        env_overrides={"GITHUB_HEAD_REF": "feature"},
+    )
+
+    assert result.returncode == 1
+    assert (
+        f"{COPILOT_PATH}: HEAD commit has net-positive gated-region delta"
+        in result.stderr
+    )
+    assert "without Locality-4-Justification: trailer" in result.stderr
+
+
+def test_commit_message_input_overrides_pull_request_head_resolution(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path)
+    _create_pull_request_merge_commit(repo)
+
+    result = _run_hook(
+        repo,
+        COPILOT_PATH,
+        commit_message="Synthetic merge message without trailer\n",
+        env_overrides={
+            "GITHUB_EVENT_NAME": "pull_request",
+            "GITHUB_HEAD_REF": "feature",
+        },
+    )
+
+    assert result.returncode == 1
+    assert (
+        f"{COPILOT_PATH}: HEAD commit has net-positive gated-region delta"
+        in result.stderr
+    )
+    assert "without Locality-4-Justification: trailer" in result.stderr
 
 
 def test_staged_file_outside_locality_4_paths_exits_0(tmp_path: Path) -> None:
