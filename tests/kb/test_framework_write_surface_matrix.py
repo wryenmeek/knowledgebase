@@ -417,6 +417,11 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
             "git diff --cached",
             "git show",
             "Locality-4-Justification",
+            "GITHUB_EVENT_NAME",
+            "GITHUB_HEAD_REF",
+            "GITHUB_PR_HEAD_SHA",
+            "second parent",
+            "refs/remotes/origin",
         ),
         "Lock requirements": ("None", "forbidden"),
         "Artifact / schema owners": (

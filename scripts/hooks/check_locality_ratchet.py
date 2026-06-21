@@ -336,12 +336,22 @@ def _line_delta_for_path(path: str) -> tuple[int, int] | str | None:
     )
 
 
-def _first_parent(commit: str) -> str | None:
+def _commit_parents(commit: str) -> list[str] | None:
     rc, out, _ = _run_git("rev-list", "--parents", "-n", "1", commit)
     if rc != 0:
         return None
     parts = out.split()
-    return parts[1] if len(parts) > 1 else None
+    return parts[1:]
+
+
+def _first_parent(commit: str) -> str | None:
+    parents = _commit_parents(commit)
+    return parents[0] if parents else None
+
+
+def _second_parent(commit: str) -> str | None:
+    parents = _commit_parents(commit)
+    return parents[1] if parents is not None and len(parents) > 1 else None
 
 
 def _content_at_revision(revision: str, path: str) -> str:
@@ -352,6 +362,48 @@ def _content_at_revision(revision: str, path: str) -> str:
 def _commit_message(commit: str) -> str | None:
     rc, out, _ = _run_git("log", "-1", "--format=%B", commit)
     return out if rc == 0 else None
+
+
+def _resolve_commit_revision(revision: str) -> str | None:
+    rc, out, _ = _run_git(
+        "rev-parse", "--verify", "--end-of-options", f"{revision}^{{commit}}"
+    )
+    return out.strip() if rc == 0 and out.strip() else None
+
+
+def _resolve_trailer_commit(default_commit: str) -> str:
+    """Return the commit whose message should be checked for the trailer.
+
+    On GitHub Actions ``pull_request`` events, ``actions/checkout`` leaves HEAD
+    at the synthetic merge commit. That commit's generated message lacks the PR
+    author's ``Locality-4-Justification`` trailer, so trailer reads should use
+    the PR head commit when checkout made it available. Diff inspection still
+    uses HEAD and its first parent; this helper only selects the message source.
+
+    Environment-derived refs are trusted only when they resolve to the merge
+    commit's second parent. That keeps a colliding or stale remote branch from
+    supplying an unrelated trailer for the checked-out merge commit.
+    """
+    if os.environ.get("GITHUB_EVENT_NAME") != "pull_request":
+        return default_commit
+
+    expected_pr_head = _second_parent(default_commit)
+    if expected_pr_head is None:
+        return default_commit
+
+    head_sha = os.environ.get("GITHUB_PR_HEAD_SHA")
+    if head_sha:
+        resolved_sha = _resolve_commit_revision(head_sha)
+        if resolved_sha == expected_pr_head:
+            return resolved_sha
+
+    head_ref = os.environ.get("GITHUB_HEAD_REF")
+    if head_ref:
+        resolved_ref = _resolve_commit_revision(f"refs/remotes/origin/{head_ref}")
+        if resolved_ref == expected_pr_head:
+            return resolved_ref
+
+    return default_commit
 
 
 def _historical_line_delta_for_commit(
@@ -377,7 +429,10 @@ def _head_commit() -> str | None:
 
 
 def _recent_gated_commit_deltas(
-    path: str, *, skip_commit: str | None = None
+    path: str,
+    *,
+    skip_commit: str | None = None,
+    skip_commits: set[str] | None = None,
 ) -> tuple[list[tuple[str, tuple[int, int]]], str | None]:
     rc, out, _ = _run_git(
         "log",
@@ -388,9 +443,13 @@ def _recent_gated_commit_deltas(
     if rc != 0:
         return [], f"{path}: cannot read recent commit history via git log"
 
+    commits_to_skip = set(skip_commits or set())
+    if skip_commit is not None:
+        commits_to_skip.add(skip_commit)
+
     commits: list[tuple[str, tuple[int, int]]] = []
     for commit in out.splitlines():
-        if skip_commit is not None and commit == skip_commit:
+        if commit in commits_to_skip:
             continue
         delta = _historical_line_delta_for_commit(path, commit)
         if delta is None:
@@ -419,9 +478,14 @@ def _is_paired_deletion_commit(additions: int, deletions: int) -> bool:
 
 
 def _trailer_count_since_latest_paired_deletion(
-    path: str, *, skip_commit: str | None = None
+    path: str,
+    *,
+    skip_commit: str | None = None,
+    skip_commits: set[str] | None = None,
 ) -> tuple[int, str | None]:
-    commits, error = _recent_gated_commit_deltas(path, skip_commit=skip_commit)
+    commits, error = _recent_gated_commit_deltas(
+        path, skip_commit=skip_commit, skip_commits=skip_commits
+    )
     if error is not None:
         return 0, error
     trailer_candidates, error = _trailer_candidate_commits(path)
@@ -444,12 +508,15 @@ def _trailer_count_since_latest_paired_deletion(
 
 
 def _trailer_budget_failures(
-    paths: set[str], *, skip_commit: str | None = None
+    paths: set[str],
+    *,
+    skip_commit: str | None = None,
+    skip_commits: set[str] | None = None,
 ) -> list[str]:
     failures: list[str] = []
     for path in sorted(paths):
         count, error = _trailer_count_since_latest_paired_deletion(
-            path, skip_commit=skip_commit
+            path, skip_commit=skip_commit, skip_commits=skip_commits
         )
         if error is not None:
             failures.append(error)
@@ -472,7 +539,12 @@ def _head_commit_failures(paths: set[str], commit_message: str | None) -> list[s
     if head is None:
         return ["HEAD: cannot resolve current commit for Locality 4 rerun"]
 
-    message = commit_message if commit_message is not None else _commit_message(head)
+    if commit_message is not None:
+        trailer_commit = head
+        message = commit_message
+    else:
+        trailer_commit = _resolve_trailer_commit(head)
+        message = _commit_message(trailer_commit)
     failures: list[str] = []
     for path in sorted(paths):
         delta = _historical_line_delta_for_commit(path, head)
@@ -491,7 +563,12 @@ def _head_commit_failures(paths: set[str], commit_message: str | None) -> list[s
                 f"+{additions}/-{deletions} without {TRAILER}: trailer"
             )
             continue
-        failures.extend(_trailer_budget_failures({path}, skip_commit=head))
+        # The current trailer may be on HEAD or the PR head behind the merge;
+        # skip both so it is not counted as historical.
+        budget_skip_commits = {head, trailer_commit}
+        failures.extend(
+            _trailer_budget_failures({path}, skip_commits=budget_skip_commits)
+        )
     return failures
 
 
