@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import subprocess
 
+import pytest
+
 import scripts.maintenance.audit_pr_body_vs_diff as audit
 from scripts.maintenance.audit_pr_body_vs_diff import run_pr_body_vs_diff_audit
 
@@ -174,6 +176,20 @@ def test_audit_resolves_unique_basename_claim_against_diff_path(tmp_path) -> Non
     }
     assert result.summary["unmet_claims"] == []
     assert result.summary["extra_diff_files"] == []
+
+
+@pytest.mark.parametrize(
+    ("body", "files"),
+    [("Updated `utils.py` to fix the bug.", ["scripts/a/utils.py", "scripts/b/utils.py"])],
+)
+def test_ambiguous_basename_claim_remains_unmet(tmp_path, body, files) -> None:
+    result = _run_fixture(tmp_path, _pr_payload(body=body, files=files))
+
+    assert result.status == "fail"
+    assert result.summary["matched_claims"] == []
+    assert result.summary["resolved_claim_matches"] == {}
+    assert result.summary["unmet_claims"] == ["utils.py"]
+    assert result.summary["extra_diff_files"] == ["scripts/a/utils.py", "scripts/b/utils.py"]
 
 
 def test_audit_flags_zero_zero_zero_type_c_even_without_body_claims(tmp_path) -> None:
