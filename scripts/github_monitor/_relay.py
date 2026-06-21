@@ -383,9 +383,6 @@ def validate_upstream_source_payload(
         "changed_paths",
         "delivery_id",
     }
-    # ⚡ Bolt: Using dictionary view set operations (e.g., dict.keys() - set)
-    # is more efficient than explicit set conversion (set(dict.keys()) - set)
-    # as it avoids redundant intermediate set object creation.
     extra_fields = sorted(payload.keys() - expected_fields)
     if extra_fields:
         raise RelayValidationError(

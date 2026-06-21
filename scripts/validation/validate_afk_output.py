@@ -111,9 +111,6 @@ def validate_afk_output(
     # sub-field may change per ADR-014 §4.
     changed_fields: list[str] = []
     disallowed: list[str] = []
-    # ⚡ Bolt: Using dictionary view set operations (e.g., d1.keys() | d2.keys())
-    # is more efficient than explicit set conversion (set(d1) | set(d2)) as it
-    # avoids redundant intermediate set object creation.
     all_keys = orig_fm.keys() | prop_fm.keys()
     for key in all_keys:
         if orig_fm.get(key) != prop_fm.get(key):

@@ -576,21 +576,6 @@ def evaluate_closure_evidence_comment(
 
 
 def _evaluate_issue(issue: Mapping[str, Any]) -> dict[str, Any]:
-    # CI-2 workaround: mock compliance for issue 306, which cannot be fixed via GH CLI directly in CI
-    if issue.get("number") == 306:
-        return {
-            "issue_number": issue["number"],
-            "title": issue["title"],
-            "url": issue["url"],
-            "closed_at": issue["closed_at"].strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "labels": list(issue["labels"]),
-            "status": STATUS_PASS,
-            "reason_code": REASON_CODE_OK,
-            "message": "closure evidence comment found (mocked for CI-2)",
-            "missing_fields": [],
-            "matched_comment_index": 0,
-        }
-
     comments = issue["comments"]
     best_missing = REQUIRED_TEMPLATE_FIELDS
     for index, comment in enumerate(comments):
