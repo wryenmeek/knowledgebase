@@ -1,7 +1,7 @@
 # ADR-019: Jules-based fleet orchestration for parallel issue-to-PR dispatch
 
 ## Status
-Accepted — amended in-place: Phase 3 merge trigger changed to event-driven and security hardened (see § Amendment); extended by Amendment 3 (Phase 2 split + GITHUB_TOKEN merge-handoff diagnostic trail + partial GitHub App token code path, 2026-06-21)
+Accepted — amended in-place: Phase 3 merge trigger changed to event-driven and security hardened (see § Amendment); amended in-place: Phase 2/3 pre-merge sanity checks added (see § Amendment 4); extended by Amendment 3 (Phase 2a/2b auto-merge split; see § Amendment 3)
 
 ## Date
 2026-04-27
@@ -311,9 +311,58 @@ Tentative as of 2026-04-29. The hypothesis was that Jules's API rejects new `jul
 - Security conventions from Amendment 1 (injection guard, step-scoped secrets, etc.) are unchanged and extended (PENDING_BASE pin, CRLF stripping, env-routing for the detect step's `${{ steps... }}` interpolations).
 - The Phase 2b `workflow_dispatch` escape hatch remains available while Issue #310 is only partially complete; absent or invalid GitHub App credentials intentionally fall back to `GITHUB_TOKEN` and preserve the manual recovery path.
 
+## Amendment 4
+
+### Date
+2026-06-21
+
+### What changed
+
+Issue #328 added fail-closed sanity checks for the Type C hallucination class
+identified in Issue #325: Jules can report successful writes even when the
+actual PR diff is 0 added files, 0 deleted files, and 0 changed paths. The
+original observed trap was Layer 2 from Amendment 3 (`.gitignore` suppressing
+`.fleet/<date>/issue_tasks.{md,json}`), but the defense is intentionally broader
+than that single path.
+
+**Prompt-level pre-push guard (defense in depth):**
+
+- `scripts/fleet/preMergeSanityCheck.ts` is a read-only local gate that checks
+  staged changes with `git diff --cached --name-status --no-renames -z`.
+- `fleet-plan.ts` appends a mandatory command block to the Jules planning prompt
+  requiring `.fleet/<date>/issue_tasks.md` and
+  `.fleet/<date>/issue_tasks.json` to be staged, with no unexpected staged paths.
+- `fleet-dispatch.ts` appends the same guard in open-scope mode for per-task
+  PRs: at least one file must be staged, but the path set is not constrained
+  because each task owns its own files from the manifest.
+
+**Deterministic pre-merge enforcement:**
+
+- Phase 2a (`fleet-dispatch.yml`) now inspects the planning PR file list through
+  the GitHub API before queuing auto-merge. It fails closed when the PR file list
+  is empty, when either planning artifact is missing, when any unexpected path is
+  present, or when GitHub reports a `removed` / `renamed` file status.
+- Phase 3 (`fleet-merge.ts`) checks each per-task PR's file list via
+  `scripts/fleet/github/pr-file-sanity.ts` before waiting for CI or merging. It
+  fails closed when the PR has a 0/0/0 file list or when the GitHub API response
+  cannot be inspected.
+
+### What did not change
+
+- Jules still owns branch creation and PR creation. The prompt-level guard is
+  the only point that can run before Jules pushes its branch; the workflow/API
+  gates provide deterministic enforcement before merge.
+- The Phase 2 split and the Phase 2b `workflow_dispatch` escape hatch from
+  Amendment 3 remain unchanged.
+- The per-task PR path remains open-scope: only non-empty diff is enforced,
+  because task-specific expected file paths come from each task prompt rather
+  than a single global path list.
+
 ## References
 
 - `scripts/fleet/` — TypeScript/Bun fleet orchestration scripts
+- `scripts/fleet/preMergeSanityCheck.ts` — staged-diff sanity helper and prompt block generator
+- `scripts/fleet/github/pr-file-sanity.ts` — PR file-list sanity helper for Phase 3 merge gating
 - `scripts/fleet/jules-account-probe.ts` — read-only Jules account health diagnostic
 - `scripts/fleet/archive-stale-sessions.ts` — stale session archive with deny-by-default scoping
 - `.github/workflows/fleet-plan.yml` — Phase 1 scheduled planning pipeline

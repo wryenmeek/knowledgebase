@@ -93,6 +93,8 @@ jobs:
       - name: Check if this PR is the fleet planning PR
         id: check
         env:
+          GH_TOKEN:    ${{ github.token }}
+          REPOSITORY:  ${{ github.repository }}
           PR_NUMBER:   ${{ github.event.pull_request.number }}
           PR_BODY:     ${{ github.event.pull_request.body }}
           PR_BRANCH:   ${{ github.event.pull_request.head.ref }}
@@ -113,12 +115,55 @@ jobs:
             exit 0
           fi
 
-          PENDING_SESSION_ID=$(printf '%s' "$PENDING_DATA" | sed -n '1p')
+          PENDING_SESSION_ID=$(printf '%s' "$PENDING_DATA" | sed -n '1p' | tr -d '\r')
+          PENDING_DATE=$(printf '%s' "$PENDING_DATA" | sed -n '3p' | tr -d '\r')
+          if [ -z "$PENDING_SESSION_ID" ] || printf '%s' "$PENDING_SESSION_ID" | grep -q '[[:cntrl:]]'; then
+            echo "❌ Malformed pending fleet session ID. Refusing to classify PR #$PR_NUMBER as a fleet planning PR."
+            exit 1
+          fi
 
           # Match: session ID appears in PR body OR in the branch name.
-          if echo "$PR_BODY" | grep -qF "$PENDING_SESSION_ID" || \
-             echo "$PR_BRANCH" | grep -qF "$PENDING_SESSION_ID"; then
+          if echo "$PR_BODY" | grep -qF -- "$PENDING_SESSION_ID" || \
+             echo "$PR_BRANCH" | grep -qF -- "$PENDING_SESSION_ID"; then
+            if ! echo "$PENDING_DATE" | grep -Eq '^[0-9]{4}_[0-9]{2}_[0-9]{2}$'; then
+              echo "❌ Fleet pre-merge sanity check failed: pending fleet date is not YYYY_MM_DD."
+              exit 1
+            fi
+            if ! PR_FILES_TSV="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[] | [.filename, .status, (.previous_filename // "")] | @tsv')"; then
+              echo "❌ Fleet pre-merge sanity check failed: could not inspect planning PR #$PR_NUMBER files."
+              exit 1
+            fi
+            if [ -z "$PR_FILES_TSV" ]; then
+              echo "❌ Fleet pre-merge sanity check failed: planning PR #$PR_NUMBER has a 0/0/0 diff."
+              exit 1
+            fi
+            EXPECTED_MD=".fleet/${PENDING_DATE}/issue_tasks.md"
+            EXPECTED_JSON=".fleet/${PENDING_DATE}/issue_tasks.json"
+            PR_DIFF_FILES=()
+            while IFS=$'\t' read -r changed_path changed_status previous_path; do
+              if [ -z "$changed_path" ]; then
+                continue
+              fi
+              PR_DIFF_FILES+=("$changed_path")
+              if [ "$changed_status" = "removed" ] || [ "$changed_status" = "renamed" ]; then
+                echo "❌ Fleet pre-merge sanity check failed: planning PR #$PR_NUMBER has unsupported $changed_status path $changed_path (previous: ${previous_path:-n/a})."
+                exit 1
+              fi
+            done <<< "$PR_FILES_TSV"
+            for expected_path in "$EXPECTED_MD" "$EXPECTED_JSON"; do
+              if ! printf '%s\n' "${PR_DIFF_FILES[@]}" | grep -Fxq "$expected_path"; then
+                echo "❌ Fleet pre-merge sanity check failed: planning PR #$PR_NUMBER is missing expected path $expected_path."
+                exit 1
+              fi
+            done
+            for changed_path in "${PR_DIFF_FILES[@]}"; do
+              if [ "$changed_path" != "$EXPECTED_MD" ] && [ "$changed_path" != "$EXPECTED_JSON" ]; then
+                echo "❌ Fleet pre-merge sanity check failed: planning PR #$PR_NUMBER changed unexpected path $changed_path."
+                exit 1
+              fi
+            done
             echo "✅ PR #$PR_NUMBER matches pending session $PENDING_SESSION_ID"
+            echo "✅ Fleet pre-merge sanity check passed for planning artifacts."
             echo "is_fleet_pr=true" >> "$GITHUB_OUTPUT"
           else
             echo "ℹ️  PR #$PR_NUMBER (branch: $PR_BRANCH) does not match pending session $PENDING_SESSION_ID. Skipping."

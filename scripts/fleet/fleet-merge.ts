@@ -36,6 +36,7 @@ import {
   requireRedispatchAuthorLogin,
   resolveUpdateBranchFailure,
 } from "./github/merge-runtime.js";
+import { inspectPullRequestChangedFiles } from "./github/pr-file-sanity.js";
 import { findFleetRepoRoot, resolveFleetDir } from "./github/fleet-paths.js";
 import {
   handleFleetFatalError,
@@ -55,6 +56,45 @@ interface GitHubPR {
   user?: {
     login: string | null;
   } | null;
+}
+
+interface FleetMergePreMergeGateOptions {
+  apiBase: string;
+  headers: Record<string, string>;
+  prNumber: number;
+  allowNoChecks: boolean;
+  inspectChangedFiles?: typeof inspectPullRequestChangedFiles;
+  waitForCIImpl?: typeof waitForCI;
+  log?: (message: string) => void;
+}
+
+export async function runFleetMergePreMergeGate(
+  options: FleetMergePreMergeGateOptions
+): Promise<boolean> {
+  const inspectChangedFiles = options.inspectChangedFiles ?? inspectPullRequestChangedFiles;
+  const waitForCIImpl = options.waitForCIImpl ?? waitForCI;
+  const fileSanity = await inspectChangedFiles({
+    apiBase: options.apiBase,
+    headers: options.headers,
+    prNumber: options.prNumber,
+  });
+  if (!fileSanity.ok) {
+    throw new Error(fileSanity.message);
+  }
+  if (fileSanity.file_count <= 0) {
+    throw new Error(
+      `Fleet pre-merge sanity check failed for PR #${options.prNumber}: 0 changed files reported before CI.`
+    );
+  }
+
+  const log = options.log ?? console.log;
+  log(`  🧪 Waiting for CI on PR #${options.prNumber}...`);
+  return waitForCIImpl({
+    apiBase: options.apiBase,
+    headers: options.headers,
+    prNumber: options.prNumber,
+    allowNoChecks: options.allowNoChecks,
+  });
 }
 
 export async function main(): Promise<void> {
@@ -295,14 +335,19 @@ export async function main(): Promise<void> {
         await new Promise((resolve) => setTimeout(resolve, 5_000));
       }
 
-      // Wait for CI to pass
-      console.log(`  🧪 Waiting for CI on PR #${pr.number}...`);
-      const ciPassed = await waitForCI({
-        apiBase: API,
-        headers,
-        prNumber: pr.number,
-        allowNoChecks: ALLOW_NO_CHECKS,
-      });
+      let ciPassed = false;
+      try {
+        ciPassed = await runFleetMergePreMergeGate({
+          apiBase: API,
+          headers,
+          prNumber: pr.number,
+          allowNoChecks: ALLOW_NO_CHECKS,
+        });
+      } catch (error) {
+        console.error(`  ❌ ${getSanitizedErrorMessage(error)}`);
+        process.exit(1);
+      }
+
       if (!ciPassed) {
         console.error(`  ❌ CI failed for PR #${pr.number}. Aborting sequential merge.`);
         process.exit(1);

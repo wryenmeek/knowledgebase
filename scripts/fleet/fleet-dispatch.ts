@@ -32,6 +32,7 @@ import {
   handleFleetFatalError,
   logMutationAttemptFailure,
 } from "./_fleet_output.js";
+import { buildPreMergeSanityPromptBlock } from "./preMergeSanityCheck.js";
 
 async function mapWithConcurrency<T, R>(
   items: T[],
@@ -143,27 +144,34 @@ export async function main(): Promise<void> {
   );
 
   const dispatchedSessions = await mapWithConcurrency(tasks, maxParallel, async (task) => {
-      const session = await runMutationWithDiagnostics({
-        operation: `fleet-dispatch:jules.run:${task.id}`,
-        maxAttempts: mutationMaxAttempts,
-        run: () =>
-          jules.run({
-            prompt: task.prompt,
-            source: {
-              github: repoInfo.fullName,
-              baseBranch,
-            },
-          }),
-        onAttemptFailure: (envelope) => {
-          logMutationAttemptFailure(
-            `⚠️ Jules dispatch mutation attempt failed for task "${task.id}".`,
-            envelope
-          );
-        },
-      });
+    // Per-task PR scope is intentionally open: the manifest bounds the prompt,
+    // but implementation agents may stage any owned source/test path. This
+    // sanity block only catches the 0/0/0 staged-diff hallucination signature.
+    const prompt = `${task.prompt}
 
-      return { task, sessionId: session.id };
+${buildPreMergeSanityPromptBlock([], { allowAdditional: true })}`;
+
+    const session = await runMutationWithDiagnostics({
+      operation: `fleet-dispatch:jules.run:${task.id}`,
+      maxAttempts: mutationMaxAttempts,
+      run: () =>
+        jules.run({
+          prompt,
+          source: {
+            github: repoInfo.fullName,
+            baseBranch,
+          },
+        }),
+      onAttemptFailure: (envelope) => {
+        logMutationAttemptFailure(
+          `⚠️ Jules dispatch mutation attempt failed for task "${task.id}".`,
+          envelope
+        );
+      },
     });
+
+    return { task, sessionId: session.id };
+  });
 
   const sessionResults: Array<{ taskId: string; sessionId: string }> = [];
 

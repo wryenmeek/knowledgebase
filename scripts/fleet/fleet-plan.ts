@@ -29,6 +29,7 @@ import {
   handleFleetFatalError,
   logMutationAttemptFailure,
 } from "./_fleet_output.js";
+import { buildPreMergeSanityPromptBlock } from "./preMergeSanityCheck.js";
 
 export async function main(): Promise<void> {
   assertFleetEnvironment({
@@ -63,10 +64,16 @@ export async function main(): Promise<void> {
   // Capture the fleet date at planning time so fleet-dispatch reads the same
   // dated directory even if Jules takes more than a day to post its PR.
   const fleetDate = getFleetDate();
-  const prompt = analyzeIssuesPrompt({
+  const expectedPlanningArtifactPaths = [
+    `.fleet/${fleetDate}/issue_tasks.md`,
+    `.fleet/${fleetDate}/issue_tasks.json`,
+  ];
+  const prompt = `${analyzeIssuesPrompt({
     issuesMarkdown,
     repoFullName: repoInfo.fullName,
-  });
+  })}
+
+${buildPreMergeSanityPromptBlock(expectedPlanningArtifactPaths)}`;
 
   console.log(
     `🔍 Planning fleet for ${repoInfo.fullName} (branch: ${baseBranch}, date: ${fleetDate})`
