@@ -37,13 +37,16 @@ Without the distinction:
   diagnostic signal behind a generic hard-fail.
 
 This repo's fleet dispatch was blocked for 11+ consecutive runs due to this
-defect (tracked in issue #82, cross-referenced with `wryenmeek/hot-springs-island#595`).
+defect (tracked in issue #82, cross-referenced with
+[wryenmeek/hot-springs-island#595](https://github.com/wryenmeek/hot-springs-island/issues/595)).
 
 ## Decision
 
 Introduce a `quota_saturation` sub-class of `MutationErrorClass` and a
 sub-classifier in `classifyFromSignals` with the following signal-precedence
-ordering (per wryenmeek/hot-springs-island#595 final implementation):
+ordering (informed by
+[wryenmeek/hot-springs-island#595](https://github.com/wryenmeek/hot-springs-island/issues/595)
+and adjusted for this repo's bare-body production response):
 
 1. **Explicit quota signals** (`QUOTA`, `SESSION LIMIT/CAP`, `SATURATED` in the
    upper-cased body) → classify as `quota_saturation` (non-retryable, soft-warn).
@@ -82,8 +85,15 @@ All other `MutationFailureError` classifications retain the existing
 
 ## Alternatives considered
 
-- **Keep `failed_precondition` classification and suppress `exit(1)`**
-  - Rejected because suppressing the generic `failed_precondition` error would also swallow genuine account misconfiguration faults without emitting a failure signal. We only want to softly warn on transient quota events.
+1. **Mirror [HSI #595](https://github.com/wryenmeek/hot-springs-island/issues/595)
+   final ordering without precedence inversion.** Rejected: production
+   bare-body shape would still hard-fail.
+2. **Keep `failed_precondition` and just suppress `exit(1)`.** Rejected:
+   conflates classification with routing and would also swallow genuine
+   account-misconfiguration faults without emitting a failure signal.
+3. **Do nothing.** Rejected: 11+ consecutive blocked runs showed quota
+   saturation was actively blocking ready-for-agent dispatch rather than an
+   acceptable noisy edge case.
 
 ## Consequences
 
@@ -118,6 +128,7 @@ constants, the `quota_saturation` category entry, and its routing in
 ## References
 
 - Issue #82 — Jules `FAILED_PRECONDITION` blocking Fleet for 11+ consecutive runs.
-- `wryenmeek/hot-springs-island#595` — canonical cross-repo fix (same fault signature).
+- [wryenmeek/hot-springs-island#595](https://github.com/wryenmeek/hot-springs-island/issues/595)
+  — canonical cross-repo fix (same fault signature).
 - `scripts/fleet/github/mutation-diagnostics.ts` — classifier implementation.
 - `scripts/fleet/_fleet_output.ts` — `handleFleetFatalError` routing.

@@ -93,8 +93,12 @@ Rollback:
 
 ## Related decisions
 
-- [ADR-005](ADR-005-write-concurrency-guards.md) - Enforce write concurrency with workflow group and local file lock
-- [ADR-022](ADR-022-afk-uses-scripts-hitl-uses-copilot-cli.md) - AFK automation uses deterministic scripts; Copilot CLI reserved for HITL
+- [`ADR-005`](ADR-005-write-concurrency-guards.md) — Write-capable
+  optional-surface commands still acquire declared locks before `--apply`
+  writes; the flag migration does not weaken lock requirements.
+- [`ADR-022`](ADR-022-afk-uses-scripts-hitl-uses-copilot-cli.md) — Keeps
+  AFK write automation in deterministic scripts while preserving Copilot CLI
+  for HITL; `--apply` is the script-side confirmation ceremony.
 
 ## References
 
