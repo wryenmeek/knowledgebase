@@ -443,6 +443,36 @@ jobs:
 
 Use `workflow_run` (trigger on a named workflow completing) not `check_suite: completed` for event-driven fan-out. `check_suite` fires for **every** CI suite on **every** branch — with 4+ suites per PR, GitHub's concurrency group silently drops the third trigger. `workflow_run` targeting a single named workflow produces exactly one trigger per CI cycle.
 
+
+### `GITHUB_TOKEN`-authored events do not trigger downstream workflows
+
+GitHub Actions intentionally suppresses workflow runs for events created by the
+repository's default `GITHUB_TOKEN` — with the documented exceptions of
+`workflow_dispatch` and `repository_dispatch`. This applies to `push`,
+`pull_request`, `check_suite`, `issue_comment`, and every other trigger that
+would otherwise create an infinite loop.
+
+Affected pattern: any pipeline where workflow A pushes to `main` (or merges a
+PR) using `GITHUB_TOKEN` and expects workflow B to fire on the resulting
+`push` event. Workflow B will not run.
+
+**Fixes, in order of preference:**
+
+1. **GitHub App installation token** — `actions/create-github-app-token` with
+   `GH_APP_ID` / `GH_APP_PRIVATE_KEY` secrets. App-token-authored pushes are
+   not treated as `GITHUB_TOKEN` events; downstream workflows fire normally.
+2. **`workflow_dispatch` escape hatch** — add as a second trigger so an
+   operator can manually fan out after the suppressed event. Always pair
+   with a fail-closed re-detection path; don't reuse `HEAD~1` diff logic
+   for the manual path (intervening commits may have landed).
+3. **`workflow_run` chaining** — fires for runs of a named workflow regardless
+   of the source workflow's author identity, so it's the safest event-driven
+   handoff. (Already preferred over `check_suite` for unrelated reasons —
+   see preceding section.)
+
+Reference: <https://docs.github.com/en/actions/using-workflows/triggering-a-workflow#triggering-a-workflow-from-a-workflow>
+See Issue #310 for the canonical fleet pipeline incident (2026-06-20).
+
 ## Interactive-only skills (autopilot guard)
 
 The following skills require real-time interactive dialogue with the user. They **must not** run autonomously in autopilot mode:
