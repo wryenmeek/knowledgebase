@@ -224,7 +224,7 @@ Flags:
 - `--state <state>` — session state filter (default: `inProgress`)
 - `--repo current` — shorthand for `sources/github/wryenmeek/knowledgebase`
 - `--repo all` — account-wide archive (explicit opt-in; no source filter applied)
-- `--source-filter <source-id>` — explicit source ID
+- `--source-filter <source-id>` — explicit source ID. Surrounding whitespace is trimmed; whitespace-only values are rejected with `--source-filter requires a non-empty value` (PR #315).
 - `--apply` — perform real archive calls; omit for dry-run
 
 **Safety rule:** `--apply` requires an explicit source scope (`--repo current`, `--repo all`, or `--source-filter`). Omitting all three exits non-zero to prevent accidental account-wide archive.

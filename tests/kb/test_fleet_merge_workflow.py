@@ -1,4 +1,4 @@
-"""Workflow contract checks for fleet-merge.yml.
+"""Workflow contract checks for fleet-merge.yml and fleet-dispatch.yml.
 
 Covers:
 - Trigger type (workflow_run on CI-2 only — not check_suite, not schedule)
@@ -11,13 +11,21 @@ Covers:
 - Bun version pin (must be 1.3.1, not latest, in all bun workflow files)
 - Re-dispatch ordering (bun re-dispatch must precede gh pr close)
 - PR_BASE recovery (gh pr view --json baseRefName must appear in conflict path)
+- Author filter on fleet-dispatch.yml (Phase 2a) must use login equality only
+
+Migrated to pytest (ADR-029) on 2026-06-20 to clear the way for the
+Layer 4 architectural change that split fleet-dispatch.yml into Phase 2a
+(this file's `FleetDispatchInjectionGuardTests`) and Phase 2b (separate
+workflow + separate test file `test_fleet_dispatch_after_merge.py`).
+The pre-commit ratchet hook (scripts/hooks/check_test_framework.py)
+required removing `unittest.TestCase` before modifying the assertion logic
+that previously asserted Phase 1 contained the now-Phase-2b steps.
 """
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-import re
-import unittest
 import yaml
 
 
@@ -39,8 +47,59 @@ def _collect_run_blocks(workflow: dict) -> list[str]:
     return runs
 
 
-class FleetMergeWorkflowContractTests(unittest.TestCase):
-    def setUp(self) -> None:
+class _AssertMixin:
+    """unittest-compatible assertion methods backed by plain `assert`.
+
+    Used in lieu of `unittest.TestCase` to satisfy ADR-029's pytest ratchet
+    while preserving the existing assertion style across the file.
+    """
+
+    def assertEqual(self, left, right, msg=None) -> None:
+        assert left == right, msg or f"expected {left!r} == {right!r}"
+
+    def assertIn(self, member, container, msg=None) -> None:
+        assert member in container, msg or f"expected {member!r} in {container!r}"
+
+    def assertNotIn(self, member, container, msg=None) -> None:
+        assert member not in container, msg or f"expected {member!r} not in {container!r}"
+
+    def assertTrue(self, expr, msg=None) -> None:
+        assert expr, msg or f"expected truthy, got {expr!r}"
+
+    def assertFalse(self, expr, msg=None) -> None:
+        assert not expr, msg or f"expected falsy, got {expr!r}"
+
+    def assertIsNotNone(self, value, msg=None) -> None:
+        assert value is not None, msg or "expected not None"
+
+    def assertIsNone(self, value, msg=None) -> None:
+        assert value is None, msg or f"expected None, got {value!r}"
+
+    def assertGreater(self, left, right, msg=None) -> None:
+        assert left > right, msg or f"expected {left!r} > {right!r}"
+
+    def assertGreaterEqual(self, left, right, msg=None) -> None:
+        assert left >= right, msg or f"expected {left!r} >= {right!r}"
+
+    def assertLessEqual(self, left, right, msg=None) -> None:
+        assert left <= right, msg or f"expected {left!r} <= {right!r}"
+
+    def assertIsInstance(self, obj, cls, msg=None) -> None:
+        assert isinstance(obj, cls), msg or f"expected {obj!r} to be instance of {cls!r}"
+
+    @contextmanager
+    def subTest(self, **kwargs):
+        # Non-TestCase pytest classes have no subTest equivalent. Use a no-op
+        # context manager: the surrounding for-loop's iteration variable in
+        # the assertion's f-string message still identifies which iteration
+        # failed (subTest in unittest is mainly used for failure reporting,
+        # not for execution semantics).
+        _ = kwargs
+        yield
+
+
+class TestFleetMergeWorkflowContract(_AssertMixin):
+    def setup_method(self) -> None:
         self.assertTrue(WORKFLOW_PATH.exists(), f"Missing: {WORKFLOW_PATH}")
         self.workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
         self.workflow = yaml.safe_load(self.workflow_text)
@@ -263,71 +322,23 @@ class FleetMergeWorkflowContractTests(unittest.TestCase):
                 )
 
 
-class FleetDispatchInjectionGuardTests(unittest.TestCase):
-    """Injection guard tests for fleet-dispatch.yml's unprotected-branch data path."""
+class TestFleetDispatchInjectionGuard(_AssertMixin):
+    """Author-filter and injection-guard tests for fleet-dispatch.yml (Phase 2a).
 
-    def setUp(self) -> None:
+    Phase 2a was simplified on 2026-06-20 to only queue the auto-merge of
+    the Jules planning PR — the post-merge dispatch logic (clearing
+    .pending_session, running fleet-dispatch.ts) moved to Phase 2b
+    (fleet-dispatch-after-merge.yml). The injection-guard tests for that
+    moved logic live in tests/kb/test_fleet_dispatch_after_merge.py.
+
+    This class keeps the contracts that still apply to Phase 2a:
+    the author filter (login equality only, no branch-prefix bypass).
+    """
+
+    def setup_method(self) -> None:
         self.assertTrue(DISPATCH_PATH.exists(), f"Missing: {DISPATCH_PATH}")
         self.workflow_text = DISPATCH_PATH.read_text(encoding="utf-8")
         self.workflow = yaml.safe_load(self.workflow_text)
-
-    def _run_blocks(self) -> list[str]:
-        return _collect_run_blocks(self.workflow)
-
-    def test_pending_date_not_directly_interpolated_in_run_blocks(self) -> None:
-        """pending_date is read from the unprotected fleet-state branch.
-
-        Direct interpolation into a run: block allows a collaborator to push a
-        crafted .pending_session file that executes arbitrary shell commands.
-        Must be routed through an env: var instead.
-
-        Both the spaced form and the no-space form are checked — GitHub Actions
-        accepts both syntaxes (${{ expr }} and ${{expr}}).
-        """
-        for block in self._run_blocks():
-            self.assertNotIn(
-                "${{ steps.check.outputs.pending_date }}",
-                block,
-                "pending_date from fleet-state (unprotected) must not be inline in run: blocks",
-            )
-            self.assertNotIn(
-                "${{steps.check.outputs.pending_date}}",
-                block,
-                "pending_date (no-space form) from fleet-state must not be inline in run: blocks",
-            )
-
-    def test_pending_date_routed_through_env_var(self) -> None:
-        """FLEET_PENDING_DATE env var must carry pending_date to the shell safely.
-
-        The env var must be declared in an env: block (not inlined in the run: block),
-        and the bun call must NOT pass it as a positional argument — the script reads
-        it exclusively from process.env.FLEET_PENDING_DATE (issue #134 fix).
-        """
-        self.assertIn(
-            "FLEET_PENDING_DATE: ${{ steps.check.outputs.pending_date }}",
-            self.workflow_text,
-        )
-        # The env var must NOT be passed as a positional arg to the bun script.
-        # Positional arg exposure was eliminated in issue #134.
-        self.assertNotIn(
-            'bun fleet-dispatch.ts "$FLEET_PENDING_DATE"',
-            self.workflow_text,
-            "FLEET_PENDING_DATE must not be passed as positional argv — script reads from process.env",
-        )
-
-    def test_git_pull_uses_refspec_terminator(self) -> None:
-        """git pull with a fleet-state-derived branch must use -- to stop flag parsing.
-
-        Without --, a crafted FLEET_BASE_BRANCH like '--upload-pack=/tmp/evil'
-        would be parsed by git as an option, executing arbitrary code on the runner.
-        """
-        for block in self._run_blocks():
-            if "git pull" in block and "FLEET_BASE_BRANCH" in block:
-                self.assertIn(
-                    "git pull --ff-only origin -- ",
-                    block,
-                    "git pull with FLEET_BASE_BRANCH must use -- refspec terminator",
-                )
 
     def test_author_filter_uses_login_equality_only(self) -> None:
         """Author filter must use exact login equality, not broad branch prefixes.
@@ -335,6 +346,8 @@ class FleetDispatchInjectionGuardTests(unittest.TestCase):
         Branch-prefix conditions (startsWith 'jules/', 'fleet/') allow any
         collaborator to trigger dispatch by naming their branch accordingly.
         Removed — user.login equality is sufficient and avoids the bypass.
+        The downstream session-ID check in the "Check if this PR is the
+        fleet planning PR" step is the authoritative gate.
         """
         self.assertNotIn("contains(github.event.pull_request.head.ref, 'jules')", self.workflow_text)
         self.assertNotIn("contains(github.event.pull_request.head.ref, 'fleet')", self.workflow_text)
@@ -344,8 +357,93 @@ class FleetDispatchInjectionGuardTests(unittest.TestCase):
         # Must use exact login equality
         self.assertIn("'google-labs-jules'", self.workflow_text)
 
+    def test_phase_2a_does_not_run_fleet_dispatch_ts(self) -> None:
+        """Phase 2a must NOT call fleet-dispatch.ts directly.
 
-class BunVersionPinTests(unittest.TestCase):
+        The Layer 4 fix split fleet-dispatch into Phase 2a (queue auto-merge)
+        and Phase 2b (run fleet-dispatch.ts after merge lands on main). If a
+        future change re-adds the dispatch step here, the race condition
+        between the merge and CI-2 returns. Phase 2a must exit after queuing.
+        """
+        for block in _collect_run_blocks(self.workflow):
+            self.assertNotIn(
+                "bun fleet-dispatch.ts",
+                block,
+                "Phase 2a must not invoke fleet-dispatch.ts directly — "
+                "that lives in Phase 2b (fleet-dispatch-after-merge.yml)",
+            )
+
+    def test_phase_2a_uses_auto_merge(self) -> None:
+        """The merge command in Phase 2a must use --auto to wait for required checks.
+
+        Without --auto, the merge fires synchronously and loses the race against
+        branch-protection required checks (notably CI-2 diagnostics ~90s runtime).
+        """
+        self.assertIn(
+            "gh pr merge",
+            self.workflow_text,
+            "Phase 2a must still attempt to merge the planning PR",
+        )
+        self.assertIn(
+            "--auto",
+            self.workflow_text,
+            "Phase 2a's gh pr merge must use --auto to queue the merge "
+            "until branch-protection required checks pass",
+        )
+
+    def test_phase_2a_creates_github_app_token_when_credentials_exist(self) -> None:
+        """Issue #310: Phase 2a should mint an App token when operator secrets exist."""
+        steps = self.workflow["jobs"]["dispatch"]["steps"]
+        detect_step = next((step for step in steps if step.get("id") == "app-token-inputs"), None)
+        self.assertIsNotNone(detect_step, "Phase 2a must detect optional GitHub App credentials")
+        self.assertEqual(detect_step.get("if"), "steps.check.outputs.is_fleet_pr == 'true'")
+        self.assertEqual(detect_step.get("env", {}).get("GH_APP_ID"), "${{ secrets.GH_APP_ID }}")
+        self.assertEqual(
+            detect_step.get("env", {}).get("GH_APP_PRIVATE_KEY"),
+            "${{ secrets.GH_APP_PRIVATE_KEY }}",
+        )
+
+        app_token_step = next((step for step in steps if step.get("id") == "app-token"), None)
+        self.assertIsNotNone(app_token_step, "Phase 2a must create a GitHub App token when available")
+        uses = app_token_step.get("uses", "")
+        self.assertIn("actions/create-github-app-token@", uses)
+        self.assertNotIn(
+            "@v",
+            uses,
+            "actions/create-github-app-token must be pinned by full commit SHA, not version tag",
+        )
+        self.assertEqual(app_token_step.get("if"), "steps.app-token-inputs.outputs.available == 'true'")
+        self.assertEqual(app_token_step.get("with", {}).get("app-id"), "${{ secrets.GH_APP_ID }}")
+        self.assertEqual(
+            app_token_step.get("with", {}).get("private-key"),
+            "${{ secrets.GH_APP_PRIVATE_KEY }}",
+        )
+
+    def test_phase_2a_auto_merge_prefers_app_token_with_github_token_fallback(self) -> None:
+        """Issue #310: auto-merge should use App token output when present."""
+        steps = self.workflow["jobs"]["dispatch"]["steps"]
+        auto_merge_step = next(
+            (step for step in steps if step.get("name") == "Queue auto-merge of planning PR"),
+            None,
+        )
+        self.assertIsNotNone(auto_merge_step, "Phase 2a must keep the auto-merge step")
+        env = auto_merge_step.get("env", {})
+        self.assertEqual(
+            env.get("GH_TOKEN"),
+            "${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}",
+            "Phase 2a must prefer the App token and only fall back to GITHUB_TOKEN",
+        )
+        self.assertEqual(
+            env.get("APP_TOKEN_AVAILABLE"),
+            "${{ steps.app-token-inputs.outputs.available }}",
+        )
+        run = auto_merge_step.get("run", "")
+        self.assertIn("::warning", run)
+        self.assertIn("Issue #310", run)
+        self.assertIn("Layer 6", run)
+
+
+class TestBunVersionPin(_AssertMixin):
     """Assert bun-version is pinned to a specific version (not 'latest') across
     all workflow files that install bun. Issue #130.
 
@@ -353,9 +451,11 @@ class BunVersionPinTests(unittest.TestCase):
     silent regression to an unpinned version.
     """
 
+    # fleet-dispatch.yml (Phase 2a) no longer installs bun — that moved to
+    # fleet-dispatch-after-merge.yml (Phase 2b) as part of the Layer 4 fix.
     BUN_WORKFLOW_PATHS = [
         Path(".github/workflows/fleet-merge.yml"),
-        Path(".github/workflows/fleet-dispatch.yml"),
+        Path(".github/workflows/fleet-dispatch-after-merge.yml"),
         Path(".github/workflows/copilot-setup-steps.yml"),
     ]
 
@@ -377,7 +477,9 @@ class BunVersionPinTests(unittest.TestCase):
     def test_bun_version_pinned_not_latest_in_fleet_merge(self) -> None:
         """fleet-merge.yml must pin bun-version to a specific version, not 'latest'."""
         _, wf = self._load(Path(".github/workflows/fleet-merge.yml"))
-        for step in self._bun_setup_steps(wf):
+        steps = self._bun_setup_steps(wf)
+        self.assertTrue(steps, "fleet-merge.yml must have at least one setup-bun step")
+        for step in steps:
             bun_ver = step.get("with", {}).get("bun-version", "")
             self.assertEqual(
                 bun_ver,
@@ -385,15 +487,26 @@ class BunVersionPinTests(unittest.TestCase):
                 f"fleet-merge.yml: bun-version must be '{BUN_PINNED_VERSION}', got '{bun_ver}'",
             )
 
-    def test_bun_version_pinned_not_latest_in_fleet_dispatch(self) -> None:
-        """fleet-dispatch.yml must pin bun-version to a specific version, not 'latest'."""
-        _, wf = self._load(Path(".github/workflows/fleet-dispatch.yml"))
-        for step in self._bun_setup_steps(wf):
+    def test_bun_version_pinned_not_latest_in_fleet_dispatch_after_merge(self) -> None:
+        """fleet-dispatch-after-merge.yml must pin bun-version to a specific version, not 'latest'.
+
+        Replaces the prior test against fleet-dispatch.yml — Phase 2a no longer
+        installs bun, the bun install + fleet-dispatch.ts steps moved to Phase 2b
+        (this workflow) as part of the Layer 4 fix.
+        """
+        _, wf = self._load(Path(".github/workflows/fleet-dispatch-after-merge.yml"))
+        steps = self._bun_setup_steps(wf)
+        self.assertTrue(
+            steps,
+            "fleet-dispatch-after-merge.yml must have at least one setup-bun step "
+            "(it owns the bun install + fleet-dispatch.ts invocation post-merge)",
+        )
+        for step in steps:
             bun_ver = step.get("with", {}).get("bun-version", "")
             self.assertEqual(
                 bun_ver,
                 BUN_PINNED_VERSION,
-                f"fleet-dispatch.yml: bun-version must be '{BUN_PINNED_VERSION}', got '{bun_ver}'",
+                f"fleet-dispatch-after-merge.yml: bun-version must be '{BUN_PINNED_VERSION}', got '{bun_ver}'",
             )
 
     def test_bun_version_pinned_not_latest_in_copilot_setup(self) -> None:
@@ -408,7 +521,7 @@ class BunVersionPinTests(unittest.TestCase):
             )
 
 
-class CopilotSetupFleetValidationTests(unittest.TestCase):
+class TestCopilotSetupFleetValidation(_AssertMixin):
     """Assert copilot setup runs fleet Bun tests before build checks."""
 
     def test_copilot_setup_timeout_is_raised_above_ten_minutes(self) -> None:
@@ -463,14 +576,14 @@ class CopilotSetupFleetValidationTests(unittest.TestCase):
                 )
 
 
-class FleetMergePRBaseRecoveryTests(unittest.TestCase):
+class TestFleetMergePRBaseRecovery(_AssertMixin):
     """Assert PR_BASE recovery uses gh pr view (not a hardcoded fallback). Issue #131.
 
     Regressing to PR_BASE="main" or any hardcoded branch would silently break
     re-dispatch for PRs targeting non-main branches.
     """
 
-    def setUp(self) -> None:
+    def setup_method(self) -> None:
         self.assertTrue(WORKFLOW_PATH.exists(), f"Missing: {WORKFLOW_PATH}")
         self.workflow = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
 
@@ -518,7 +631,3 @@ class FleetMergePRBaseRecoveryTests(unittest.TestCase):
                 block,
                 "merge-on-ci-pass conflict step must use gh pr view to recover PR_BASE dynamically",
             )
-
-
-if __name__ == "__main__":
-    unittest.main()

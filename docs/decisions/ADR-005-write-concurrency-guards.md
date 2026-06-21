@@ -1,7 +1,7 @@
 # ADR-005: Enforce write concurrency with workflow group and local file lock
 
 ## Status
-Accepted — amended in-place: governance sibling meta-lock protocol (see § Amendment)
+Accepted — amended in-place; extended by ADR-031: governance sibling meta-lock protocol (see § Amendment)
 
 ## Date
 2026-04-12
@@ -59,6 +59,10 @@ Lock contention must fail closed, return non-zero, and emit
 - **What did not change:** Existing stale unlocked lock-file reclaim behavior for
   sibling lock files and ADR-012/ADR-021 lock-ordering rules for GitHub/Drive
   monitor locks (`wiki/.kb_write.lock` acquired before monitor registry locks).
+
+## Related decisions
+
+- [ADR-031](ADR-031-lock-holder-pid-tracking.md) - Lock holder PID/start-time tracking for lock-unavailable UX
 
 ## References
 

@@ -80,6 +80,11 @@ process.exit(0)
 All other `MutationFailureError` classifications retain the existing
 `process.exit(1)` hard-fail path.
 
+## Alternatives considered
+
+- **Keep `failed_precondition` classification and suppress `exit(1)`**
+  - Rejected because suppressing the generic `failed_precondition` error would also swallow genuine account misconfiguration faults without emitting a failure signal. We only want to softly warn on transient quota events.
+
 ## Consequences
 
 ### Positive

@@ -319,7 +319,7 @@ jobs:
           fetch_start="$(date -u +%s)"
           python -m scripts.github_monitor.fetch_content \
             --drift-report drift-report.json \
-            --approval approved
+            --apply
           fetch_end="$(date -u +%s)"
           fetch_duration="$((fetch_end - fetch_start))"
 
@@ -575,7 +575,7 @@ jobs:
           # The full drift-report.json includes HITL entries that must NOT be auto-synthesized.
           python -m scripts.github_monitor.synthesize_diff \
             --drift-report afk-entries.json \
-            --approval approved
+            --apply
           synthesize_end="$(date -u +%s)"
           synthesize_duration="$((synthesize_end - synthesize_start))"
 

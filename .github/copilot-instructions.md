@@ -253,20 +253,6 @@ This repo does not use "Superseded" status for ADRs. When an ADR needs updating:
 
 Follow the precedent set by ADR-004 and ADR-015. Never mark an ADR as "Superseded" — there is zero repo precedent for that status.
 
-### Jules SDK
-
-`@google/jules-sdk` exports a pre-built singleton — never use a constructor:
-
-```typescript
-import { jules } from '@google/jules-sdk';
-// jules is ready to use. JULES_API_KEY is read from the environment automatically.
-// jules.run()      → AutomatedSession (auto-approve, auto-PR) — use for CI
-// jules.session()  → SessionClient (defaults requirePlanApproval:true) — use for human-in-the-loop
-// jules.sessions() → async iterator over all sessions
-```
-
-Do not use `new Jules()`, `Jules({ apiKey })`, or `jules.createSession()` — none of these exist.
-
 ## Codebase-specific patterns
 
 ### Path bounds checking
@@ -443,6 +429,12 @@ jobs:
 
 Use `workflow_run` (trigger on a named workflow completing) not `check_suite: completed` for event-driven fan-out. `check_suite` fires for **every** CI suite on **every** branch — with 4+ suites per PR, GitHub's concurrency group silently drops the third trigger. `workflow_run` targeting a single named workflow produces exactly one trigger per CI cycle.
 
+### `GITHUB_TOKEN`-authored events do not trigger downstream workflows
+
+GitHub Actions intentionally suppresses workflow runs for events created by the default `GITHUB_TOKEN` — except `workflow_dispatch` and `repository_dispatch`. Applies to `push`, `pull_request`, `check_suite`, `issue_comment`, etc. So a pipeline where workflow A pushes to `main` via `GITHUB_TOKEN` and expects workflow B to fire on the resulting push will **silently no-op**.
+
+**Fixes (in order of preference):** (1) GitHub App installation token via `actions/create-github-app-token` with `GH_APP_ID`/`GH_APP_PRIVATE_KEY` secrets — App-token pushes fire downstream workflows normally; (2) `workflow_dispatch` escape hatch with a fail-closed re-detection path that does not rely on `HEAD~1` diff; (3) `workflow_run` chaining (already preferred over `check_suite`). Canonical incident: Issue #310 (fleet Phase 2a→2b handoff, 2026-06-20).
+
 ## Interactive-only skills (autopilot guard)
 
 The following skills require real-time interactive dialogue with the user. They **must not** run autonomously in autopilot mode:
@@ -535,7 +527,7 @@ After non-trivial implementation work, **proactively run** a cross-functional re
 
 This parallels the quality-pass-chain skill but uses custom agents for richer, domain-specific review.
 
-**Hard rule: `task_complete` is blocked on implementation tasks** until `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` have all been dispatched and any P0–P2 findings remediated. Do not call `task_complete` for any session that created or modified `scripts/**`, `tests/**`, or `.github/skills/**/logic/**` without having run this review first.
+**Hard rule: `task_complete` is blocked on implementation tasks** until `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` have all been dispatched and any P0–P2 findings remediated. Do not call `task_complete` for any session that created or modified `scripts/**`, `tests/**`, `.github/skills/**/logic/**`, or `.github/workflows/**` without having run this review first.
 
 ### Post-remediation docs/customizations audit pair
 

@@ -25,6 +25,38 @@ from tests.kb.harnesses import RuntimeWorkspaceTestCase
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_exclusive_write_lock_open_failure_reads_holder_metadata_from_absolute_lock_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    lock_path = contracts.WRITE_LOCK_PATH
+    read_paths: list[Path] = []
+
+    def fail_open_lock_file(
+        _repo_root: Path,
+        _lock_path: str,
+        *,
+        create: bool,
+    ) -> tuple[Path, Path, object]:
+        raise OSError("cannot open lock")
+
+    def record_holder_metadata_path(lock_file_path: Path) -> None:
+        read_paths.append(lock_file_path)
+        return None
+
+    monkeypatch.setattr(write_utils, "_open_lock_file", fail_open_lock_file)
+    monkeypatch.setattr(write_utils, "_read_lock_holder_details", record_holder_metadata_path)
+
+    with pytest.raises(write_utils.LockUnavailableError):
+        with write_utils.exclusive_write_lock(repo_root, lock_path=lock_path):
+            pass
+
+    assert read_paths == [repo_root.resolve(strict=False) / lock_path]
+    assert read_paths[0].is_absolute()
+
+
 class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -244,6 +276,8 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                     probe_result["failure_reason"],
                     write_utils.lock_unavailable_reason(held_lock),
                 )
+                self.assertTrue(probe_result["holder_alive"])
+                self.assertRegex(str(probe_result["holder_context_hash"]), r"^[0-9a-f]{64}$")
 
     def test_sibling_governance_lock_fails_when_customizations_lock_is_held(self) -> None:
         for attempted_lock in sorted(
@@ -265,6 +299,8 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                     probe_result["failure_reason"],
                     write_utils.lock_unavailable_reason(contracts.CUSTOMIZATIONS_LOCK_PATH),
                 )
+                self.assertTrue(probe_result["holder_alive"])
+                self.assertRegex(str(probe_result["holder_context_hash"]), r"^[0-9a-f]{64}$")
 
     def test_governance_lock_uses_meta_lock_even_with_noncanonical_target_path(self) -> None:
         noncanonical_write_lock_path = "wiki/../wiki/.kb_write.lock"
@@ -486,6 +522,63 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertIsNotNone(started_at)
         env = run_mock.call_args.kwargs.get("env", {})
         self.assertEqual(env.get("LC_TIME"), "C")
+
+    def test_darwin_pid_start_time_uses_mktime_when_local_timezone_missing(self) -> None:
+        real_datetime = write_utils.datetime
+
+        class NoLocalTimezoneDateTime:
+            @staticmethod
+            def strptime(*args: object, **kwargs: object) -> object:
+                return real_datetime.strptime(*args, **kwargs)
+
+            @staticmethod
+            def now() -> object:
+                class NoLocalTimezoneNow:
+                    def astimezone(self) -> object:
+                        class NoLocalTimezone:
+                            tzinfo = None
+
+                        return NoLocalTimezone()
+
+                return NoLocalTimezoneNow()
+
+        with (
+            patch.object(write_utils, "datetime", NoLocalTimezoneDateTime),
+            patch.object(
+                write_utils.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(
+                    args=["ps"],
+                    returncode=0,
+                    stdout="Thu Jun 19 12:34:56 2026\n",
+                    stderr="",
+                ),
+            ),
+            # Note: previously patched write_utils.time.timezone to 0 to exercise
+            # a `if time.timezone:` falsy guard, but that guard was removed
+            # (PR #314 review feedback — see v-test P2 finding 2026-06-20).
+            # The current implementation unconditionally falls back to
+            # time.mktime when local_tz is None, so the timezone patch was
+            # dead code. Strengthen the mktime assertion below instead.
+            patch.object(write_utils.time, "mktime", return_value=12345.0) as mktime_mock,
+        ):
+            started_at = write_utils._darwin_pid_start_time_unix_seconds(1234)
+
+        self.assertEqual(started_at, 12345.0)
+        mktime_mock.assert_called_once()
+        # Strengthened: pin what gets passed to mktime so a refactor that
+        # accidentally rewires the call site (e.g., passing wrong tuple)
+        # is caught.
+        call_args = mktime_mock.call_args
+        self.assertIsNotNone(call_args, "mktime should have been called with arguments")
+        self.assertEqual(len(call_args.args), 1, "mktime takes exactly one positional arg")
+        # The arg should be a time.struct_time produced by .timetuple().
+        # struct_time has tm_year/tm_mon/tm_mday/tm_hour/tm_min/tm_sec attributes.
+        passed_struct = call_args.args[0]
+        self.assertTrue(
+            hasattr(passed_struct, "tm_year"),
+            f"mktime should be called with a struct_time, got {type(passed_struct).__name__}",
+        )
 
     def test_lock_unavailable_error_unreadable_lock_file_falls_back(self) -> None:
         with patch.object(Path, "read_text", side_effect=OSError("denied")):

@@ -61,6 +61,14 @@ repos:
         stages: [pre-commit]
         pass_filenames: false
 
+      - id: approval-flag-ratchet
+        name: approval-flag migration ratchet (block new --approval usage)
+        language: python
+        entry: python -m scripts.hooks.check_approval_flag
+        stages: [pre-commit]
+        files: '^scripts/'
+        pass_filenames: false
+
       - id: sourceref-format
         name: SourceRef citation format validation
         language: python

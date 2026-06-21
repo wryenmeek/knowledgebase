@@ -127,8 +127,19 @@ def extract_frontmatter(text: str) -> tuple[str | None, str]:
     """Extract a YAML frontmatter block and the body from a markdown document.
 
     Returns a tuple of (frontmatter, body). If no frontmatter block is found,
-    returns (None, original_text).
+    returns (None, original_text). The original body characters (including CRLF and
+    trailing newlines) are preserved verbatim.
+
+    UTF-8 BOM (`\\ufeff`) at the start of the text is stripped before parsing
+    so files saved by Windows editors with the BOM still resolve their
+    frontmatter (Issue #321). The stripped BOM is not echoed back to the
+    body — callers that need to preserve byte identity should call this on
+    text they've already normalised.
     """
+    # Strip leading UTF-8 BOM so Windows-saved files don't silently miss
+    # their frontmatter (the bare `lstrip(" \t")` below would not catch it).
+    if text.startswith("\ufeff"):
+        text = text[1:]
     if not text.lstrip(" \t").startswith("---"):
         return None, text
 

@@ -210,11 +210,29 @@ __marimo__/
 
 # JavaScript / Bun dependencies and fleet artifacts
 node_modules/
-.fleet/
+# Exclude all contents under .fleet/ recursively, then re-allow only the
+# canonical per-date planning artifacts that fleet-dispatch.ts reads from
+# the merged tree. The pattern below is in three layers:
+#   .fleet/**            — exclude every path under .fleet/ at any depth
+#   !.fleet/*/           — re-allow the immediate per-date subdirectories
+#                          so git can descend into them and see contained
+#                          files (gitignore cannot re-include a file whose
+#                          parent directory is still excluded)
+#   !.fleet/*/<file>     — re-allow the canonical planning artifact files
+# Without these negations, Jules's planning agent writes
+# .fleet/YYYY_MM_DD/issue_tasks.{md,json} to disk, `git add .` silently
+# skips them, and the resulting planning PR has an empty diff. See
+# diagnosis trail at PR #307 / Issue #82 follow-up (2026-06-20).
+.fleet/**
+!.fleet/*/
+!.fleet/*/issue_tasks.json
+!.fleet/*/issue_tasks.md
+!.fleet/*/sessions.json
 
 # Test runtime directories (created/cleaned by harnesses.py test teardown; never commit)
 tests/kb/.runtime/
 tests/kb/.runtime_skill_wrappers/
+tests/kb/.runtime_batch_persist_query/
 .DS_Store
 
 # Governance lock files — never commit runtime state

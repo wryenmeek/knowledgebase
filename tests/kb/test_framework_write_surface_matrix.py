@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import unittest
 
 
 AGENTS_PATH = Path("AGENTS.md")
@@ -27,7 +26,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     ".github/skills/manage-redirects-and-anchors/logic/**": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/redirects.md", "append-only"),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("ADR-009", "schema/governed-artifact-contract.md"),
         "Hard-fail behavior": ("lock_unavailable", "duplicate redirect", "fail closed"),
     },
@@ -235,21 +234,21 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/reporting/content_quality_report.py` — `persist` mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/reports/content-quality-*.json",),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("schema validation failure", "lock contention", "fail closed"),
     },
     "scripts/reporting/quality_runtime.py` — `score-update` and `report` modes": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/reports/quality-scores-*.json", "wiki/reports/quality-report-*.json"),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("schema validation failure", "lock contention", "fail closed"),
     },
     "scripts/reporting/coverage_report.py` — `summary` and `persist` modes": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/reports/coverage-report-*.json",),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("Missing approval", "lock contention", "wiki path escapes boundary", "fail closed"),
     },
@@ -270,7 +269,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/context/fill_context_pages.py` — `apply` mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": (".github/skills/**", "docs/**"),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/_optional_surface_common.py", "scripts/kb/write_utils.py"),
         "Hard-fail behavior": ("path outside write roots", "SHA drift", "placeholder markers", "fail closed"),
     },
@@ -284,7 +283,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/maintenance/generate_docs.py` — `apply` mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("docs/**",),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/_optional_surface_common.py", "scripts/kb/write_utils.py"),
         "Hard-fail behavior": ("path outside docs/**", "SHA drift", "lock unavailable", "fail closed"),
     },
@@ -326,7 +325,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/ingest/convert_sources_to_md.py` — `apply` mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/processed/**", "write-once", "immutable post-write"),
-        "Lock requirements": ("wiki/.kb_write.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("ADR-006", "ADR-010"),
         "Hard-fail behavior": ("raw/inbox", "output already exists", "lock unavailable", "fail closed"),
     },
@@ -354,14 +353,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/github_monitor/fetch_content.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/assets/", "raw/github-sources/", "last_fetched_"),
-        "Lock requirements": ("raw/.github-sources.lock", "--approval approved"),
+        "Lock requirements": ("raw/.github-sources.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/github-source-registry-contract.md"),
         "Hard-fail behavior": ("sha-256 mismatch", "path traversal", "lock unavailable", "last_applied_", "fail closed"),
     },
     "scripts/github_monitor/synthesize_diff.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/**", "raw/github-sources/", "last_applied_"),
-        "Lock requirements": ("wiki/.kb_write.lock", "raw/.github-sources.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "raw/.github-sources.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/github-source-registry-contract.md"),
         "Hard-fail behavior": ("diff injection", "lock unavailable", "last_applied_", "fail closed"),
     },
@@ -469,6 +468,29 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
             "fail closed",
         ),
     },
+    "scripts/hooks/check_approval_flag.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Read-only / prerequisite paths": (
+            "scripts/**/*.py",
+            "git diff --cached",
+            "git show",
+            "--approval",
+            "_optional_surface_common.py",
+            "scripts/kb/checkpoint_registry.py",
+        ),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": (
+            "ADR-030",
+            "MAX_APPROVAL_FLAG_SCRIPTS",
+            "tests/kb/test_approval_migration_ratchet.py",
+        ),
+        "Hard-fail behavior": (
+            "newly staged scripts introducing legacy",
+            "modified legacy scripts",
+            "fail closed",
+        ),
+    },
     "scripts/hooks/locality_postuse_advisory.py": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "forbidden"),
@@ -497,6 +519,20 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("ADR-028", ".github/hooks/hooks.json"),
         "Hard-fail behavior": ("exit 0", "no output", "stdout-only context injection", "never block"),
     },
+    "scripts/hooks/check_cross_functional_review.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": (".github/hooks/hooks.json",),
+        "Hard-fail behavior": ("malformed JSON", "fail closed", "evidence", "cross-functional-reviewed", "BYPASS_CROSS_FUNCTIONAL_REVIEW"),
+    },
+    "tests/kb/fleet_dispatch_harness.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "tmp_path"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": (".github/workflows/fleet-dispatch-after-merge.yml", "ADR-019"),
+        "Hard-fail behavior": ("malformed YAML", "missing step name", "subprocess timeout", "tmp_path"),
+    },
     "scripts/drive_monitor/**": {
         "Runtime mode": ("read-only only", "blocking-only"),
         "Writable paths": ("raw/assets/gdrive/**", "raw/drive-sources/**", "wiki/**"),
@@ -521,14 +557,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/drive_monitor/fetch_content.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/assets/gdrive/", "raw/drive-sources/", "last_fetched_"),
-        "Lock requirements": ("raw/.drive-sources.lock", "--approval approved"),
+        "Lock requirements": ("raw/.drive-sources.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
         "Hard-fail behavior": ("sha-256 mismatch", "path traversal", "lock unavailable", "last_applied_", "fail closed"),
     },
     "scripts/drive_monitor/synthesize_diff.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("wiki/**", "raw/drive-sources/", "last_applied_"),
-        "Lock requirements": ("wiki/.kb_write.lock", "raw/.drive-sources.lock", "--approval approved"),
+        "Lock requirements": ("wiki/.kb_write.lock", "raw/.drive-sources.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
         "Hard-fail behavior": ("lock unavailable", "path traversal", "last_applied_", "fail closed"),
     },
@@ -542,7 +578,7 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
     "scripts/drive_monitor/advance_cursor.py` — write mode only": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/drive-sources/", "changes_page_token"),
-        "Lock requirements": ("raw/.drive-sources.lock", "--approval approved"),
+        "Lock requirements": ("raw/.drive-sources.lock", "--apply", "--approval approved"),
         "Artifact / schema owners": ("scripts/kb/write_utils.py", "scripts/kb/contracts.py", "schema/drive-source-registry-contract.md"),
         "Hard-fail behavior": ("lock unavailable", "alias with pipeline errors", "fail closed"),
     },
@@ -552,6 +588,55 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Lock requirements": ("None",),
         "Artifact / schema owners": ("scripts/drive_monitor/_relay.py", "dispatch_client.py", "ADR-021"),
         "Hard-fail behavior": ("missing required env", "relay validation failure", "dispatch failure", "fail closed"),
+    },
+    "scripts/fleet/**": {
+        "Runtime mode": ("Mixed surface", "read-only only", "blocking-only", "external"),
+        "Writable paths": ("None within the repository",),
+        "Lock requirements": ("None within the repository", "FLEET_MUTATION_MAX_ATTEMPTS"),
+        "Artifact / schema owners": ("@google/jules-sdk", "scripts/fleet/_fleet_output.ts", "ADR-019", "ADR-032"),
+        "Hard-fail behavior": ("missing env", "Jules quota saturation", "soft-warn", "fail closed"),
+    },
+    "scripts/fleet/fleet-plan.ts": {
+        "Runtime mode": ("blocking-only", "external"),
+        "Writable paths": ("None within the working-tree repo", ".fleet/<date>/issue_tasks", ".fleet/.pending_session", "fleet-state"),
+        "Lock requirements": ("None within the repository",),
+        "Artifact / schema owners": ("ADR-019", "@google/jules-sdk"),
+        "Hard-fail behavior": ("Jules quota saturation", "soft-warn", "fail closed"),
+    },
+    "scripts/fleet/fleet-dispatch.ts": {
+        "Runtime mode": ("blocking-only", "external"),
+        "Writable paths": ("None within the working-tree repo",),
+        "Lock requirements": ("None within the repository",),
+        "Artifact / schema owners": ("ADR-019", ".github/workflows/fleet-dispatch-after-merge.yml", "@google/jules-sdk"),
+        "Hard-fail behavior": ("missing/invalid planning artifact", "base-branch ≠ `main`", "soft-warn", "fail closed"),
+    },
+    "scripts/fleet/fleet-merge.ts": {
+        "Runtime mode": ("blocking-only", "external"),
+        "Writable paths": ("None within the working-tree repo",),
+        "Lock requirements": ("None within the repository",),
+        "Artifact / schema owners": ("ADR-019", ".github/workflows/fleet-merge.yml", "@google/jules-sdk"),
+        "Hard-fail behavior": ("missing sessions.json", "merge conflict", "fail closed"),
+    },
+    "scripts/fleet/fleet-analyze.ts": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None within the repository",),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("ADR-019",),
+        "Hard-fail behavior": ("missing env", "GitHub API errors", "fail closed"),
+    },
+    "scripts/fleet/archive-stale-sessions.ts": {
+        "Runtime mode": ("Mixed", "read-only only", "blocking-only", "external"),
+        "Writable paths": ("None within the repository",),
+        "Lock requirements": ("None within the repository", "`jules-archive-approval` GitHub environment"),
+        "Artifact / schema owners": ("@google/jules-sdk", ".github/workflows/jules-archive-stale.yml"),
+        "Hard-fail behavior": ("deny-by-default", "whitespace-only `--source-filter`", "fail closed"),
+    },
+    "scripts/fleet/jules-account-probe.ts": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None within the repository",),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("@google/jules-sdk", ".github/workflows/jules-account-probe.yml"),
+        "Hard-fail behavior": ("missing env", "Jules API errors", "fail closed"),
     },
     "scripts/init.py` — `--fresh` mode only": {
         "Runtime mode": ("blocking-only", "destructive"),
@@ -589,76 +674,61 @@ def _parse_markdown_table(section_text: str) -> list[dict[str, str]]:
     return rows
 
 
-class FrameworkWriteSurfaceMatrixTests(unittest.TestCase):
-    def test_agents_write_surface_matrix_declares_current_and_future_surfaces(self) -> None:
-        agents_text = AGENTS_PATH.read_text(encoding="utf-8")
-        matrix_rows = _parse_markdown_table(
-            _extract_markdown_section(agents_text, WRITE_SURFACE_MATRIX_HEADING)
-        )
-        surfaces = [row["Surface"] for row in matrix_rows]
-        self.assertEqual(
-            len(surfaces),
-            len(set(surfaces)),
-            "AGENTS.md write-surface matrix must not contain duplicate Surface rows",
-        )
-        self.assertEqual(
-            surfaces.count("scripts/kb/checkpoint_registry.py"),
-            1,
-            "AGENTS.md must declare exactly one row for scripts/kb/checkpoint_registry.py",
-        )
-        rows_by_surface = {row["Surface"]: row for row in matrix_rows}
+def test_agents_write_surface_matrix_declares_current_and_future_surfaces() -> None:
+    agents_text = AGENTS_PATH.read_text(encoding="utf-8")
+    matrix_rows = _parse_markdown_table(
+        _extract_markdown_section(agents_text, WRITE_SURFACE_MATRIX_HEADING)
+    )
+    surfaces = [row["Surface"] for row in matrix_rows]
+    assert len(surfaces) == len(set(surfaces)), (
+        "AGENTS.md write-surface matrix must not contain duplicate Surface rows"
+    )
+    assert surfaces.count("scripts/kb/checkpoint_registry.py") == 1, (
+        "AGENTS.md must declare exactly one row for scripts/kb/checkpoint_registry.py"
+    )
+    rows_by_surface = {row["Surface"]: row for row in matrix_rows}
 
-        self.assertEqual(
-            set(rows_by_surface),
-            set(EXPECTED_WRITE_SURFACE_MATRIX_ROWS),
-            "AGENTS.md write-surface matrix must cover every declared skill-local and scripts/** surface",
-        )
+    assert set(rows_by_surface) == set(EXPECTED_WRITE_SURFACE_MATRIX_ROWS), (
+        "AGENTS.md write-surface matrix must cover every declared skill-local and scripts/** surface"
+    )
 
-        for surface, expectations in EXPECTED_WRITE_SURFACE_MATRIX_ROWS.items():
-            row = rows_by_surface[surface]
-            for column, required_snippets in expectations.items():
-                with self.subTest(surface=surface, column=column):
-                    normalized_column = row[column].lower()
-                    for snippet in required_snippets:
-                        self.assertIn(
-                            snippet.lower(),
-                            normalized_column,
-                            f"{surface} row must mention '{snippet}' in column '{column}'",
-                        )
-
-    def test_existing_skill_logic_directories_are_declared_in_agents_matrix(self) -> None:
-        agents_text = AGENTS_PATH.read_text(encoding="utf-8")
-        matrix_rows = _parse_markdown_table(
-            _extract_markdown_section(agents_text, WRITE_SURFACE_MATRIX_HEADING)
-        )
-        declared_surfaces = {row["Surface"] for row in matrix_rows}
-        expected_skill_surfaces = {
-            f".github/skills/{logic_dir.parent.name}/logic/**"
-            for logic_dir in Path(".github/skills").glob("*/logic")
-            if logic_dir.is_dir()
-        }
-
-        self.assertTrue(expected_skill_surfaces, "Expected at least one skill logic directory")
-        self.assertTrue(
-            expected_skill_surfaces.issubset(declared_surfaces),
-            "Every current .github/skills/*/logic directory must have a matrix row in AGENTS.md",
-        )
-
-    def test_agents_matrix_preserves_fail_closed_policy_for_protected_paths(self) -> None:
-        agents_text = AGENTS_PATH.read_text(encoding="utf-8")
-        required_controls = (
-            "New surfaces without a row are undeclared and must hard-fail",
-            "Unsupported checks, missing prerequisites, or partial validator results are hard failures",
-            "protected/write path",
-            "deny-by-default",
-        )
-        for control in required_controls:
-            self.assertIn(
-                control,
-                agents_text,
-                f"AGENTS.md must preserve fail-closed policy language: {control}",
-            )
+    for surface, expectations in EXPECTED_WRITE_SURFACE_MATRIX_ROWS.items():
+        row = rows_by_surface[surface]
+        for column, required_snippets in expectations.items():
+            normalized_column = row[column].lower()
+            for snippet in required_snippets:
+                assert snippet.lower() in normalized_column, (
+                    f"{surface} row must mention '{snippet}' in column '{column}'"
+                )
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_existing_skill_logic_directories_are_declared_in_agents_matrix() -> None:
+    agents_text = AGENTS_PATH.read_text(encoding="utf-8")
+    matrix_rows = _parse_markdown_table(
+        _extract_markdown_section(agents_text, WRITE_SURFACE_MATRIX_HEADING)
+    )
+    declared_surfaces = {row["Surface"] for row in matrix_rows}
+    expected_skill_surfaces = {
+        f".github/skills/{logic_dir.parent.name}/logic/**"
+        for logic_dir in Path(".github/skills").glob("*/logic")
+        if logic_dir.is_dir()
+    }
+
+    assert expected_skill_surfaces, "Expected at least one skill logic directory"
+    assert expected_skill_surfaces.issubset(declared_surfaces), (
+        "Every current .github/skills/*/logic directory must have a matrix row in AGENTS.md"
+    )
+
+
+def test_agents_matrix_preserves_fail_closed_policy_for_protected_paths() -> None:
+    agents_text = AGENTS_PATH.read_text(encoding="utf-8")
+    required_controls = (
+        "New surfaces without a row are undeclared and must hard-fail",
+        "Unsupported checks, missing prerequisites, or partial validator results are hard failures",
+        "protected/write path",
+        "deny-by-default",
+    )
+    for control in required_controls:
+        assert control in agents_text, (
+            f"AGENTS.md must preserve fail-closed policy language: {control}"
+        )

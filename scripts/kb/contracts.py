@@ -109,7 +109,10 @@ CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES = 10 * 1024 * 1024
 
 # ADR-029 pytest migration ratchet. Decrement after each unittest-to-pytest
 # migration; never raise without an ADR amendment.
-MAX_UNITTEST_FILES = 57
+MAX_UNITTEST_FILES = 55
+# ADR-030 approval-flag migration ratchet. Count represents legacy script files
+# still containing the deprecated approval-flag spelling.
+MAX_APPROVAL_FLAG_SCRIPTS = 8
 
 
 class TriggerType(StrEnum):
@@ -438,6 +441,7 @@ __all__ = [
     "CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES",
     "CHECKPOINT_REGISTRY_SIZE_WARN_BYTES",
     "MAX_UNITTEST_FILES",
+    "MAX_APPROVAL_FLAG_SCRIPTS",
     "DEPENDENCY_FINGERPRINT_SOURCES",
     "DRIVE_SOURCES_LOCK_PATH",
     "DRIVE_MONITOR_WRITE_ALLOWLIST_PATHS",

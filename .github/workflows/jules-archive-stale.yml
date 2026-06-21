@@ -56,6 +56,19 @@ permissions:
 jobs:
   archive:
     runs-on: ubuntu-latest
+    # SECURITY: `inputs.apply` is declared `type: boolean` (see workflow_dispatch
+    # inputs). The previous expression `inputs.apply == 'true'` compared a
+    # boolean to a string — under GitHub Actions' expression evaluator
+    # (`AbstractEqual` + `CoerceTypes`), string `'true'` numeric-coerces to NaN
+    # and `boolean true` coerces to `1.0`, so the comparison ALWAYS returned
+    # false. The `&& 'jules-archive-approval' || ''` ternary then always picked
+    # the empty branch, making the environment-approval gate completely inert.
+    # Compare boolean-to-boolean (truthy check) so the gate actually engages on
+    # `apply=true`. v-sec audit 2026-06-20.
+    environment: ${{ inputs.apply && 'jules-archive-approval' || '' }}
+    concurrency:
+      group: jules-archive-stale-${{ inputs.apply }}
+      cancel-in-progress: false
     timeout-minutes: 10
     steps:
       - name: Checkout code

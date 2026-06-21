@@ -4,7 +4,7 @@
 
 ## Status
 
-Accepted
+Accepted — extends ADR-005
 
 ## Context
 
@@ -39,6 +39,13 @@ Adopt Resolution A:
    preserve the prior generic lock-unavailable hint, and sanitize lock-unavailable
    messages/context to expose only `holder_context_hash` (not raw PID/start-time).
 
+## Alternatives considered
+
+1. **Mtime heuristic only (Resolution B):** rejected; cannot reliably
+   distinguish long-running holders from stale files.
+2. **Third-party lock library (Resolution C):** rejected; dependency and
+   migration cost outweighs value for this focused UX improvement.
+
 ## Consequences
 
 ### Positive
@@ -48,6 +55,7 @@ Adopt Resolution A:
 - `SurfaceResult` consumers can branch on structured holder context.
 - Change applies uniformly across all lock-path variants that use
   `exclusive_write_lock()`.
+- The `holder_context_hash` preserves context privacy by not exposing raw PIDs in unauthenticated logging surfaces.
 
 ### Trade-offs
 
@@ -61,12 +69,9 @@ Lock-file bytes are governance-internal runtime metadata. No
 `governed_artifact_contract_for_path()` row claims lock-file contents, so this
 change does not alter governed artifact contracts.
 
-## Alternatives considered
+## Related decisions
 
-1. **Mtime heuristic only (Resolution B):** rejected; cannot reliably
-   distinguish long-running holders from stale files.
-2. **Third-party lock library (Resolution C):** rejected; dependency and
-   migration cost outweighs value for this focused UX improvement.
+- [ADR-005](ADR-005-write-concurrency-guards.md) — Enforce write concurrency with workflow group and local file lock. This ADR extends ADR-005's `lock_unavailable` envelope with holder PID/start-time metadata for actionable diagnostics. ADR-005's status was updated to reflect the bidirectional cross-reference (2026-06-20).
 
 ## References
 

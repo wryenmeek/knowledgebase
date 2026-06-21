@@ -1,0 +1,195 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-06-20T08:54:05.565Z",
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "title": "Time-bomb and Ratchet Bugs in check_approval_flag.py",
+      "severity": "high",
+      "issues": [300],
+      "files": ["scripts/hooks/check_approval_flag.py", "tests/kb/test_approval_migration_ratchet.py", "tests/kb/test_contracts.py"],
+      "description": "Two bugs in #300: a time-bomb in check_approval_flag.py where equals-form rejection runs before the exemption check, causing the alias file to fail after the deadline; and a ratchet bug where the assertion uses <= instead of ==, allowing the count to drift without tightening the limit.",
+      "solution_summary": "Move the _EXEMPT_PATHS check before the equals-form check in check_approval_flag.py. Change the assertion in test_approval_migration_ratchet.py to use == instead of <=, and update test_contracts.py to match any modified limit."
+    },
+    {
+      "id": "rc-2",
+      "title": "Truthiness Check Bypass in archive-stale-sessions.ts",
+      "severity": "high",
+      "issues": [301],
+      "files": ["scripts/fleet/archive-stale-sessions.ts", "scripts/fleet/archive-stale-sessions.test.ts"],
+      "description": "The check for --source-filter uses JavaScript truthiness. A whitespace-only string bypasses the deny-by-default --apply gate.",
+      "solution_summary": "Replace the truthiness check with an explicit check for non-empty and non-whitespace strings."
+    },
+    {
+      "id": "rc-3",
+      "title": "Missing lock_file_path in Meta-lock LockUnavailableError and related write_utils bugs",
+      "severity": "high",
+      "issues": [302, 305, 306],
+      "files": ["scripts/kb/write_utils.py", "tests/kb/test_write_utils.py"],
+      "description": "The LockUnavailableError raised for the meta-lock is missing the lock_file_path kwarg, breaking holder liveness introspection. Includes P2 bundle fixes for UnicodeDecodeError, Darwin ps command path, and start-time UTC fallback.",
+      "solution_summary": "Update the raise statement in write_utils.py to pass lock_file_path. Add UnicodeDecodeError to exception catching. Use /bin/ps and time.timezone for the Darwin fallback. Update tests to assert holder metadata propagation."
+    },
+    {
+      "id": "rc-4",
+      "title": "Missing extract_frontmatter Tests",
+      "severity": "high",
+      "issues": [303],
+      "files": ["scripts/kb/page_template_utils.py", "tests/kb/test_extract_frontmatter.py"],
+      "description": "extract_frontmatter has no unit tests to enforce its exact byte contract regarding CRLF and trailing newlines.",
+      "solution_summary": "Create a new parameterized test suite and update the function docstring."
+    },
+    {
+      "id": "rc-5",
+      "title": "ADR Quality and Reference Updates",
+      "severity": "high",
+      "issues": [304],
+      "files": ["docs/decisions/ADR-032-fleet-quota-saturation-soft-warn.md", "docs/decisions/README.md", "docs/decisions/ADR-005-write-concurrency-guards.md", "docs/decisions/ADR-019-fleet-jules-orchestration.md", "docs/decisions/ADR-031-lock-holder-pid-tracking.md", "docs/decisions/ADR-030-cli-write-confirmation.md"],
+      "description": "Several ADRs are missing cross-references, alternative sections, and proper indexing as noted in retrospective reviews.",
+      "solution_summary": "Apply the markdown updates described in the issue text across the listed ADRs."
+    },
+    {
+      "id": "rc-6",
+      "title": "Workflow Missing Environment and Concurrency Gates",
+      "severity": "medium",
+      "issues": [306, 305],
+      "files": [".github/workflows/jules-archive-stale.yml"],
+      "description": "The jules-archive-stale.yml workflow lacks an environment approval gate and a concurrency block.",
+      "solution_summary": "Add environment: jules-archive-approval and a concurrency block to the archive job."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-fix-check-approval-flag",
+      "title": "Fix check_approval_flag bugs",
+      "root_cause": "rc-1",
+      "issues": [300],
+      "files": ["scripts/hooks/check_approval_flag.py"],
+      "new_files": [],
+      "test_files": ["tests/kb/test_approval_migration_ratchet.py", "tests/kb/test_contracts.py"],
+      "risk": "low",
+      "prompt": "Fix two related bugs in the approval-flag ratchet.\n\nFirst, in `scripts/hooks/check_approval_flag.py`, the equals-form rejection runs *before* the `_EXEMPT_PATHS` check. After the `APPROVAL_EQUALS_REJECTION_DEADLINE` (2026-12-31), any edit to `scripts/_optional_surface_common.py` (which legitimately contains `--approval=`) will fail. Move the `_EXEMPT_PATHS` check to before the equals-form check.\n\nBefore:\n```python\n        if ( _contains_approval_equals(staged_text) and _migration_deadline_passed() ): ...\n        if staged_path.path in _EXEMPT_PATHS:\n            continue\n```\nAfter:\n```python\n        if staged_path.path in _EXEMPT_PATHS:\n            continue\n        if ( _contains_approval_equals(staged_text) and _migration_deadline_passed() ): ...\n```\n\nSecond, in `tests/kb/test_approval_migration_ratchet.py`, `test_approval_flag_script_count_does_not_exceed_contract` uses `<=` for its assertion instead of `==`. This defeats the ratchet mechanism. Change `<=` to `==`.\n\nBefore:\n`assert len(files) <= MAX_APPROVAL_FLAG_SCRIPTS`\nAfter:\n`assert len(files) == MAX_APPROVAL_FLAG_SCRIPTS`\n\nFinally, update `test_approval_flag_ratchet_baseline_is_declared_and_exported` in `tests/kb/test_contracts.py` if `MAX_APPROVAL_FLAG_SCRIPTS` is modified during migration to reflect the tightened ratchet.\n\nAcceptance criteria:\n- The test assertion uses tight equality (`==`).\n- The pre-commit exemption check runs before the equals-form rejection.\n- You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-fix-archive-truthiness",
+      "title": "Fix archive-stale-sessions truthiness",
+      "root_cause": "rc-2",
+      "issues": [301],
+      "files": ["scripts/fleet/archive-stale-sessions.ts"],
+      "new_files": [],
+      "test_files": ["scripts/fleet/archive-stale-sessions.test.ts"],
+      "risk": "low",
+      "prompt": "Fix a truthiness bypass bug in `scripts/fleet/archive-stale-sessions.ts`.\n\nThe parsing logic for `--source-filter` uses JS truthiness: `if (arg === \"--source-filter\" && argv[i + 1])`. If the argument is a whitespace-only string (`\"   \"`), it is truthy and accepted, which later bypasses the deny-by-default gate for `--apply` mode.\n\nChange the logic to explicitly check for a non-empty, non-whitespace string, throwing an error otherwise.\n\nBefore:\n```typescript\n    } else if (arg === \"--source-filter\" && argv[i + 1]) {\n      sourceFilter = argv[++i];\n    } else if (arg === \"--repo\" && argv[i + 1]) {\n```\nAfter:\n```typescript\n    } else if (arg === \"--source-filter\") {\n      const value = argv[++i];\n      if (value === undefined || value.trim().length === 0) {\n        throw new Error(\"--source-filter requires a non-empty value\");\n      }\n      sourceFilter = value;\n    } else if (arg === \"--repo\" && argv[i + 1]) {\n```\n\nAdd two new tests to `scripts/fleet/archive-stale-sessions.test.ts` to cover this behavior:\n1. `--apply with whitespace-only --source-filter is denied`\n2. `--apply with empty --source-filter is denied`\n\nAcceptance criteria:\n- Whitespace-only or empty `--source-filter` throws an error.\n- New tests are added and pass.\n- You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-fix-write-utils-bugs",
+      "title": "Fix LockUnavailableError and write bugs",
+      "root_cause": "rc-3",
+      "issues": [302, 305, 306],
+      "files": ["scripts/kb/write_utils.py"],
+      "new_files": [],
+      "test_files": ["tests/kb/test_write_utils.py"],
+      "risk": "medium",
+      "prompt": "Fix multiple bugs in `scripts/kb/write_utils.py` and enhance its tests.\n\n1. Meta-lock `LockUnavailableError` (Issue #302): In `_acquire_sibling_governance_lock`, the meta-lock acquisition failure raises `LockUnavailableError(contracts.GOVERNANCE_META_LOCK_PATH) from exc` but is missing the `lock_file_path=repo_root / contracts.GOVERNANCE_META_LOCK_PATH` kwarg. This causes holder introspection to fail. Pass this kwarg.\n\n2. `UnicodeDecodeError` (Issue #305): `_read_lock_holder_details` does not catch `UnicodeDecodeError`. Add it to the exception block along with `OSError`.\n\n3. Darwin start-time UTC fallback and ps path (Issues #305, #306): In `_darwin_pid_start_time_unix_seconds`, change `[\"ps\", ...]` to `[\"/bin/ps\", ...]`. For the timezone fallback, if `datetime.now().astimezone().tzinfo` is None, instead of blindly falling back to UTC, use `time.timezone` (e.g. `import time; if time.timezone: return time.mktime(parsed.timetuple())`) to avoid shifting by the local UTC offset in the wrong direction.\n\nIn `tests/kb/test_write_utils.py`, extend both `test_customizations_lock_fails_when_sibling_governance_lock_is_held` and `test_sibling_governance_lock_fails_when_customizations_lock_is_held` to assert that `holder_alive` is True and `holder_context_hash` matches `r\"^[0-9a-f]{64}$\"` on the resulting probe.\n\nAcceptance criteria:\n- Meta-lock raises LockUnavailableError with the proper path.\n- UnicodeDecodeError is caught.\n- Darwin ps uses full path and correct timezone handling.\n- Tests assert holder metadata propagation.\n- You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-add-extract-frontmatter-tests",
+      "title": "Add extract_frontmatter tests",
+      "root_cause": "rc-4",
+      "issues": [303],
+      "files": ["scripts/kb/page_template_utils.py"],
+      "new_files": ["tests/kb/test_extract_frontmatter.py"],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "Add missing unit tests for `extract_frontmatter` to codify its byte contract, and update its docstring.\n\nIn `scripts/kb/page_template_utils.py`, update the docstring for `extract_frontmatter` to state that the original body bytes (including CRLF and trailing newlines) are preserved verbatim.\n\nCreate a new test file `tests/kb/test_extract_frontmatter.py` containing parameterized tests for `extract_frontmatter` covering:\n- Happy LF (`---\\nfm\\n---\\nbody\\n`)\n- Happy CRLF (`---\\r\\nfm\\r\\n---\\r\\nbody\\r\\n`)\n- Leading whitespace before opening delim (`  ---\\nfm\\n---\\nbody`)\n- Empty frontmatter (`---\\n---\\nbody\\n`)\n- No frontmatter pass-through (`no frontmatter\\n`)\n- Unclosed delim (`---\\nunclosed\\nbody\\n`)\n- `---` mid-body (`---\\nfm\\n---\\nbody\\n---\\nmore\\n`)\n- File ending at closing delim (`---\\nfm\\n---`)\n\nEach case must explicitly assert both the `fm` and `body` returns to verify the byte contract.\n\nAcceptance criteria:\n- The docstring is updated.\n- The new test file exists with at least 8 parameterized cases testing both returns.\n- You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-update-adrs",
+      "title": "Update ADRs",
+      "root_cause": "rc-5",
+      "issues": [304],
+      "files": [
+        "docs/decisions/ADR-032-fleet-quota-saturation-soft-warn.md",
+        "docs/decisions/README.md",
+        "docs/decisions/ADR-005-write-concurrency-guards.md",
+        "docs/decisions/ADR-019-fleet-jules-orchestration.md",
+        "docs/decisions/ADR-031-lock-holder-pid-tracking.md",
+        "docs/decisions/ADR-030-cli-write-confirmation.md"
+      ],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "Perform quality polish on multiple ADR documents according to Issue #304.\n\n- In `ADR-032`, add a `## Alternatives considered` section mentioning the rejected alternatives (e.g. keeping failed_precondition and suppressing exit 1).\n- In `README.md`, update the ADR-031 index row status to `Accepted — extends ADR-005`.\n- In `ADR-005`, add a `## Related decisions` section linking to ADR-031.\n- In `ADR-019`, add a `## Related decisions` section linking to ADR-032.\n- In `ADR-031`, move `## Alternatives considered` above `## Consequences`, and add a bullet under Consequences (Positive) about `holder_context_hash` privacy trade-offs.\n- In `ADR-030`, add a `## Related decisions` section linking to ADR-022 and ADR-005.\n\nAcceptance criteria:\n- All requested markdown changes are correctly applied without altering the structural intent of the documents.\n- You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-fix-workflow-gates",
+      "title": "Fix workflow gates",
+      "root_cause": "rc-6",
+      "issues": [306, 305],
+      "files": [".github/workflows/jules-archive-stale.yml"],
+      "new_files": [],
+      "test_files": [],
+      "risk": "low",
+      "prompt": "Add missing deployment and concurrency controls to the destructive archive workflow.\n\nIn `.github/workflows/jules-archive-stale.yml`, modify the `archive` job to include an `environment` and `concurrency` block to prevent unauthorized runs and race conditions.\n\nBefore:\n```yaml\njobs:\n  archive:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n```\nAfter:\n```yaml\njobs:\n  archive:\n    runs-on: ubuntu-latest\n    environment: jules-archive-approval\n    concurrency:\n      group: jules-archive-stale\n      cancel-in-progress: false\n    timeout-minutes: 10\n```\n\nAcceptance criteria:\n- The workflow file contains both the `environment` and `concurrency` blocks.\n- You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [
+    {
+      "issue": 212,
+      "reason": "Phase 7 validation epic tracking. Requires CLI vs VS Code runtime manual execution.",
+      "suggested_owner": "Team Lead"
+    },
+    {
+      "issue": 207,
+      "reason": "QA gate epic tracking. Requires manual adversarial review.",
+      "suggested_owner": "QA / Security"
+    },
+    {
+      "issue": 198,
+      "reason": "QA gate epic tracking. Requires cross-functional review.",
+      "suggested_owner": "QA / Security"
+    },
+    {
+      "issue": 196,
+      "reason": "Compliance rate spike tracking. Requires manual data gathering.",
+      "suggested_owner": "Product / Engineering"
+    },
+    {
+      "issue": 194,
+      "reason": "Spike ticket / Epic for Mechanism B validation.",
+      "suggested_owner": "Product / Engineering"
+    },
+    {
+      "issue": 188,
+      "reason": "PR/Milestone tracker that requires HITL manual execution runbook.",
+      "suggested_owner": "Engineering"
+    },
+    {
+      "issue": 156,
+      "reason": "Human-owned decision lane for hosting/deployment.",
+      "suggested_owner": "Architect / Eng Lead"
+    },
+    {
+      "issue": 82,
+      "reason": "Investigation into external API provider behavior (Jules).",
+      "suggested_owner": "Backend Team / Integration Lead"
+    }
+  ],
+  "file_ownership": {
+    "scripts/hooks/check_approval_flag.py": "task-fix-check-approval-flag",
+    "tests/kb/test_approval_migration_ratchet.py": "task-fix-check-approval-flag",
+    "tests/kb/test_contracts.py": "task-fix-check-approval-flag",
+    "scripts/fleet/archive-stale-sessions.ts": "task-fix-archive-truthiness",
+    "scripts/fleet/archive-stale-sessions.test.ts": "task-fix-archive-truthiness",
+    "scripts/kb/write_utils.py": "task-fix-write-utils-bugs",
+    "tests/kb/test_write_utils.py": "task-fix-write-utils-bugs",
+    "scripts/kb/page_template_utils.py": "task-add-extract-frontmatter-tests",
+    "tests/kb/test_extract_frontmatter.py": "task-add-extract-frontmatter-tests",
+    "docs/decisions/ADR-032-fleet-quota-saturation-soft-warn.md": "task-update-adrs",
+    "docs/decisions/README.md": "task-update-adrs",
+    "docs/decisions/ADR-005-write-concurrency-guards.md": "task-update-adrs",
+    "docs/decisions/ADR-019-fleet-jules-orchestration.md": "task-update-adrs",
+    "docs/decisions/ADR-031-lock-holder-pid-tracking.md": "task-update-adrs",
+    "docs/decisions/ADR-030-cli-write-confirmation.md": "task-update-adrs",
+    ".github/workflows/jules-archive-stale.yml": "task-fix-workflow-gates"
+  }
+}
