@@ -10,6 +10,11 @@ pre-commit framework stage cannot see finalized commit-message trailers, so
 trailer-only decisions are deferred there and enforced by the commit-msg stage.
 When invoked with a commit message, it also enforces ADR-028's per-file 1-in-10
 rolling soft budget for trailer escapes.
+For GitHub Actions ``pull_request`` events, the trailer is read from the PR
+head SHA (resolved via ``GITHUB_PR_HEAD_SHA`` or
+``refs/remotes/origin/<GITHUB_HEAD_REF>``), not the auto-generated merge
+commit. See ``_resolve_trailer_commit`` for the security gate (resolved SHA
+must match the merge commit's second parent).
 """
 
 from __future__ import annotations

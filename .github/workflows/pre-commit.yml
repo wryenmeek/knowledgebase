@@ -48,6 +48,7 @@ jobs:
           SKIP: detect-secrets
           BASE_REF: ${{ github.base_ref }}
           EVENT_NAME: ${{ github.event_name }}
+          GITHUB_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$BASE_REF" ]; then
             export KB_TEST_FRAMEWORK_RATCHET_BASE_REF="origin/$BASE_REF"
