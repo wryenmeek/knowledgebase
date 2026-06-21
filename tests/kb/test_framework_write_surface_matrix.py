@@ -287,6 +287,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/_optional_surface_common.py", "scripts/kb/write_utils.py"),
         "Hard-fail behavior": ("path outside docs/**", "SHA drift", "lock unavailable", "fail closed"),
     },
+    "scripts/maintenance/audit_pr_body_vs_diff.py": {
+        "Runtime mode": ("read-only only", "advisory audit"),
+        "Writable paths": ("None", "gh issue comment"),
+        "Read-only / prerequisite paths": ("gh pr view", "gh pr diff --name-only", "--issues-json", "repo-local `.json`"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": ("scripts/_optional_surface_common.py", ".github/workflows/post-merge-body-audit.yml", "issue #329"),
+        "Hard-fail behavior": ("gh", "exit 0", "SurfaceResult", "fail closed"),
+    },
     ".github/skills/log-intake-rejection/logic/**": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/rejected/", "write-once", "wiki/log.md"),
