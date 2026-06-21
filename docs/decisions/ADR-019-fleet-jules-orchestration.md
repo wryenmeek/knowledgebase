@@ -1,7 +1,7 @@
 # ADR-019: Jules-based fleet orchestration for parallel issue-to-PR dispatch
 
 ## Status
-Accepted — amended in-place: Phase 2/3 pre-merge sanity checks added (see § Amendment 4); extended by Amendment 3 (Phase 2 split + GITHUB_TOKEN merge-handoff diagnostic trail + partial GitHub App token code path, 2026-06-21)
+Accepted — amended in-place: Phase 3 merge trigger changed to event-driven and security hardened (see § Amendment); amended in-place: Phase 2/3 pre-merge sanity checks added (see § Amendment 4); extended by Amendment 3 (Phase 2a/2b auto-merge split; see § Amendment 3)
 
 ## Date
 2026-04-27

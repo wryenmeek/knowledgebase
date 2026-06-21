@@ -46,10 +46,18 @@ describe("fleet entrypoint wiring", () => {
   test("merge inspects per-task PR file lists before CI and merge", async () => {
     const mergeSource = await Bun.file(entrypointPath("fleet-merge.ts")).text();
     expect(mergeSource).toContain('from "./github/pr-file-sanity.js"');
-    expect(mergeSource).toContain("inspectPullRequestChangedFiles({");
+    expect(mergeSource).toContain("options.inspectChangedFiles ?? inspectPullRequestChangedFiles");
+    expect(mergeSource).toContain("inspectChangedFiles({");
     expect(mergeSource).toContain("if (!fileSanity.ok)");
-    expect(mergeSource.indexOf("inspectPullRequestChangedFiles({")).toBeLessThan(
-      mergeSource.indexOf("waitForCI({")
+    expect(mergeSource.indexOf("inspectChangedFiles({")).toBeLessThan(
+      mergeSource.indexOf("waitForCIImpl({")
+    );
+    expect(mergeSource).toContain("ciPassed = await runFleetMergePreMergeGate({");
+    expect(mergeSource.indexOf("ciPassed = await runFleetMergePreMergeGate({")).toBeLessThan(
+      mergeSource.indexOf("if (!ciPassed)")
+    );
+    expect(mergeSource.indexOf("ciPassed = await runFleetMergePreMergeGate({")).toBeLessThan(
+      mergeSource.indexOf("  ✅ CI passed. Merging PR")
     );
   });
 
