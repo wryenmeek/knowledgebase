@@ -62,7 +62,11 @@ Lock contention must fail closed, return non-zero, and emit
 
 ## Related decisions
 
-- [ADR-031](ADR-031-lock-holder-pid-tracking.md) - Lock holder PID/start-time tracking for lock-unavailable UX
+- [`ADR-031`](ADR-031-lock-holder-pid-tracking.md) — Extends the
+  `lock_unavailable` envelope with `holder_pid`, `holder_alive`,
+  `holder_started_at`, and `holder_context_hash` so operators can
+  distinguish active lock holders from stale metadata while preserving
+  `ADR-005` fail-closed semantics.
 
 ## References
 

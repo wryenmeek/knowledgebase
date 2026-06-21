@@ -38,4 +38,4 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-029](ADR-029-test-framework-conventions.md) | Test framework conventions | Accepted — amended in-place |
 | [ADR-030](ADR-030-cli-write-confirmation.md) | CLI write-confirmation flag migration | Accepted |
 | [ADR-031](ADR-031-lock-holder-pid-tracking.md) | Lock holder PID/start-time tracking for lock-unavailable UX | Accepted — extends ADR-005 |
-| [ADR-032](ADR-032-fleet-quota-saturation-soft-warn.md) | Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION | Accepted |
+| [ADR-032](ADR-032-fleet-quota-saturation-soft-warn.md) | Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION | Accepted — extends ADR-019 |

@@ -106,3 +106,9 @@ AFK advisory workflows (Tier 2):
 **What changed:** Initial decision framed this as a binary (AFK = scripts, HITL = Copilot CLI). Grilling surfaced that ADR-014 §4 AFK-allowlists several read-only advisory skills (`suggest-backlinks`, `cross-reference-symmetry-check`, etc.) that require LM judgment but produce no writes. These cannot be handled by deterministic scripts and are not HITL (no human gates each finding). Added Tier 2 "AFK advisory pass" to model this class.
 
 **What didn't change:** The Tier 1 rule — Python scripts, not Copilot CLI, for AFK writes — is unchanged. `validate_afk_output.py` remains the gate for any Tier 1 write.
+
+## Related decisions
+
+- [`ADR-030`](ADR-030-cli-write-confirmation.md) — Keeps the deterministic script
+  write path's explicit `--apply` confirmation ceremony aligned with the
+  AFK/HITL executor boundary this ADR defines.

@@ -258,7 +258,9 @@ archiving, re-run the account probe (`jules-account-probe.ts`) to confirm
 
 ## Related decisions
 
-- [ADR-032](ADR-032-fleet-quota-saturation-soft-warn.md) - Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION
+- [`ADR-032`](ADR-032-fleet-quota-saturation-soft-warn.md) — Extends
+  fleet error routing with the `quota_saturation` classification and
+  exit-0 soft-warn behavior for transient Jules session quota saturation.
 
 ## Amendment 3
 

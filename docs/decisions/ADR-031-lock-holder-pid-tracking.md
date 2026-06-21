@@ -55,7 +55,9 @@ Adopt Resolution A:
 - `SurfaceResult` consumers can branch on structured holder context.
 - Change applies uniformly across all lock-path variants that use
   `exclusive_write_lock()`.
-- The `holder_context_hash` preserves context privacy by not exposing raw PIDs in unauthenticated logging surfaces.
+- The `holder_context_hash` privacy trade-off is explicit: callers get a
+  stable SHA-256 fingerprint over raw PID/start-time context without leaking
+  the PID or process start time into unauthenticated logging surfaces.
 
 ### Trade-offs
 
@@ -71,7 +73,10 @@ change does not alter governed artifact contracts.
 
 ## Related decisions
 
-- [ADR-005](ADR-005-write-concurrency-guards.md) — Enforce write concurrency with workflow group and local file lock. This ADR extends ADR-005's `lock_unavailable` envelope with holder PID/start-time metadata for actionable diagnostics. ADR-005's status was updated to reflect the bidirectional cross-reference (2026-06-20).
+- [`ADR-005`](ADR-005-write-concurrency-guards.md) — Enforce write
+  concurrency with workflow group and local file lock. This ADR extends
+  `ADR-005`'s `lock_unavailable` envelope with holder PID/start-time metadata
+  for actionable diagnostics.
 
 ## References
 
