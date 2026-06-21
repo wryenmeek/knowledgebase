@@ -519,6 +519,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("ADR-028", ".github/hooks/hooks.json"),
         "Hard-fail behavior": ("exit 0", "no output", "stdout-only context injection", "never block"),
     },
+    "scripts/hooks/check_cross_functional_review.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None",),
+        "Artifact / schema owners": (".github/hooks/hooks.json",),
+        "Hard-fail behavior": ("malformed JSON", "fail closed", "evidence", "cross-functional-reviewed", "BYPASS_CROSS_FUNCTIONAL_REVIEW"),
+    },
     "scripts/drive_monitor/**": {
         "Runtime mode": ("read-only only", "blocking-only"),
         "Writable paths": ("raw/assets/gdrive/**", "raw/drive-sources/**", "wiki/**"),
