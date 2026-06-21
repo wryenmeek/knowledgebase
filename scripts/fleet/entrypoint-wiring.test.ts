@@ -29,6 +29,30 @@ describe("fleet entrypoint wiring", () => {
     expect(mergeSource).toContain("process.env.FLEET_PENDING_DATE");
   });
 
+  test("plan and dispatch append pre-merge sanity guard prompts", async () => {
+    const planSource = await Bun.file(entrypointPath("fleet-plan.ts")).text();
+    const dispatchSource = await Bun.file(entrypointPath("fleet-dispatch.ts")).text();
+
+    expect(planSource).toContain('from "./preMergeSanityCheck.js"');
+    expect(planSource).toContain("expectedPlanningArtifactPaths");
+    expect(planSource).toContain("buildPreMergeSanityPromptBlock(expectedPlanningArtifactPaths)");
+    expect(planSource).toContain("issue_tasks.md");
+    expect(planSource).toContain("issue_tasks.json");
+
+    expect(dispatchSource).toContain('from "./preMergeSanityCheck.js"');
+    expect(dispatchSource).toContain("buildPreMergeSanityPromptBlock([], { allowAdditional: true })");
+  });
+
+  test("merge inspects per-task PR file lists before CI and merge", async () => {
+    const mergeSource = await Bun.file(entrypointPath("fleet-merge.ts")).text();
+    expect(mergeSource).toContain('from "./github/pr-file-sanity.js"');
+    expect(mergeSource).toContain("inspectPullRequestChangedFiles({");
+    expect(mergeSource).toContain("if (!fileSanity.ok)");
+    expect(mergeSource.indexOf("inspectPullRequestChangedFiles({")).toBeLessThan(
+      mergeSource.indexOf("waitForCI({")
+    );
+  });
+
   test("merge enforces fail-closed no-checks policy with explicit override", async () => {
     const mergeSource = await Bun.file(entrypointPath("fleet-merge.ts")).text();
     const mergeCiSource = await Bun.file(path.join(import.meta.dir, "github/merge-ci.ts")).text();

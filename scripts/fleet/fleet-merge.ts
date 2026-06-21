@@ -36,6 +36,7 @@ import {
   requireRedispatchAuthorLogin,
   resolveUpdateBranchFailure,
 } from "./github/merge-runtime.js";
+import { inspectPullRequestChangedFiles } from "./github/pr-file-sanity.js";
 import { findFleetRepoRoot, resolveFleetDir } from "./github/fleet-paths.js";
 import {
   handleFleetFatalError,
@@ -293,6 +294,16 @@ export async function main(): Promise<void> {
         }
         // Wait for the update to propagate
         await new Promise((resolve) => setTimeout(resolve, 5_000));
+      }
+
+      const fileSanity = await inspectPullRequestChangedFiles({
+        apiBase: API,
+        headers,
+        prNumber: pr.number,
+      });
+      if (!fileSanity.ok) {
+        console.error(`  ❌ ${fileSanity.message}`);
+        process.exit(1);
       }
 
       // Wait for CI to pass
