@@ -124,11 +124,18 @@ def validate_page_template_path(
 
 
 def extract_frontmatter(text: str) -> tuple[str | None, str]:
-    """Extract a YAML frontmatter block and the body from a markdown document.
+    """Extract a YAML frontmatter block and body from a markdown document.
 
-    Returns a tuple of (frontmatter, body). If no frontmatter block is found,
-    returns (None, original_text). The original body characters (including CRLF and
-    trailing newlines) are preserved verbatim.
+    Returns ``(frontmatter_str | None, body_str)``. When a frontmatter block
+    matches, ``body_str`` is exactly ``text[match.end():]`` after the optional
+    leading UTF-8 BOM strip described below, so the body characters are
+    preserved verbatim. Body CRLF sequences are not normalized to LF, and a
+    trailing body newline is preserved rather than dropped. This differs from
+    the pre-PR-#298 ``splitlines()`` implementation, which normalized CRLF and
+    dropped exactly one trailing body newline.
+
+    If no frontmatter block is found, returns ``(None, text)`` unchanged for
+    non-BOM inputs.
 
     UTF-8 BOM (`\\ufeff`) at the start of the text is stripped before parsing
     so files saved by Windows editors with the BOM still resolve their
