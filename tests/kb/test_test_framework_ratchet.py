@@ -44,7 +44,7 @@ def _from_import_case_source() -> str:
     )
 
 
-def test_unittest_file_count_does_not_exceed_contract() -> None:
+def test_unittest_file_count_matches_contract_exactly() -> None:
     files = _unittest_test_files()
 
     assert len(files) == MAX_UNITTEST_FILES, (

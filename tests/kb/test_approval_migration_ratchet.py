@@ -90,6 +90,31 @@ def test_hook_allows_migrated_modified_legacy_script(monkeypatch) -> None:
     assert check_approval_flag.main([]) == 0
 
 
+def test_hook_treats_renamed_legacy_script_as_modified(monkeypatch, capsys) -> None:
+    def fake_run_git(*args: str) -> tuple[int, str, str]:
+        if args[:2] == ("diff", "--cached"):
+            return (
+                0,
+                "R100\tscripts/legacy_tool.py\tscripts/drive_monitor/advance_cursor.py\n",
+                "",
+            )
+        if args[0] == "show":
+            return 0, 'parser.add_argument("--approval", default="none")\n', ""
+        raise AssertionError(f"unexpected git args: {args!r}")
+
+    monkeypatch.setattr(check_approval_flag, "_run_git", fake_run_git)
+
+    assert check_approval_flag.main([]) == 1
+    captured = capsys.readouterr()
+    assert "modified legacy script still uses --approval" in captured.err
+
+
+def test_hook_returns_zero_when_no_scripts_staged(monkeypatch) -> None:
+    monkeypatch.setattr(check_approval_flag, "_staged_script_paths", lambda: ([], None))
+
+    assert check_approval_flag.main([]) == 0
+
+
 def test_pre_commit_config_registers_approval_flag_ratchet() -> None:
     config = yaml.safe_load(
         (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
@@ -162,6 +187,30 @@ def test_hook_rejects_approval_equals_after_deadline(monkeypatch, capsys) -> Non
     assert "--approval=<value> is forbidden after" in captured.err
 
 
+def test_hook_allows_approval_equals_before_deadline(monkeypatch, capsys) -> None:
+    path = "scripts/non_exempt.py"
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_staged_script_paths",
+        lambda: ([check_approval_flag.StagedScriptPath("M", path)], None),
+    )
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_get_staged_content",
+        lambda path: ('argv = ["--approval=approved"]\n', None),
+    )
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_migration_deadline_passed",
+        lambda today=None: False,
+    )
+
+    assert check_approval_flag.main([]) == 1
+    captured = capsys.readouterr()
+    assert "modified legacy script still uses --approval" in captured.err
+    assert "--approval=<value> is forbidden after" not in captured.err
+
+
 def test_hook_allows_exempt_approval_equals_after_deadline(monkeypatch) -> None:
     monkeypatch.setattr(
         check_approval_flag,
@@ -228,6 +277,35 @@ def test_hook_rejects_approval_equals_for_non_exempt_path(monkeypatch, capsys) -
     assert check_approval_flag.main([]) == 1
     captured = capsys.readouterr()
     assert "--approval=<value> is forbidden after" in captured.err
+
+
+def test_hook_handles_mixed_exempt_and_nonexempt_paths(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_staged_script_paths",
+        lambda: (
+            [
+                check_approval_flag.StagedScriptPath("M", "scripts/_optional_surface_common.py"),
+                check_approval_flag.StagedScriptPath("M", "scripts/non_exempt.py"),
+            ],
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_get_staged_content",
+        lambda path: ('argv = ["--approval=approved"]\n', None),
+    )
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_migration_deadline_passed",
+        lambda today=None: True,
+    )
+
+    assert check_approval_flag.main([]) == 1
+    captured = capsys.readouterr()
+    assert "scripts/non_exempt.py: --approval=<value> is forbidden after" in captured.err
+    assert "scripts/_optional_surface_common.py" not in captured.err
 
 
 def test_approval_flag_deadline_tripwire() -> None:
