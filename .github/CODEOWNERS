@@ -1,0 +1,15 @@
+# Advisory CODEOWNERS — notification only; require_code_owner_reviews is OFF.
+# Paths match the 'sensitive paths' glossary entry in CONTEXT.md ## Terms.
+# Each entry anchored with a leading '/' to restrict matching to the repo root.
+# Owner: @wryenmeek for all entries.
+
+/wiki/ @wryenmeek
+/schema/ @wryenmeek
+/docs/decisions/ @wryenmeek
+/AGENTS.md @wryenmeek
+/.github/copilot-instructions.md @wryenmeek
+/scripts/kb/contracts.py @wryenmeek
+/scripts/kb/write_utils.py @wryenmeek
+/raw/processed/SPEC.md @wryenmeek
+/.pre-commit-config.yaml @wryenmeek
+/.github/workflows/ @wryenmeek
