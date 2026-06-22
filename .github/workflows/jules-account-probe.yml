@@ -14,16 +14,25 @@
 
 # .github/workflows/jules-account-probe.yml
 #
-# Read-only diagnostic workflow that surfaces source/session/quota state for
-# the operator's Jules account. Intended for diagnosing session-cap saturation
-# events (see knowledgebase#82) without any side effects.
+# Scheduled diagnostic workflow that surfaces source/session/quota state for
+# the operator's Jules account and notifies a pinned tracking issue on
+# sustained failure or recovery.
 #
-# Triggers: manual dispatch only (workflow_dispatch). No schedule.
-# Output: structured JSON artifact attached to the workflow run.
+# Triggers: scheduled 3×/day at 00:00/09:00/18:00 UTC (cron 0 0,9,18 * * *),
+#   plus manual workflow_dispatch.
+# Output: structured JSON artifact attached to the workflow run; failure/
+#   recovery comments posted to the tracking issue labelled `probe-tracking`.
+#
+# Permissions:
+#   Workflow level: contents: read (minimal — probe job only checks out code).
+#   notify job level: contents: read + issues: write (narrowest scope that
+#     can post issue comments; not elevated at workflow level).
 name: Jules Account Probe
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 0,9,18 * * *"
 
 permissions:
   contents: read
@@ -61,3 +70,113 @@ jobs:
           name: jules-account-probe-${{ github.run_id }}
           path: /tmp/probe-output.json
           retention-days: 7
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: probe
+    if: always()
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Update tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROBE_RESULT: ${{ needs.probe.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          PROBED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          # Look up the tracking issue by label 'probe-tracking' (open only).
+          ISSUE_COUNT=$(gh issue list \
+            --repo "${REPO}" \
+            --label "probe-tracking" \
+            --state open \
+            --json number \
+            --jq 'length')
+
+          if [ "${ISSUE_COUNT}" = "0" ]; then
+            echo "::error::No open tracking issue found with label 'probe-tracking'." \
+              "Create the issue titled 'Fleet health probe — Jules account tracking'" \
+              "with labels 'fleet' and 'probe-tracking', or re-open it if it was closed."
+            exit 1
+          elif [ "${ISSUE_COUNT}" != "1" ]; then
+            echo "::error::Found ${ISSUE_COUNT} open issues with label 'probe-tracking'" \
+              "(expected exactly 1). Close duplicates so only one remains."
+            exit 1
+          fi
+
+          ISSUE_NUMBER=$(gh issue list \
+            --repo "${REPO}" \
+            --label "probe-tracking" \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ "${PROBE_RESULT}" = "failure" ] || [ "${PROBE_RESULT}" = "timed_out" ]; then
+            # Post sanitized failure comment.
+            # SECURITY: Only the four allowlisted fields are included.
+            # Raw error messages, session IDs, and source-context identifiers
+            # from other repositories are intentionally omitted.
+            COMMENT="❌ Probe failed at ${PROBED_AT}
+
+          | Field | Value |
+          |---|---|
+          | Error class | \`probe-exit-nonzero\` |
+          | Summary | Jules account probe exited non-zero; check workflow run logs for details |
+          | Run | ${RUN_URL} |"
+
+            gh issue comment "${ISSUE_NUMBER}" \
+              --repo "${REPO}" \
+              --body "${COMMENT}"
+
+            echo "::warning title=Probe failed::Jules account probe failed at ${PROBED_AT}. See tracking issue #${ISSUE_NUMBER}."
+
+          else
+            # Probe succeeded — check if the last comment is a failure (recovery path).
+            LAST_COMMENT_BODY=$(gh issue view "${ISSUE_NUMBER}" \
+              --repo "${REPO}" \
+              --json comments \
+              --jq '.comments | if length > 0 then .[-1].body else "" end')
+
+            if echo "${LAST_COMMENT_BODY}" | grep -q "^❌ Probe failed"; then
+              # Count consecutive failures since the last recovery (or beginning).
+              # Walk comments in reverse; stop at the first ✅ Recovered comment.
+              FAILURE_STATS=$(gh issue view "${ISSUE_NUMBER}" \
+                --repo "${REPO}" \
+                --json comments \
+                --jq '
+                  .comments |
+                  reverse |
+                  reduce .[] as $c (
+                    {"count": 0, "first_ts": "", "done": false};
+                    if .done then .
+                    elif ($c.body | startswith("❌ Probe failed")) then
+                      .count += 1 |
+                      .first_ts = ($c.body | split("\n")[0] | ltrimstr("❌ Probe failed at "))
+                    elif ($c.body | startswith("✅ Recovered")) then
+                      .done = true
+                    else .
+                    end
+                  ) |
+                  "\(.count)|\(.first_ts)"
+                ')
+
+              FAILURE_COUNT=$(echo "${FAILURE_STATS}" | cut -d'|' -f1)
+              FIRST_TS=$(echo "${FAILURE_STATS}" | cut -d'|' -f2-)
+
+              RUNS_LABEL="${FAILURE_COUNT} failed run"
+              if [ "${FAILURE_COUNT}" != "1" ]; then
+                RUNS_LABEL="${FAILURE_COUNT} failed runs"
+              fi
+
+              RECOVERY="✅ Recovered at ${PROBED_AT} after ${RUNS_LABEL} (since ${FIRST_TS})"
+              gh issue comment "${ISSUE_NUMBER}" \
+                --repo "${REPO}" \
+                --body "${RECOVERY}"
+            fi
+          fi
