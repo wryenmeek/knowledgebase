@@ -302,6 +302,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/_optional_surface_common.py", ".github/workflows/post-merge-body-audit.yml", "issue #329"),
         "Hard-fail behavior": ("gh", "exit 0", "SurfaceResult", "fail closed"),
     },
+    "scripts/maintenance/sweep_stale_bot_branches.py": {
+        "Runtime mode": ("read-only only", "dry-run", "blocking-only", "external", "git push --delete"),
+        "Writable paths": ("None within the repository", "dry-run"),
+        "Read-only / prerequisite paths": ("git for-each-ref", "refs/remotes/origin/", "gh pr list", "--head"),
+        "Lock requirements": ("None", "sweep-real-delete-approval", "GitHub Environment"),
+        "Artifact / schema owners": (".github/workflows/sweep-stale-bot-branches.yml",),
+        "Hard-fail behavior": ("for-each-ref", "fail-safe", "open PR", "governed-repo write attempt", "fail closed"),
+    },
     ".github/skills/log-intake-rejection/logic/**": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("raw/rejected/", "write-once", "wiki/log.md"),

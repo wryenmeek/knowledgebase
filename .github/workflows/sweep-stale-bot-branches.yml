@@ -1,0 +1,95 @@
+# .github/workflows/sweep-stale-bot-branches.yml
+#
+# Nightly sweep of stale bot-authored branches (dry-run mode during observation window).
+#
+# Ships in dry_run=true mode for a 14-day observation period; issue #351 flips to
+# real deletions once 14 consecutive clean dry-run nights have passed.
+#
+# Triggers:
+#   - Scheduled: nightly at 02:00 UTC (cron "0 2 * * *")
+#   - workflow_dispatch: manual trigger with a boolean dry_run input (default true)
+#
+# dry-run bypass guard:
+#   When dry_run=false is passed via workflow_dispatch the job is gated by
+#   environment: sweep-real-delete-approval which does not exist until issue #351
+#   creates it.  Until then every operator attempt to bypass dry-run fails with a
+#   missing-environment error (mirrors jules-archive-stale.yml line 68 pattern).
+#
+# Permissions: contents: read only (dry-run never writes; #351 widens to write).
+#
+# Security: all inputs are routed through env: blocks before use in run: steps
+# to prevent GitHub Actions shell-injection via expression expansion.
+name: Sweep Stale Bot Branches
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry-run mode (default true). Set false to perform real deletes — gated by sweep-real-delete-approval environment."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    # SECURITY: inputs.dry_run is type: boolean. Compare boolean-to-boolean so
+    # the environment-approval gate actually engages on dry_run=false.
+    # When triggered by schedule there is no inputs context; the ternary
+    # evaluates inputs.dry_run as null (falsy in JS coercion), which resolves
+    # to '' — meaning no environment gate is applied for scheduled runs.
+    # Scheduled runs are always dry-run (INPUT_DRY_RUN defaults to 'true'
+    # in the run step when triggered by schedule).
+    environment: ${{ inputs.dry_run == false && 'sweep-real-delete-approval' || '' }}
+    concurrency:
+      group: sweep-stale-bot-branches-${{ github.event_name }}
+      cancel-in-progress: false
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Fetch remote refs
+        run: git fetch --prune origin
+
+      - name: Sweep stale bot branches
+        id: sweep
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # SECURITY: workflow inputs are passed through env vars, never interpolated
+          # directly into run: blocks, to prevent shell injection.
+          # For scheduled triggers, inputs.dry_run is null; default to 'true'.
+          # We use `!= false` (not `== true`) because scheduled runs have null
+          # inputs.dry_run, and null != false evaluates to true (safe default),
+          # while null == true evaluates to false (would incorrectly enable real-delete).
+          INPUT_DRY_RUN: ${{ inputs.dry_run != false && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          if [ "$INPUT_DRY_RUN" = "false" ]; then
+            DRY_RUN_FLAG="--no-dry-run"
+          else
+            DRY_RUN_FLAG="--dry-run"
+          fi
+          python -m scripts.maintenance.sweep_stale_bot_branches \
+            --stale-days 14 \
+            $DRY_RUN_FLAG
+
+      - name: Upload sweep summary
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: sweep-stale-bot-branches-${{ github.run_id }}
+          path: /tmp/sweep-summary.md
+          if-no-files-found: ignore
+          retention-days: 30
