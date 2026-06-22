@@ -250,6 +250,7 @@ Fully implemented and verified `docs/ideas/` documents may be archived to `raw/i
 This repo does not use "Superseded" status for ADRs. When an ADR needs updating:
 - **Minor correction / implementation diverged:** Change status to `Accepted — amended in-place: <description> (see § Amendment)`. Add an `## Amendment` section before References documenting: date, what changed, why, and what didn't change.
 - **Extended by a new ADR:** Change status to `Accepted — extended by ADR-xxx`. The original ADR remains in place; the new ADR documents the extension.
+- **Body-only edit vs amendment-in-place — when in doubt, amend.** A body edit is "body-only" (no Status change, no README cascade) only when it is a typo, broken link, or pure-formatting fix. If the edit changes the semantic meaning of a Consequences/Decision/Rationale bullet — even one bullet, even via single-word change — use amendment-in-place semantics. Example: ADR-032's 2026-06-21 cleanup of the aspirational `copilot-swe-agent` fallback bullet was amendment-in-place because the semantic claim changed, even though only one bullet was edited.
 
 Follow the precedent set by ADR-004 and ADR-015. Never mark an ADR as "Superseded" — there is zero repo precedent for that status.
 
@@ -517,17 +518,17 @@ Before the first `task_complete` in any implementation/audit session, provide th
 4. Documentation cascade check result (what needed updates vs what was already current).
 5. `.github/` customization cascade check result (what needed updates vs none required).
 
-### Cross-functional review as default post-implementation step
+### Cross-functional review as default post-implementation OR substantive-spec-filing step
 
-After non-trivial implementation work, **proactively run** a cross-functional review using parallel custom agent dispatch — do not wait for the user to ask. The standard pattern:
+After non-trivial implementation work **OR** after filing ≥3 `ready-for-agent` GitHub issues whose bodies contain substantive design proposals (key interfaces, acceptance criteria, ADR proposals, ≥500 chars), **proactively run** a cross-functional review using parallel custom agent dispatch — do not wait for the user to ask. The standard pattern:
 1. Dispatch `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` in parallel
-2. Each agent reviews the recent commits against best practices, ADRs, and repo documentation
+2. Each agent reviews the recent commits (or freshly-filed issue spec bodies, when this is post-spec-filing) against best practices, ADRs, and repo documentation
 3. Consolidate findings and present as a unified report
 4. Address findings before considering the work complete
 
-This parallels the quality-pass-chain skill but uses custom agents for richer, domain-specific review.
+This parallels the quality-pass-chain skill but uses custom agents for richer, domain-specific review. Spec-filing failures observed 2026-06-21 (70 review findings across 7 freshly-filed specs → 7 bodies rewritten) demonstrate that the cost of cross-functional review post-filing is far lower than the cost of remediating defective specs after dispatch.
 
-**Hard rule: `task_complete` is blocked on implementation tasks** until `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` have all been dispatched and any P0–P2 findings remediated. Do not call `task_complete` for any session that created or modified `scripts/**`, `tests/**`, `.github/skills/**/logic/**`, or `.github/workflows/**` without having run this review first.
+**Hard rule: `task_complete` is blocked on implementation tasks** until `@code-reviewer`, `@test-engineer`, `@security-auditor`, and `@documentation-engineer` have all been dispatched and any P0–P2 findings remediated. Do not call `task_complete` for any session that created or modified `scripts/**`, `tests/**`, `.github/skills/**/logic/**`, or `.github/workflows/**` without having run this review first. The same hard-rule block applies to any session that filed ≥3 substantive `ready-for-agent` issue specs.
 
 ### Post-remediation docs/customizations audit pair
 
