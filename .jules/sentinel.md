@@ -16,3 +16,7 @@
 **Vulnerability:** GITHUB_TOKEN and JULES_API_KEY tokens were hardcoded as raw validation checks and inline `process.env` lookups across `fleet-dispatch.ts`, `fleet-merge.ts`, and `fleet-plan.ts`.
 **Learning:** Checking or importing tokens ad hoc leads to duplicate or missed token checks. Centralizing these environment variables ensures token visibility and validation on startup across multiple files, while also supporting `console.log` redacting of these tokens everywhere.
 **Prevention:** Always export a single object/file handling tokens and sensitive environmental variables (e.g., `env.ts`) to avoid duplicated code, missing error checks, and incomplete log scrubbing.
+## 2026-06-21 - Fix Bandit Alert for MD5 Usage
+**Vulnerability:** Use of weak MD5 hash without `usedforsecurity=False`.
+**Learning:** `hashlib.md5()` triggers `bandit` scanners and FIPS enforcement unless explicitly marked as non-security related.
+**Prevention:** Always pass `usedforsecurity=False` when using MD5 for checksums or versioning to suppress false positives and ensure compatibility in strict environments.

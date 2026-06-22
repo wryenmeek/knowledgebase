@@ -136,7 +136,7 @@ def _fetch_and_store_asset(
             md5_checksum = entry.get("current_md5_checksum")
             if not md5_checksum:
                 # Compute MD5 from downloaded bytes as fallback
-                md5_checksum = hashlib.md5(asset_bytes).hexdigest()
+                md5_checksum = hashlib.md5(asset_bytes, usedforsecurity=False).hexdigest()
             version_segment = md5_checksum
             drive_version = None
 
