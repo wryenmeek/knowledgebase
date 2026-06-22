@@ -51,6 +51,7 @@ jobs:
         env:
           SCOPE_CHECK_OUTCOME: ${{ steps.scope_check.outcome }}
         run: |
+          # shellcheck disable=SC2129  # individual redirects to GITHUB_STEP_SUMMARY are intentional for readability
           if [ "$SCOPE_CHECK_OUTCOME" = "success" ]; then
             echo "### ✅ Commit Scope Check passed" >> "$GITHUB_STEP_SUMMARY"
             echo "Gates B (sensitive-paths) and C (deletion-ratio) both passed." >> "$GITHUB_STEP_SUMMARY"
