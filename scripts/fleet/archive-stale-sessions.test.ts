@@ -13,9 +13,12 @@
 // limitations under the License.
 
 import { describe, expect, mock, test } from "bun:test";
+import fs from "node:fs";
+import path from "node:path";
 import type { JulesClient, SessionResource } from "@google/jules-sdk";
 import {
   archiveStaleSessions,
+  buildSessionIssueIndexFromFleet,
   parseCliArgs,
   CURRENT_REPO_SOURCE,
   type ArchiveCliArgs,
@@ -432,5 +435,55 @@ describe("archiveStaleSessions", () => {
     expect(result.candidates).toHaveLength(0);
     expect(result.archived).toHaveLength(0);
     expect(archiveMock).not.toHaveBeenCalled();
+  });
+
+  test("apply mode fails closed when current-repo session has no task join", async () => {
+    const sessions = [
+      makeSession({
+        id: "missing-join",
+        state: "inProgress",
+        createTime: daysAgo(10),
+        sourceContext: { source: CURRENT_REPO_SOURCE },
+      }),
+    ];
+    const client = makeMockClient(sessions);
+
+    await expect(
+      archiveStaleSessions(
+        client,
+        {
+          ...DEFAULT_ARGS,
+          sourceFilter: CURRENT_REPO_SOURCE,
+          apply: true,
+        },
+        {
+          issueResolver: {
+            resolveIssuesForSession: () => null,
+          },
+        }
+      )
+    ).rejects.toThrow("No issue mapping found for archived session missing-join.");
+  });
+});
+
+describe("buildSessionIssueIndexFromFleet", () => {
+  test("indexes sessionId -> issue numbers through sessions/task join", () => {
+    const tempRoot = fs.mkdtempSync(path.join(process.cwd(), "tmp-fleet-join-"));
+    const dateDir = path.join(tempRoot, "2026_06_22");
+    fs.mkdirSync(dateDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dateDir, "sessions.json"),
+      JSON.stringify([{ taskId: "task-one", sessionId: "session-1" }])
+    );
+    fs.writeFileSync(
+      path.join(dateDir, "issue_tasks.json"),
+      JSON.stringify({
+        tasks: [{ id: "task-one", issues: [350, 351] }],
+      })
+    );
+
+    const index = buildSessionIssueIndexFromFleet(tempRoot);
+    expect(index.get("session-1")).toEqual([350, 351]);
+    fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 });

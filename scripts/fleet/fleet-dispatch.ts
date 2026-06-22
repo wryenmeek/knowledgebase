@@ -34,6 +34,208 @@ import {
 } from "./_fleet_output.js";
 import { buildPreMergeSanityPromptBlock } from "./preMergeSanityCheck.js";
 
+export const READY_FOR_AGENT_LABEL = "ready-for-agent";
+export const IN_PROGRESS_LABEL = "in-progress";
+export const AWAITING_FEEDBACK_LABEL = "awaiting-feedback";
+export const NEEDS_TRIAGE_LABEL = "needs-triage";
+const LOOKBACK_WINDOW_DAYS = 30;
+const FAILURE_ABORT_THRESHOLD = 3;
+
+interface IssueEventActor {
+  login?: string | null;
+  type?: string | null;
+}
+
+interface IssueEventLabel {
+  name?: string | null;
+}
+
+interface IssueEvent {
+  event?: string | null;
+  created_at?: string | null;
+  commit_id?: string | null;
+  actor?: IssueEventActor | null;
+  label?: IssueEventLabel | null;
+}
+
+interface FleetIssuesClient {
+  rest: {
+    issues: {
+      addLabels(params: {
+        owner: string;
+        repo: string;
+        issue_number: number;
+        labels: string[];
+      }): Promise<unknown>;
+      removeLabel(params: {
+        owner: string;
+        repo: string;
+        issue_number: number;
+        name: string;
+      }): Promise<unknown>;
+      createComment(params: {
+        owner: string;
+        repo: string;
+        issue_number: number;
+        body: string;
+      }): Promise<unknown>;
+      listEvents(params: {
+        owner: string;
+        repo: string;
+        issue_number: number;
+        per_page?: number;
+      }): Promise<unknown>;
+    };
+  };
+  paginate<T>(fn: unknown, params: Record<string, unknown>): Promise<T[]>;
+}
+
+function isHumanActor(actor: IssueEventActor | null | undefined): boolean {
+  if (!actor) {
+    return false;
+  }
+  const login = (actor.login ?? "").toLowerCase();
+  const type = (actor.type ?? "").toLowerCase();
+  if (type === "bot" || login === "github-actions[bot]" || login.endsWith("[bot]")) {
+    return false;
+  }
+  return login.length > 0;
+}
+
+export function countRecentInProgressAttempts(
+  events: IssueEvent[],
+  now: Date = new Date()
+): number {
+  const cutoffMs = now.getTime() - LOOKBACK_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const sorted = [...events].sort((a, b) =>
+    (a.created_at ?? "").localeCompare(b.created_at ?? "")
+  );
+  let resetAnchorMs = Number.NEGATIVE_INFINITY;
+
+  for (const event of sorted) {
+    const ts = Date.parse(event.created_at ?? "");
+    if (
+      event.event === "labeled" &&
+      event.label?.name === READY_FOR_AGENT_LABEL &&
+      isHumanActor(event.actor)
+    ) {
+      if (Number.isFinite(ts)) {
+        resetAnchorMs = ts;
+      }
+    }
+    if (event.event === "closed" && event.commit_id && Number.isFinite(ts)) {
+      resetAnchorMs = ts;
+    }
+  }
+
+  return sorted.filter((event) => {
+    if (event.event !== "labeled" || event.label?.name !== IN_PROGRESS_LABEL) {
+      return false;
+    }
+    const ts = Date.parse(event.created_at ?? "");
+    if (!Number.isFinite(ts)) {
+      return false;
+    }
+    return ts >= cutoffMs && ts >= resetAnchorMs;
+  }).length;
+}
+
+export function selectRecoveryLabelFromEvents(
+  events: IssueEvent[],
+  now: Date = new Date()
+): string {
+  return countRecentInProgressAttempts(events, now) >= FAILURE_ABORT_THRESHOLD
+    ? NEEDS_TRIAGE_LABEL
+    : READY_FOR_AGENT_LABEL;
+}
+
+export function buildDispatchCommentBody(
+  taskTitle: string,
+  sessionId: string,
+  taskPrompt: string
+): string {
+  return (
+    "🚀 This issue is being handled by parallel fleet task **" +
+    taskTitle +
+    "**.\n\nTrack progress in Jules session: [" +
+    sessionId +
+    "](https://jules.google.com/task/" +
+    sessionId +
+    ")\n\n<details>\n<summary>Dispatch prompt</summary>\n\n" +
+    taskPrompt +
+    "\n\n</details>"
+  );
+}
+
+async function removeLabelIfPresent(
+  octokit: FleetIssuesClient,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  label: string
+): Promise<void> {
+  try {
+    await octokit.rest.issues.removeLabel({
+      owner,
+      repo,
+      issue_number: issueNumber,
+      name: label,
+    });
+  } catch (error) {
+    const message = getSanitizedErrorMessage(error);
+    if (!message.includes("404")) {
+      throw error;
+    }
+  }
+}
+
+async function addLabel(
+  octokit: FleetIssuesClient,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  label: string
+): Promise<void> {
+  await octokit.rest.issues.addLabels({
+    owner,
+    repo,
+    issue_number: issueNumber,
+    labels: [label],
+  });
+}
+
+export async function markIssueInProgress(
+  octokit: FleetIssuesClient,
+  owner: string,
+  repo: string,
+  issueNumber: number
+): Promise<void> {
+  await addLabel(octokit, owner, repo, issueNumber, IN_PROGRESS_LABEL);
+  await removeLabelIfPresent(octokit, owner, repo, issueNumber, READY_FOR_AGENT_LABEL);
+}
+
+export async function restoreIssueAfterFailure(
+  octokit: FleetIssuesClient,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  now: Date = new Date()
+): Promise<string> {
+  const events = await octokit.paginate<IssueEvent>(octokit.rest.issues.listEvents, {
+    owner,
+    repo,
+    issue_number: issueNumber,
+    per_page: 100,
+  });
+  const nextLabel = selectRecoveryLabelFromEvents(events, now);
+  await removeLabelIfPresent(octokit, owner, repo, issueNumber, IN_PROGRESS_LABEL);
+  await removeLabelIfPresent(octokit, owner, repo, issueNumber, AWAITING_FEEDBACK_LABEL);
+  await removeLabelIfPresent(octokit, owner, repo, issueNumber, READY_FOR_AGENT_LABEL);
+  await removeLabelIfPresent(octokit, owner, repo, issueNumber, NEEDS_TRIAGE_LABEL);
+  await addLabel(octokit, owner, repo, issueNumber, nextLabel);
+  return nextLabel;
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   maxParallel: number,
@@ -93,7 +295,7 @@ export async function main(): Promise<void> {
     });
   }
 
-  const octokit = new Octokit({ auth: githubToken });
+  const octokit = new Octokit({ auth: githubToken }) as unknown as FleetIssuesClient;
 
   // SECURITY: read date from env var only — argv exposure eliminated so a crafted
   // value cannot be injected via shell word-splitting if this script ever shells out.
@@ -144,33 +346,59 @@ export async function main(): Promise<void> {
   );
 
   const dispatchedSessions = await mapWithConcurrency(tasks, maxParallel, async (task) => {
-    // Per-task PR scope is intentionally open: the manifest bounds the prompt,
-    // but implementation agents may stage any owned source/test path. This
-    // sanity block only catches the 0/0/0 staged-diff hallucination signature.
-    const prompt = `${task.prompt}
+    for (const issueNumber of task.issues) {
+      await markIssueInProgress(octokit, repoInfo.owner, repoInfo.repo, issueNumber);
+    }
+
+    try {
+      // Per-task PR scope is intentionally open: the manifest bounds the prompt,
+      // but implementation agents may stage any owned source/test path. This
+      // sanity block only catches the 0/0/0 staged-diff hallucination signature.
+      const prompt = `${task.prompt}
 
 ${buildPreMergeSanityPromptBlock([], { allowAdditional: true })}`;
 
-    const session = await runMutationWithDiagnostics({
-      operation: `fleet-dispatch:jules.run:${task.id}`,
-      maxAttempts: mutationMaxAttempts,
-      run: () =>
-        jules.run({
-          prompt,
-          source: {
-            github: repoInfo.fullName,
-            baseBranch,
-          },
-        }),
-      onAttemptFailure: (envelope) => {
-        logMutationAttemptFailure(
-          `⚠️ Jules dispatch mutation attempt failed for task "${task.id}".`,
-          envelope
-        );
-      },
-    });
+      const session = await runMutationWithDiagnostics({
+        operation: `fleet-dispatch:jules.run:${task.id}`,
+        maxAttempts: mutationMaxAttempts,
+        run: () =>
+          jules.run({
+            prompt,
+            source: {
+              github: repoInfo.fullName,
+              baseBranch,
+            },
+          }),
+        onAttemptFailure: (envelope) => {
+          logMutationAttemptFailure(
+            `⚠️ Jules dispatch mutation attempt failed for task "${task.id}".`,
+            envelope
+          );
+        },
+      });
 
-    return { task, sessionId: session.id };
+      return { task, sessionId: session.id };
+    } catch (error) {
+      for (const issueNumber of task.issues) {
+        try {
+          const restoredLabel = await restoreIssueAfterFailure(
+            octokit,
+            repoInfo.owner,
+            repoInfo.repo,
+            issueNumber
+          );
+          console.error(`  ↩️ Restored issue #${issueNumber} to label "${restoredLabel}".`);
+        } catch (restoreError) {
+          console.error(
+            "  ❌ Failed to restore labels for issue #" +
+              issueNumber +
+              ": " +
+              getSanitizedErrorMessage(restoreError)
+          );
+        }
+      }
+      throw error;
+    }
   });
 
   const sessionResults: Array<{ taskId: string; sessionId: string }> = [];
@@ -188,14 +416,7 @@ ${buildPreMergeSanityPromptBlock([], { allowAdditional: true })}`;
             owner: repoInfo.owner,
             repo: repoInfo.repo,
             issue_number: issueNumber,
-            body:
-              "🚀 This issue is being handled by parallel fleet task **" +
-              task.title +
-              "**.\n\nTrack progress in Jules session: [" +
-              sessionId +
-              "](https://jules.google.com/task/" +
-              sessionId +
-              ")",
+            body: buildDispatchCommentBody(task.title, sessionId, task.prompt),
           });
         } catch (error) {
           console.error(

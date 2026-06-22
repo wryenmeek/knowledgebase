@@ -68,6 +68,68 @@ interface FleetMergePreMergeGateOptions {
   log?: (message: string) => void;
 }
 
+const READY_FOR_AGENT_LABEL = "ready-for-agent";
+const IN_PROGRESS_LABEL = "in-progress";
+const AWAITING_FEEDBACK_LABEL = "awaiting-feedback";
+
+async function removeIssueLabel(
+  apiBase: string,
+  headers: Record<string, string>,
+  issueNumber: number,
+  label: string
+): Promise<void> {
+  const removeRes = await fetch(
+    `${apiBase}/issues/${issueNumber}/labels/${encodeURIComponent(label)}`,
+    {
+      method: "DELETE",
+      headers,
+    }
+  );
+  if (removeRes.status === 404) {
+    return;
+  }
+  if (!removeRes.ok) {
+    const body = getSanitizedErrorMessage(await removeRes.text());
+    throw new Error(`Failed to remove label "${label}" from issue #${issueNumber}: ${body}`);
+  }
+}
+
+async function addIssueLabel(
+  apiBase: string,
+  headers: Record<string, string>,
+  issueNumber: number,
+  label: string
+): Promise<void> {
+  const addRes = await fetch(`${apiBase}/issues/${issueNumber}/labels`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ labels: [label] }),
+  });
+  if (!addRes.ok) {
+    const body = getSanitizedErrorMessage(await addRes.text());
+    throw new Error(`Failed to add label "${label}" to issue #${issueNumber}: ${body}`);
+  }
+}
+
+export async function restoreIssueForRedispatch(
+  apiBase: string,
+  headers: Record<string, string>,
+  issueNumber: number
+): Promise<void> {
+  await removeIssueLabel(apiBase, headers, issueNumber, IN_PROGRESS_LABEL);
+  await removeIssueLabel(apiBase, headers, issueNumber, AWAITING_FEEDBACK_LABEL);
+  await addIssueLabel(apiBase, headers, issueNumber, READY_FOR_AGENT_LABEL);
+}
+
+export async function clearIssueProgressLabelsAfterMerge(
+  apiBase: string,
+  headers: Record<string, string>,
+  issueNumber: number
+): Promise<void> {
+  await removeIssueLabel(apiBase, headers, issueNumber, IN_PROGRESS_LABEL);
+  await removeIssueLabel(apiBase, headers, issueNumber, AWAITING_FEEDBACK_LABEL);
+}
+
 export async function runFleetMergePreMergeGate(
   options: FleetMergePreMergeGateOptions
 ): Promise<boolean> {
@@ -212,6 +274,15 @@ export async function main(): Promise<void> {
     if (!closeRes.ok) {
       const body = getSanitizedErrorMessage(await closeRes.text());
       throw new Error(`Failed to close conflicting PR #${oldPr.number} (${closeRes.status}): ${body}`);
+    }
+    for (const issueNumber of task.issues) {
+      try {
+        await restoreIssueForRedispatch(API, headers, issueNumber);
+      } catch (error) {
+        console.error(
+          `  ⚠️ Failed to restore issue labels for #${issueNumber}: ${getSanitizedErrorMessage(error)}`
+        );
+      }
     }
 
     // Create a new Jules session with the same prompt
@@ -366,6 +437,15 @@ export async function main(): Promise<void> {
         process.exit(1);
       }
       console.log(`  🎉 PR #${pr.number} merged successfully.`);
+      for (const issueNumber of task.issues) {
+        try {
+          await clearIssueProgressLabelsAfterMerge(API, headers, issueNumber);
+        } catch (error) {
+          console.error(
+            `  ⚠️ Failed to clear merged issue labels for #${issueNumber}: ${getSanitizedErrorMessage(error)}`
+          );
+        }
+      }
       merged = true;
     }
   }

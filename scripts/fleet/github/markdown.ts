@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { getIssues } from "./issues.js";
+import { getIssues, type FleetIssueQueryOptions } from "./issues.js";
 import { getGitRepoInfo } from "./git.js";
 
 type Issue = Awaited<ReturnType<typeof getIssues>>[number];
@@ -101,7 +101,10 @@ async function toIssueDocMarkdown(issues: Issue[]) {
   return lines.join("\n");
 }
 
-export async function getIssuesAsMarkdown() {
-  const issues = await getIssues();
+export async function getIssuesAsMarkdown(
+  options?: FleetIssueQueryOptions,
+  issueFetcher: typeof getIssues = getIssues
+) {
+  const issues = await issueFetcher(options);
   return toIssueDocMarkdown(issues);
 }

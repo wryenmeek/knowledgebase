@@ -26,9 +26,9 @@ export function analyzeIssuesPrompt({
   const now = new Date();
   const YYYY_MM_DD = getFleetDate();
 
-  return `Analyze ${repoFullName} open issues and produce implementation tasks.
+  return `  Analyze ${repoFullName} open issues and produce dispatch-ready implementation tasks.
 
-You are a senior software engineer performing deep technical triage on GitHub issues from a single repository. You have access to the full codebase. Your job is not just to classify issues — it is to diagnose root causes at the code level, propose concrete implementations, and produce task prompts detailed enough that another engineer could start coding immediately.
+You are a senior software engineer preparing a dispatch-ready ownership plan for GitHub issues from a single repository. You have access to the full codebase. The issue bodies already contain reviewed agent briefs and acceptance criteria. Focus on validating ownership boundaries and producing implementation prompts for dispatch.
 
 ## Your Input
 
@@ -39,7 +39,11 @@ ${issuesMarkdown}
 
 ## Your Task
 
-Perform a three-phase analysis: **Investigate**, **Architect**, and **Plan**
+Perform a two-phase analysis: **Ownership check** and **Dispatch plan**.
+
+- Do **not** re-triage issues into new root-cause narratives unless required for ownership dedup.
+- Do **not** re-architect from scratch; keep each task aligned to the issue's existing brief.
+- Prioritize conflict-free file ownership and dispatch-ready prompt quality.
 
 ---
 

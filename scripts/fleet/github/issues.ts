@@ -20,8 +20,22 @@ import { getGitRepoInfo } from "./git.js";
 export const CachedOctokit = Octokit.plugin(cachePlugin) as typeof Octokit;
 
 /** Fetch open issues from the current repository */
+export interface FleetIssueQueryOptions {
+  perPage?: number;
+  state?: "open" | "closed" | "all";
+  labels?: string[];
+}
+
+function toLabelsParam(labels: string[] | undefined): string | undefined {
+  if (!labels || labels.length === 0) {
+    return undefined;
+  }
+  const compact = labels.map((label) => label.trim()).filter((label) => label.length > 0);
+  return compact.length > 0 ? compact.join(",") : undefined;
+}
+
 export async function getIssues(
-  options?: { perPage?: number; state?: "open" | "closed" | "all" }
+  options?: FleetIssueQueryOptions
 ) {
   const repoInfo = await getGitRepoInfo();
   const octokit = new CachedOctokit({
@@ -32,6 +46,7 @@ export async function getIssues(
     repo: repoInfo.repo,
     state: options?.state ?? "open",
     per_page: options?.perPage ?? 30,
+    labels: toLabelsParam(options?.labels),
   });
   return data.filter((issue) => !issue.pull_request);
 }

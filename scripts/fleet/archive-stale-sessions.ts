@@ -41,7 +41,11 @@
 
 import { jules } from "@google/jules-sdk";
 import type { JulesClient, SessionResource, SessionState } from "@google/jules-sdk";
+import fs from "node:fs";
+import path from "node:path";
+import { Octokit } from "octokit";
 import { assertFleetEnvironment } from "./env.js";
+import { restoreIssueAfterFailure } from "./fleet-dispatch.js";
 
 /** Canonical source identifier for this repository. */
 export const CURRENT_REPO_SOURCE = "sources/github/wryenmeek/knowledgebase";
@@ -83,6 +87,66 @@ export interface ArchiveEnvelope {
   archived: ArchivedSessionEntry[];
   archivedCount: number;
   errors: Array<{ sessionId: string; error: string }>;
+}
+
+export interface SessionIssueResolver {
+  resolveIssuesForSession(sessionId: string): number[] | null;
+}
+
+export interface ArchiveApplyHooks {
+  issueResolver?: SessionIssueResolver;
+  restoreIssueLabels?: (issueNumber: number) => Promise<void>;
+}
+
+class JoinResolutionError extends Error {}
+
+export function buildSessionIssueIndexFromFleet(fleetRoot: string): Map<string, number[]> {
+  const index = new Map<string, number[]>();
+  if (!fs.existsSync(fleetRoot)) {
+    return index;
+  }
+
+  const dateDirs = fs
+    .readdirSync(fleetRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory());
+
+  for (const dateDir of dateDirs) {
+    const sessionsPath = path.join(fleetRoot, dateDir.name, "sessions.json");
+    const tasksPath = path.join(fleetRoot, dateDir.name, "issue_tasks.json");
+    if (!fs.existsSync(sessionsPath) || !fs.existsSync(tasksPath)) {
+      continue;
+    }
+
+    const sessions = JSON.parse(fs.readFileSync(sessionsPath, "utf8")) as Array<{
+      taskId?: unknown;
+      sessionId?: unknown;
+    }>;
+    const tasksPayload = JSON.parse(fs.readFileSync(tasksPath, "utf8")) as {
+      tasks?: Array<{ id?: unknown; issues?: unknown }>;
+    };
+    const taskIssueMap = new Map<string, number[]>();
+    for (const task of tasksPayload.tasks ?? []) {
+      if (!Array.isArray(task.issues) || typeof task.id !== "string") {
+        continue;
+      }
+      const issueNumbers = task.issues.filter(
+        (value): value is number => typeof value === "number" && Number.isInteger(value)
+      );
+      taskIssueMap.set(task.id, issueNumbers);
+    }
+
+    for (const session of sessions) {
+      if (typeof session.taskId !== "string" || typeof session.sessionId !== "string") {
+        continue;
+      }
+      const issues = taskIssueMap.get(session.taskId);
+      if (issues && issues.length > 0) {
+        index.set(session.sessionId, issues);
+      }
+    }
+  }
+
+  return index;
 }
 
 function formatAgeDuration(ageMs: number): string {
@@ -159,7 +223,8 @@ export function parseCliArgs(argv: string[]): ArchiveCliArgs {
 
 export async function archiveStaleSessions(
   client: JulesClient,
-  args: ArchiveCliArgs
+  args: ArchiveCliArgs,
+  hooks: ArchiveApplyHooks = {}
 ): Promise<ArchiveEnvelope> {
   const ranAt = new Date().toISOString();
   const now = Date.now();
@@ -201,9 +266,26 @@ export async function archiveStaleSessions(
   if (args.apply) {
     for (const candidate of candidates) {
       try {
+        let linkedIssues: number[] = [];
+        if (candidate.sourceName === CURRENT_REPO_SOURCE && hooks.issueResolver) {
+          linkedIssues = hooks.issueResolver?.resolveIssuesForSession(candidate.sessionId) ?? [];
+          if (linkedIssues.length === 0) {
+            throw new JoinResolutionError(
+              `No issue mapping found for archived session ${candidate.sessionId}.`
+            );
+          }
+        }
         await client.session(candidate.sessionId).archive();
+        for (const issueNumber of linkedIssues) {
+          if (hooks.restoreIssueLabels) {
+            await hooks.restoreIssueLabels(issueNumber);
+          }
+        }
         archived.push(candidate);
       } catch (err) {
+        if (err instanceof JoinResolutionError) {
+          throw err;
+        }
         errors.push({
           sessionId: candidate.sessionId,
           error: String(err),
@@ -229,8 +311,6 @@ export async function archiveStaleSessions(
 }
 
 async function main(): Promise<void> {
-  assertFleetEnvironment({ requireJulesApiKey: true });
-
   let args: ArchiveCliArgs;
   try {
     args = parseCliArgs(process.argv.slice(2));
@@ -238,6 +318,10 @@ async function main(): Promise<void> {
     console.error("❌ archive-stale-sessions: argument error:", String(err));
     process.exit(1);
   }
+  assertFleetEnvironment({
+    requireJulesApiKey: true,
+    requireGitHubToken: args.apply,
+  });
 
   if (!args.apply) {
     console.error(
@@ -245,7 +329,31 @@ async function main(): Promise<void> {
     );
   }
 
-  const result = await archiveStaleSessions(jules, args);
+  const repoRoot = path.resolve(import.meta.dir, "..", "..");
+  const issueIndex = buildSessionIssueIndexFromFleet(path.join(repoRoot, ".fleet"));
+  const [, , owner, repo] = CURRENT_REPO_SOURCE.split("/");
+  const octokit = process.env.GITHUB_TOKEN
+    ? (new Octokit({ auth: process.env.GITHUB_TOKEN }) as never)
+    : null;
+
+  const result = await archiveStaleSessions(jules, args, {
+    issueResolver: {
+      resolveIssuesForSession(sessionId) {
+        return issueIndex.get(sessionId) ?? null;
+      },
+    },
+    restoreIssueLabels: async (issueNumber) => {
+      if (!octokit) {
+        throw new Error("GITHUB_TOKEN is required for issue label restoration.");
+      }
+      await restoreIssueAfterFailure(
+        octokit,
+        owner ?? "wryenmeek",
+        repo ?? "knowledgebase",
+        issueNumber
+      );
+    },
+  });
   console.log(JSON.stringify(result, null, 2));
 
   if (!args.apply && result.candidates.length > 0) {
