@@ -1,0 +1,326 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-06-22T11:51:20.081Z",
+  "root_causes": [
+    {
+      "id": "rc-tests-check-approval-flag",
+      "title": "Missing prophylactic test coverage for check_approval_flag.py",
+      "severity": "low",
+      "issues": [
+        367,
+        305
+      ],
+      "files": [
+        "scripts/hooks/check_approval_flag.py"
+      ],
+      "description": "Deferred test-coverage gaps from PR #363 cross-functional review and #305 post-merge review for check_approval_flag.py.\n\nCode Path: `scripts/hooks/check_approval_flag.py` lines 102, 121-124 (Rename R-status detection)\n\nMechanism: The hook uses `git diff --cached --find-renames --find-copies` and parses 3-column R-status output. No test exercises `status=\"R\"` or `status_code=\"C\"`. The real failure mode that bug #300 fixed was a commit touching an exempt file AND a non-exempt file together, which is never asserted.",
+      "solution_summary": "Add new test functions in test_approval_migration_ratchet.py for the missing coverage areas and rename the sibling test in test_test_framework_ratchet.py.",
+      "solution_code": "```python\ndef test_hook_returns_zero_when_no_scripts_staged(mock_staged_script_paths):\n    mock_staged_script_paths.return_value = ([], None)\n    assert main() == 0\n```",
+      "test_plan": "1. Run pytest tests/kb/test_approval_migration_ratchet.py.\n2. Ensure the new test functions for empty staged diff, rename status, and mixed files pass."
+    },
+    {
+      "id": "rc-fleet-label-driven-dispatch",
+      "title": "Adopt label-driven dispatch and fix auto-merge layer",
+      "severity": "medium",
+      "issues": [
+        350,
+        310
+      ],
+      "files": [
+        "scripts/fleet/github/issues.ts",
+        "scripts/fleet/github/markdown.ts",
+        "scripts/fleet/fleet-plan.ts",
+        "scripts/fleet/fleet-dispatch.ts",
+        "scripts/fleet/fleet-merge.ts",
+        "scripts/fleet/archive-stale-sessions.ts",
+        ".github/workflows/fleet-dispatch-after-merge.yml"
+      ],
+      "description": "The fleet pipeline currently does not support label-driven dispatch (#350) and Phase 2a auto-merge fails to trigger Phase 2b because it uses GITHUB_TOKEN instead of a GitHub App token (#310).\n\nCode Path: `scripts/fleet/github/issues.ts::getIssues`\n\nMechanism: `getIssues` accepts only `state`/`perPage` but does NOT filter by label. GitHub Actions documents that events triggered by GITHUB_TOKEN do not create new workflow runs, which breaks the queue auto-merge.",
+      "solution_summary": "Adopt HSI ADR-030 label-driven dispatch with a 3-strikes abort condition. Update the workflow fleet-dispatch-after-merge.yml to use a GitHub App token for the queue auto-merge step and add a concurrency group.",
+      "solution_code": "```typescript\n<<<<<<< SEARCH\nexport async function getIssues(\n  options?: { perPage?: number; state?: \"open\" | \"closed\" | \"all\" }\n) {\n=======\nexport async function getIssues(\n  options?: { perPage?: number; state?: \"open\" | \"closed\" | \"all\"; labels?: string[] }\n) {\n>>>>>>> REPLACE\n```",
+      "test_plan": "1. Run bun test scripts/fleet/github/issues.test.ts.\n2. Ensure that labels are properly concatenated when passed to getIssues."
+    },
+    {
+      "id": "rc-minor-improvements-p2",
+      "title": "Minor code improvements from post-merge review",
+      "severity": "low",
+      "issues": [
+        305
+      ],
+      "files": [
+        "scripts/kb/write_utils.py",
+        "scripts/_optional_surface_common.py",
+        ".github/workflows/jules-archive-stale.yml",
+        "scripts/fleet/github/mutation-diagnostics.ts"
+      ],
+      "description": "Various minor P2 improvements from a post-merge retrospective review.\n\nCode Path: `scripts/kb/write_utils.py:300-306`\n\nMechanism: `_read_lock_holder_details` doesn't catch `UnicodeDecodeError` (subclass of `ValueError`, not `OSError`). A corrupted lock file with non-UTF-8 bytes would crash inside `LockUnavailableError.__init__`.",
+      "solution_summary": "Fix Exception handling in write_utils.py, remove dead code in normalize_apply_alias, add concurrency block to workflow, and update mutation diagnostics.",
+      "solution_code": "```python\n<<<<<<< SEARCH\n    except (OSError, UnicodeDecodeError):\n=======\n    except (OSError, UnicodeDecodeError, ValueError):\n>>>>>>> REPLACE\n```",
+      "test_plan": "1. Run pytest tests/kb/test_write_utils.py.\n2. Ensure corrupted lock files raise ValueError gracefully."
+    },
+    {
+      "id": "rc-trim-context-md",
+      "title": "Cosmetic: trim CONTEXT.md silent-revert PR defense-mechanism detail",
+      "severity": "low",
+      "issues": [
+        354
+      ],
+      "files": [
+        "CONTEXT.md"
+      ],
+      "description": "The CONTEXT.md file contains defense-mechanism detail for the 'silent-revert PR' term which is not strict glossary format.\n\nCode Path: `CONTEXT.md` row for `silent-revert PR`.\n\nMechanism: The final sentence describes the defense mechanism, not the term definition.",
+      "solution_summary": "Trim the term to Option A (minimal) as proposed in issue #354 and bump the last_updated frontmatter.",
+      "solution_code": "```markdown\n<<<<<<< SEARCH\n| silent-revert PR | A PR whose title/scope suggests a small or unrelated change but whose diff silently removes substantial content from sensitive paths. The canonical example is Scribe's `bolt: ...` PR (sha `82d56196`) that deleted 2474 lines of docs/strategies under a `bolt` scope label. Tier 0 defensive layer (issue #342) gates against this pattern via the commit-scope check (gates B + C) and the stale bot-branch sweeper. |\n=======\n| silent-revert PR | A PR whose title/scope suggests a small or unrelated change but whose diff silently removes substantial content from sensitive paths. The canonical example is Scribe's `bolt: ...` PR (sha `82d56196`) that deleted 2474 lines of docs/strategies under a `bolt` scope label. Defended by Tier 0 layer (see issue #342). |\n>>>>>>> REPLACE\n```",
+      "test_plan": "1. Run pytest tests/kb/test_context_md_freshness.py.\n2. Ensure it passes without syntax errors."
+    },
+    {
+      "id": "rc-checkpoint-registry-bootstrap",
+      "title": "Wire CI-3 + execute checkpoint-registry bootstrap runbook",
+      "severity": "high",
+      "issues": [
+        188
+      ],
+      "files": [
+        ".github/workflows/ci-3-pr-producer.yml",
+        "docs/mvp-runbook.md",
+        "docs/architecture.md"
+      ],
+      "description": "CI-3 needs to be wired to invoke the runtime from #187 and the bootstrap runbook needs to be executed to seed the initial registry.\n\nCode Path: `.github/workflows/ci-3-pr-producer.yml`\n\nMechanism: CI wiring is mechanical but cannot land alone because `--mutate` would fail against a non-existent registry.",
+      "solution_summary": "Modify ci-3-pr-producer.yml to invoke checkpoint_registry.py --mutate per batch. Execute the bootstrap runbook and commit the resulting json.",
+      "solution_code": "```yaml\n<<<<<<< SEARCH\n      - name: Run CI-3 processing (dry run)\n        run: python3 scripts/kb/checkpoint_registry.py\n=======\n      - name: Run CI-3 processing\n        run: |\n          python3 scripts/kb/checkpoint_registry.py --mutate\n          python3 scripts/kb/checkpoint_registry.py --verify --warn-only >> $GITHUB_STEP_SUMMARY\n>>>>>>> REPLACE\n```",
+      "test_plan": "1. Verify .github/workflows/ci-3-pr-producer.yml has valid syntax using actionlint.\n2. Verify the new wiki-processing-checkpoint-registry.json."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-tests-check-approval-flag",
+      "title": "Add test coverage for check_approval_flag.py",
+      "root_cause": "rc-tests-check-approval-flag",
+      "issues": [
+        367,
+        305
+      ],
+      "files": [
+        "scripts/hooks/check_approval_flag.py"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_approval_migration_ratchet.py",
+        "tests/kb/test_test_framework_ratchet.py"
+      ],
+      "risk": "low",
+      "prompt": "A cross-functional review flagged missing test coverage for `check_approval_flag.py`. You need to add these tests and ensure they pass.\n\n1. **Rename sibling test:** In `tests/kb/test_test_framework_ratchet.py`, rename `test_unittest_file_count_does_not_exceed_contract` to `test_unittest_file_count_matches_contract_exactly`.\n\n```python\n<<<<<<< SEARCH\ndef test_unittest_file_count_does_not_exceed_contract():\n=======\ndef test_unittest_file_count_matches_contract_exactly():\n>>>>>>> REPLACE\n```\n\n2. **Empty staged diff:** Add `test_hook_returns_zero_when_no_scripts_staged` to `tests/kb/test_approval_migration_ratchet.py` that mocks `_staged_script_paths` to return `([], None)` and asserts `main()` returns `0`.\n3. **Rename (R-status) detection:** Add `test_hook_treats_renamed_legacy_script_as_modified` testing `R` status (e.g. `R100\\told_path\\tnew_path`).\n4. **Multi-file mixed-staging:** Add `test_hook_handles_mixed_exempt_and_nonexempt_paths` to assert mixed files are handled properly.\n5. **Pre-deadline equals-form behavior:** Add `test_hook_allows_approval_equals_before_deadline` checking `_migration_deadline_passed=False` behavior.\n6. **Payload-path gating:** Add tests for `_payload_script_paths` failure short-circuits and environment variable precedence (`COPILOT_HOOK_EVENT_PAYLOAD`, `CLAUDE_HOOK_INPUT`, `HOOK_EVENT_PAYLOAD`).\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-fleet-label-driven-dispatch",
+      "title": "Adopt label-driven dispatch and GitHub App token for fleet",
+      "root_cause": "rc-fleet-label-driven-dispatch",
+      "issues": [
+        350,
+        310
+      ],
+      "files": [
+        "scripts/fleet/github/issues.ts",
+        "scripts/fleet/github/markdown.ts",
+        "scripts/fleet/fleet-plan.ts",
+        "scripts/fleet/fleet-dispatch.ts",
+        "scripts/fleet/fleet-merge.ts",
+        "scripts/fleet/archive-stale-sessions.ts",
+        ".github/workflows/fleet-dispatch-after-merge.yml",
+        "docs/decisions/ADR-032-fleet-quota-saturation-soft-warn.md",
+        "docs/decisions/README.md",
+        "AGENTS.md",
+        "tests/kb/test_framework_write_surface_matrix.py"
+      ],
+      "new_files": [
+        "docs/decisions/ADR-033-fleet-label-driven-dispatch-adoption.md",
+        "docs/decisions/ADR-034-fleet-no-notification-on-quota-saturation.md"
+      ],
+      "test_files": [
+        "scripts/fleet/fleet-plan.test.ts",
+        "scripts/fleet/fleet-dispatch.test.ts",
+        "scripts/fleet/fleet-merge.test.ts",
+        "scripts/fleet/archive-stale-sessions.test.ts",
+        "tests/kb/test_fleet_dispatch_after_merge_workflow.py",
+        "tests/kb/test_doc_cascade_completeness.py",
+        "tests/kb/test_adr_readme_status_sync.py"
+      ],
+      "risk": "medium",
+      "prompt": "Implement ADR-030 label-driven dispatch (#350) and fix the fleet auto-merge GitHub App token issue (#310).\n\n**Implementation Instructions:**\n\n1. **Label threading:** In `scripts/fleet/github/issues.ts`, update `getIssues` to accept `labels?: string[]`.\n```typescript\n<<<<<<< SEARCH\nexport async function getIssues(\n  options?: { perPage?: number; state?: \"open\" | \"closed\" | \"all\" }\n) {\n=======\nexport async function getIssues(\n  options?: { perPage?: number; state?: \"open\" | \"closed\" | \"all\"; labels?: string[] }\n) {\n>>>>>>> REPLACE\n```\nAnd add `labels: options?.labels?.join(','),` to the listForRepo arguments. Thread this through `getIssuesAsMarkdown` in `scripts/fleet/github/markdown.ts`.\n\n2. **Planner update:** In `scripts/fleet/fleet-plan.ts`, update the call to `getIssuesAsMarkdown({ labels: ['ready-for-agent'] })`.\n3. **Dispatcher update:** In `scripts/fleet/fleet-dispatch.ts`, apply the `in-progress` label, then remove `ready-for-agent`. Add `task.prompt` inside a `<details>` block in the issue comment. Implement the 3-strikes abort logic to transition the issue to `needs-triage` if `octokit.paginate(listEvents)` shows 3 `in-progress` labels within 30 days.\n4. **Merge update:** In `scripts/fleet/fleet-merge.ts`, remove `awaiting-feedback` and `in-progress` labels upon successful PR merge.\n5. **Archive update:** Update `scripts/fleet/archive-stale-sessions.ts` with label-restore-or-abort logic.\n6. **Workflow update:** In `.github/workflows/fleet-dispatch-after-merge.yml`, add `concurrency: { group: fleet-dispatch-label-driven, cancel-in-progress: false }`. Update the queue auto-merge step to use `actions/create-github-app-token`.\n7. **Documentation:** Create `ADR-033-fleet-label-driven-dispatch-adoption.md` and `ADR-034-fleet-no-notification-on-quota-saturation.md`. Update `ADR-032-fleet-quota-saturation-soft-warn.md`'s Positive consequences section. Update `README.md` and `AGENTS.md`.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-minor-improvements-p2",
+      "title": "Minor codebase improvements from P2 bundle",
+      "root_cause": "rc-minor-improvements-p2",
+      "issues": [
+        305
+      ],
+      "files": [
+        "scripts/kb/write_utils.py",
+        "scripts/_optional_surface_common.py",
+        ".github/workflows/jules-archive-stale.yml",
+        "scripts/fleet/github/mutation-diagnostics.ts"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_write_utils.py",
+        "tests/kb/test_optional_surface_common.py",
+        "scripts/fleet/github/mutation-diagnostics.test.ts",
+        "scripts/fleet/fleet-entrypoint-fatal.test.ts",
+        "tests/kb/test_jules_archive_stale_workflow.py"
+      ],
+      "risk": "low",
+      "prompt": "Address P2 bundle minor improvements from post-merge review (#305).\n\n**Implementation Instructions:**\n\n1. **write_utils.py**: In `_read_lock_holder_details`, catch `UnicodeDecodeError`. Also, address the Darwin start-time tolerance vs `time.time()` fallback and the Linux start-time parsing bugs.\n```python\n<<<<<<< SEARCH\n    except (OSError, UnicodeDecodeError):\n=======\n    except (OSError, UnicodeDecodeError, ValueError):\n>>>>>>> REPLACE\n```\n2. **_optional_surface_common.py**: Remove the dead duplicate check in `normalize_apply_alias`.\n3. **jules-archive-stale.yml**: Add a concurrency block `concurrency: { group: jules-archive-stale, cancel-in-progress: false }`.\n4. **mutation-diagnostics.ts**: Fix the `extractStatusCode` parsing logic so that gRPC code `9` doesn't incorrectly land in `statusCode=9`. Extract status and gRPC code into distinct fields.\n5. **Tests**: Add missing test coverage for Linux `/proc/<pid>/stat` parser in `tests/kb/test_write_utils.py`, `_holder_process_is_alive` error branches, and `handleMergeFatal` in `scripts/fleet/fleet-entrypoint-fatal.test.ts`.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-trim-context-md",
+      "title": "Trim CONTEXT.md silent-revert PR detail",
+      "root_cause": "rc-trim-context-md",
+      "issues": [
+        354
+      ],
+      "files": [
+        "CONTEXT.md"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_context_md_freshness.py",
+        "tests/kb/test_context_import_helpers.py"
+      ],
+      "risk": "low",
+      "prompt": "Trim the `silent-revert PR` definition in `CONTEXT.md` (Issue #354).\n\n**Implementation Instructions:**\n\n1. Locate the `silent-revert PR` entry in `CONTEXT.md`.\n2. Trim the definition to match Option A (minimal):\n\n```markdown\n<<<<<<< SEARCH\n| silent-revert PR | A PR whose title/scope suggests a small or unrelated change but whose diff silently removes substantial content from sensitive paths. The canonical example is Scribe's `bolt: ...` PR (sha `82d56196`) that deleted 2474 lines of docs/strategies under a `bolt` scope label. Tier 0 defensive layer (issue #342) gates against this pattern via the commit-scope check (gates B + C) and the stale bot-branch sweeper. |\n=======\n| silent-revert PR | A PR whose title/scope suggests a small or unrelated change but whose diff silently removes substantial content from sensitive paths. The canonical example is Scribe's `bolt: ...` PR (sha `82d56196`) that deleted 2474 lines of docs/strategies under a `bolt` scope label. Defended by Tier 0 layer (see issue #342). |\n>>>>>>> REPLACE\n```\n\n3. Update the `last_updated` frontmatter.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    },
+    {
+      "id": "task-checkpoint-registry-bootstrap",
+      "title": "Wire CI-3 and execute checkpoint-registry bootstrap",
+      "root_cause": "rc-checkpoint-registry-bootstrap",
+      "issues": [
+        188
+      ],
+      "files": [
+        ".github/workflows/ci-3-pr-producer.yml",
+        "docs/mvp-runbook.md",
+        "docs/architecture.md"
+      ],
+      "new_files": [
+        "raw/wiki-processing/wiki-processing-checkpoint-registry.json"
+      ],
+      "test_files": [
+        "tests/kb/test_ci3_workflow.py",
+        "tests/kb/test_checkpoint_registry.py"
+      ],
+      "risk": "high",
+      "prompt": "Wire CI-3 to invoke the runtime and execute the checkpoint-registry bootstrap runbook (#188).\n\n**Implementation Instructions:**\n\n1. In `.github/workflows/ci-3-pr-producer.yml`, invoke `python3 scripts/kb/checkpoint_registry.py --mutate` per batch, followed by `--verify --warn-only` with output captured to `$GITHUB_STEP_SUMMARY`.\n2. Generate the bootstrap file by executing `python3 scripts/kb/checkpoint_registry.py --bootstrap --apply --approval approved` and saving the output to `raw/wiki-processing/wiki-processing-checkpoint-registry.json`.\n3. Update `docs/mvp-runbook.md` and `docs/architecture.md` to remove forward-looking phrasing since the registry is now live.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    }
+  ],
+  "unaddressable": [
+    {
+      "issue": 368,
+      "reason": "Tracking issue - do not close; do not edit body.",
+      "suggested_owner": "Human / wryenmeek"
+    },
+    {
+      "issue": 366,
+      "reason": "Requires manual operator action via gh cli and UI to create label and tracking issue.",
+      "suggested_owner": "Human / wryenmeek"
+    },
+    {
+      "issue": 365,
+      "reason": "Requires manual audit of PRs over a 90-day window to calculate false positive rate.",
+      "suggested_owner": "Human / wryenmeek"
+    },
+    {
+      "issue": 364,
+      "reason": "Requires human decision on whether to promote CODEOWNERS after 30-day evaluation.",
+      "suggested_owner": "Human / wryenmeek"
+    },
+    {
+      "issue": 353,
+      "reason": "Requires human decision on Tier 3 multi-provider fallback based on public surface maturity.",
+      "suggested_owner": "Human / wryenmeek"
+    },
+    {
+      "issue": 351,
+      "reason": "Requires 14 days of clean observation data before flipping to dry_run: false.",
+      "suggested_owner": "Human / wryenmeek"
+    },
+    {
+      "issue": 341,
+      "reason": "Phase 1 is superseded by #350 (no notification on quota saturation). Phase 2/3 require Copilot SWE agent activation which is an admin/human task.",
+      "suggested_owner": "Human / wryenmeek"
+    },
+    {
+      "issue": 156,
+      "reason": "Human-owned decision lane for semantic query API hosting/deployment.",
+      "suggested_owner": "Human / wryenmeek"
+    },
+    {
+      "issue": 194,
+      "reason": "Requires manual smoke test in CLI 1.0.60 session to validate Mechanism B.",
+      "suggested_owner": "QA / Human"
+    },
+    {
+      "issue": 196,
+      "reason": "Phase 1.5 spike requires manual measurement of compliance rate via CLI and VS Code Chat.",
+      "suggested_owner": "QA / Human"
+    },
+    {
+      "issue": 198,
+      "reason": "Requires adversarial review by humans (@code-reviewer, @security-auditor, etc.) and manual fixture testing.",
+      "suggested_owner": "QA / Security Auditor"
+    },
+    {
+      "issue": 207,
+      "reason": "Requires manual review of every finding for hallucination, citation grounding, and adversarial inputs.",
+      "suggested_owner": "QA / Human"
+    },
+    {
+      "issue": 212,
+      "reason": "Requires manual execution of CLI and VS Code Chat sessions to compute set-equivalence.",
+      "suggested_owner": "QA / Human"
+    }
+  ],
+  "file_ownership": {
+    "scripts/hooks/check_approval_flag.py": "task-tests-check-approval-flag",
+    "tests/kb/test_approval_migration_ratchet.py": "task-tests-check-approval-flag",
+    "tests/kb/test_test_framework_ratchet.py": "task-tests-check-approval-flag",
+    "scripts/fleet/github/issues.ts": "task-fleet-label-driven-dispatch",
+    "scripts/fleet/github/markdown.ts": "task-fleet-label-driven-dispatch",
+    "scripts/fleet/fleet-plan.ts": "task-fleet-label-driven-dispatch",
+    "scripts/fleet/fleet-dispatch.ts": "task-fleet-label-driven-dispatch",
+    "scripts/fleet/fleet-merge.ts": "task-fleet-label-driven-dispatch",
+    "scripts/fleet/archive-stale-sessions.ts": "task-fleet-label-driven-dispatch",
+    ".github/workflows/fleet-dispatch-after-merge.yml": "task-fleet-label-driven-dispatch",
+    "docs/decisions/ADR-032-fleet-quota-saturation-soft-warn.md": "task-fleet-label-driven-dispatch",
+    "docs/decisions/README.md": "task-fleet-label-driven-dispatch",
+    "AGENTS.md": "task-fleet-label-driven-dispatch",
+    "tests/kb/test_framework_write_surface_matrix.py": "task-fleet-label-driven-dispatch",
+    "docs/decisions/ADR-033-fleet-label-driven-dispatch-adoption.md": "task-fleet-label-driven-dispatch",
+    "docs/decisions/ADR-034-fleet-no-notification-on-quota-saturation.md": "task-fleet-label-driven-dispatch",
+    "scripts/fleet/fleet-plan.test.ts": "task-fleet-label-driven-dispatch",
+    "scripts/fleet/fleet-dispatch.test.ts": "task-fleet-label-driven-dispatch",
+    "scripts/fleet/fleet-merge.test.ts": "task-fleet-label-driven-dispatch",
+    "scripts/fleet/archive-stale-sessions.test.ts": "task-fleet-label-driven-dispatch",
+    "tests/kb/test_fleet_dispatch_after_merge_workflow.py": "task-fleet-label-driven-dispatch",
+    "tests/kb/test_doc_cascade_completeness.py": "task-fleet-label-driven-dispatch",
+    "tests/kb/test_adr_readme_status_sync.py": "task-fleet-label-driven-dispatch",
+    "scripts/kb/write_utils.py": "task-minor-improvements-p2",
+    "scripts/_optional_surface_common.py": "task-minor-improvements-p2",
+    ".github/workflows/jules-archive-stale.yml": "task-minor-improvements-p2",
+    "scripts/fleet/github/mutation-diagnostics.ts": "task-minor-improvements-p2",
+    "tests/kb/test_write_utils.py": "task-minor-improvements-p2",
+    "tests/kb/test_optional_surface_common.py": "task-minor-improvements-p2",
+    "scripts/fleet/github/mutation-diagnostics.test.ts": "task-minor-improvements-p2",
+    "scripts/fleet/fleet-entrypoint-fatal.test.ts": "task-minor-improvements-p2",
+    "tests/kb/test_jules_archive_stale_workflow.py": "task-minor-improvements-p2",
+    "CONTEXT.md": "task-trim-context-md",
+    "tests/kb/test_context_md_freshness.py": "task-trim-context-md",
+    "tests/kb/test_context_import_helpers.py": "task-trim-context-md",
+    ".github/workflows/ci-3-pr-producer.yml": "task-checkpoint-registry-bootstrap",
+    "docs/mvp-runbook.md": "task-checkpoint-registry-bootstrap",
+    "docs/architecture.md": "task-checkpoint-registry-bootstrap",
+    "raw/wiki-processing/wiki-processing-checkpoint-registry.json": "task-checkpoint-registry-bootstrap",
+    "tests/kb/test_ci3_workflow.py": "task-checkpoint-registry-bootstrap",
+    "tests/kb/test_checkpoint_registry.py": "task-checkpoint-registry-bootstrap"
+  }
+}
