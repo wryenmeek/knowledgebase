@@ -102,8 +102,8 @@ function formatAgeDuration(ageMs: number): string {
 export function parseCliArgs(argv: string[]): ArchiveCliArgs {
   let state: SessionState = "inProgress";
   let olderThanDays: number | undefined;
-  let sourceFilter: string | undefined;
-  let repoAll = false;
+  let sourceFilterArg: string | undefined;
+  let repoMode: "current" | "all" | undefined;
   let apply = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -124,13 +124,13 @@ export function parseCliArgs(argv: string[]): ArchiveCliArgs {
         throw new Error("--source-filter requires a non-empty value");
       }
       // Trim to defend against accidental copy-paste whitespace
-      sourceFilter = value.trim();
+      sourceFilterArg = value.trim();
     } else if (arg === "--repo" && argv[i + 1]) {
       const repoVal = argv[++i];
       if (repoVal === "current") {
-        sourceFilter = CURRENT_REPO_SOURCE;
+        repoMode = "current";
       } else if (repoVal === "all") {
-        repoAll = true;
+        repoMode = "all";
       } else {
         throw new Error(
           `--repo must be "current" or "all"; got: "${repoVal}"`
@@ -146,6 +146,18 @@ export function parseCliArgs(argv: string[]): ArchiveCliArgs {
       "--older-than-days is required. Specify the minimum age in days to avoid mass-archive."
     );
   }
+
+  if (repoMode === "all" && sourceFilterArg !== undefined) {
+    throw new Error("--repo all cannot be combined with --source-filter");
+  }
+
+  const sourceFilter =
+    sourceFilterArg !== undefined
+      ? sourceFilterArg
+      : repoMode === "current"
+        ? CURRENT_REPO_SOURCE
+        : undefined;
+  const repoAll = repoMode === "all";
 
   if (apply && sourceFilter === undefined && !repoAll) {
     throw new Error(

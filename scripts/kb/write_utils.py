@@ -363,7 +363,10 @@ def _pid_start_time_tolerance_seconds() -> float:
         # a mismatch to avoid accepting adjacent-tick PID reuse.
         return max(1e-6, 0.5 / ticks_per_second)
     if sys.platform == "darwin":
-        return 1e-6
+        # Darwin's `ps -o lstart=` reports whole-second precision. Treat
+        # sub-second drift as equivalent so lock-holder checks do not
+        # misclassify a still-running process as PID reuse.
+        return 1.0
     return 1e-6
 
 
