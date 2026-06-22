@@ -190,6 +190,23 @@ def test_hook_allows_exempt_approval_equals_after_deadline(monkeypatch) -> None:
     assert check_approval_flag.main([]) == 0
 
 
+def test_exempt_paths_membership_locked() -> None:
+    """Force PR-review scrutiny on any change to _EXEMPT_PATHS.
+
+    Membership confers two bypasses: the new-legacy-script check and (after
+    APPROVAL_EQUALS_REJECTION_DEADLINE) the equals-form rejection. Growing this
+    set silently extends the deprecation window for additional files, so any
+    addition must be deliberate — this test fails closed when the set drifts.
+    Locked per security-auditor LOW-1 finding on PR #363.
+    """
+    assert check_approval_flag._EXEMPT_PATHS == frozenset(
+        {
+            "scripts/_optional_surface_common.py",
+            "scripts/kb/checkpoint_registry.py",
+        }
+    )
+
+
 def test_hook_rejects_approval_equals_for_non_exempt_path(monkeypatch, capsys) -> None:
     path = "scripts/non_exempt.py"
     monkeypatch.setattr(
