@@ -38,3 +38,6 @@
 ## 2026-06-20 - [Test Boundary Adherence for Ratchets]
 **Learning:** Repository-wide configuration contracts, metric baselines, and ratchets (e.g., `MAX_APPROVAL_FLAG_SCRIPTS`, `MAX_UNITTEST_FILES`) are centralized in `scripts/kb/contracts.py` and strictly validated by unit tests in `tests/kb/test_contracts.py`. Changes to ratchet values must be updated in both files.
 **Action:** When updating a ratchet test file (e.g., changing from `<=` to `==`), also modify its contract testing baseline in `test_contracts.py` to match the exact current value to satisfy file boundaries safely.
+## 2026-06-25 - [Performance] Optimized Python String Slicing vs splitlines()
+**Learning:** Using `text.splitlines()` on large text strings creates a heavy memory footprint by tokenizing strings into `O(N)` arrays. For fast-path validation like extracting frontmatter delimiters or stripping metadata, isolating subsets of strings with `.find('\n')` achieves `O(1)` space allocation. Furthermore, calling `.lstrip()` or `.partition()` on large, untokenized strings will create full-sized string object copies under the hood.
+**Action:** When validating single lines in a large text document, use `newline_pos = text.find('\n')` and slice `text[:newline_pos]` before applying fast-path methods like `.lstrip()` or `.startswith()`.

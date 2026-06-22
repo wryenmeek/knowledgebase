@@ -68,8 +68,11 @@ class PageSummary:
 
 
 def _require_frontmatter(markdown_text: str, page_path: Path) -> str:
-    lines = markdown_text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    # OPTIMIZATION: Avoid splitlines() on large text blocks to achieve O(1)
+    # fast-path extraction instead of creating a full O(N) array of lines.
+    newline_pos = markdown_text.find("\n")
+    first_line = markdown_text if newline_pos == -1 else markdown_text[:newline_pos]
+    if first_line.strip() != "---":
         raise IndexGenerationError(
             f"{page_path}: missing YAML frontmatter start delimiter (ensure the file begins with '---')"
         )
