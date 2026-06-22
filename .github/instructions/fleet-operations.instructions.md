@@ -13,6 +13,7 @@ including session-cap saturation events. Tools are in `scripts/fleet/`.
 |---|---|
 | `jules-account-probe.ts` | Read-only account health snapshot |
 | `archive-stale-sessions.ts` | Bulk-archive zombie/stale sessions |
+| `fleet-submit-prs.ts` | Un-stick `awaitingUserFeedback` Jules sessions by submitting PRs on their behalf |
 
 ---
 
