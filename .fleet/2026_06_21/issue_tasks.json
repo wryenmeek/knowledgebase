@@ -1,0 +1,194 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-06-21T09:48:12.279Z",
+  "root_causes": [
+    {
+      "id": "rc-1-missing-workflow-test",
+      "title": "Missing workflow contract test for GITHUB_PR_HEAD_SHA pre-commit env",
+      "severity": "low",
+      "issues": [
+        340
+      ],
+      "files": [
+        "tests/kb/test_pre_commit_workflow.py"
+      ],
+      "description": "Issue #340 notes that no static contract test exists to assert GITHUB_PR_HEAD_SHA is wired correctly in .github/workflows/pre-commit.yml",
+      "solution_summary": "Create a new Python test file `tests/kb/test_pre_commit_workflow.py` to parse the YAML and verify the environment variable mapping."
+    },
+    {
+      "id": "rc-2-approval-time-bomb-and-tripwire",
+      "title": "Pre-commit hook time-bomb logic and ratchet loose inequality",
+      "severity": "high",
+      "issues": [
+        300,
+        332
+      ],
+      "files": [
+        "scripts/hooks/check_approval_flag.py",
+        "tests/kb/test_approval_migration_ratchet.py"
+      ],
+      "description": "The check_approval_flag hook improperly rejects the `--approval=` string before evaluating path exemptions, acting as a time bomb for valid compat scripts. Also, ADR-030 needs a tripwire test for the deprecation deadline.",
+      "solution_summary": "Reorder the exemption check in `check_approval_flag.py` to execute before the equals syntax rejection, and add an automated tripwire test to `test_approval_migration_ratchet.py`."
+    },
+    {
+      "id": "rc-3-dead-duplicate-check",
+      "title": "Dead duplicate check in normalize_apply_alias",
+      "severity": "low",
+      "issues": [
+        305
+      ],
+      "files": [
+        "scripts/_optional_surface_common.py"
+      ],
+      "description": "The normalize_apply_alias function contains a duplicate evaluation for legacy equals prefix which is unreachable.",
+      "solution_summary": "Remove the redundant `any(token.startswith...)` check from the second boolean condition."
+    },
+    {
+      "id": "rc-4-grpc-status-code-parsing",
+      "title": "Mutation diagnostics extractStatusCode gRPC mismatch",
+      "severity": "low",
+      "issues": [
+        305
+      ],
+      "files": [
+        "scripts/fleet/github/mutation-diagnostics.ts"
+      ],
+      "description": "The extractStatusCode function incorrectly reads gRPC codes (like 9 for FAILED_PRECONDITION) as HTTP status codes, risking collisions.",
+      "solution_summary": "Remove the parsing of `nestedError?.code` from the candidates array in `extractStatusCode`."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-1-workflow-test",
+      "title": "Add workflow contract test for GITHUB_PR_HEAD_SHA pre-commit env",
+      "root_cause": "rc-1-missing-workflow-test",
+      "issues": [
+        340
+      ],
+      "files": [],
+      "new_files": [
+        "tests/kb/test_pre_commit_workflow.py"
+      ],
+      "test_files": [
+        "tests/kb/test_pre_commit_workflow.py"
+      ],
+      "risk": "low",
+      "prompt": "Create a new workflow contract test for the pre-commit action.\n\nIssue #340 notes that a previous PR added `GITHUB_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}` to the `.github/workflows/pre-commit.yml` workflow file under the 'Run pre-commit on all files' step. However, no static contract test exists to assert this wiring is maintained over time.\n\nCreate a new test file `tests/kb/test_pre_commit_workflow.py` that parses the `.github/workflows/pre-commit.yml` YAML file and verifies that the `GITHUB_PR_HEAD_SHA` environment variable is set to `${{ github.event.pull_request.head.sha }}` on the `Run pre-commit on all files` step.\n\nAcceptance Criteria:\n1. Use `yaml.safe_load` to load the file.\n2. Iterate over the jobs to find the `Run pre-commit on all files` step.\n3. Assert the `env` dictionary contains the correct key and value.\n4. Run `pytest tests/kb/test_pre_commit_workflow.py` to ensure it passes.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-2-approval-ratchet",
+      "title": "Fix pre-commit time-bomb and ratchet loose inequality",
+      "root_cause": "rc-2-approval-time-bomb-and-tripwire",
+      "issues": [
+        300,
+        332
+      ],
+      "files": [
+        "scripts/hooks/check_approval_flag.py"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_approval_migration_ratchet.py"
+      ],
+      "risk": "medium",
+      "prompt": "Fix two related issues with the approval-flag migration hook.\n\n1. In `scripts/hooks/check_approval_flag.py`, the rejection for `--approval=` (equals form) occurs before `_EXEMPT_PATHS` is consulted. Since `scripts/_optional_surface_common.py` is in `_EXEMPT_PATHS` but legitimately contains the literal `\"--approval=\"` to detect legacy callers, edits to the file will be incorrectly blocked. You must move the `if staged_path.path in _EXEMPT_PATHS:` block ABOVE the equals-sign rejection block. You will also need to update the test test_hook_rejects_approval_equals_for_fake_exempt_path in test_approval_migration_ratchet.py to ensure the hook passes (returns 0) for an exempt file.\n2. Add an automated tripwire test to `tests/kb/test_approval_migration_ratchet.py` named `test_approval_flag_deprecation_deadline_tripwire()`. It should assert that if `datetime.date.today() > datetime.date(2026, 12, 31)`, then `MAX_APPROVAL_FLAG_SCRIPTS == 0`.\n\nAcceptance Criteria:\n1. The pre-commit hook bypasses the equals-sign check for exempt files.\n2. The tripwire test is added to the ratchet tests.\n3. `pytest tests/kb/test_approval_migration_ratchet.py` passes.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-3-dead-code",
+      "title": "Remove dead duplicate check in normalize_apply_alias",
+      "root_cause": "rc-3-dead-duplicate-check",
+      "issues": [
+        305
+      ],
+      "files": [
+        "scripts/_optional_surface_common.py"
+      ],
+      "new_files": [
+        "tests/kb/test_optional_surface_common.py"
+      ],
+      "test_files": [
+        "tests/kb/test_optional_surface_common.py"
+      ],
+      "risk": "low",
+      "prompt": "Remove dead code in `scripts/_optional_surface_common.py`.\n\nIn `normalize_apply_alias`, there is a duplicate evaluation. The function does this:\n```python\n    if any(token.startswith(_LEGACY_APPROVAL_EQUALS_PREFIX) for token in args):\n        raise ValueError(...)\n    if \"--apply\" not in args:\n        return args\n    if \"--approval\" in args or any(token.startswith(_LEGACY_APPROVAL_EQUALS_PREFIX) for token in args):\n        raise ValueError(\"--apply cannot be combined with --approval\")\n```\nThe `any(token.startswith(_LEGACY_APPROVAL_EQUALS_PREFIX) for token in args)` inside the second `if` is redundant and can never be reached, as the first block would have already raised a ValueError.\n\nRemove the `or any(...)` part from the second `if` condition.\n\nYou also MUST create `tests/kb/test_optional_surface_common.py` and write tests for `normalize_apply_alias` function.\n\nAcceptance Criteria:\n1. The redundant code is removed.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    },
+    {
+      "id": "task-4-grpc-code",
+      "title": "Mutation diagnostics extractStatusCode gRPC mismatch",
+      "root_cause": "rc-4-grpc-status-code-parsing",
+      "issues": [
+        305
+      ],
+      "files": [
+        "scripts/fleet/github/mutation-diagnostics.ts"
+      ],
+      "new_files": [],
+      "test_files": [
+        "scripts/fleet/github/mutation-diagnostics.test.ts"
+      ],
+      "risk": "low",
+      "prompt": "Fix gRPC code parsing in `extractStatusCode`.\n\nIn `scripts/fleet/github/mutation-diagnostics.ts`, the `extractStatusCode` function reads `nestedError?.code` as a number. This can cause gRPC codes (like 9 for FAILED_PRECONDITION) to land in `statusCode=9` and silently match hypothetical HTTP status code checks.\n\nRemove the line `toNumberValue(nestedError?.code),` from the `candidates` array inside `extractStatusCode`.\n\nAcceptance Criteria:\n1. The redundant code is removed.\n2. Verify there are no typescript compilation errors by running `cd scripts/fleet && bun test scripts/fleet/github/mutation-diagnostics.test.ts`.\n\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [
+    {
+      "issue": 335,
+      "reason": "CI-2 closure evidence checker flags recently closed issues. Requires a human operator to add closure evidence comments to old PRs/issues on GitHub, not a code modification.",
+      "suggested_owner": "Developer / Human Operator"
+    },
+    {
+      "issue": 310,
+      "reason": "Phase 2a auto-merge should use GitHub App token. The code support is already merged (uses `create-github-app-token`), but the App needs to be provisioned and secrets added to the repo settings.",
+      "suggested_owner": "DevOps / GitHub Admin"
+    },
+    {
+      "issue": 156,
+      "reason": "Deliver semantic query API + search integration. The scope is explicitly marked as 'human-owned decision lane for hosting/deployment'.",
+      "suggested_owner": "Architecture Team"
+    },
+    {
+      "issue": 82,
+      "reason": "Investigate Jules API FAILED_PRECONDITION error. External API issue requiring validation of JULES_API_KEY entitlement and account linkage.",
+      "suggested_owner": "Backend/API Team"
+    },
+    {
+      "issue": 188,
+      "reason": "PR4 \u2014 Wire CI-3 + execute checkpoint-registry bootstrap runbook. This is marked as 'HITL operator step' and requires operator execution.",
+      "suggested_owner": "Release Manager"
+    },
+    {
+      "issue": 194,
+      "reason": "Phase 0 spike to validate UserPromptSubmit hook event. This is an epic tracker for manual steps.",
+      "suggested_owner": "QA / Human Operator"
+    },
+    {
+      "issue": 196,
+      "reason": "Phase 1.5 spike to empirically measure agent reading. This is an epic tracker for manual steps.",
+      "suggested_owner": "QA / Human Operator"
+    },
+    {
+      "issue": 198,
+      "reason": "Adversarial QA gate validating the spec foundation. This is an epic tracker for manual steps.",
+      "suggested_owner": "QA / Human Operator"
+    },
+    {
+      "issue": 207,
+      "reason": "Adversarial QA gate validating the read-only classifier. This is an epic tracker for manual steps.",
+      "suggested_owner": "QA / Human Operator"
+    },
+    {
+      "issue": 212,
+      "reason": "First real-use exercise. This is an epic tracker for manual steps.",
+      "suggested_owner": "QA / Human Operator"
+    }
+  ],
+  "file_ownership": {
+    "tests/kb/test_pre_commit_workflow.py": "task-1-workflow-test",
+    "scripts/hooks/check_approval_flag.py": "task-2-approval-ratchet",
+    "tests/kb/test_approval_migration_ratchet.py": "task-2-approval-ratchet",
+    "scripts/_optional_surface_common.py": "task-3-dead-code",
+    "tests/kb/test_optional_surface_common.py": "task-3-dead-code",
+    "scripts/fleet/github/mutation-diagnostics.ts": "task-4-grpc-code",
+    "scripts/fleet/github/mutation-diagnostics.test.ts": "task-4-grpc-code"
+  }
+}
