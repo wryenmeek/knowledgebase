@@ -87,7 +87,6 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           REPO: ${{ github.repository }}
         run: |
-          # shellcheck disable=SC2016  # jq expressions use $-prefixed variables (e.g. `as $c`) that intentionally do not expand at shell level
           set -euo pipefail
 
           PROBED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -147,6 +146,7 @@ jobs:
             if echo "${LAST_COMMENT_BODY}" | grep -q "^❌ Probe failed"; then
               # Count consecutive failures since the last recovery (or beginning).
               # Walk comments in reverse; stop at the first ✅ Recovered comment.
+              # shellcheck disable=SC2016  # the jq expression below intentionally uses $-prefixed jq variables (e.g. `as $c`) — not shell variables
               FAILURE_STATS=$(gh issue view "${ISSUE_NUMBER}" \
                 --repo "${REPO}" \
                 --json comments \
