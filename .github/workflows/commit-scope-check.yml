@@ -1,0 +1,69 @@
+name: Commit Scope Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited]
+    branches: [main]
+
+# Read-only permissions — this workflow inspects the PR diff but never writes.
+permissions:
+  pull-requests: read
+  contents: read
+
+# Cancel in-progress runs for the same PR when a new push or title edit arrives.
+concurrency:
+  group: commit-scope-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+          # Full history so git merge-base ancestry checks in gate C work.
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --quiet -e ".[dev]" 2>/dev/null || pip install --quiet -e . 2>/dev/null || true
+
+      - name: Run commit scope check
+        id: scope_check
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python -m scripts.validation.check_commit_scope
+
+      - name: Write job summary
+        if: always()
+        env:
+          SCOPE_CHECK_OUTCOME: ${{ steps.scope_check.outcome }}
+        run: |
+          if [ "$SCOPE_CHECK_OUTCOME" = "success" ]; then
+            echo "### ✅ Commit Scope Check passed" >> "$GITHUB_STEP_SUMMARY"
+            echo "Gates B (sensitive-paths) and C (deletion-ratio) both passed." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ❌ Commit Scope Check failed" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "One or more gates fired. See the step log above for details." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Gate B** fires when a PR touches a sensitive path without naming the surface" >> "$GITHUB_STEP_SUMMARY"
+            echo "in the PR title or body first line (word-boundary token match)." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Gate C** fires when net deletions exceed 50 lines without a verified" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`Reverts: #N\` or \`Cleanup: <reason>\` Git footer trailer." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "See \`docs/conventions/commit-trailers.md\` for remediation guidance." >> "$GITHUB_STEP_SUMMARY"
+          fi
