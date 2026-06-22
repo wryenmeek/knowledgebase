@@ -38,7 +38,3 @@
 ## 2026-06-20 - [Test Boundary Adherence for Ratchets]
 **Learning:** Repository-wide configuration contracts, metric baselines, and ratchets (e.g., `MAX_APPROVAL_FLAG_SCRIPTS`, `MAX_UNITTEST_FILES`) are centralized in `scripts/kb/contracts.py` and strictly validated by unit tests in `tests/kb/test_contracts.py`. Changes to ratchet values must be updated in both files.
 **Action:** When updating a ratchet test file (e.g., changing from `<=` to `==`), also modify its contract testing baseline in `test_contracts.py` to match the exact current value to satisfy file boundaries safely.
-
-## 2026-06-21 - [Parallel execution plan coupling]
-**Learning:** When generating task plans (e.g., issue_tasks.json) for parallel execution, strict file ownership boundaries must be enforced: no single file (source or test) may be assigned to or modified by more than one task to prevent merge conflicts. Also, test dependencies for tasks must be explicitly included in their task's `test_files` list and the global `file_ownership` matrix.
-**Action:** Always include corresponding test files to tasks in both `test_files` array and the `file_ownership` mapping to make sure tasks can be independently tested without causing merge conflicts.
