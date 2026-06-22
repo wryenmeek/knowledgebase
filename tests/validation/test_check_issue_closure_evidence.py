@@ -1089,3 +1089,151 @@ def test_resolve_repo_json_path_rejects_missing_file(tmp_path) -> None:
 
 def test_default_target_labels_cover_issue_policy_scope() -> None:
     assert DEFAULT_TARGET_LABELS == ("security", "refactor", "testing", "hardening")
+
+
+# ---------------------------------------------------------------------------
+# Regression tests: closure evidence comment formats for issues flagged in
+# CI-2 run on PR #333 (wryenmeek/knowledgebase#335).  Each test verifies that
+# the comment posted on the corresponding GitHub issue is accepted as
+# compliant, guarding against future checker logic changes that would silently
+# invalidate these real-world comment formats.
+# ---------------------------------------------------------------------------
+
+_EVIDENCE_COMMENT_301 = """\
+### Closure evidence
+- Implementation reference: PR #315 (`Fix truthiness bypass bug in fleet archive-stale-sessions.ts`)
+- Key files/surfaces changed:
+  - `scripts/fleet/archive-stale-sessions.ts` (parseCliArgs:121-127 — explicit non-empty + non-whitespace check)
+  - `scripts/fleet/archive-stale-sessions.test.ts` (lines 146-156 — `--apply` with whitespace-only and empty `--source-filter` both denied)
+- Validation commands:
+  - `grep -nE "source-filter|sourceFilter|parseCliArgs" scripts/fleet/archive-stale-sessions.ts`
+  - `grep -nE "whitespace|empty|source-filter" scripts/fleet/archive-stale-sessions.test.ts`
+  - `cd scripts/fleet && bun test archive-stale-sessions.test.ts`
+- Pass/fail summary: PASS — whitespace-only and empty --source-filter both denied; trimmed-value case accepted. Acceptance checklist fully covered.
+"""
+
+_EVIDENCE_COMMENT_302 = """\
+### Closure evidence
+- Implementation reference: commit `83295a3` (`feat: address #311 (Layer 9 issues:write) + #324 (LockUnavailableError kwarg)`)
+- Key files/surfaces changed:
+  - `scripts/kb/write_utils.py` (lines 407-409 — meta-lock LockUnavailableError raised with lock_file_path=repo_root / contracts.GOVERNANCE_META_LOCK_PATH)
+  - `tests/kb/test_write_utils.py` (lines 262-303 — sibling-contention tests assert holder_alive == True and holder_context_hash matches hex pattern)
+- Validation commands:
+  - `grep -nE "GOVERNANCE_META_LOCK_PATH|_acquire_sibling_governance_lock|LockUnavailableError" scripts/kb/write_utils.py`
+  - `grep -nE "holder_alive|holder_context_hash" tests/kb/test_write_utils.py`
+  - `python3 -m pytest tests/kb/test_write_utils.py -k "sibling_governance or customizations_lock" -v`
+- Pass/fail summary: PASS — meta-lock LockUnavailableError carries valid holder_alive and holder_context_hash metadata regardless of caller cwd; both sibling-contention tests propagate holder fields.
+"""
+
+_EVIDENCE_COMMENT_306 = """\
+### Closure evidence
+- Implementation reference: commit `4e7679b` / PR #312 (`ci: add environment and concurrency to jules-archive-stale workflow`)
+- Key files/surfaces changed:
+  - `.github/workflows/jules-archive-stale.yml` — environment: jules-archive-approval added to the archive job; concurrency block added partitioned by inputs.apply with cancel-in-progress: false
+- Validation commands:
+  - `grep -nE "environment:|concurrency:" .github/workflows/jules-archive-stale.yml`
+  - `python3 -m pytest tests/kb/test_jules_archive_stale_workflow.py -v`
+- Pass/fail summary: PASS — environment gate matches CI-4 pattern; destructive apply runs blocked behind reviewer approval; concurrency races eliminated.
+"""
+
+_EVIDENCE_COMMENT_318 = """\
+### Closure evidence
+- Implementation reference: commit `7fa5ab8` (`feat(tests): shell-execution harness for Phase 2b workflow steps (#318)`)
+- Key files/surfaces changed:
+  - `tests/kb/fleet_dispatch_harness.py` (~250 LOC) — primitives build_fixture_repo and extract_step_script
+  - `tests/kb/test_fleet_dispatch_after_merge_integration.py` — scenarios driving the harness against fleet-dispatch-after-merge.yml steps
+  - `AGENTS.md` write-surface matrix row added for tests/kb/fleet_dispatch_harness.py
+- Validation commands:
+  - `python3 -m pytest tests/kb/test_fleet_dispatch_after_merge_integration.py -v`
+  - `python3 -m pytest tests/kb/test_framework_write_surface_matrix.py -v`
+- Pass/fail summary: PASS — harness reproduces Layer-7 and Layer-8 trap classes locally; integration tests green; matrix row enforced.
+"""
+
+_EVIDENCE_COMMENT_320 = """\
+### Closure evidence
+- Implementation reference: commit `6c274c6` (`feat: address #320 (jules-archive-stale contract test) + #321 (extract_frontmatter BOM)`)
+- Key files/surfaces changed:
+  - `tests/kb/test_jules_archive_stale_workflow.py` (new file, 7 contract tests pinning forbidden inputs.apply string-comparison, required boolean-truthy form, destructive branch jules-archive-approval, concurrency partitioned by inputs.apply, cancel-in-progress false)
+- Validation commands:
+  - `python3 -m pytest tests/kb/test_jules_archive_stale_workflow.py -v`
+  - `python3 -m pytest tests/kb/test_jules_archive_stale_workflow.py`
+- Pass/fail summary: PASS — 7 contract tests pass; would have caught the HIGH-severity environment-gate string-comparison bug found post-merge in PR #312.
+"""
+
+
+@pytest.mark.parametrize(
+    ("issue_number", "labels", "comment"),
+    (
+        (301, ("bug", "security", "testing"), _EVIDENCE_COMMENT_301),
+        (302, ("bug", "testing"), _EVIDENCE_COMMENT_302),
+        (306, ("security",), _EVIDENCE_COMMENT_306),
+        (318, ("testing",), _EVIDENCE_COMMENT_318),
+        (320, ("testing",), _EVIDENCE_COMMENT_320),
+    ),
+)
+def test_evaluate_closure_evidence_comment_accepts_ci2_335_remediation_formats(
+    issue_number: int,
+    labels: tuple[str, ...],
+    comment: str,
+) -> None:
+    """Verify each closure evidence comment posted to fix CI-2 failure on PR #333
+    is accepted as compliant by the checker (regression guard for issue #335)."""
+    result = evaluate_closure_evidence_comment(comment, issue_labels=labels)
+    assert result["is_compliant"] is True, (
+        f"Issue #{issue_number} closure evidence comment was rejected; "
+        f"missing fields: {result['missing_fields']}"
+    )
+    assert result["missing_fields"] == ()
+
+
+def test_run_closure_evidence_report_passes_for_all_ci2_335_remediated_issues(
+    tmp_path,
+) -> None:
+    """All 5 issues flagged in CI-2 run on PR #333 now have compliant closure
+    evidence comments; this integration test verifies all pass together."""
+    (tmp_path / "AGENTS.md").write_text("matrix placeholder\n", encoding="utf-8")
+    result = run_closure_evidence_report(
+        repo_root=tmp_path,
+        mode="report",
+        as_of="2026-06-22T00:00:00Z",
+        lookback_days=365,
+        closed_after="2026-05-25T00:00:00Z",
+        target_labels=("security", "testing", "bug"),
+        issues_payload=[
+            _issue(
+                number=301,
+                labels=("bug", "security", "testing"),
+                closed_at="2026-06-21T06:18:46Z",
+                comments=(_EVIDENCE_COMMENT_301,),
+            ),
+            _issue(
+                number=302,
+                labels=("bug", "testing"),
+                closed_at="2026-06-21T06:21:18Z",
+                comments=(_EVIDENCE_COMMENT_302,),
+            ),
+            _issue(
+                number=306,
+                labels=("security",),
+                closed_at="2026-06-20T22:05:33Z",
+                comments=(_EVIDENCE_COMMENT_306,),
+            ),
+            _issue(
+                number=318,
+                labels=("testing",),
+                closed_at="2026-06-21T05:33:07Z",
+                comments=(_EVIDENCE_COMMENT_318,),
+            ),
+            _issue(
+                number=320,
+                labels=("testing",),
+                closed_at="2026-06-21T05:12:08Z",
+                comments=(_EVIDENCE_COMMENT_320,),
+            ),
+        ],
+    )
+    assert result.status == "pass", (
+        f"Expected pass but got {result.status}; items: {result.items}"
+    )
+    assert result.summary["checked_issue_count"] == 5
+    assert result.summary["flagged_issue_count"] == 0
