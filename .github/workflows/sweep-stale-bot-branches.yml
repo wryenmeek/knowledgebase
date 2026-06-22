@@ -70,6 +70,9 @@ jobs:
           # SECURITY: workflow inputs are passed through env vars, never interpolated
           # directly into run: blocks, to prevent shell injection.
           # For scheduled triggers, inputs.dry_run is null; default to 'true'.
+          # We use `!= false` (not `== true`) because scheduled runs have null
+          # inputs.dry_run, and null != false evaluates to true (safe default),
+          # while null == true evaluates to false (would incorrectly enable real-delete).
           INPUT_DRY_RUN: ${{ inputs.dry_run != false && 'true' || 'false' }}
         run: |
           set -euo pipefail

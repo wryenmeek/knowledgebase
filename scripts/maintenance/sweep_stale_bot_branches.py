@@ -116,8 +116,8 @@ def _run(cmd: list[str], check: bool = True, capture: bool = True) -> subprocess
     )
 
 
-def enumerate_remote_branches() -> list[tuple[str, int]]:
-    """Return (branch_short_name, committer_unix_timestamp) for each remote branch.
+def enumerate_remote_branches() -> list[tuple[str, float]]:
+    """Return (branch_short_name, commit_age_days) for each remote branch.
 
     Uses ``git for-each-ref`` with a format string to avoid manual parsing of
     ``git branch -r`` output.  The short name strips the ``refs/remotes/origin/``
@@ -134,7 +134,7 @@ def enumerate_remote_branches() -> list[tuple[str, int]]:
         return []
 
     now = int(time.time())
-    entries: list[tuple[str, int]] = []
+    entries: list[tuple[str, float]] = []
     for line in result.stdout.splitlines():
         parts = line.strip().split(" ", 1)
         if len(parts) != 2:
@@ -146,8 +146,8 @@ def enumerate_remote_branches() -> list[tuple[str, int]]:
             commit_ts = int(ts_str)
         except ValueError:
             continue
-        age_days = (now - commit_ts) / 86400
-        entries.append((branch_name, age_days))
+        commit_age_days = (now - commit_ts) / 86400
+        entries.append((branch_name, commit_age_days))
     return entries
 
 
