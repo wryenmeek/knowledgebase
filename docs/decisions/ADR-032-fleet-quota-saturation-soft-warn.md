@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — extends ADR-019; amended in-place: aspirational `copilot-swe-agent` fallback line corrected (see § Amendment 2026-06-21)
+Accepted — extends ADR-019; amended in-place: aspirational `copilot-swe-agent` fallback line corrected (see § Amendment 2026-06-21); extended by ADR-034 (no-notification on quota saturation)
 
 ## Date
 2026-06-19

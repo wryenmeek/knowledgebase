@@ -41,7 +41,11 @@
 
 import { jules } from "@google/jules-sdk";
 import type { JulesClient, SessionResource, SessionState } from "@google/jules-sdk";
+import fs from "node:fs";
+import path from "node:path";
+import { Octokit } from "octokit";
 import { assertFleetEnvironment } from "./env.js";
+import { restoreIssueAfterFailure } from "./fleet-dispatch.js";
 
 /** Canonical source identifier for this repository. */
 export const CURRENT_REPO_SOURCE = "sources/github/wryenmeek/knowledgebase";
@@ -83,6 +87,72 @@ export interface ArchiveEnvelope {
   archived: ArchivedSessionEntry[];
   archivedCount: number;
   errors: Array<{ sessionId: string; error: string }>;
+  /**
+   * Per-session warnings for non-fatal pre-flight skip conditions (e.g.,
+   * current-repo session whose `sessionId → issue` join cannot be resolved
+   * because `.fleet/<date>/sessions.json` was never persisted to `main` for
+   * that dispatch date). The session is skipped from archive instead of
+   * mass-aborting the batch. See ADR-033 (label-driven dispatch adoption).
+   */
+  skipped: Array<{ sessionId: string; reason: string }>;
+}
+
+export interface SessionIssueResolver {
+  resolveIssuesForSession(sessionId: string): number[] | null;
+}
+
+export interface ArchiveApplyHooks {
+  issueResolver?: SessionIssueResolver;
+  restoreIssueLabels?: (issueNumber: number) => Promise<void>;
+}
+
+export function buildSessionIssueIndexFromFleet(fleetRoot: string): Map<string, number[]> {
+  const index = new Map<string, number[]>();
+  if (!fs.existsSync(fleetRoot)) {
+    return index;
+  }
+
+  const dateDirs = fs
+    .readdirSync(fleetRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory());
+
+  for (const dateDir of dateDirs) {
+    const sessionsPath = path.join(fleetRoot, dateDir.name, "sessions.json");
+    const tasksPath = path.join(fleetRoot, dateDir.name, "issue_tasks.json");
+    if (!fs.existsSync(sessionsPath) || !fs.existsSync(tasksPath)) {
+      continue;
+    }
+
+    const sessions = JSON.parse(fs.readFileSync(sessionsPath, "utf8")) as Array<{
+      taskId?: unknown;
+      sessionId?: unknown;
+    }>;
+    const tasksPayload = JSON.parse(fs.readFileSync(tasksPath, "utf8")) as {
+      tasks?: Array<{ id?: unknown; issues?: unknown }>;
+    };
+    const taskIssueMap = new Map<string, number[]>();
+    for (const task of tasksPayload.tasks ?? []) {
+      if (!Array.isArray(task.issues) || typeof task.id !== "string") {
+        continue;
+      }
+      const issueNumbers = task.issues.filter(
+        (value): value is number => typeof value === "number" && Number.isInteger(value)
+      );
+      taskIssueMap.set(task.id, issueNumbers);
+    }
+
+    for (const session of sessions) {
+      if (typeof session.taskId !== "string" || typeof session.sessionId !== "string") {
+        continue;
+      }
+      const issues = taskIssueMap.get(session.taskId);
+      if (issues && issues.length > 0) {
+        index.set(session.sessionId, issues);
+      }
+    }
+  }
+
+  return index;
 }
 
 function formatAgeDuration(ageMs: number): string {
@@ -171,7 +241,8 @@ export function parseCliArgs(argv: string[]): ArchiveCliArgs {
 
 export async function archiveStaleSessions(
   client: JulesClient,
-  args: ArchiveCliArgs
+  args: ArchiveCliArgs,
+  hooks: ArchiveApplyHooks = {}
 ): Promise<ArchiveEnvelope> {
   const ranAt = new Date().toISOString();
   const now = Date.now();
@@ -209,12 +280,53 @@ export async function archiveStaleSessions(
 
   const archived: ArchivedSessionEntry[] = [];
   const errors: Array<{ sessionId: string; error: string }> = [];
+  const skipped: Array<{ sessionId: string; reason: string }> = [];
 
   if (args.apply) {
+    // PRE-FLIGHT: Resolve issue joins for all current-repo candidates BEFORE
+    // any archive() mutation runs. ADR-033 requires that archived current-repo
+    // sessions restore their linked issues' labels — but the join lookup
+    // depends on `.fleet/<date>/sessions.json` being available locally, which
+    // depends on prior dispatch runs having persisted it. When the index is
+    // sparse (a known structural gap pre-Tier-3), skip the affected session
+    // with a recorded warning instead of mid-batch throwing. This preserves
+    // partial progress and surfaces the gap in the envelope for operator
+    // follow-up.
+    type ApplyCandidate = ArchivedSessionEntry & {
+      linkedIssues: number[];
+    };
+    const applyCandidates: ApplyCandidate[] = [];
     for (const candidate of candidates) {
+      let linkedIssues: number[] = [];
+      if (candidate.sourceName === CURRENT_REPO_SOURCE && hooks.issueResolver) {
+        const resolved = hooks.issueResolver.resolveIssuesForSession(candidate.sessionId);
+        if (resolved === null || resolved.length === 0) {
+          skipped.push({
+            sessionId: candidate.sessionId,
+            reason:
+              `No issue mapping found for current-repo session ${candidate.sessionId}. ` +
+              "This typically means the dispatch-date `.fleet/<date>/sessions.json` is " +
+              "not available locally (it is not persisted to `main` post-dispatch — see " +
+              "issue #305 follow-up). Session skipped to avoid label-state drift.",
+          });
+          continue;
+        }
+        linkedIssues = resolved;
+      }
+      applyCandidates.push({ ...candidate, linkedIssues });
+    }
+
+    for (const candidate of applyCandidates) {
       try {
         await client.session(candidate.sessionId).archive();
-        archived.push(candidate);
+        for (const issueNumber of candidate.linkedIssues) {
+          if (hooks.restoreIssueLabels) {
+            await hooks.restoreIssueLabels(issueNumber);
+          }
+        }
+        // Strip the internal linkedIssues field from the public envelope shape.
+        const { linkedIssues: _linked, ...publicEntry } = candidate;
+        archived.push(publicEntry);
       } catch (err) {
         errors.push({
           sessionId: candidate.sessionId,
@@ -237,12 +349,11 @@ export async function archiveStaleSessions(
     archived,
     archivedCount: archived.length,
     errors,
+    skipped,
   };
 }
 
 async function main(): Promise<void> {
-  assertFleetEnvironment({ requireJulesApiKey: true });
-
   let args: ArchiveCliArgs;
   try {
     args = parseCliArgs(process.argv.slice(2));
@@ -250,6 +361,10 @@ async function main(): Promise<void> {
     console.error("❌ archive-stale-sessions: argument error:", String(err));
     process.exit(1);
   }
+  assertFleetEnvironment({
+    requireJulesApiKey: true,
+    requireGitHubToken: args.apply,
+  });
 
   if (!args.apply) {
     console.error(
@@ -257,7 +372,31 @@ async function main(): Promise<void> {
     );
   }
 
-  const result = await archiveStaleSessions(jules, args);
+  const repoRoot = path.resolve(import.meta.dir, "..", "..");
+  const issueIndex = buildSessionIssueIndexFromFleet(path.join(repoRoot, ".fleet"));
+  const [, , owner, repo] = CURRENT_REPO_SOURCE.split("/");
+  const octokit = process.env.GITHUB_TOKEN
+    ? (new Octokit({ auth: process.env.GITHUB_TOKEN }) as never)
+    : null;
+
+  const result = await archiveStaleSessions(jules, args, {
+    issueResolver: {
+      resolveIssuesForSession(sessionId) {
+        return issueIndex.get(sessionId) ?? null;
+      },
+    },
+    restoreIssueLabels: async (issueNumber) => {
+      if (!octokit) {
+        throw new Error("GITHUB_TOKEN is required for issue label restoration.");
+      }
+      await restoreIssueAfterFailure(
+        octokit,
+        owner ?? "wryenmeek",
+        repo ?? "knowledgebase",
+        issueNumber
+      );
+    },
+  });
   console.log(JSON.stringify(result, null, 2));
 
   if (!args.apply && result.candidates.length > 0) {

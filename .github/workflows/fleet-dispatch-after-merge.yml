@@ -67,7 +67,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: fleet-dispatch-after-merge
+  group: fleet-dispatch-label-driven
   cancel-in-progress: false
 
 jobs:

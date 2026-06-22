@@ -216,6 +216,11 @@ class TestFleetDispatchAfterMergeStructure(_AssertMixin):
             "Phase 2b must use a different concurrency group from Phase 2a "
             "to avoid serialisation deadlock",
         )
+        self.assertEqual(
+            group,
+            "fleet-dispatch-label-driven",
+            "Phase 2b must use the label-driven dispatch concurrency mutex group",
+        )
         self.assertTrue(group, "Phase 2b must declare a concurrency group")
 
     def test_concurrency_cancel_in_progress_is_false(self) -> None:

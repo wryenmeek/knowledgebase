@@ -1,6 +1,6 @@
 # Fleet defensive layer + label-driven dispatch (Tier 0/1/2 plan)
 
-**Status:** Proposed
+**Status:** In Progress — Tiers 0/1 shipped via PRs #355–#359 (2026-06-21); Tier 2 shipped via PR #372 with ADR-033 + ADR-034 (2026-06-22); Tier 3 formally deferred per ADR-035
 
 > Cross-portfolio research informed this plan; see [`docs/research/jules-fleet-cross-portfolio-patterns.md`](../research/jules-fleet-cross-portfolio-patterns.md) for the evidence base, threat model, and pattern catalog.
 
@@ -20,7 +20,7 @@ Without coordinated action, the next dozen Jules-authored PRs in this repo have 
 |---|---|---|---|
 | **Tier 0 — Defensive layer** | Zero content destruction (ratified-Q1 metric) | [#345](https://github.com/wryenmeek/knowledgebase/issues/345) advisory CODEOWNERS, [#346](https://github.com/wryenmeek/knowledgebase/issues/346) stale-bot-branch sweeper, [#347](https://github.com/wryenmeek/knowledgebase/issues/347) commit-scope check (gates B+C), [#351](https://github.com/wryenmeek/knowledgebase/issues/351) flip sweeper to real-delete after 14d | ready-for-agent (#351 needs-triage until activation) |
 | **Tier 1 — Operational resilience** | ≤9h detection latency on Jules outages; un-stick `awaitingUserFeedback` sessions ≤24h | [#348](https://github.com/wryenmeek/knowledgebase/issues/348) port `fleet-submit-prs.ts` from HSI, [#349](https://github.com/wryenmeek/knowledgebase/issues/349) schedule `jules-account-probe.yml` 3×/day + tracking-issue notification | ready-for-agent |
-| **Tier 2 — Label-driven dispatch** | Replace planner ad-hoc triage with HSI ADR-030 model + 3-strikes abort | [#350](https://github.com/wryenmeek/knowledgebase/issues/350) adopt HSI ADR-030 verbatim + ADR-033 + ADR-034 + ADR-032 cleanup | ready-for-agent |
+| **Tier 2 — Label-driven dispatch** | Replace planner ad-hoc triage with HSI ADR-030 model + 3-strikes abort | [#350](https://github.com/wryenmeek/knowledgebase/issues/350) adopt HSI ADR-030 verbatim + ADR-033 + ADR-034 + ADR-032 cleanup | shipped (PR #372, ADR-033 + ADR-034) |
 | **Tier 3 — Multi-provider abstraction** | Evaluate `copilot-swe-agent` / Codex / Devin as Jules fallback | (no issue) — formally deferred 30 days, revisit 2026-07-21 | deferred |
 
 ## Why this shape

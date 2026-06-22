@@ -60,7 +60,7 @@ export async function main(): Promise<void> {
     });
   }
 
-  const issuesMarkdown = await getIssuesAsMarkdown();
+  const issuesMarkdown = await getIssuesAsMarkdown({ labels: ["ready-for-agent"] });
   // Capture the fleet date at planning time so fleet-dispatch reads the same
   // dated directory even if Jules takes more than a day to post its PR.
   const fleetDate = getFleetDate();

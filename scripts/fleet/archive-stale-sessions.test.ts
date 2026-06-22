@@ -13,9 +13,12 @@
 // limitations under the License.
 
 import { describe, expect, mock, test } from "bun:test";
+import fs from "node:fs";
+import path from "node:path";
 import type { JulesClient, SessionResource } from "@google/jules-sdk";
 import {
   archiveStaleSessions,
+  buildSessionIssueIndexFromFleet,
   parseCliArgs,
   CURRENT_REPO_SOURCE,
   type ArchiveCliArgs,
@@ -480,5 +483,158 @@ describe("archiveStaleSessions", () => {
     expect(result.candidates).toHaveLength(0);
     expect(result.archived).toHaveLength(0);
     expect(archiveMock).not.toHaveBeenCalled();
+  });
+
+  test("apply mode skips current-repo session with no task join and records a warning (P1: ADR-033 soft-warn)", async () => {
+    const archiveMock = mock(async (_id: string) => {});
+    const sessions = [
+      makeSession({
+        id: "missing-join",
+        state: "inProgress",
+        createTime: daysAgo(10),
+        sourceContext: { source: CURRENT_REPO_SOURCE },
+      }),
+      makeSession({
+        id: "resolvable",
+        state: "inProgress",
+        createTime: daysAgo(10),
+        sourceContext: { source: CURRENT_REPO_SOURCE },
+      }),
+    ];
+    const client = makeMockClient(sessions, archiveMock);
+    const restoreCalls: number[] = [];
+
+    const result = await archiveStaleSessions(
+      client,
+      {
+        ...DEFAULT_ARGS,
+        sourceFilter: CURRENT_REPO_SOURCE,
+        apply: true,
+      },
+      {
+        issueResolver: {
+          resolveIssuesForSession: (id) => (id === "resolvable" ? [350] : null),
+        },
+        restoreIssueLabels: async (n) => {
+          restoreCalls.push(n);
+        },
+      }
+    );
+
+    // Missing join is recorded as a skip, not a thrown error.
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]!.sessionId).toBe("missing-join");
+    expect(result.skipped[0]!.reason).toContain("No issue mapping found");
+    expect(result.skipped[0]!.reason).toContain("Session skipped");
+
+    // The resolvable session is still archived and its label restored.
+    expect(result.archived).toHaveLength(1);
+    expect(result.archived[0]!.sessionId).toBe("resolvable");
+    expect(restoreCalls).toEqual([350]);
+
+    // The unresolvable session was NEVER archived.
+    expect(archiveMock).toHaveBeenCalledTimes(1);
+    expect(archiveMock).toHaveBeenCalledWith("resolvable");
+
+    // No errors envelope (skip is non-fatal, distinct from errors).
+    expect(result.errors).toEqual([]);
+  });
+
+  test("apply mode invokes restoreIssueLabels per linked issue after archive (P2: success path)", async () => {
+    const order: string[] = [];
+    const archiveMock = mock(async (id: string) => {
+      order.push(`archive:${id}`);
+    });
+    const sessions = [
+      makeSession({
+        id: "session-A",
+        state: "inProgress",
+        createTime: daysAgo(10),
+        sourceContext: { source: CURRENT_REPO_SOURCE },
+      }),
+    ];
+    const client = makeMockClient(sessions, archiveMock);
+    const restoreCalls: number[] = [];
+
+    const result = await archiveStaleSessions(
+      client,
+      {
+        ...DEFAULT_ARGS,
+        sourceFilter: CURRENT_REPO_SOURCE,
+        apply: true,
+      },
+      {
+        issueResolver: { resolveIssuesForSession: () => [350, 351] },
+        restoreIssueLabels: async (n) => {
+          order.push(`restore:${n}`);
+          restoreCalls.push(n);
+        },
+      }
+    );
+
+    expect(restoreCalls).toEqual([350, 351]);
+    expect(order).toEqual(["archive:session-A", "restore:350", "restore:351"]);
+    expect(result.archived).toHaveLength(1);
+    expect(result.skipped).toEqual([]);
+  });
+
+  test("non-current-repo sessions are archived WITHOUT restoreIssueLabels (cross-repo restore-skip)", async () => {
+    const archiveMock = mock(async (_id: string) => {});
+    const sessions = [
+      makeSession({
+        id: "cross-repo",
+        state: "inProgress",
+        createTime: daysAgo(10),
+        sourceContext: { source: "sources/github/wryenmeek/hot-springs-island" },
+      }),
+    ];
+    const client = makeMockClient(sessions, archiveMock);
+    const restoreCalls: number[] = [];
+
+    const result = await archiveStaleSessions(
+      client,
+      {
+        ...DEFAULT_ARGS,
+        repoAll: true,
+        apply: true,
+      },
+      {
+        issueResolver: {
+          resolveIssuesForSession: () => {
+            throw new Error("resolver must NOT be consulted for cross-repo sessions");
+          },
+        },
+        restoreIssueLabels: async (n) => {
+          restoreCalls.push(n);
+        },
+      }
+    );
+
+    expect(result.archived).toHaveLength(1);
+    expect(result.archived[0]!.sessionId).toBe("cross-repo");
+    expect(restoreCalls).toEqual([]);
+    expect(archiveMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("buildSessionIssueIndexFromFleet", () => {
+  test("indexes sessionId -> issue numbers through sessions/task join", () => {
+    const tempRoot = fs.mkdtempSync(path.join(process.cwd(), "tmp-fleet-join-"));
+    const dateDir = path.join(tempRoot, "2026_06_22");
+    fs.mkdirSync(dateDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dateDir, "sessions.json"),
+      JSON.stringify([{ taskId: "task-one", sessionId: "session-1" }])
+    );
+    fs.writeFileSync(
+      path.join(dateDir, "issue_tasks.json"),
+      JSON.stringify({
+        tasks: [{ id: "task-one", issues: [350, 351] }],
+      })
+    );
+
+    const index = buildSessionIssueIndexFromFleet(tempRoot);
+    expect(index.get("session-1")).toEqual([350, 351]);
+    fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 });

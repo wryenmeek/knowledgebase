@@ -36,6 +36,7 @@ describe("fleet entrypoint wiring", () => {
     expect(planSource).toContain('from "./preMergeSanityCheck.js"');
     expect(planSource).toContain("expectedPlanningArtifactPaths");
     expect(planSource).toContain("buildPreMergeSanityPromptBlock(expectedPlanningArtifactPaths)");
+    expect(planSource).toContain('getIssuesAsMarkdown({ labels: ["ready-for-agent"] })');
     expect(planSource).toContain("issue_tasks.md");
     expect(planSource).toContain("issue_tasks.json");
 
