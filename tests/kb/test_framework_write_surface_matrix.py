@@ -652,6 +652,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("@google/jules-sdk", ".github/workflows/jules-archive-stale.yml"),
         "Hard-fail behavior": ("deny-by-default", "whitespace-only `--source-filter`", "fail closed"),
     },
+    "scripts/fleet/fleet-submit-prs.ts": {
+        "Runtime mode": ("blocking-only", "external Jules SDK", "GitHub API side effects"),
+        "Writable paths": ("None within the repository",),
+        "Lock requirements": ("None within the repository", "FLEET_MUTATION_MAX_ATTEMPTS", "ADR-032"),
+        "Artifact / schema owners": ("@google/jules-sdk", ".github/workflows/fleet-submit-prs.yml"),
+        "Hard-fail behavior": ("missing env", "quota saturation", "soft-warn", "fail closed"),
+    },
     "scripts/fleet/jules-account-probe.ts": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None within the repository",),

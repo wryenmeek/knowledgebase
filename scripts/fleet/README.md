@@ -156,7 +156,7 @@ Fleet is orthogonal to the Python write-surface matrix. Fleet-produced PRs re-en
 ## Build verification
 
 ```bash
-bun build fleet-analyze.ts fleet-plan.ts fleet-dispatch.ts fleet-merge.ts --target bun --outdir dist
+bun build fleet-analyze.ts fleet-plan.ts fleet-dispatch.ts fleet-merge.ts fleet-submit-prs.ts --target bun --outdir dist
 ```
 
 Run this after every TypeScript edit. `pytest` passing does **not** mean TypeScript is clean.
