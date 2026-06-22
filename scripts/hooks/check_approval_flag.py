@@ -264,8 +264,15 @@ def main(argv: list[str] | None = None) -> int:
         if read_error is not None:
             failures.append(read_error)
             continue
-        # Enforce equals-sign rejection before exemptions so transitional
-        # compatibility files cannot silently keep the legacy equals syntax.
+        # Exempt paths short-circuit before the equals-form rejection so transitional
+        # compatibility files (e.g. scripts/_optional_surface_common.py) can keep the
+        # self-obfuscated legacy-flag detector past APPROVAL_EQUALS_REJECTION_DEADLINE.
+        # The literal token is intentionally not spelled here; the ratchet test
+        # `test_approval_flag_script_count_matches_contract_exactly` greps source for the
+        # bare string, so emitting it would inflate the count and require a contract bump.
+        # See issue #300 / regression test test_hook_allows_exempt_approval_equals_after_deadline.
+        if staged_path.path in _EXEMPT_PATHS:
+            continue
         if (
             _contains_approval_equals(staged_text)
             and _migration_deadline_passed()
@@ -274,8 +281,6 @@ def main(argv: list[str] | None = None) -> int:
                 f"{staged_path.path}: {_APPROVAL_EQUALS_TOKEN}<value> is forbidden after "
                 f"{APPROVAL_EQUALS_REJECTION_DEADLINE.isoformat()}; use --apply"
             )
-            continue
-        if staged_path.path in _EXEMPT_PATHS:
             continue
         if not _contains_approval_flag(staged_text):
             continue

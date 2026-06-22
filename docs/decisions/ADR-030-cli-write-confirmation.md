@@ -85,6 +85,13 @@ Migration:
    so an off-by-one in either direction hard-fails CI — adding a non-exempt
    script without decrementing fails, and decrementing without removing a
    script also fails. The strict-equality form prevents silent ratchet drift.
+4. **Exemption precedence.** Transitional exempt paths in
+   `scripts/hooks/check_approval_flag.py::_EXEMPT_PATHS` short-circuit **all**
+   `--approval` content checks — including the post-deadline equals-form
+   rejection. An exempt path must drop its legacy `--approval` and `--approval=`
+   literals before it can be removed from `_EXEMPT_PATHS`. Regression coverage
+   lives in `tests/kb/test_approval_migration_ratchet.py::test_hook_allows_exempt_approval_equals_after_deadline`
+   (precedence) and `test_exempt_paths_membership_locked` (allowlist growth).
 
 Rollback:
 
