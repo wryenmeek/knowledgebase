@@ -26,7 +26,7 @@ def _legacy_approval_script_files() -> list[Path]:
     return sorted(files)
 
 
-def test_approval_flag_script_count_does_not_exceed_contract() -> None:
+def test_approval_flag_script_count_matches_contract_exactly() -> None:
     files = _legacy_approval_script_files()
     assert len(files) == MAX_APPROVAL_FLAG_SCRIPTS, (
         f"{len(files)} scripts still use --approval but MAX_APPROVAL_FLAG_SCRIPTS="
@@ -162,13 +162,40 @@ def test_hook_rejects_approval_equals_after_deadline(monkeypatch, capsys) -> Non
     assert "--approval=<value> is forbidden after" in captured.err
 
 
-def test_hook_rejects_approval_equals_for_fake_exempt_path(monkeypatch, capsys) -> None:
-    exempt_path = "scripts/fake_exempt.py"
-    monkeypatch.setattr(check_approval_flag, "_EXEMPT_PATHS", frozenset({exempt_path}))
+def test_hook_allows_exempt_approval_equals_after_deadline(monkeypatch) -> None:
     monkeypatch.setattr(
         check_approval_flag,
         "_staged_script_paths",
-        lambda: ([check_approval_flag.StagedScriptPath("M", exempt_path)], None),
+        lambda: (
+            [
+                check_approval_flag.StagedScriptPath(
+                    "M",
+                    "scripts/_optional_surface_common.py",
+                )
+            ],
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_get_staged_content",
+        lambda path: ('argv = ["--approval=approved"]\n', None),
+    )
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_migration_deadline_passed",
+        lambda today=None: True,
+    )
+
+    assert check_approval_flag.main([]) == 0
+
+
+def test_hook_rejects_approval_equals_for_non_exempt_path(monkeypatch, capsys) -> None:
+    path = "scripts/non_exempt.py"
+    monkeypatch.setattr(
+        check_approval_flag,
+        "_staged_script_paths",
+        lambda: ([check_approval_flag.StagedScriptPath("M", path)], None),
     )
     monkeypatch.setattr(
         check_approval_flag,
