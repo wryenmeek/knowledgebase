@@ -4,7 +4,7 @@
 
 ## Status
 
-Accepted
+Accepted — amended in-place: deadline tripwire test added to Decision clause 7 (see § Amendment)
 
 ## Context
 
@@ -37,7 +37,10 @@ CLI entrypoints.
 7. Migration is enforced by a local ratchet hook
    (`scripts/hooks/check_approval_flag.py`) plus a repository baseline test
    (`tests/kb/test_approval_migration_ratchet.py` and
-   `MAX_APPROVAL_FLAG_SCRIPTS`).
+   `MAX_APPROVAL_FLAG_SCRIPTS`). A deadline tripwire test
+   (`test_approval_flag_deadline_tripwire`) is dormant until 2026-12-31 and
+   then fails CI if `MAX_APPROVAL_FLAG_SCRIPTS > 0` or any scripts still
+   contain legacy `--approval`.
 8. Scope and removal criteria:
    - In scope: optional-surface writer CLIs that currently use shared
      write-confirmation parser plumbing.
@@ -97,6 +100,31 @@ Rollback:
 
 - Keep `--apply` support and continue accepting `--approval approved` alias if
   a regression appears; do not remove default-deny behavior.
+
+## Amendment
+
+**2026-06-22** — Added deadline tripwire test to Decision clause 7.
+
+**What changed:** Clause 7 now enumerates `test_approval_flag_deadline_tripwire`
+as a third enforcement mechanism alongside the ratchet hook and the script-count
+baseline test. The tripwire is dormant until `APPROVAL_EQUALS_REJECTION_DEADLINE`
+(2026-12-31) and then fails CI if `MAX_APPROVAL_FLAG_SCRIPTS > 0` or any
+`scripts/**/*.py` file still contains the legacy `--approval` spelling.
+
+**Why:** Without an explicit deadline tripwire, the deprecation could silently
+slip past 2026-12-31 if all scripts migrate but `MAX_APPROVAL_FLAG_SCRIPTS` is
+not decremented to 0, or if a single remaining script is missed. The tripwire
+forces explicit closure of the migration window — failing CI immediately when
+the deadline passes if either condition is unmet.
+
+**What did not change:** The decision substance (default-deny on
+write-confirmation, exemption precedence, scope/removal criteria) is unchanged.
+Migration ordering, lock semantics, exemption precedence (Migration sub-bullet
+4), and ratchet behavior (strict `==` enforcement from PR #317) are unchanged.
+Existing regression tests added in PR #363
+(`test_hook_allows_exempt_approval_equals_after_deadline`,
+`test_exempt_paths_membership_locked`) remain in force. Status amended in-place
+per the repo's ADR evolution pattern (semantic body edit to a Decision bullet).
 
 ## Related decisions
 
