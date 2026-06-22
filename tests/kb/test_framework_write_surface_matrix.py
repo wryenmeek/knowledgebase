@@ -224,6 +224,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("docs/mvp-runbook.md", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("closedat", "cli failure", "fail closed"),
     },
+    "scripts/validation/check_commit_scope.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("scripts/kb/contracts.py", ".github/workflows/commit-scope-check.yml"),
+        "Hard-fail behavior": ("subprocess error", "validation failure", "fail closed"),
+    },
     "scripts/reporting/**": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "narrower contract"),

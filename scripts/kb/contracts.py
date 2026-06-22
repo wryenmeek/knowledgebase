@@ -107,6 +107,24 @@ GOVERNANCE_LOCK_FILES: frozenset[str] = frozenset({
 CHECKPOINT_REGISTRY_SIZE_WARN_BYTES = 5 * 1024 * 1024
 CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES = 10 * 1024 * 1024
 
+# Paths whose modification triggers heightened review via the commit-scope check
+# (gate B — sensitive-paths acknowledgement). Source of truth for
+# ``scripts/validation/check_commit_scope.py``. Must stay in sync with the
+# ``sensitive paths`` entry in ``CONTEXT.md`` ## Terms table (verified by
+# ``tests/kb/test_commit_scope_check_paths.py``).
+SENSITIVE_PATHS: tuple[str, ...] = (
+    "wiki/",
+    "schema/",
+    "docs/decisions/",
+    "AGENTS.md",
+    ".github/copilot-instructions.md",
+    "scripts/kb/contracts.py",
+    "scripts/kb/write_utils.py",
+    "raw/processed/SPEC.md",
+    ".pre-commit-config.yaml",
+    ".github/workflows/",
+)
+
 # ADR-029 pytest migration ratchet. Decrement after each unittest-to-pytest
 # migration; never raise without an ADR amendment.
 MAX_UNITTEST_FILES = 55
@@ -447,6 +465,7 @@ __all__ = [
     "DRIVE_MONITOR_WRITE_ALLOWLIST_PATHS",
     "GOVERNANCE_LOCK_FILES",
     "REJECTION_REGISTRY_LOCK_PATH",
+    "SENSITIVE_PATHS",
     "WRITE_LOCK_PATH",
     "GOVERNED_ARTIFACT_CONTRACTS",
     "GOVERNED_ARTIFACT_IDS",
