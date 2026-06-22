@@ -456,7 +456,7 @@ def normalize_apply_alias(argv: Sequence[str]) -> list[str]:
         )
     if "--apply" not in args:
         return args
-    if "--approval" in args or any(token.startswith(_LEGACY_APPROVAL_EQUALS_PREFIX) for token in args):
+    if "--approval" in args:
         raise ValueError("--apply cannot be combined with --approval")
 
     normalized: list[str] = []

@@ -187,7 +187,7 @@ step-scoped secret binding rule).
 |---|---|---|---|
 | `state` | `inProgress` | no | State filter |
 | `older_than_days` | — | **yes** | Minimum age in days (required to prevent mass-archive) |
-| `source_filter` | `sources/github/wryenmeek/knowledgebase` | no (but required with `apply=true`) | Source scope. Required when `apply=true`; the script exits non-zero if apply=true and this is empty. Surrounding whitespace is trimmed; whitespace-only values are rejected with `--source-filter requires a non-empty value` (PR #315). |
+| `source_filter` | `sources/github/wryenmeek/knowledgebase` | no (but required with `apply=true`) | Source scope. Required when `apply=true`; the script exits non-zero if apply=true and this is empty. Surrounding whitespace is trimmed; whitespace-only values are rejected with `--source-filter requires a non-empty value` (PR #315). `--repo all` cannot be combined with `--source-filter`. If `--repo current` and `--source-filter` are both provided, `--source-filter` wins deterministically regardless of argument order. |
 | `apply` | `false` | no | Set to `true` to archive; default is dry-run |
 
 All inputs are routed through `env:` blocks before use in `run:` steps to

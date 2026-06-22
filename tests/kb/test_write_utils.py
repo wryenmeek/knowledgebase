@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+from datetime import timezone
 import json
 import os
 import tempfile
@@ -479,6 +480,15 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
 
         self.assertFalse(exc.holder_alive)
 
+    def test_read_lock_holder_details_returns_none_for_non_utf8_bytes(self) -> None:
+        lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_bytes(b"\xff\xfe\x00invalid")
+
+        holder = write_utils._read_lock_holder_details(lock_path)
+
+        self.assertIsNone(holder)
+
     def test_holder_process_is_alive_detects_reuse_with_darwin_precision(self) -> None:
         with (
             patch.object(write_utils.sys, "platform", "darwin"),
@@ -501,6 +511,40 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                             expected_started_at_unix_seconds=100.0,
                         )
                     self.assertEqual(holder_alive, expected_alive)
+
+    def test_holder_process_is_alive_accepts_darwin_subsecond_lstart_drift(self) -> None:
+        with (
+            patch.object(write_utils.sys, "platform", "darwin"),
+            patch.object(write_utils.os, "kill", return_value=None),
+            patch.object(
+                write_utils,
+                "_pid_start_time_unix_seconds",
+                return_value=100.0,
+            ),
+        ):
+            holder_alive = write_utils._holder_process_is_alive(
+                4242,
+                expected_started_at_unix_seconds=100.123456,
+            )
+
+        self.assertTrue(holder_alive)
+
+    def test_holder_process_is_alive_rejects_darwin_drift_over_one_second(self) -> None:
+        with (
+            patch.object(write_utils.sys, "platform", "darwin"),
+            patch.object(write_utils.os, "kill", return_value=None),
+            patch.object(
+                write_utils,
+                "_pid_start_time_unix_seconds",
+                return_value=101.1,
+            ),
+        ):
+            holder_alive = write_utils._holder_process_is_alive(
+                4242,
+                expected_started_at_unix_seconds=100.0,
+            )
+
+        self.assertFalse(holder_alive)
 
     def test_darwin_pid_start_time_uses_c_locale(self) -> None:
         with (
@@ -579,6 +623,45 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             hasattr(passed_struct, "tm_year"),
             f"mktime should be called with a struct_time, got {type(passed_struct).__name__}",
         )
+
+    def test_darwin_pid_start_time_local_timezone_missing_avoids_utc_fallback(self) -> None:
+        real_datetime = write_utils.datetime
+        parsed_local = real_datetime(2026, 6, 19, 12, 34, 56)
+
+        class NoLocalTimezoneDateTime:
+            @staticmethod
+            def strptime(*args: object, **kwargs: object) -> object:
+                return real_datetime.strptime(*args, **kwargs)
+
+            @staticmethod
+            def now() -> object:
+                class NoLocalTimezoneNow:
+                    def astimezone(self) -> object:
+                        class NoLocalTimezone:
+                            tzinfo = None
+
+                        return NoLocalTimezone()
+
+                return NoLocalTimezoneNow()
+
+        with (
+            patch.object(write_utils, "datetime", NoLocalTimezoneDateTime),
+            patch.object(
+                write_utils.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(
+                    args=["ps"],
+                    returncode=0,
+                    stdout="Thu Jun 19 12:34:56 2026\n",
+                    stderr="",
+                ),
+            ),
+            patch.object(write_utils.time, "mktime", return_value=76543.0),
+        ):
+            started_at = write_utils._darwin_pid_start_time_unix_seconds(1234)
+
+        self.assertEqual(started_at, 76543.0)
+        self.assertNotEqual(started_at, parsed_local.replace(tzinfo=timezone.utc).timestamp())
 
     def test_lock_unavailable_error_unreadable_lock_file_falls_back(self) -> None:
         with patch.object(Path, "read_text", side_effect=OSError("denied")):

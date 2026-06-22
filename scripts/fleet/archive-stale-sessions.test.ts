@@ -211,6 +211,54 @@ describe("parseCliArgs", () => {
     expect(args.sourceFilter).toBeUndefined();
     expect(args.repoAll).toBe(false);
   });
+
+  test("--source-filter deterministically overrides --repo current regardless of argument order", () => {
+    const argsRepoThenSource = parseCliArgs([
+      "--older-than-days",
+      "7",
+      "--repo",
+      "current",
+      "--source-filter",
+      "sources/github/acme/custom-repo",
+    ]);
+    const argsSourceThenRepo = parseCliArgs([
+      "--older-than-days",
+      "7",
+      "--source-filter",
+      "sources/github/acme/custom-repo",
+      "--repo",
+      "current",
+    ]);
+
+    expect(argsRepoThenSource.sourceFilter).toBe("sources/github/acme/custom-repo");
+    expect(argsSourceThenRepo.sourceFilter).toBe("sources/github/acme/custom-repo");
+    expect(argsRepoThenSource.repoAll).toBe(false);
+    expect(argsSourceThenRepo.repoAll).toBe(false);
+  });
+
+  test("--repo all cannot be combined with --source-filter", () => {
+    expect(() =>
+      parseCliArgs([
+        "--older-than-days",
+        "7",
+        "--repo",
+        "all",
+        "--source-filter",
+        "sources/github/acme/custom-repo",
+      ])
+    ).toThrow("--repo all cannot be combined with --source-filter");
+
+    expect(() =>
+      parseCliArgs([
+        "--older-than-days",
+        "7",
+        "--source-filter",
+        "sources/github/acme/custom-repo",
+        "--repo",
+        "all",
+      ])
+    ).toThrow("--repo all cannot be combined with --source-filter");
+  });
 });
 
 // ---------------------------------------------------------------------------
