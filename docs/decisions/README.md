@@ -36,7 +36,7 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-027](ADR-027-infrastructure-validation-trigger-model.md) | Infrastructure validation trigger model for CI-3 | Accepted |
 | [ADR-028](ADR-028-instruction-locality-ladder.md) | Instruction locality ladder for the knowledgebase AI ecosystem | Accepted (Phase 1.5 compliance-evidence prerequisite explicitly waived — see § Open questions). |
 | [ADR-029](ADR-029-test-framework-conventions.md) | Test framework conventions | Accepted — amended in-place |
-| [ADR-030](ADR-030-cli-write-confirmation.md) | CLI write-confirmation flag migration | Accepted |
+| [ADR-030](ADR-030-cli-write-confirmation.md) | CLI write-confirmation flag migration | Accepted — amended in-place |
 | [ADR-031](ADR-031-lock-holder-pid-tracking.md) | Lock holder PID/start-time tracking for lock-unavailable UX | Accepted — extends ADR-005 |
 | [ADR-032](ADR-032-fleet-quota-saturation-soft-warn.md) | Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION | Accepted — extends ADR-019; amended in-place |
 | [ADR-035](ADR-035-tier-3-multi-provider-fallback-deferral.md) | Tier 3 multi-provider implementation-agent fallback — 30-day deferral | Accepted — extends ADR-019 |

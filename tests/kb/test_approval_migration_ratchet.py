@@ -228,3 +228,35 @@ def test_hook_rejects_approval_equals_for_non_exempt_path(monkeypatch, capsys) -
     assert check_approval_flag.main([]) == 1
     captured = capsys.readouterr()
     assert "--approval=<value> is forbidden after" in captured.err
+
+
+def test_approval_flag_deadline_tripwire() -> None:
+    """ADR-030 deadline tripwire: after the migration deadline, all --approval must be removed.
+
+    This test is dormant until ``APPROVAL_EQUALS_REJECTION_DEADLINE`` (2026-12-31).
+    Once the deadline passes it enforces the removal criteria stated in ADR-030
+    §Decision item 7:
+
+      - ``MAX_APPROVAL_FLAG_SCRIPTS`` must be ``0`` in ``scripts/kb/contracts.py``
+      - No ``scripts/**/*.py`` file may still contain the legacy ``--approval`` spelling
+
+    Failing this test after the deadline forces explicit closure of the migration
+    window — it cannot silently slip past 2026-12-31.
+    """
+    today = date.today()
+    if today <= check_approval_flag.APPROVAL_EQUALS_REJECTION_DEADLINE:
+        return  # Dormant before deadline; the ratchet count test handles enforcement.
+
+    deadline_str = check_approval_flag.APPROVAL_EQUALS_REJECTION_DEADLINE.isoformat()
+    assert MAX_APPROVAL_FLAG_SCRIPTS == 0, (
+        f"ADR-030 deadline ({deadline_str}) has passed but MAX_APPROVAL_FLAG_SCRIPTS="
+        f"{MAX_APPROVAL_FLAG_SCRIPTS}. "
+        "Set MAX_APPROVAL_FLAG_SCRIPTS=0 in scripts/kb/contracts.py after migrating all "
+        "remaining --approval scripts to --apply."
+    )
+    files = _legacy_approval_script_files()
+    assert len(files) == 0, (
+        f"ADR-030 deadline ({deadline_str}) has passed but {len(files)} script(s) still "
+        "contain legacy --approval and must be migrated to --apply: "
+        + ", ".join(path.relative_to(REPO_ROOT).as_posix() for path in files)
+    )
