@@ -154,6 +154,15 @@ export function buildDispatchCommentBody(
   sessionId: string,
   taskPrompt: string
 ): string {
+  // Wrap taskPrompt in a fenced code block so that any markdown / HTML inside
+  // the prompt (e.g., `</details>` closing-tag injection, `@user` mention
+  // spam, `[`alt`](url)` link or image rendering) is rendered literally and
+  // cannot escape the dispatch envelope. The prompt is LLM-generated from
+  // issue-body content that an external contributor could craft, so treat it
+  // as untrusted text for rendering purposes. The triple-backtick fence is
+  // sufficient because GitHub markdown does not honor inner triple-backticks
+  // unless preceded by enough leading backticks; the four-backtick wrapper
+  // defends against the rare case where the prompt itself contains ```.
   return (
     "🚀 This issue is being handled by parallel fleet task **" +
     taskTitle +
@@ -161,9 +170,9 @@ export function buildDispatchCommentBody(
     sessionId +
     "](https://jules.google.com/task/" +
     sessionId +
-    ")\n\n<details>\n<summary>Dispatch prompt</summary>\n\n" +
+    ")\n\n<details>\n<summary>Dispatch prompt</summary>\n\n````\n" +
     taskPrompt +
-    "\n\n</details>"
+    "\n````\n\n</details>"
   );
 }
 

@@ -160,4 +160,141 @@ describe("fleet-dispatch label lifecycle", () => {
     expect(nextLabel).toBe("needs-triage");
     expect(labelOps[labelOps.length - 1]).toBe("add:needs-triage");
   });
+
+  test("strikes < 3 selects ready-for-agent and restoreIssueAfterFailure adds it (P1: gap fill)", async () => {
+    const labelOps: string[] = [];
+    const events = [
+      {
+        event: "labeled",
+        created_at: isoDaysAgo(5),
+        label: { name: "ready-for-agent" },
+        actor: { login: "human-user", type: "User" },
+      },
+      { event: "labeled", created_at: isoDaysAgo(3), label: { name: "in-progress" } },
+      { event: "labeled", created_at: isoDaysAgo(1), label: { name: "in-progress" } },
+    ];
+    expect(selectRecoveryLabelFromEvents(events)).toBe("ready-for-agent");
+
+    const octokit = {
+      rest: {
+        issues: {
+          addLabels: async (params: { labels: string[] }) => {
+            labelOps.push(`add:${params.labels[0]}`);
+          },
+          removeLabel: async (params: { name: string }) => {
+            labelOps.push(`remove:${params.name}`);
+          },
+          createComment: async () => {},
+          listEvents: async () => ({}),
+        },
+      },
+      paginate: async () => events,
+    };
+
+    const next = await restoreIssueAfterFailure(
+      octokit as never,
+      "wryenmeek",
+      "knowledgebase",
+      350
+    );
+    expect(next).toBe("ready-for-agent");
+    expect(labelOps[labelOps.length - 1]).toBe("add:ready-for-agent");
+  });
+
+  test("bot re-apply of ready-for-agent does NOT reset strikes (P1: isHumanActor guard)", () => {
+    // If `isHumanActor` is ever relaxed to allow bot apply, the abort
+    // mechanism collapses silently: every recovery cycle would reset the
+    // counter and `needs-triage` would become unreachable. Pin the
+    // behavior here so a regression fails loud.
+    const events = [
+      {
+        event: "labeled",
+        created_at: isoDaysAgo(5),
+        label: { name: "ready-for-agent" },
+        actor: { login: "github-actions[bot]", type: "Bot" },
+      },
+      { event: "labeled", created_at: isoDaysAgo(4), label: { name: "in-progress" } },
+      { event: "labeled", created_at: isoDaysAgo(3), label: { name: "in-progress" } },
+      {
+        event: "labeled",
+        created_at: isoDaysAgo(2),
+        label: { name: "ready-for-agent" },
+        actor: { login: "dependabot[bot]", type: "Bot" },
+      },
+      { event: "labeled", created_at: isoDaysAgo(1), label: { name: "in-progress" } },
+    ];
+    expect(countRecentInProgressAttempts(events)).toBe(3);
+    expect(selectRecoveryLabelFromEvents(events)).toBe("needs-triage");
+  });
+
+  test("unmerged close (commit_id null) does NOT reset strike counter (P2: gap fill)", () => {
+    // Reset on close requires both `event === "closed"` AND `commit_id`.
+    // A manual unmerged close (operator clearing stale state) must not
+    // erase strike history. Pin this so the guard cannot be removed
+    // without a failing test.
+    const events = [
+      {
+        event: "labeled",
+        created_at: isoDaysAgo(10),
+        label: { name: "ready-for-agent" },
+        actor: { login: "human-user", type: "User" },
+      },
+      { event: "labeled", created_at: isoDaysAgo(9), label: { name: "in-progress" } },
+      { event: "labeled", created_at: isoDaysAgo(8), label: { name: "in-progress" } },
+      { event: "closed", created_at: isoDaysAgo(5), commit_id: null },
+      { event: "labeled", created_at: isoDaysAgo(1), label: { name: "in-progress" } },
+    ];
+    expect(countRecentInProgressAttempts(events)).toBe(3);
+  });
+
+  test("restoreIssueAfterFailure paginates listEvents with per_page=100 (P2: gap fill)", async () => {
+    const paginateArgs: Array<{ fn: unknown; params: Record<string, unknown> }> = [];
+    const octokit = {
+      rest: {
+        issues: {
+          addLabels: async () => {},
+          removeLabel: async () => {},
+          createComment: async () => {},
+          listEvents: function listEvents() {},
+        },
+      },
+      paginate: async (fn: unknown, params: Record<string, unknown>) => {
+        paginateArgs.push({ fn, params });
+        return [];
+      },
+    };
+    await restoreIssueAfterFailure(octokit as never, "wryenmeek", "knowledgebase", 350);
+    expect(paginateArgs).toHaveLength(1);
+    expect(paginateArgs[0]!.fn).toBe(octokit.rest.issues.listEvents);
+    expect(paginateArgs[0]!.params).toMatchObject({
+      owner: "wryenmeek",
+      repo: "knowledgebase",
+      issue_number: 350,
+      per_page: 100,
+    });
+  });
+
+  test("dispatch comment wraps task.prompt in fenced code block so HTML/markdown cannot escape (P3)", () => {
+    // Defense against:
+    //   1. `</details>` in the prompt closing the collapse wrapper early.
+    //   2. `@user` mentions firing notification spam attributed to the bot.
+    //   3. Markdown links/images rendering instead of showing source.
+    const hostilePrompt =
+      "</details>\n\n@everyone please notice me\n[click](http://evil) ![img](http://evil)";
+    const body = buildDispatchCommentBody("Task title", "session-x", hostilePrompt);
+    // The fence must surround the prompt so the hostile content sits between
+    // backticks, not in raw markdown context. The `</details>` outside the
+    // fence is the legitimate closing tag of the dispatch wrapper.
+    const fenceOpenIdx = body.indexOf("````\n");
+    const fenceCloseIdx = body.indexOf("\n````\n\n</details>");
+    expect(fenceOpenIdx).toBeGreaterThan(-1);
+    expect(fenceCloseIdx).toBeGreaterThan(fenceOpenIdx);
+    const fencedSlice = body.slice(fenceOpenIdx, fenceCloseIdx);
+    expect(fencedSlice).toContain("</details>");
+    expect(fencedSlice).toContain("@everyone");
+    expect(fencedSlice).toContain("[click](http://evil)");
+    // After the fenced slice, only the wrapper close should remain.
+    const afterFence = body.slice(fenceCloseIdx);
+    expect(afterFence).toBe("\n````\n\n</details>");
+  });
 });

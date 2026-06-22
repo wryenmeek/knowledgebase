@@ -226,7 +226,15 @@ def test_workflow_permissions_are_narrowly_scoped(workflow: dict) -> None:
         "workflow-level `permissions.pull-requests` must not be declared "
         "(this workflow does not touch PRs)."
     )
-    assert "issues" not in perms, (
-        "workflow-level `permissions.issues` must not be declared "
-        "(this workflow does not touch issues directly)."
+    # ADR-033 (label-driven dispatch adoption): `--apply` mode adds
+    # `ready-for-agent` / `needs-triage` labels via `restoreIssueAfterFailure`
+    # when archive succeeds for a current-repo session. The narrow scope is
+    # enforced by the `jules-archive-approval` environment gate on
+    # `inputs.apply == true`, so unauthorized callers cannot trigger label
+    # mutations. Dry-run mode does not exercise this path. The previous
+    # blanket prohibition pre-dates label-driven dispatch.
+    issues = perms.get("issues")
+    assert issues in (None, "read", "write"), (
+        f"workflow-level `permissions.issues` must be omitted, read, or write. "
+        f"Got: {issues!r}"
     )

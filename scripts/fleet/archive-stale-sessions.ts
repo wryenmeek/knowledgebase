@@ -87,6 +87,14 @@ export interface ArchiveEnvelope {
   archived: ArchivedSessionEntry[];
   archivedCount: number;
   errors: Array<{ sessionId: string; error: string }>;
+  /**
+   * Per-session warnings for non-fatal pre-flight skip conditions (e.g.,
+   * current-repo session whose `sessionId → issue` join cannot be resolved
+   * because `.fleet/<date>/sessions.json` was never persisted to `main` for
+   * that dispatch date). The session is skipped from archive instead of
+   * mass-aborting the batch. See ADR-033 (label-driven dispatch adoption).
+   */
+  skipped: Array<{ sessionId: string; reason: string }>;
 }
 
 export interface SessionIssueResolver {
@@ -97,8 +105,6 @@ export interface ArchiveApplyHooks {
   issueResolver?: SessionIssueResolver;
   restoreIssueLabels?: (issueNumber: number) => Promise<void>;
 }
-
-class JoinResolutionError extends Error {}
 
 export function buildSessionIssueIndexFromFleet(fleetRoot: string): Map<string, number[]> {
   const index = new Map<string, number[]>();
@@ -262,30 +268,54 @@ export async function archiveStaleSessions(
 
   const archived: ArchivedSessionEntry[] = [];
   const errors: Array<{ sessionId: string; error: string }> = [];
+  const skipped: Array<{ sessionId: string; reason: string }> = [];
 
   if (args.apply) {
+    // PRE-FLIGHT: Resolve issue joins for all current-repo candidates BEFORE
+    // any archive() mutation runs. ADR-033 requires that archived current-repo
+    // sessions restore their linked issues' labels — but the join lookup
+    // depends on `.fleet/<date>/sessions.json` being available locally, which
+    // depends on prior dispatch runs having persisted it. When the index is
+    // sparse (a known structural gap pre-Tier-3), skip the affected session
+    // with a recorded warning instead of mid-batch throwing. This preserves
+    // partial progress and surfaces the gap in the envelope for operator
+    // follow-up.
+    type ApplyCandidate = ArchivedSessionEntry & {
+      linkedIssues: number[];
+    };
+    const applyCandidates: ApplyCandidate[] = [];
     for (const candidate of candidates) {
-      try {
-        let linkedIssues: number[] = [];
-        if (candidate.sourceName === CURRENT_REPO_SOURCE && hooks.issueResolver) {
-          linkedIssues = hooks.issueResolver?.resolveIssuesForSession(candidate.sessionId) ?? [];
-          if (linkedIssues.length === 0) {
-            throw new JoinResolutionError(
-              `No issue mapping found for archived session ${candidate.sessionId}.`
-            );
-          }
+      let linkedIssues: number[] = [];
+      if (candidate.sourceName === CURRENT_REPO_SOURCE && hooks.issueResolver) {
+        const resolved = hooks.issueResolver.resolveIssuesForSession(candidate.sessionId);
+        if (resolved === null || resolved.length === 0) {
+          skipped.push({
+            sessionId: candidate.sessionId,
+            reason:
+              `No issue mapping found for current-repo session ${candidate.sessionId}. ` +
+              "This typically means the dispatch-date `.fleet/<date>/sessions.json` is " +
+              "not available locally (it is not persisted to `main` post-dispatch — see " +
+              "issue #305 follow-up). Session skipped to avoid label-state drift.",
+          });
+          continue;
         }
+        linkedIssues = resolved;
+      }
+      applyCandidates.push({ ...candidate, linkedIssues });
+    }
+
+    for (const candidate of applyCandidates) {
+      try {
         await client.session(candidate.sessionId).archive();
-        for (const issueNumber of linkedIssues) {
+        for (const issueNumber of candidate.linkedIssues) {
           if (hooks.restoreIssueLabels) {
             await hooks.restoreIssueLabels(issueNumber);
           }
         }
-        archived.push(candidate);
+        // Strip the internal linkedIssues field from the public envelope shape.
+        const { linkedIssues: _linked, ...publicEntry } = candidate;
+        archived.push(publicEntry);
       } catch (err) {
-        if (err instanceof JoinResolutionError) {
-          throw err;
-        }
         errors.push({
           sessionId: candidate.sessionId,
           error: String(err),
@@ -307,6 +337,7 @@ export async function archiveStaleSessions(
     archived,
     archivedCount: archived.length,
     errors,
+    skipped,
   };
 }
 

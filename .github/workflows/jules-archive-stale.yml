@@ -52,6 +52,15 @@ on:
 
 permissions:
   contents: read
+  # ADR-033 (label-driven dispatch adoption): `--apply` mode invokes
+  # `restoreIssueAfterFailure` to add `ready-for-agent` or `needs-triage`
+  # labels to issues whose linked Jules sessions were archived. Without
+  # `issues: write`, the GitHub API call returns 403 and the script fails
+  # closed on the first current-repo session. The narrow scope is enforced
+  # by the environment approval gate (`jules-archive-approval`) on
+  # `inputs.apply == true`, so unauthorized callers cannot trigger label
+  # mutations.
+  issues: write
 
 jobs:
   archive:
@@ -88,6 +97,14 @@ jobs:
         working-directory: scripts/fleet
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          # ADR-033: `--apply` mode reads issue timeline events and adds
+          # recovery labels (`ready-for-agent` / `needs-triage`) via
+          # `restoreIssueAfterFailure`. `GITHUB_TOKEN` must be passed
+          # explicitly — GitHub Actions does not auto-inject it into
+          # `run:` steps. Dry-run mode (`apply=false`) does not require
+          # the token but inheriting it is harmless because
+          # `assertFleetEnvironment` only checks it when `--apply` is set.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # SECURITY: all workflow inputs are passed through env vars, not interpolated
           # directly in the run block, to prevent shell injection.
           INPUT_STATE: ${{ inputs.state }}
