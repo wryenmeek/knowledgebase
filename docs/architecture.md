@@ -81,20 +81,26 @@ dispatch and merge. It is independent of the Python `scripts/kb/` layer and is
 |---|---|
 | `fleet-plan.ts` | Plans a batch of Jules tasks from open GitHub issues |
 | `fleet-dispatch.ts` | Dispatches planned tasks to Jules for parallel execution |
-| `fleet-merge.ts` | Merges completed Jules PRs that pass CI |
-| `fleet-analyze.ts` | Analyzes dispatch/merge results for reporting |
+| `fleet-merge.ts` | Sequentially merges completed Jules PRs that pass CI |
+| `fleet-analyze.ts` | Analyzes open GitHub issues for triage/classification reporting |
+| `archive-stale-sessions.ts` | Archives stale Jules sessions older than a configurable threshold; dry-run by default, environment-gated for `--apply` |
+| `jules-account-probe.ts` | Read-only diagnostic that emits structured Jules account/source/session state for outage debugging |
 
 ### CI workflows
 
-- **`fleet-dispatch.yml`** — triggered by schedule or `workflow_dispatch`; runs `fleet-dispatch.ts`
-- **`fleet-merge.yml`** — triggered after CI passes on fleet PRs; runs `fleet-merge.ts`
+- **`fleet-plan.yml`** — daily schedule (cron `0 6 * * *`) + `workflow_dispatch`; runs `fleet-plan.ts` to produce a planning PR on a Jules-spawned branch.
+- **`fleet-dispatch.yml`** — Phase 2a; auto-merges the planning PR when ready (uses GitHub App token when available per ADR-019 Amendment 3).
+- **`fleet-dispatch-after-merge.yml`** — Phase 2b; triggered on the planning PR's merge commit; runs `fleet-dispatch.ts` for per-task Jules session spawning.
+- **`fleet-merge.yml`** — triggered by `workflow_run` on CI completion of fleet PRs; runs `fleet-merge.ts` to squash-merge passing PRs.
+- **`jules-account-probe.yml`** — `workflow_dispatch` only currently; issue #349 proposes adding a scheduled trigger (3 slots/day).
+- **`jules-archive-stale.yml`** — scheduled archival of stale Jules sessions; uses `archive-stale-sessions.ts` behind a `jules-archive-approval` GitHub Environment gate per ADR-019.
 
 ### Build verification
 
 After any edit to `scripts/fleet/`, verify TypeScript compiles cleanly:
 
 ```bash
-cd scripts/fleet && bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts fleet-analyze.ts
+cd scripts/fleet && bun build fleet-plan.ts fleet-dispatch.ts fleet-merge.ts fleet-analyze.ts archive-stale-sessions.ts jules-account-probe.ts --target bun --outdir dist
 ```
 
 **Important:** `pytest` passing does **not** imply TypeScript is clean. Always run

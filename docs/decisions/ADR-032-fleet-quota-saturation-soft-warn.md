@@ -1,7 +1,8 @@
 # ADR-032: Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION
 
 ## Status
-Accepted — extends ADR-019
+
+Accepted — extends ADR-019; amended in-place: aspirational `copilot-swe-agent` fallback line corrected (see § Amendment 2026-06-21)
 
 ## Date
 2026-06-19
@@ -101,8 +102,9 @@ All other `MutationFailureError` classifications retain the existing
 
 - Transient quota-saturation events surface as GitHub Actions annotations
   (`::warning::`) rather than red CI failures.
-- Ready-for-agent dispatch falls back to `copilot-swe-agent` cleanly without
-  blocking the entire fleet cycle.
+- Ready-for-agent dispatch defers to the next scheduled fleet cycle once
+  quota resets, rather than blocking the entire run on a single
+  ready-for-agent issue.
 - The genuine account-binding hard-fail path is preserved; operators still
   receive an actionable exit-1 when registration or GitHub App configuration
   is broken.
@@ -130,6 +132,34 @@ constants, the `quota_saturation` category entry, and its routing in
 - [`ADR-019`](ADR-019-fleet-jules-orchestration.md) — Fleet orchestration defines
   the Jules dispatch and merge surface that this ADR extends with
   quota-saturation error classification and exit-0 soft-warn behavior.
+- [`ADR-035`](ADR-035-tier-3-multi-provider-fallback-deferral.md) — Documents
+  the formal 30-day deferral of the multi-provider fallback question. The
+  aspirational `copilot-swe-agent` fallback line removed in this ADR's
+  Amendment was the artifact that motivated ADR-035.
+
+## Amendment (2026-06-21)
+
+The original "Positive consequences" section claimed *"Ready-for-agent dispatch
+falls back to `copilot-swe-agent` cleanly without blocking the entire fleet
+cycle."* Cross-portfolio code review on 2026-06-21 verified no such fallback
+is implemented in this repository or anywhere in the operator's portfolio
+(`wryenmeek/hot-springs-island`, `wryenmeek/vscode-genai`, `wryenmeek/Scribe`).
+The line was an aspirational claim, not a description of behavior.
+
+**What changed:** the bullet now reads *"Ready-for-agent dispatch defers to the
+next scheduled fleet cycle once quota resets, rather than blocking the entire
+run on a single ready-for-agent issue."* — an accurate description of current
+behavior.
+
+**Why:** removing the aspirational claim prevents future agents and reviewers
+from assuming a fallback exists. The multi-provider question itself is
+formally deferred for 30 days in ADR-035 (revisit date 2026-07-21).
+
+**What did not change:** the classification logic, the `quota_saturation`
+sub-class, the signal-precedence ordering, the routing in `handleFleetFatalError`,
+the `Negative / Trade-offs` analysis, and the `Reversibility` section. The
+amendment is body-only on the one bullet plus this Amendment section plus the
+Status header update plus the new ADR-035 cross-reference in `Related decisions`.
 
 ## References
 
