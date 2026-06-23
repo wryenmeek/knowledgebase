@@ -22,6 +22,7 @@ The system is designed to keep knowledge:
 | `raw/github-sources/**` | GitHub source monitor registries and pending-ingest handoffs | Mutable; governed by `schema/github-source-registry-contract.md` |
 | `raw/drive-sources/**` | Google Drive source monitor registries | Mutable; governed by `schema/drive-source-registry-contract.md` |
 | `raw/rejected/` | Write-once rejection records for sources that failed intake (ADR-013) | Immutable post-write |
+| `raw/wiki-processing/` | Governed checkpoint registry for resumed/revalidated synthesis (ADR-026/ADR-027) | Mutable; governed by `schema/wiki-processing-checkpoint-registry-contract.md` |
 | `wiki/**` | Synthesized knowledge artifacts | Controlled write surface |
 | `schema/**` | Page/ingest contracts | Controlled write surface |
 | `scripts/kb/**` + `tests/kb/**` | Automation implementation and verification | Controlled write surface |
@@ -302,13 +303,15 @@ require documented rationale.
 
 ## Wiki processing checkpoint registry
 
-> **Runtime landed; CI wiring/bootstrap pending.** The PR2 schema contract,
+> **Runtime live.** The PR2 schema contract,
 > `scripts/kb/contracts.py` constants (lock path, trigger and artifact
 > enums, dependency-fingerprint dict, retention thresholds), and the
 > `analysis_fingerprint()` helper landed in PR #213. The PR3 runtime
 > (`scripts/kb/checkpoint_registry.py`) landed the bootstrap/mutate/verify
-> entrypoint in PR #233. PR4 CI-3 wiring and the HITL bootstrap execution
-> remain pending.
+> entrypoint in PR #233. The PR4 HITL bootstrap seeded the initial
+> registry at `raw/wiki-processing/wiki-processing-checkpoint-registry.json`
+> and CI-3 surfaces `--verify --warn-only` results to the job summary
+> after each batch.
 
 The wiki processing pipeline maintains a governed checkpoint registry
 under `raw/` so partial fail-closed runs can resume and changed outputs can

@@ -283,11 +283,32 @@ def _compute_dependency_fingerprint(repo_root: Path) -> str:
     for patterns in contracts.DEPENDENCY_FINGERPRINT_SOURCES.values():
         for pattern in patterns:
             if any(char in pattern for char in "*?["):
-                paths.update(path for path in repo_root.glob(pattern) if path.is_file())
+                # `Path.glob("**")` behavior changed in Python 3.13: prior to
+                # 3.13 the trailing `**` only matched directories, but in
+                # 3.13+ it matches files and directories. To keep dependency
+                # fingerprints deterministic across the supported interpreter
+                # range (CI runs 3.12; local dev may run 3.13/3.14), normalize
+                # trailing `**` to `**/*` so files are enumerated explicitly.
+                normalized_pattern = pattern[:-2] + "**/*" if pattern.endswith("/**") else pattern
+                paths.update(
+                    path for path in repo_root.glob(normalized_pattern) if path.is_file()
+                )
             else:
                 candidate = repo_root / pattern
                 if candidate.is_file():
                     paths.add(candidate)
+    # Filter out Python bytecode caches — they are environment-dependent
+    # transients (created/refreshed by every interpreter run) and must not
+    # affect the deterministic dependency fingerprint. Without this filter,
+    # the seed value diverges between a clean checkout and any environment
+    # that has imported the skill modules (e.g., a pytest run). See PR #376
+    # cross-functional review P1/P2 findings.
+    paths = {
+        path
+        for path in paths
+        if "__pycache__" not in path.parts
+        and path.suffix not in {".pyc", ".pyo"}
+    }
     for path in paths:
         write_utils.check_no_symlink_path(path)
     payload = [

@@ -325,18 +325,19 @@ suites green:
 - Broad regression suite:
   `python3 -m pytest tests/ -q`
 
-## Wiki processing checkpoint registry (runtime landed; CI wiring/bootstrap pending)
+## Wiki processing checkpoint registry
 
 Schema contract, `scripts/kb/contracts.py` constants, the
-`analysis_fingerprint()` helper, and the PR3 runtime entrypoint
-`scripts/kb/checkpoint_registry.py` are on disk as of the checkpoint
-runtime rollout.
-The wiki processing checkpoint registry (ADR-026, ADR-027) lands across
+`analysis_fingerprint()` helper, the PR3 runtime entrypoint
+`scripts/kb/checkpoint_registry.py`, and the PR4 initial seeded registry
+at `raw/wiki-processing/wiki-processing-checkpoint-registry.json` are on
+disk. CI-3 surfaces `--verify --warn-only` results to the workflow job
+summary after each batch (see `.github/workflows/ci-3-pr-producer.yml`).
+The wiki processing checkpoint registry (ADR-026, ADR-027) landed across
 four PRs per the Path C-prime plan in
 [`docs/ideas/wiki-processing-checkpoint-registry.md`](ideas/wiki-processing-checkpoint-registry.md).
-CI-3 wiring and the initial HITL bootstrap remain PR4 work. The
-procedures below document the operator path enabled by the runtime and
-the remaining CI wiring.
+The procedures below document the operator path enabled by the runtime
+and the in-CI verification surface.
 
 ### Manual rescan
 
@@ -356,19 +357,19 @@ python3 scripts/kb/checkpoint_registry.py --mutate \
 
 ### Checkpoint recovery procedure
 
-After a CI-3 partial-failure or fail-closed run, recover with this
-sequence:
+After an operator-driven `--mutate` run leaves the registry in `failed`,
+`stale`, or `in_progress` state, recover with this sequence:
 
 1. Inspect the operator snapshot at `wiki/status.md`
-   for the `## Checkpoint Registry` section. Status publishing now renders
-   `Registry: not initialized` until the HITL bootstrap creates the registry;
-   after bootstrap it shows the latest `batch_id`, `trigger`, `status`,
-   `error_summary`, and item-status counts.
+   for the `## Checkpoint Registry` section. Status publishing renders
+   the latest `batch_id`, `trigger`, `status`, `error_summary`, and
+   item-status counts from the seeded registry.
 2. Inspect the raw registry at
    `raw/wiki-processing/wiki-processing-checkpoint-registry.json` for
    the failing item's `last_error`, `status`, and `last_attempted_at`
-   fields. The registry file does not exist until the PR4 HITL bootstrap
-   step seeds it.
+   fields. The registry was seeded by the PR4 HITL bootstrap; subsequent
+   mutations are operator-driven today (CI-3 `--mutate` per-batch
+   wiring is deferred — see issue #377).
 3. Resolve the underlying cause (validator failure, write denial, schema
    mismatch, lock contention).
 4. Run a manual rescan (above) — `stale` and `failed`
@@ -405,28 +406,31 @@ Bootstrap and recovery.
 
 ### Lock-unavailable: `raw/.wiki-processing-checkpoint.lock`
 
-> **CI wiring pending.** The lock is used by the runtime for approved
-> bootstrap and mutation writes. CI-3 starts using it once PR4 wires the
-> runtime into the producer workflow.
+> **CI surface.** The lock is held by the runtime for approved bootstrap
+> and mutation writes. CI-3 runs `--verify --warn-only` against the
+> registry after each batch (read-only — does not acquire the lock).
 
 If the checkpoint script reports
 `reason_code=lock_unavailable` for `raw/.wiki-processing-checkpoint.lock`,
-do **not** remove the lock blindly. The lock may be held by an active
-CI-3 run. First, list active CI-3 runs:
+do **not** remove the lock blindly. The lock is acquired by operator-driven
+`--bootstrap --apply` or `--mutate` runs and is not held by CI-3's read-only
+verify step. To diagnose:
 
 ```bash
-# Forward-looking runbook step — CI-3 invokes the checkpoint runtime
-# once the wiring lands.
-gh run list --workflow=ci-3-pr-producer.yml --status in_progress
+# Inspect the lock file holder metadata (PID/timestamp written by exclusive_write_lock):
+cat raw/.wiki-processing-checkpoint.lock
+
+# If a checkpoint mutation is running locally (operator path), check process state
+# for an active checkpoint_registry.py invocation:
+ps -ef | grep -F 'checkpoint_registry.py' | grep -v grep
 ```
 
-Once the CI-3 wiring lands: if no run is active and the lock is stale
-(no in-progress CI-3 job), remove the lock file and retry. If a run is
-active, wait for it to complete (lock is typically held for ~1 second
-per batch under the single-lock-hold-long pattern; see
-`synthesize_combined.py` precedent).
-The repo-wide convention for holder-PID tracking is filed as backlog
-issue [#183](https://github.com/wryenmeek/knowledgebase/issues/183).
+If no operator process is holding the lock and the holder metadata is stale,
+remove the lock file and retry. The repo-wide convention for holder-PID
+tracking is filed as backlog issue [#183](https://github.com/wryenmeek/knowledgebase/issues/183).
+A future `--mutate` wiring follow-up (see PR #376's deferred work) may add
+CI-3 jobs that acquire this lock; at that point, also consult
+`gh run list --workflow=ci-3-pr-producer.yml --status in_progress`.
 
 ## Exit semantics and failure handling
 

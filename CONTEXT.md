@@ -53,6 +53,7 @@ Shared vocabulary for the `wryenmeek/knowledgebase` repository. This file is des
 | `raw/github-sources/` | Source registry files for monitored GitHub paths. |
 | `raw/drive-sources/` | Source registry files for monitored Google Drive folders. Governed by `schema/drive-source-registry-contract.md`. |
 | `raw/rejected/` | Write-once rejection records for sources that failed intake (ADR-013). |
+| `raw/wiki-processing/` | Governed checkpoint registry for resumed/revalidated synthesis. Governed by `schema/wiki-processing-checkpoint-registry-contract.md` (ADR-026/ADR-027). |
 | `wiki/` | Curated knowledgebase pages, governed artifacts, and audit logs. |
 | `schema/` | Authoritative contracts for page templates, taxonomy, metadata, and ingest. Read-only for all automation. |
 | `scripts/kb/` | Canonical utility modules: `page_template_utils`, `write_utils`, `contracts`, `sourceref`. All new helpers must extend these before creating new modules (ADR-011). |
