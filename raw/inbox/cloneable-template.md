@@ -128,7 +128,7 @@ cat > /tmp/create-gh-app.html <<'HTMLEOF'
   "url": "https://github.com/OWNER/REPO",
   "hook_attributes": {"active": false},
   "public": false,
-  "default_permissions": {"contents": "write", "metadata": "read"},
+  "default_permissions": {"contents": "write", "pull_requests": "write", "metadata": "read"},
   "default_events": []
 }' />
 <button type="submit" style="font-size:18px;padding:10px 20px;">
