@@ -1147,6 +1147,51 @@ jobs:
           echo "::error::CI-3 runtime budgets exceeded fail threshold(s). See ci3-metrics/runtime-budget-report.json and the step summary."
           exit 1
 
+      - name: Surface checkpoint registry verify report
+        # Read-only registry verification surfaced to the job summary.
+        # `--warn-only` returns exit 0 even on warnings/missing-registry so this
+        # step never fails the workflow (ADR-026 verify telemetry contract).
+        # Per PR4 § "Wire CI-3 to invoke ... --verify --warn-only ... surfaced
+        # to the GitHub Actions job summary".
+        if: always() && steps.sources.outputs.has_sources == 'true'
+        run: |
+          set -uo pipefail
+          # Capture stdout only (stderr goes to the workflow log for diagnosis).
+          # Capture exit code separately so real failures (e.g., Python crashes)
+          # are visible in the summary even though --warn-only normally returns 0.
+          verify_json="$(python3 scripts/kb/checkpoint_registry.py --verify --warn-only)"
+          verify_rc=$?
+          # Defensively validate JSON shape before embedding in a markdown fence,
+          # to defend against future-validator output that might contain a literal
+          # triple-backtick sequence breaking the fence.
+          parse_status="ok"
+          if ! printf '%s' "${verify_json}" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' 2>/dev/null; then
+            parse_status="non-json"
+          fi
+          {
+            echo "### Checkpoint registry verify"
+            echo ""
+            echo "- exit: \`${verify_rc}\`"
+            echo "- parse: \`${parse_status}\`"
+            if [[ "${parse_status}" == "ok" ]]; then
+              echo ""
+              echo "\`\`\`json"
+              printf '%s\n' "${verify_json}"
+              echo "\`\`\`"
+            else
+              echo ""
+              echo "<details><summary>raw stdout (not parseable as JSON)</summary>"
+              echo ""
+              echo "\`\`\`"
+              printf '%s\n' "${verify_json}"
+              echo "\`\`\`"
+              echo ""
+              echo "</details>"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+          # Always exit 0 — verify is telemetry-only per ADR-026.
+          exit 0
+
       - name: Create or update CI-3 PR
         if: steps.write-path.outputs.has_changes == 'true'
         env:

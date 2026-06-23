@@ -241,6 +241,8 @@ tests/kb/.runtime_batch_persist_query/
 .rejection-registry.lock
 .drive-sources.lock
 .customizations.lock
+.wiki-processing-checkpoint.lock
+.governance-meta.lock
 
 .qmd/
 ci3-synthesis/
