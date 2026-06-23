@@ -110,7 +110,9 @@ def validate_frontmatter(fields: dict[str, Any]) -> list[str]:
     required = {"slug", "sha256", "rejected_date", "source_path",
                 "rejection_reason", "rejection_category", "reviewed_by",
                 "reconsidered_date"}
-    missing = required - set(fields.keys())
+    # OPTIMIZATION: Use .difference(dict) instead of - set(dict.keys())
+    # to avoid allocating an intermediate set object.
+    missing = required.difference(fields)
     if missing:
         errors.append(f"missing required frontmatter fields: {sorted(missing)}")
 
