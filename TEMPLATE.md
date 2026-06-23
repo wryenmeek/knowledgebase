@@ -171,9 +171,12 @@ repository secret. See the full setup instructions in
 
 ### GitHub source monitoring (CI-5)
 
-Requires a GitHub App with `contents: write` installed on the repo, stored as
-`GH_APP_ID` and `GH_APP_PRIVATE_KEY` secrets (note: GitHub bans the `GITHUB_`
-prefix for repository secrets). See
+Requires a GitHub App with `contents: write` AND `pull-requests: write` installed
+on the repo, stored as `GH_APP_ID` and `GH_APP_PRIVATE_KEY` secrets (note: GitHub
+bans the `GITHUB_` prefix for repository secrets). `pull-requests: write` is also
+required by Fleet Phase 2a (`fleet-dispatch.yml`) per Issue #310 — without it,
+the auto-merge falls back to `GITHUB_TOKEN` and Phase 2b's push trigger does not
+fire. See
 [`docs/ideas/cloneable-template.md` § CI Service Credentials Setup](docs/ideas/cloneable-template.md#ci-service-credentials-setup)
 for the step-by-step CLI instructions.
 

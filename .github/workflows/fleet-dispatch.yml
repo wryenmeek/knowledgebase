@@ -213,9 +213,21 @@ jobs:
           if [ "$APP_TOKEN_AVAILABLE" = "true" ] && [ "$APP_TOKEN_CREATED" = "true" ]; then
             TOKEN_MODE="github_app"
             echo "✅ Issue #310: using GitHub App installation token for planning PR auto-merge."
-          else
+          elif [ "$APP_TOKEN_AVAILABLE" = "true" ] && [ "$APP_TOKEN_CREATED" != "true" ]; then
+            # Issue #310: secrets are configured but the App-token creation
+            # step failed. The most common cause is missing installation
+            # permissions on the App (the action defaults request
+            # contents:write + pull-requests:write). See the previous step's
+            # log for the specific HTTP status (typically 422 "permissions
+            # requested are not granted to this installation").
             TOKEN_MODE="github_token"
-            echo "::warning title=Issue #310 GitHub App token fallback::Using GITHUB_TOKEN for planning PR auto-merge; Layer 6 push-trigger suppression persists until GH_APP_ID/GH_APP_PRIVATE_KEY are provisioned and valid."
+            echo "::warning title=Issue #310 GitHub App token creation failed::App secrets are present but \`actions/create-github-app-token\` returned an error (see previous step log for the exact status and message). For status 422 \"permissions requested are not granted\", grant the App \`contents:write\` + \`pull-requests:write\` at Settings → Developer settings → GitHub Apps → your-app → Permissions & events (edit) AND re-accept the installation at Settings → Developer settings → GitHub Apps → your-app → Install App → wryenmeek → Configure (re-accept). Falling back to GITHUB_TOKEN — Layer 6 push-trigger suppression persists until the App token succeeds."
+          else
+            # Issue #310: App secrets are not configured. Operator must
+            # provision a GitHub App with contents:write + pull-requests:write
+            # and store its ID + private-key PEM as repo secrets.
+            TOKEN_MODE="github_token"
+            echo "::warning title=Issue #310 GitHub App secrets not configured::No GH_APP_ID/GH_APP_PRIVATE_KEY secrets found. Provision a GitHub App with contents:write + pull-requests:write on this repo and store its ID + private-key PEM as repo secrets to enable Phase 2b push-trigger auto-dispatch. Falling back to GITHUB_TOKEN — Layer 6 push-trigger suppression persists."
           fi
           # --auto queues the merge so it happens after all branch-protection
           # required checks pass (notably CI-2 diagnostics). This avoids the
