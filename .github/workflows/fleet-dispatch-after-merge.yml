@@ -311,7 +311,10 @@ jobs:
           private-key: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-issues: write
-          permission-pull-requests: write
+          # NOTE: permission-pull-requests is intentionally omitted — the
+          # dispatch script's only API call is `issues.createComment`, which
+          # accepts `issues: write` alone. Per ADR-036 § Decision (token-level
+          # least privilege), each mint requests only what the workflow uses.
 
       - name: Dispatch task sessions
         if: steps.session.outputs.have_session == 'true'

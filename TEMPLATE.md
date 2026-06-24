@@ -167,7 +167,7 @@ monitoring.
 
 Requires a GCP service account with Drive API access stored as the `GDRIVE_SA_KEY`
 repository secret. See the full setup instructions in
-[`docs/ideas/cloneable-template.md` § CI Service Credentials Setup](docs/ideas/cloneable-template.md#ci-service-credentials-setup).
+[`raw/inbox/cloneable-template.md` § CI Service Credentials Setup](raw/inbox/cloneable-template.md#ci-service-credentials-setup).
 
 ### GitHub source monitoring (CI-5)
 
@@ -186,7 +186,7 @@ with `contents: write` + `pull_requests: write` + `issues: write` + `metadata: r
 and store its credentials as `FLEET_APP_ID` and `FLEET_APP_PRIVATE_KEY` secrets.
 The narrow `kb-source-monitor` App (`GH_APP_ID`/`GH_APP_PRIVATE_KEY`) MUST stay
 read-only. See
-[`docs/ideas/cloneable-template.md` § CI Service Credentials Setup](docs/ideas/cloneable-template.md#ci-service-credentials-setup)
+[`raw/inbox/cloneable-template.md` § GitHub App for Fleet Orchestration](raw/inbox/cloneable-template.md#github-app-for-fleet-orchestration-issue-310-adr-036)
 for step-by-step CLI instructions for both Apps.
 
 ### Required GitHub environment
