@@ -90,9 +90,9 @@ dispatch and merge. It is independent of the Python `scripts/kb/` layer and is
 ### CI workflows
 
 - **`fleet-plan.yml`** — daily schedule (cron `0 6 * * *`) + `workflow_dispatch`; runs `fleet-plan.ts` to produce a planning PR on a Jules-spawned branch.
-- **`fleet-dispatch.yml`** — Phase 2a; auto-merges the planning PR when ready (uses GitHub App token when available per ADR-019 Amendment 3).
-- **`fleet-dispatch-after-merge.yml`** — Phase 2b; triggered on the planning PR's merge commit; runs `fleet-dispatch.ts` for per-task Jules session spawning.
-- **`fleet-merge.yml`** — triggered by `workflow_run` on CI completion of fleet PRs; runs `fleet-merge.ts` to squash-merge passing PRs.
+- **`fleet-dispatch.yml`** — Phase 2a; auto-merges the planning PR using the `fleet-orchestrator` GitHub App token (`FLEET_APP_*` secrets) when configured per ADR-036, extending ADR-019 Amendment 3.
+- **`fleet-dispatch-after-merge.yml`** — Phase 2b; triggered on the planning PR's merge commit; runs `fleet-dispatch.ts` for per-task Jules session spawning. Uses the `fleet-orchestrator` App token for per-task tracker comments per ADR-036.
+- **`fleet-merge.yml`** — triggered by `workflow_run` on CI completion of fleet PRs; runs `fleet-merge.ts` to squash-merge passing PRs. Uses the `fleet-orchestrator` App token for the merge step per ADR-036 so downstream push workflows fire.
 - **`jules-account-probe.yml`** — `workflow_dispatch` only currently; issue #349 proposes adding a scheduled trigger (3 slots/day).
 - **`jules-archive-stale.yml`** — scheduled archival of stale Jules sessions; uses `archive-stale-sessions.ts` behind a `jules-archive-approval` GitHub Environment gate per ADR-019.
 

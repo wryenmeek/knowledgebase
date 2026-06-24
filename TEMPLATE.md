@@ -167,18 +167,27 @@ monitoring.
 
 Requires a GCP service account with Drive API access stored as the `GDRIVE_SA_KEY`
 repository secret. See the full setup instructions in
-[`docs/ideas/cloneable-template.md` § CI Service Credentials Setup](docs/ideas/cloneable-template.md#ci-service-credentials-setup).
+[`raw/inbox/cloneable-template.md` § CI Service Credentials Setup](raw/inbox/cloneable-template.md#ci-service-credentials-setup).
 
 ### GitHub source monitoring (CI-5)
 
-Requires a GitHub App with `contents: write` AND `pull-requests: write` installed
-on the repo, stored as `GH_APP_ID` and `GH_APP_PRIVATE_KEY` secrets (note: GitHub
-bans the `GITHUB_` prefix for repository secrets). `pull-requests: write` is also
-required by Fleet Phase 2a (`fleet-dispatch.yml`) per Issue #310 — without it,
-the auto-merge falls back to `GITHUB_TOKEN` and Phase 2b's push trigger does not
-fire. See
-[`docs/ideas/cloneable-template.md` § CI Service Credentials Setup](docs/ideas/cloneable-template.md#ci-service-credentials-setup)
-for the step-by-step CLI instructions.
+Requires a narrow read-only GitHub App for ingesting external source repos,
+installed on the repo and stored as `GH_APP_ID` and `GH_APP_PRIVATE_KEY` secrets
+(note: GitHub bans the `GITHUB_` prefix for repository secrets). This App
+intentionally has minimal permissions — `contents: read` plus optional `metadata: read`
+on installations — and is NEVER widened to writable scopes.
+
+### Fleet orchestration identity (Issue #310, ADR-036)
+
+Fleet workflows (`fleet-dispatch.yml`, `fleet-merge.yml`, `fleet-dispatch-after-merge.yml`)
+require a separate write-capable GitHub App — `fleet-orchestrator` — to bypass
+the `GITHUB_TOKEN` downstream-suppression trap (Layer 6). Provision a dedicated App
+with `contents: write` + `pull_requests: write` + `issues: write` + `metadata: read`
+and store its credentials as `FLEET_APP_ID` and `FLEET_APP_PRIVATE_KEY` secrets.
+The narrow `kb-source-monitor` App (`GH_APP_ID`/`GH_APP_PRIVATE_KEY`) MUST stay
+read-only. See
+[`raw/inbox/cloneable-template.md` § GitHub App for Fleet Orchestration](raw/inbox/cloneable-template.md#github-app-for-fleet-orchestration-issue-310-adr-036)
+for step-by-step CLI instructions for both Apps.
 
 ### Required GitHub environment
 

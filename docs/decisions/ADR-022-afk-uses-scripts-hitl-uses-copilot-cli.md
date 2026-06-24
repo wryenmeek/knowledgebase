@@ -21,7 +21,10 @@ for automating wiki maintenance tasks in CI:
 
 2. **Deterministic Python scripts** — the existing `scripts/kb/`, `scripts/validation/`,
    and `scripts/maintenance/` surfaces, invocable directly in a workflow step
-   using the GH App token pattern (`GH_APP_ID`/`GH_APP_PRIVATE_KEY`).
+   using a GH App token (historically `GH_APP_ID`/`GH_APP_PRIVATE_KEY`; per ADR-036
+   this name now refers specifically to the narrow read-only `kb-source-monitor`
+   App, while fleet automation uses `FLEET_APP_ID`/`FLEET_APP_PRIVATE_KEY` for
+   the separate `fleet-orchestrator` identity).
 
 The ADR-014 AFK allowlist permits only bounded, deterministic writes:
 `last_updated`, `quality_assessment.freshness_date`, YAML normalization, index
@@ -46,7 +49,7 @@ Automation is split into three tiers by what gates the governed write:
   YAML normalization, index regeneration, redirect appends
 - Executor: Python scripts invoked directly in workflow steps
 - Gate: `validate_afk_output.py` (5-check inline safety net, same runner)
-- Token: existing `GH_APP_ID`/`GH_APP_PRIVATE_KEY` app-token
+- Token: `GH_APP_ID`/`GH_APP_PRIVATE_KEY` (kb-source-monitor App per ADR-036) for external-source-fetching CI-5 jobs; per-workflow `GITHUB_TOKEN` for the host-repo PR-opening step (HITL-reviewed, no Layer 6 hit)
 - Output: PR for human merge
 
 **Tier 2 — AFK advisory pass** (`copilot -p` skill invocations, read-only):

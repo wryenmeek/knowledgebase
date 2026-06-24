@@ -256,17 +256,19 @@ output and exits 0 rather than raising):
 5. `pending_base` (line 2) is not exactly `main` → refuse (closes the refspec-substitution class; see ADR-019 Amendment 3)
 
 **Permanent fix:** Issue #310 — code path landed in `fc33db8` (2026-06-21);
-Phase 2a now prefers a GitHub App installation token (`GH_APP_ID` /
-`GH_APP_PRIVATE_KEY`) when both secrets are present and token creation
-succeeds, falling back to `GITHUB_TOKEN` with a CI warning otherwise.
-App-token-authored pushes are not treated as `GITHUB_TOKEN` events, so
-Phase 2b's push trigger fires normally and the manual `gh workflow run`
-step becomes optional (retained as escape hatch only). **Remaining
-operator step** to actually unblock Phase 2b: the App installation must
-grant `contents: write` + `pull-requests: write`; without those the App
-token creation step returns HTTP 422 and falls back. See
-`docs/mvp-runbook.md` § "App permission requirements (HITL operator
-step)" + "Diagnostic checklist when warning appears" for the click-path
+Phase 2a now prefers a `fleet-orchestrator` GitHub App installation token
+(`FLEET_APP_ID` / `FLEET_APP_PRIVATE_KEY`) when both secrets are present
+and token creation succeeds, falling back to `GITHUB_TOKEN` with a CI
+warning otherwise. App-token-authored pushes are not treated as
+`GITHUB_TOKEN` events, so Phase 2b's push trigger fires normally and the
+manual `gh workflow run` step becomes optional (retained as escape hatch
+only). The `fleet-orchestrator` App is a dedicated write-capable identity
+(`contents: write` + `pull_requests: write` + `issues: write` +
+`metadata: read`) **distinct from the narrow read-only `kb-source-monitor`
+App** (`GH_APP_ID` / `GH_APP_PRIVATE_KEY`, used only for CI-5 source
+ingestion — do not widen it). See ADR-036 for the identity-split
+rationale and `docs/mvp-runbook.md` § "Phase 2a `fleet-orchestrator` App
+token" + "Diagnostic checklist when warning appears" for the click-path
 remediation.
 
 **Telemetry note (Issue #311):** the dispatch step's per-task tracker
@@ -276,7 +278,10 @@ the workflow declares only `permissions: contents: write` (not
 spawn normally, and the session→task mapping is written to
 `.fleet/<date>/sessions.json` for offline correlation. Issue #311 will
 add `issues: write` after Issue #310 lands (granting it earlier would
-compound the blast radius of any unfixed Layer 6 issue).
+compound the blast radius of any unfixed Layer 6 issue). When the
+`fleet-orchestrator` App is in use, this telemetry gap closes
+automatically (the App's installation grant already includes
+`issues: write`).
 
 ---
 

@@ -128,7 +128,7 @@ cat > /tmp/create-gh-app.html <<'HTMLEOF'
   "url": "https://github.com/OWNER/REPO",
   "hook_attributes": {"active": false},
   "public": false,
-  "default_permissions": {"contents": "write", "pull_requests": "write", "metadata": "read"},
+  "default_permissions": {"contents": "write", "metadata": "read"},
   "default_events": []
 }' />
 <button type="submit" style="font-size:18px;padding:10px 20px;">
@@ -163,6 +163,61 @@ Clean up the private key file after setting the secret:
 ```bash
 rm ~/Downloads/your-app-name.*.private-key.pem
 rm -f /tmp/create-gh-app.html
+```
+
+### GitHub App for Fleet Orchestration (Issue #310, ADR-036)
+
+Fleet workflows (`fleet-dispatch.yml`, `fleet-merge.yml`, `fleet-dispatch-after-merge.yml`)
+require a **separate** GitHub App — `fleet-orchestrator` — to bypass the
+`GITHUB_TOKEN` downstream-suppression trap (Layer 6: `GITHUB_TOKEN`-authored
+events do not trigger downstream workflows). This App is provisioned ONCE and
+installed on every repo running fleet orchestration.
+
+**Do not widen the source-monitor App above** to fill this role — keep the
+identities (and blast radius) separated.
+
+**Step 1 — Create the app (browser):**
+
+```bash
+cat > /tmp/create-fleet-app.html <<'HTMLEOF'
+<!DOCTYPE html><html><body>
+<form id="f" action="https://github.com/settings/apps/new" method="post">
+<input type="hidden" name="manifest" value='{
+  "name": "fleet-orchestrator",
+  "url": "https://github.com/OWNER/REPO",
+  "hook_attributes": {"active": false},
+  "public": false,
+  "default_permissions": {"contents": "write", "pull_requests": "write", "issues": "write", "metadata": "read"},
+  "default_events": []
+}' />
+<button type="submit" style="font-size:18px;padding:10px 20px;">
+  Create fleet-orchestrator App
+</button>
+</form></body></html>
+HTMLEOF
+open /tmp/create-fleet-app.html
+```
+
+After clicking "Create GitHub App" on GitHub's confirmation page, note the **App ID**.
+
+**Step 2 — Generate a private key (browser):**
+
+On the App's settings page, scroll to "Private keys" and click "Generate a private key."
+
+**Step 3 — Set secrets and install (CLI):**
+
+```bash
+echo "YOUR_FLEET_APP_ID" | gh secret set FLEET_APP_ID
+gh secret set FLEET_APP_PRIVATE_KEY < ~/Downloads/fleet-orchestrator.*.private-key.pem
+
+# Install the app on the repo (browser — one click)
+open "https://github.com/settings/apps/fleet-orchestrator/installations"
+```
+
+Clean up after install:
+```bash
+rm ~/Downloads/fleet-orchestrator.*.private-key.pem
+rm -f /tmp/create-fleet-app.html
 ```
 
 ### Repository Environment

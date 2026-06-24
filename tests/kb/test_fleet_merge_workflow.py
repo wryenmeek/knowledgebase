@@ -392,19 +392,22 @@ class TestFleetDispatchInjectionGuard(_AssertMixin):
         )
 
     def test_phase_2a_creates_github_app_token_when_credentials_exist(self) -> None:
-        """Issue #310: Phase 2a should mint an App token when operator secrets exist."""
+        """Issue #310 / ADR-036: Phase 2a should mint a fleet-orchestrator App token."""
         steps = self.workflow["jobs"]["dispatch"]["steps"]
         detect_step = next((step for step in steps if step.get("id") == "app-token-inputs"), None)
-        self.assertIsNotNone(detect_step, "Phase 2a must detect optional GitHub App credentials")
+        self.assertIsNotNone(detect_step, "Phase 2a must detect fleet-orchestrator App credentials")
         self.assertEqual(detect_step.get("if"), "steps.check.outputs.is_fleet_pr == 'true'")
-        self.assertEqual(detect_step.get("env", {}).get("GH_APP_ID"), "${{ secrets.GH_APP_ID }}")
         self.assertEqual(
-            detect_step.get("env", {}).get("GH_APP_PRIVATE_KEY"),
-            "${{ secrets.GH_APP_PRIVATE_KEY }}",
+            detect_step.get("env", {}).get("FLEET_APP_ID"),
+            "${{ secrets.FLEET_APP_ID }}",
+        )
+        self.assertEqual(
+            detect_step.get("env", {}).get("FLEET_APP_PRIVATE_KEY"),
+            "${{ secrets.FLEET_APP_PRIVATE_KEY }}",
         )
 
         app_token_step = next((step for step in steps if step.get("id") == "app-token"), None)
-        self.assertIsNotNone(app_token_step, "Phase 2a must create a GitHub App token when available")
+        self.assertIsNotNone(app_token_step, "Phase 2a must create a fleet-orchestrator App token when available")
         uses = app_token_step.get("uses", "")
         self.assertIn("actions/create-github-app-token@", uses)
         self.assertNotIn(
@@ -413,10 +416,13 @@ class TestFleetDispatchInjectionGuard(_AssertMixin):
             "actions/create-github-app-token must be pinned by full commit SHA, not version tag",
         )
         self.assertEqual(app_token_step.get("if"), "steps.app-token-inputs.outputs.available == 'true'")
-        self.assertEqual(app_token_step.get("with", {}).get("app-id"), "${{ secrets.GH_APP_ID }}")
+        self.assertEqual(
+            app_token_step.get("with", {}).get("app-id"),
+            "${{ secrets.FLEET_APP_ID }}",
+        )
         self.assertEqual(
             app_token_step.get("with", {}).get("private-key"),
-            "${{ secrets.GH_APP_PRIVATE_KEY }}",
+            "${{ secrets.FLEET_APP_PRIVATE_KEY }}",
         )
 
     def test_phase_2a_auto_merge_prefers_app_token_with_github_token_fallback(self) -> None:

@@ -170,34 +170,35 @@ jobs:
             echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Issue #310: secrets cannot be referenced directly in step `if:`
-      # conditionals, so detect optional GitHub App credentials from
+      # Issue #310 / ADR-036: secrets cannot be referenced directly in step `if:`
+      # conditionals, so detect optional fleet-orchestrator App credentials from
       # step-scoped env first and gate token creation on this output.
-      - name: Detect GitHub App auto-merge credentials
+      - name: Detect fleet-orchestrator App auto-merge credentials
         id: app-token-inputs
         if: steps.check.outputs.is_fleet_pr == 'true'
         env:
-          GH_APP_ID: ${{ secrets.GH_APP_ID }}
-          GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          FLEET_APP_ID: ${{ secrets.FLEET_APP_ID }}
+          FLEET_APP_PRIVATE_KEY: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          if [ -n "$GH_APP_ID" ] && [ -n "$GH_APP_PRIVATE_KEY" ]; then
+          if [ -n "$FLEET_APP_ID" ] && [ -n "$FLEET_APP_PRIVATE_KEY" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Issue #310: App-authored auto-merges should produce normal push events
-      # so Phase 2b can fire automatically. Keep this optional until the
-      # operator provisions GH_APP_ID and GH_APP_PRIVATE_KEY.
-      - name: Create GitHub App token for auto-merge
+      # Issue #310 / ADR-036: App-authored auto-merges produce normal push events
+      # so Phase 2b can fire automatically. Uses the dedicated `fleet-orchestrator`
+      # App (FLEET_APP_ID / FLEET_APP_PRIVATE_KEY) — NOT the narrow read-only
+      # kb-source-monitor App (GH_APP_ID / GH_APP_PRIVATE_KEY).
+      - name: Create fleet-orchestrator App token for auto-merge
         id: app-token
         if: steps.app-token-inputs.outputs.available == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         continue-on-error: true
         with:
-          app-id: ${{ secrets.GH_APP_ID }}
-          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.FLEET_APP_ID }}
+          private-key: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
 
@@ -212,22 +213,21 @@ jobs:
           set -euo pipefail
           if [ "$APP_TOKEN_AVAILABLE" = "true" ] && [ "$APP_TOKEN_CREATED" = "true" ]; then
             TOKEN_MODE="github_app"
-            echo "✅ Issue #310: using GitHub App installation token for planning PR auto-merge."
+            echo "✅ Issue #310: using fleet-orchestrator App installation token for planning PR auto-merge."
           elif [ "$APP_TOKEN_AVAILABLE" = "true" ] && [ "$APP_TOKEN_CREATED" != "true" ]; then
-            # Issue #310: secrets are configured but the App-token creation
-            # step failed. The most common cause is missing installation
-            # permissions on the App (the action defaults request
-            # contents:write + pull-requests:write). See the previous step's
-            # log for the specific HTTP status (typically 422 "permissions
-            # requested are not granted to this installation").
+            # Issue #310 / ADR-036: FLEET_APP_* secrets are configured but the
+            # App-token creation step failed. See the previous step's log for the
+            # specific HTTP status (typically 422 "permissions requested are not
+            # granted to this installation").
             TOKEN_MODE="github_token"
-            echo "::warning title=Issue #310 GitHub App token creation failed::App secrets are present but \`actions/create-github-app-token\` returned an error (see previous step log for the exact status and message). For status 422 \"permissions requested are not granted\", grant the App \`contents:write\` + \`pull-requests:write\` at Settings → Developer settings → GitHub Apps → your-app → Permissions & events (edit) AND re-accept the installation at Settings → Developer settings → GitHub Apps → your-app → Install App → wryenmeek → Configure (re-accept). Falling back to GITHUB_TOKEN — Layer 6 push-trigger suppression persists until the App token succeeds."
+            echo "::warning title=Issue #310 fleet-orchestrator App token creation failed::FLEET_APP_* secrets are present but \`actions/create-github-app-token\` returned an error (see previous step log for the exact status and message). For status 422 \"permissions requested are not granted\", grant the fleet-orchestrator App \`contents:write\` + \`pull-requests:write\` + \`issues:write\` at Settings → Developer settings → GitHub Apps → fleet-orchestrator → Permissions & events AND re-accept the installation at Settings → Developer settings → GitHub Apps → fleet-orchestrator → Install App → wryenmeek → Configure. Do NOT widen the kb-source-monitor App. Falling back to GITHUB_TOKEN — Layer 6 push-trigger suppression persists until the App token succeeds."
           else
-            # Issue #310: App secrets are not configured. Operator must
-            # provision a GitHub App with contents:write + pull-requests:write
-            # and store its ID + private-key PEM as repo secrets.
+            # Issue #310 / ADR-036: fleet-orchestrator App secrets are not configured.
+            # Operator must provision the App and store its ID + private-key PEM as
+            # FLEET_APP_ID and FLEET_APP_PRIVATE_KEY. See the one-click manifest in
+            # raw/inbox/cloneable-template.md § GitHub App for Fleet Orchestration.
             TOKEN_MODE="github_token"
-            echo "::warning title=Issue #310 GitHub App secrets not configured::No GH_APP_ID/GH_APP_PRIVATE_KEY secrets found. Provision a GitHub App with contents:write + pull-requests:write on this repo and store its ID + private-key PEM as repo secrets to enable Phase 2b push-trigger auto-dispatch. Falling back to GITHUB_TOKEN — Layer 6 push-trigger suppression persists."
+            echo "::warning title=Issue #310 fleet-orchestrator App secrets not configured::No FLEET_APP_ID/FLEET_APP_PRIVATE_KEY secrets found. Provision the fleet-orchestrator GitHub App (one-click manifest in raw/inbox/cloneable-template.md § GitHub App for Fleet Orchestration) with contents:write + pull-requests:write + issues:write + metadata:read on this repo and store its ID + private-key PEM as FLEET_APP_ID and FLEET_APP_PRIVATE_KEY repository secrets to enable Phase 2b push-trigger auto-dispatch. Falling back to GITHUB_TOKEN — Layer 6 push-trigger suppression persists."
           fi
           # --auto queues the merge so it happens after all branch-protection
           # required checks pass (notably CI-2 diagnostics). This avoids the
@@ -236,7 +236,8 @@ jobs:
           # picks up from the `push` event when the merge eventually lands.
           gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
           if [ "$TOKEN_MODE" = "github_app" ]; then
-            echo "✅ Planning PR #$PR_NUMBER queued with GitHub App token. Phase 2b should dispatch once merge lands."
+            echo "✅ Planning PR #$PR_NUMBER queued with fleet-orchestrator App token. Phase 2b should dispatch once merge lands."
           else
             echo "✅ Planning PR #$PR_NUMBER queued with GITHUB_TOKEN fallback. Use the Phase 2b workflow_dispatch escape hatch if no push-triggered run appears."
           fi
+
