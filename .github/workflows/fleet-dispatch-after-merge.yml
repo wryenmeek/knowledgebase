@@ -46,13 +46,11 @@
 #   - `workflow_dispatch` is the operator escape hatch. It exists because
 #     GitHub suppresses `push` event workflow runs when the push was
 #     authored by GITHUB_TOKEN (e.g., Phase 2a's `gh pr merge --auto` from
-#     within Actions). Phase 2b therefore won't auto-fire on every
-#     planning-PR merge until Phase 2a switches to a non-GITHUB_TOKEN
-#     identity (GitHub App token recommended — see Issue #310, Layer 6).
-#     Until then, an operator runs `gh workflow run
-#     fleet-dispatch-after-merge.yml --ref main` after the planning PR
-#     auto-merges, and the same detect/cross-check/dispatch path runs as
-#     for a normal push.
+#     within Actions). With the fleet-orchestrator App provisioned (Issue
+#     #310 / ADR-036, FLEET_APP_ID/FLEET_APP_PRIVATE_KEY), Phase 2a now
+#     authors merges as `fleet-orchestrator[bot]`, so push events fire
+#     normally and this escape hatch is rarely needed. It remains available
+#     for the unconfigured-App fallback case and for operator recovery.
 name: Fleet Dispatch After Merge
 
 on:
@@ -285,12 +283,45 @@ jobs:
         working-directory: scripts/fleet
         run: bun install
 
+      # Issue #310 / ADR-036: detect fleet-orchestrator App credentials so
+      # per-task tracker comments author as fleet-orchestrator[bot] and use
+      # the App's installation grant (which includes issues: write — closes
+      # Issue #311 permission gap on this surface).
+      - name: Detect fleet-orchestrator App credentials
+        id: app-token-inputs
+        if: steps.session.outputs.have_session == 'true'
+        env:
+          FLEET_APP_ID: ${{ secrets.FLEET_APP_ID }}
+          FLEET_APP_PRIVATE_KEY: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "$FLEET_APP_ID" ] && [ -n "$FLEET_APP_PRIVATE_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create fleet-orchestrator App token
+        id: app-token
+        if: steps.session.outputs.have_session == 'true' && steps.app-token-inputs.outputs.available == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.FLEET_APP_ID }}
+          private-key: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
       - name: Dispatch task sessions
         if: steps.session.outputs.have_session == 'true'
         working-directory: scripts/fleet
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Issue #310 / ADR-036: prefer fleet-orchestrator App token for
+          # unified bot identity on per-task tracker comments; fall back to
+          # GITHUB_TOKEN when the App is not provisioned.
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           # SECURITY: pending_base (→ FLEET_BASE_BRANCH) originates from the
           # unprotected fleet-state branch. Use env-var indirection (same as
           # FLEET_PENDING_DATE) so GitHub Actions does not expand it before the

@@ -380,7 +380,7 @@ When dispatching research or explore subagents, instruct them to verify every st
 
 ### GitHub Actions secrets: `GITHUB_` prefix is banned <!-- pragma: allowlist secret -->
 
-GitHub forbids repository secrets with the `GITHUB_` prefix (HTTP 422). Use `GH_APP_ID` / `GH_APP_PRIVATE_KEY` for GitHub App credentials. Workflow YAML must reference `secrets.GH_APP_*`, not `secrets.GITHUB_APP_*`. This also applies to environment secrets. <!-- pragma: allowlist secret -->
+GitHub forbids repository secrets with the `GITHUB_` prefix (HTTP 422). For GitHub App credentials, use purpose-prefixed names per ADR-036 multi-App pattern: `<PURPOSE>_APP_ID` / `<PURPOSE>_APP_PRIVATE_KEY`. Active examples in this repo: `FLEET_APP_ID` / `FLEET_APP_PRIVATE_KEY` (fleet-orchestrator App for Phase 2a/2b/3 auto-merge per ADR-036) and `GH_APP_ID` / `GH_APP_PRIVATE_KEY` (kb-source-monitor App for CI-5 source ingestion; legacy unprefixed name retained for historical compatibility). Workflow YAML must reference `secrets.<PURPOSE>_APP_*` exactly — never `secrets.GITHUB_APP_*`. This also applies to environment secrets. <!-- pragma: allowlist secret -->
 
 ### GitHub Actions shell injection guard
 
@@ -434,7 +434,7 @@ Use `workflow_run` (trigger on a named workflow completing) not `check_suite: co
 
 GitHub Actions intentionally suppresses workflow runs for events created by the default `GITHUB_TOKEN` — except `workflow_dispatch` and `repository_dispatch`. Applies to `push`, `pull_request`, `check_suite`, `issue_comment`, etc. So a pipeline where workflow A pushes to `main` via `GITHUB_TOKEN` and expects workflow B to fire on the resulting push will **silently no-op**.
 
-**Fixes (in order of preference):** (1) GitHub App installation token via `actions/create-github-app-token` with `GH_APP_ID`/`GH_APP_PRIVATE_KEY` secrets — App-token pushes fire downstream workflows normally; (2) `workflow_dispatch` escape hatch with a fail-closed re-detection path that does not rely on `HEAD~1` diff; (3) `workflow_run` chaining (already preferred over `check_suite`). Canonical incident: Issue #310 (fleet Phase 2a→2b handoff, 2026-06-20).
+**Fixes (in order of preference):** (1) GitHub App installation token via `actions/create-github-app-token` with purpose-prefixed `<PURPOSE>_APP_ID`/`<PURPOSE>_APP_PRIVATE_KEY` secrets (per ADR-036 — e.g., fleet uses `FLEET_APP_ID`/`FLEET_APP_PRIVATE_KEY`, never widen the read-only `kb-source-monitor` App) — App-token pushes fire downstream workflows normally; (2) `workflow_dispatch` escape hatch with a fail-closed re-detection path that does not rely on `HEAD~1` diff; (3) `workflow_run` chaining (already preferred over `check_suite`). Canonical incident: Issue #310 (fleet Phase 2a→2b handoff, 2026-06-20).
 
 ## Interactive-only skills (autopilot guard)
 
