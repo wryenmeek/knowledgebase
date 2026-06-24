@@ -44,3 +44,7 @@
 ## 2026-06-25 - [Performance] Avoid intermediate set allocation in missing keys check
 **Learning:** When computing the difference between a set and a dictionary's keys to check for missing required fields, `required - set(my_dict)` or `required - set(my_dict.keys())` creates an unnecessary `O(N)` set object in memory.
 **Action:** Use dictionary view set operations or natively implemented set methods, such as `required.difference(my_dict)` or `required.difference(my_dict.keys())` to achieve better performance and eliminate redundant allocations.
+
+## 2026-06-24 - [Performance] Removing O(N) splitlines() array allocation for multi-line extraction
+**Learning:** Using `splitlines()` on multiline text blocks (e.g. Markdown bodies) unconditionally tokenizes the entire string into an $O(N)$ memory array, creating unnecessary allocations and garbage collection overhead. Extracting headings with a `while` loop over string slices delimited by `.find('\n')` entirely eliminates this memory spike (true $O(1)$) and processes substantially faster, especially when combining slicing with early-out heuristics before applying regex matching.
+**Action:** Avoid `splitlines()` on document bodies. Use `.find('\n')` to stream through large strings safely with minimal allocation overhead.
