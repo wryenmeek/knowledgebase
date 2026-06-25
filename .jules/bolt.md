@@ -41,3 +41,4 @@
 ## 2026-06-25 - [Performance] Optimized Python String Slicing vs splitlines()
 **Learning:** Using `text.splitlines()` on large text strings creates a heavy memory footprint by tokenizing strings into `O(N)` arrays. For fast-path validation like extracting frontmatter delimiters or stripping metadata, isolating subsets of strings with `.find('\n')` achieves `O(1)` space allocation. Furthermore, calling `.lstrip()` or `.partition()` on large, untokenized strings will create full-sized string object copies under the hood.
 **Action:** When validating single lines in a large text document, use `newline_pos = text.find('\n')` and slice `text[:newline_pos]` before applying fast-path methods like `.lstrip()` or `.startswith()`.
+**Action:** Use `my_set.difference(my_dict)` instead, which natively avoids the O(N) memory overhead of allocating an intermediate set object.

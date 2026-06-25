@@ -504,7 +504,8 @@ def _validate_batches(raw_batches: Any) -> list[str]:
         if not isinstance(batch, dict):
             errors.append(f"batches[{index}] must be an object")
             continue
-        missing = required_fields - set(batch)
+        # OPTIMIZATION: Use .difference() instead of - set() to avoid O(N) set allocation
+        missing = required_fields.difference(batch)
         for field in sorted(missing):
             errors.append(f"batches[{index}].{field} is required")
         batch_id = batch.get("batch_id")
@@ -565,7 +566,8 @@ def _validate_items(raw_items: Any, repo_root: Path) -> list[str]:
         if not isinstance(item, dict):
             errors.append(f"items[{index}] must be an object")
             continue
-        missing = required_fields - set(item)
+        # OPTIMIZATION: Use .difference() instead of - set() to avoid O(N) set allocation
+        missing = required_fields.difference(item)
         for field in sorted(missing):
             errors.append(f"items[{index}].{field} is required")
         key = item.get("item_key")
