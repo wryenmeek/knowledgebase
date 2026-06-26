@@ -48,3 +48,7 @@
 ## 2026-06-24 - [Performance] Removing O(N) splitlines() array allocation for multi-line extraction
 **Learning:** Using `splitlines()` on multiline text blocks (e.g. Markdown bodies) unconditionally tokenizes the entire string into an $O(N)$ memory array, creating unnecessary allocations and garbage collection overhead. Extracting headings with a `while` loop over string slices delimited by `.find('\n')` entirely eliminates this memory spike (true $O(1)$) and processes substantially faster, especially when combining slicing with early-out heuristics before applying regex matching.
 **Action:** Avoid `splitlines()` on document bodies. Use `.find('\n')` to stream through large strings safely with minimal allocation overhead.
+
+## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
+**Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
+**Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.

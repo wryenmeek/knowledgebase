@@ -585,7 +585,8 @@ def validate_drive_source_payload(payload: Mapping[str, Any]) -> DriveSourceUpda
         "delivery_id",
         "observed_at",
     }
-    extra_fields = sorted(set(payload.keys()) - expected_fields)
+    # ⚡ Bolt: Use dict view set operations to avoid intermediate set creation
+    extra_fields = sorted(payload.keys() - expected_fields)
     if extra_fields:
         raise RelayValidationError(
             f"payload contains unexpected field(s): {', '.join(extra_fields)}"
