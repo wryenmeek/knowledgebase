@@ -168,13 +168,20 @@ rm -f /tmp/create-gh-app.html
 ### GitHub App for Fleet Orchestration (Issue #310, ADR-036)
 
 Fleet workflows (`fleet-dispatch.yml`, `fleet-merge.yml`, `fleet-dispatch-after-merge.yml`)
-require a **separate** GitHub App — `fleet-orchestrator` — to bypass the
+require a **separate** GitHub App — `<owner>-fleet-orchestrator` — to bypass the
 `GITHUB_TOKEN` downstream-suppression trap (Layer 6: `GITHUB_TOKEN`-authored
 events do not trigger downstream workflows). This App is provisioned ONCE and
 installed on every repo running fleet orchestration.
 
 **Do not widen the source-monitor App above** to fill this role — keep the
 identities (and blast radius) separated.
+
+**Owner-prefix substitution required.** GitHub App slugs are globally unique
+across all of GitHub. Before submitting the manifest below, replace
+`YOUR-OWNER` with your GitHub username or org name (lowercased; e.g.,
+`wryenmeek-fleet-orchestrator`). The substituted slug then propagates into
+the install URL and the downloaded private-key filename — the
+`FLEET_APP_ID` / `FLEET_APP_PRIVATE_KEY` secret names DO NOT change.
 
 **Step 1 — Create the app (browser):**
 
@@ -183,7 +190,7 @@ cat > /tmp/create-fleet-app.html <<'HTMLEOF'
 <!DOCTYPE html><html><body>
 <form id="f" action="https://github.com/settings/apps/new" method="post">
 <input type="hidden" name="manifest" value='{
-  "name": "fleet-orchestrator",
+  "name": "YOUR-OWNER-fleet-orchestrator",
   "url": "https://github.com/OWNER/REPO",
   "hook_attributes": {"active": false},
   "public": false,
@@ -208,15 +215,15 @@ On the App's settings page, scroll to "Private keys" and click "Generate a priva
 
 ```bash
 echo "YOUR_FLEET_APP_ID" | gh secret set FLEET_APP_ID
-gh secret set FLEET_APP_PRIVATE_KEY < ~/Downloads/fleet-orchestrator.*.private-key.pem
+gh secret set FLEET_APP_PRIVATE_KEY < ~/Downloads/<your-owner>-fleet-orchestrator.*.private-key.pem
 
 # Install the app on the repo (browser — one click)
-open "https://github.com/settings/apps/fleet-orchestrator/installations"
+open "https://github.com/settings/apps/<your-owner>-fleet-orchestrator/installations"
 ```
 
 Clean up after install:
 ```bash
-rm ~/Downloads/fleet-orchestrator.*.private-key.pem
+rm ~/Downloads/<your-owner>-fleet-orchestrator.*.private-key.pem
 rm -f /tmp/create-fleet-app.html
 ```
 
