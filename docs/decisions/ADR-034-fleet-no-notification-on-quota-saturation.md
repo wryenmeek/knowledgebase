@@ -68,7 +68,7 @@ if the canary/log visibility channels prove insufficient in production.
 
 ## References
 
-- `repo://wryenmeek/hot-springs-island/docs/decisions/ADR-029-fleet-dispatch-quota-saturation-exit-code.md@<pin SHA at port time>`
+- `repo://wryenmeek/hot-springs-island/docs/decisions/ADR-029-fleet-dispatch-quota-saturation-exit-code.md@affffd1b53a0b84d84fd17fcbaa246b1dcce46c2#asset?sha256=73021ac67c12410fdff59e09119d4227a06f2fd5ca8628ff95ff30cea5b554ad`
 - Issue #349
 - Issue #350
 - `scripts/fleet/_fleet_output.ts`

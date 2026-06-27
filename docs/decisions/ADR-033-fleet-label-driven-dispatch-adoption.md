@@ -89,7 +89,7 @@ local behavior should change.
 
 ## References
 
-- `repo://wryenmeek/hot-springs-island/docs/decisions/ADR-030-fleet-label-driven-dispatch.md@<pin SHA at port time>`
+- `repo://wryenmeek/hot-springs-island/docs/decisions/ADR-030-fleet-label-driven-dispatch.md@8e125919652bc10ad0a27e9ea1f0837134f67c93#asset?sha256=2de357a09057a3aa3def436c13b8e65a769a653bd189362f447eb86b14a3f3e5`
 - Issue #350
 - Issue #348
 - `scripts/fleet/fleet-plan.ts`
