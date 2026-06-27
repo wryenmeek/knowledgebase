@@ -20,3 +20,7 @@
 **Vulnerability:** Use of weak MD5 hash without `usedforsecurity=False`.
 **Learning:** `hashlib.md5()` triggers `bandit` scanners and FIPS enforcement unless explicitly marked as non-security related.
 **Prevention:** Always pass `usedforsecurity=False` when using MD5 for checksums or versioning to suppress false positives and ensure compatibility in strict environments.
+## 2026-06-27 - [Fix Bandit Alert for MD5 Usage in tests]
+**Vulnerability:** Use of weak MD5 hash without `usedforsecurity=False` in `tests/drive_monitor/test_fetch_content.py` and `tests/kb/test_audit_workspace_friction_queries.py`.
+**Learning:** `hashlib.md5()` triggers `bandit` scanners and FIPS enforcement unless explicitly marked as non-security related, even in test files.
+**Prevention:** Always pass `usedforsecurity=False` when using MD5 for checksums, mock fingerprints, or versioning to suppress false positives and ensure compatibility in strict environments.
