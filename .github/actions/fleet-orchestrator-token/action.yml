@@ -1,0 +1,127 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# .github/actions/fleet-orchestrator-token/action.yml
+#
+# Composite action that mints a fleet-orchestrator GitHub App installation
+# token with token-level permission narrowing (ADR-036). Extracted from PR
+# #381's 4 near-duplicate detect+mint blocks across the fleet workflows per
+# issue #385.
+#
+# Used by fleet workflows that need to bypass the GITHUB_TOKEN downstream-
+# suppression trap (Issue #310 / Layer 6). Workflows that only open PRs
+# (HITL-reviewed) MUST NOT invoke this — see fleet-plan.yml /
+# fleet-submit-prs.yml which stay on GITHUB_TOKEN per ADR-036 § Decision.
+#
+# Caller pattern:
+#   - name: Mint fleet-orchestrator App token
+#     id: app-token
+#     if: <caller-specific gate>
+#     uses: ./.github/actions/fleet-orchestrator-token
+#     with:
+#       app-id: ${{ secrets.FLEET_APP_ID }}
+#       private-key: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
+#       permission-contents: write
+#       permission-pull-requests: write    # OR permission-issues: write
+#
+# Downstream consumer:
+#   env:
+#     GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+#     APP_TOKEN_AVAILABLE: ${{ steps.app-token.outputs.available }}
+#     APP_TOKEN_CREATED: ${{ steps.app-token.outputs.token != '' }}
+#
+# Composite-action limitation: secrets.* cannot be referenced from inside
+# action.yml — the caller passes them via `with:` inputs. The action then
+# reads them via inputs.app-id / inputs.private-key.
+name: Fleet orchestrator App token (ADR-036)
+description: |
+  Detect fleet-orchestrator App credentials and mint an installation token
+  with token-level permission narrowing per ADR-036 § Decision.
+
+inputs:
+  app-id:
+    description: |
+      FLEET_APP_ID secret value. Caller passes ${{ secrets.FLEET_APP_ID }}.
+    required: true
+  private-key:
+    description: |
+      FLEET_APP_PRIVATE_KEY secret value. Caller passes
+      ${{ secrets.FLEET_APP_PRIVATE_KEY }}.
+    required: true
+  permission-contents:
+    description: |
+      Scope for `contents` permission (read/write). Defaults to `write` for
+      fleet mutation paths (Phase 2a / 2b / 3 all need contents:write).
+    required: false
+    default: write
+  permission-pull-requests:
+    description: |
+      Scope for `pull_requests` permission. Pass empty string (default) to
+      omit — phase 2b uses issues:write instead.
+    required: false
+    default: ''
+  permission-issues:
+    description: |
+      Scope for `issues` permission. Pass empty string (default) to omit —
+      only Phase 2b (per-task tracker comments) needs issues:write.
+    required: false
+    default: ''
+
+outputs:
+  token:
+    description: |
+      App installation token. Empty string when secrets absent OR when the
+      mint step failed (continue-on-error). Caller falls back via
+      `${{ steps.<id>.outputs.token || secrets.GITHUB_TOKEN }}`.
+    value: ${{ steps.app-token.outputs.token }}
+  available:
+    description: |
+      'true' when both FLEET_APP_* inputs are non-empty (secrets configured);
+      'false' otherwise. Distinct from `token != ''`: `available == 'true'`
+      with empty `token` means secrets present but mint failed (HTTP 422
+      typically) — caller should surface a different warning class.
+    value: ${{ steps.detect.outputs.available }}
+
+runs:
+  using: composite
+  steps:
+    # Detect whether FLEET_APP_* inputs are non-empty. Avoids invoking the
+    # mint action when secrets are absent (saves an API call + a noisy
+    # error log line).
+    - id: detect
+      shell: bash
+      env:
+        FLEET_APP_ID: ${{ inputs.app-id }}
+        FLEET_APP_PRIVATE_KEY: ${{ inputs.private-key }}
+      run: |
+        set -euo pipefail
+        if [ -n "$FLEET_APP_ID" ] && [ -n "$FLEET_APP_PRIVATE_KEY" ]; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "available=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    # Mint the token. continue-on-error is load-bearing: callers fall back
+    # to GITHUB_TOKEN via `${{ steps.<id>.outputs.token || secrets.GITHUB_TOKEN }}`.
+    # SHA pin per ADR-036 (v3.2.0 supports permission-* token-level narrowing).
+    - id: app-token
+      if: steps.detect.outputs.available == 'true'
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      continue-on-error: true
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        permission-contents: ${{ inputs.permission-contents }}
+        permission-pull-requests: ${{ inputs.permission-pull-requests }}
+        permission-issues: ${{ inputs.permission-issues }}

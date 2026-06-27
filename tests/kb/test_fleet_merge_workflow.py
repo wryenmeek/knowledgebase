@@ -392,41 +392,58 @@ class TestFleetDispatchInjectionGuard(_AssertMixin):
         )
 
     def test_phase_2a_creates_github_app_token_when_credentials_exist(self) -> None:
-        """Issue #310 / ADR-036: Phase 2a should mint a fleet-orchestrator App token."""
-        steps = self.workflow["jobs"]["dispatch"]["steps"]
-        detect_step = next((step for step in steps if step.get("id") == "app-token-inputs"), None)
-        self.assertIsNotNone(detect_step, "Phase 2a must detect fleet-orchestrator App credentials")
-        self.assertEqual(detect_step.get("if"), "steps.check.outputs.is_fleet_pr == 'true'")
-        self.assertEqual(
-            detect_step.get("env", {}).get("FLEET_APP_ID"),
-            "${{ secrets.FLEET_APP_ID }}",
-        )
-        self.assertEqual(
-            detect_step.get("env", {}).get("FLEET_APP_PRIVATE_KEY"),
-            "${{ secrets.FLEET_APP_PRIVATE_KEY }}",
-        )
+        """Issue #310 / ADR-036 / Issue #385: Phase 2a should mint a fleet-orchestrator App token.
 
-        app_token_step = next((step for step in steps if step.get("id") == "app-token"), None)
-        self.assertIsNotNone(app_token_step, "Phase 2a must create a fleet-orchestrator App token when available")
-        uses = app_token_step.get("uses", "")
-        self.assertIn("actions/create-github-app-token@", uses)
-        self.assertNotIn(
-            "@v",
-            uses,
-            "actions/create-github-app-token must be pinned by full commit SHA, not version tag",
+        Updated post-#385: detect+mint were extracted into the
+        `.github/actions/fleet-orchestrator-token` composite action. Phase 2a
+        now invokes the composite via a single `uses:` step with `id: app-token`.
+        """
+        steps = self.workflow["jobs"]["dispatch"]["steps"]
+        composite_invocation = next(
+            (
+                step
+                for step in steps
+                if step.get("uses") == "./.github/actions/fleet-orchestrator-token"
+            ),
+            None,
         )
-        self.assertEqual(app_token_step.get("if"), "steps.app-token-inputs.outputs.available == 'true'")
+        self.assertIsNotNone(
+            composite_invocation,
+            "Phase 2a must invoke the fleet-orchestrator-token composite action per #385",
+        )
         self.assertEqual(
-            app_token_step.get("with", {}).get("app-id"),
+            composite_invocation.get("id"),
+            "app-token",
+            "composite invocation must have id: app-token so downstream "
+            "`steps.app-token.outputs.*` references resolve",
+        )
+        self.assertEqual(
+            composite_invocation.get("if"),
+            "steps.check.outputs.is_fleet_pr == 'true'",
+            "composite invocation must gate on is_fleet_pr (only minted when a "
+            "Jules planning PR is being processed)",
+        )
+        self.assertEqual(
+            composite_invocation.get("with", {}).get("app-id"),
             "${{ secrets.FLEET_APP_ID }}",
         )
         self.assertEqual(
-            app_token_step.get("with", {}).get("private-key"),
+            composite_invocation.get("with", {}).get("private-key"),
             "${{ secrets.FLEET_APP_PRIVATE_KEY }}",
         )
+        # The SHA pin lives inside the composite action (single source of
+        # truth). This test no longer asserts the pin here; the per-workflow
+        # contract is now "use the composite", and the composite owns the pin.
+        # See test_composite_action_pins_create_github_app_token_v3 in
+        # tests/kb/test_fleet_dispatch_app_token_diagnostics.py.
 
     def test_phase_2a_auto_merge_prefers_app_token_with_github_token_fallback(self) -> None:
-        """Issue #310: auto-merge should use App token output when present."""
+        """Issue #310: auto-merge should use App token output when present.
+
+        Updated post-#385: APP_TOKEN_AVAILABLE now binds to the composite
+        action's `available` output (`steps.app-token.outputs.available`),
+        not the pre-#385 separate detect step (`steps.app-token-inputs.outputs.available`).
+        """
         steps = self.workflow["jobs"]["dispatch"]["steps"]
         auto_merge_step = next(
             (step for step in steps if step.get("name") == "Queue auto-merge of planning PR"),
@@ -441,7 +458,7 @@ class TestFleetDispatchInjectionGuard(_AssertMixin):
         )
         self.assertEqual(
             env.get("APP_TOKEN_AVAILABLE"),
-            "${{ steps.app-token-inputs.outputs.available }}",
+            "${{ steps.app-token.outputs.available }}",
         )
         run = auto_merge_step.get("run", "")
         self.assertIn("::warning", run)

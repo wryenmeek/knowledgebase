@@ -41,6 +41,14 @@ ADR_036_PATH = (
     REPO_ROOT / "docs" / "decisions" / "ADR-036-fleet-orchestrator-github-app-identity.md"
 )
 CLONEABLE_TEMPLATE_PATH = REPO_ROOT / "raw" / "inbox" / "cloneable-template.md"
+COMPOSITE_ACTION_PATH = (
+    REPO_ROOT / ".github" / "actions" / "fleet-orchestrator-token" / "action.yml"
+)
+
+# Per #385: callers reference the composite action by relative path. Lock this
+# string so a regression that drops the leading `./` (which would change
+# resolution semantics) is caught.
+COMPOSITE_ACTION_USES = "./.github/actions/fleet-orchestrator-token"
 
 # Exact operator-grep target — the runbook tells operators to grep for this
 # string after Phase 2a to confirm the App token path activated. If the
@@ -186,83 +194,211 @@ def test_fleet_readonly_workflows_stay_on_github_token(
         f"{workflow_name} must NOT mint a fleet App token — it only opens HITL-reviewed "
         f"PRs and stays on the default GITHUB_TOKEN per ADR-036 § Decision"
     )
+    # Per #385 review (P2): the composite-action extraction means a regression
+    # that invokes the composite from a read-only workflow would slip past the
+    # `actions/create-github-app-token` substring check above (the composite
+    # encapsulates the inner action). Explicitly assert composite-not-invoked.
+    assert COMPOSITE_ACTION_USES not in workflow_text, (
+        f"{workflow_name} must NOT invoke the fleet-orchestrator-token composite action "
+        f"({COMPOSITE_ACTION_USES}) — it only opens HITL-reviewed PRs and stays on "
+        f"GITHUB_TOKEN per ADR-036 § Decision"
+    )
 
 
 # ── ADR-036: per-workflow App-token contract (YAML-parsed, robust) ───────────
 
 
-def _collect_app_token_steps(yaml_doc: dict, workflow_name: str) -> list[tuple[str, dict, dict]]:
-    """Return [(job_name, detect_step, mint_step)] tuples for every job that mints an App token.
+def _collect_app_token_steps(yaml_doc: dict, workflow_name: str) -> list[tuple[str, dict]]:
+    """Return [(job_name, composite_invocation_step)] for every job that mints via the composite.
 
+    Per #385: detect+mint were extracted into the
+    `.github/actions/fleet-orchestrator-token` composite action. Each fleet
+    write workflow now invokes the composite by `uses: ./.github/actions/...`.
     Iterates ALL jobs so multi-job workflows (fleet-merge.yml has both
-    `merge-on-ci-pass` and `manual-sweep`) are not silently missed. Addresses
-    test-engineer F2.
+    `merge-on-ci-pass` and `manual-sweep`) are not silently missed.
+    Addresses test-engineer F2 (preserved across the #385 refactor).
     """
-    pairs: list[tuple[str, dict, dict]] = []
+    invocations: list[tuple[str, dict]] = []
     for job_name, job in yaml_doc.get("jobs", {}).items():
-        steps = job.get("steps", [])
-        detect = next(
-            (s for s in steps if s.get("id") == "app-token-inputs"), None
-        )
-        mint = next((s for s in steps if s.get("id") == "app-token"), None)
-        if detect is not None or mint is not None:
-            assert (
-                detect is not None and mint is not None
-            ), (
-                f"{workflow_name}/{job_name}: detect step (id: app-token-inputs) "
-                f"and mint step (id: app-token) must both exist or neither — "
-                f"one without the other leaves dangling references."
-            )
-            pairs.append((job_name, detect, mint))
-    return pairs
+        for step in job.get("steps", []):
+            if step.get("uses") == COMPOSITE_ACTION_USES:
+                invocations.append((job_name, step))
+    return invocations
 
 
 @pytest.mark.parametrize("workflow_name,workflow_path", FLEET_WRITE_WORKFLOWS.items())
 def test_each_fleet_write_workflow_mints_token_per_job(
     workflow_name: str, workflow_path: Path
 ) -> None:
-    """Every job that performs a write must mint the App token at the job level.
+    """Every job that performs a write must invoke the composite mint action per #385.
 
-    Addresses test-engineer F2: fleet-merge.yml has TWO jobs (merge-on-ci-pass +
-    manual-sweep), each performing writes. Both must mint the token; a regression
-    that drops the step from one job would have passed the old substring-on-whole-file
-    test. This iterates per job.
+    Addresses test-engineer F2 (preserved through #385 refactor):
+    fleet-merge.yml has TWO jobs (merge-on-ci-pass + manual-sweep), each
+    performing writes. Both must invoke the composite; a regression that
+    drops the invocation from one job would have passed the old
+    substring-on-whole-file test. This iterates per job.
     """
     yaml_doc = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-    pairs = _collect_app_token_steps(yaml_doc, workflow_name)
+    invocations = _collect_app_token_steps(yaml_doc, workflow_name)
     expected_min_jobs = {
         "fleet-dispatch.yml": 1,
         "fleet-merge.yml": 2,
         "fleet-dispatch-after-merge.yml": 1,
     }
-    assert len(pairs) >= expected_min_jobs[workflow_name], (
-        f"{workflow_name} must mint App token in at least "
-        f"{expected_min_jobs[workflow_name]} job(s); found {len(pairs)}"
+    assert len(invocations) >= expected_min_jobs[workflow_name], (
+        f"{workflow_name} must invoke the composite mint action in at least "
+        f"{expected_min_jobs[workflow_name]} job(s); found {len(invocations)}"
     )
-    for job_name, detect, mint in pairs:
-        # Detect step: secrets bound via step-scoped env (security: not job-scoped)
-        env = detect.get("env") or {}
-        assert env.get("FLEET_APP_ID") == "${{ secrets.FLEET_APP_ID }}", (
-            f"{workflow_name}/{job_name}: detect step must bind FLEET_APP_ID step-scoped"
-        )
-        assert env.get("FLEET_APP_PRIVATE_KEY") == "${{ secrets.FLEET_APP_PRIVATE_KEY }}", (
-            f"{workflow_name}/{job_name}: detect step must bind FLEET_APP_PRIVATE_KEY step-scoped"
+    for job_name, invocation in invocations:
+        # The composite-invocation step MUST have `id: app-token` so downstream
+        # consumers can reference `steps.app-token.outputs.token` and
+        # `steps.app-token.outputs.available`.
+        assert invocation.get("id") == "app-token", (
+            f"{workflow_name}/{job_name}: composite invocation must have id: app-token "
+            f"so downstream `steps.app-token.outputs.*` references resolve"
         )
 
-        # Mint step: SHA-pinned action; FLEET_APP_* in with:; continue-on-error
-        uses = mint.get("uses", "")
-        sha_match = SHA_PIN_REGEX.match(uses)
-        assert sha_match, (
-            f"{workflow_name}/{job_name}: create-github-app-token must be pinned by 40-char hex SHA; "
-            f"got uses={uses!r}"
+        # The composite path string is locked — a regression to a missing or
+        # incorrect relative path would break resolution at runtime.
+        assert invocation.get("uses") == COMPOSITE_ACTION_USES, (
+            f"{workflow_name}/{job_name}: composite must be invoked by exact path "
+            f"`{COMPOSITE_ACTION_USES}`; got {invocation.get('uses')!r}"
         )
-        assert mint.get("continue-on-error") is True, (
-            f"{workflow_name}/{job_name}: mint step must continue-on-error: true so the "
-            f"|| GITHUB_TOKEN fallback can engage"
+
+        # The caller MUST pass FLEET_APP_* via `with:` (composite-action
+        # limitation: secrets.* cannot be read from inside action.yml).
+        with_block = invocation.get("with") or {}
+        assert with_block.get("app-id") == "${{ secrets.FLEET_APP_ID }}", (
+            f"{workflow_name}/{job_name}: composite must receive app-id from "
+            f"secrets.FLEET_APP_ID; got {with_block.get('app-id')!r}"
         )
-        with_block = mint.get("with") or {}
-        assert with_block.get("app-id") == "${{ secrets.FLEET_APP_ID }}"
-        assert with_block.get("private-key") == "${{ secrets.FLEET_APP_PRIVATE_KEY }}"
+        assert with_block.get("private-key") == "${{ secrets.FLEET_APP_PRIVATE_KEY }}", (
+            f"{workflow_name}/{job_name}: composite must receive private-key from "
+            f"secrets.FLEET_APP_PRIVATE_KEY; got {with_block.get('private-key')!r}"
+        )
+
+
+# ── #385: composite-action contract (single source of truth for mint logic) ──
+
+
+@pytest.fixture(scope="module")
+def composite_action_doc() -> dict:
+    return yaml.safe_load(COMPOSITE_ACTION_PATH.read_text(encoding="utf-8"))
+
+
+def test_composite_action_pins_create_github_app_token_v3(composite_action_doc: dict) -> None:
+    """The composite mint step MUST pin actions/create-github-app-token by SHA per ADR-036.
+
+    Per #385: the single source of truth for the mint pin is now the composite
+    action. A regression that loosens the pin (e.g., to `@v3`) widens supply-chain
+    exposure across all 3 fleet workflows simultaneously.
+    """
+    steps = composite_action_doc["runs"]["steps"]
+    mint = next((s for s in steps if s.get("id") == "app-token"), None)
+    assert mint is not None, "composite action must contain a step with id: app-token"
+    uses = mint.get("uses", "")
+    sha_match = SHA_PIN_REGEX.match(uses)
+    assert sha_match, (
+        f"composite mint step must be SHA-pinned; got uses={uses!r}"
+    )
+    # bcd2ba49218906704ab6c1aa796996da409d3eb1 == v3.2.0 (first release with permission-*)
+    assert "bcd2ba49218906704ab6c1aa796996da409d3eb1" in uses, (
+        "composite mint step must pin v3.2.0 (bcd2ba49...) — earlier v1/v2 "
+        "pins lack the permission-* token-level narrowing inputs per ADR-036"
+    )
+
+
+def test_composite_action_mint_step_continue_on_error(composite_action_doc: dict) -> None:
+    """Composite mint step MUST continue-on-error so callers can fall back to GITHUB_TOKEN.
+
+    Per #385: the load-bearing continue-on-error semantic from the original
+    inlined mint blocks is preserved by the composite. A regression that
+    drops it would cause Phase 2a/2b/3 to hard-fail on App misconfiguration
+    instead of falling back to GITHUB_TOKEN with a warning.
+    """
+    steps = composite_action_doc["runs"]["steps"]
+    mint = next((s for s in steps if s.get("id") == "app-token"), None)
+    assert mint is not None
+    assert mint.get("continue-on-error") is True, (
+        "composite mint step must continue-on-error: true so the "
+        "|| GITHUB_TOKEN fallback at caller sites can engage"
+    )
+
+
+def test_composite_action_detect_step_uses_step_scoped_env(composite_action_doc: dict) -> None:
+    """Composite detect step MUST bind FLEET_APP_* via step-scoped env, not workflow-level.
+
+    Per #385: preserves the security invariant from the original inlined
+    detect blocks (FLEET_APP_* never escapes to other steps via job-level
+    env binding).
+    """
+    steps = composite_action_doc["runs"]["steps"]
+    detect = next((s for s in steps if s.get("id") == "detect"), None)
+    assert detect is not None, "composite action must contain a step with id: detect"
+    env = detect.get("env") or {}
+    assert env.get("FLEET_APP_ID") == "${{ inputs.app-id }}", (
+        "composite detect step must bind FLEET_APP_ID from inputs.app-id (step-scoped)"
+    )
+    assert env.get("FLEET_APP_PRIVATE_KEY") == "${{ inputs.private-key }}", (
+        "composite detect step must bind FLEET_APP_PRIVATE_KEY from inputs.private-key "
+        "(step-scoped)"
+    )
+
+
+def test_composite_action_declares_using_composite(composite_action_doc: dict) -> None:
+    """Composite action MUST declare `using: composite` per #385 review (P2).
+
+    Without `using: composite`, GitHub Actions rejects the action at runtime
+    (it would be parsed as an unknown action type). `actionlint` does not lint
+    composite-action YAML, so the test suite is the only line of defense
+    against this regression class.
+    """
+    runs = composite_action_doc.get("runs", {})
+    assert runs.get("using") == "composite", (
+        "composite action must declare `runs.using: composite` so GitHub Actions "
+        "recognizes it as a composite action (not a Docker or JavaScript action). "
+        f"Got runs.using={runs.get('using')!r}"
+    )
+
+
+def test_composite_action_forwards_all_permission_inputs(composite_action_doc: dict) -> None:
+    """Composite mint step MUST forward all permission-* inputs unconditionally per #385 review (P1).
+
+    The composite has 3 permission-* inputs (contents/pull_requests/issues),
+    two of which default to '' (empty string). Empty-string forwarding is
+    safe because actions/create-github-app-token@v3.2.0 explicitly skips
+    falsy permission values in its `getPermissionsFromInputs` helper:
+
+        if (!value) return permissions;  // empty string is falsy → permission skipped
+
+    This test documents the load-bearing dependency on that upstream behavior.
+    If the SHA pin moves (caught by test_composite_action_pins_create_github_app_token_v3
+    above), the empty-string semantic MUST be re-verified against the new
+    upstream source before the bump lands.
+
+    Without this test, a future composite-action refactor could silently widen
+    blast radius if it changed empty-string forwarding to literal forwarding
+    of '' that the new action version interpreted as "request full access".
+    """
+    steps = composite_action_doc["runs"]["steps"]
+    mint = next((s for s in steps if s.get("id") == "app-token"), None)
+    assert mint is not None
+    with_block = mint.get("with") or {}
+    # All 3 permission-* values MUST be forwarded from inputs unconditionally.
+    # No conditional logic (e.g., ${{ inputs.x != '' && ... }}) — the empty-string
+    # default in inputs is the contract, not a runtime branch.
+    assert with_block.get("permission-contents") == "${{ inputs.permission-contents }}", (
+        f"composite mint step must forward permission-contents from inputs unconditionally; "
+        f"got {with_block.get('permission-contents')!r}"
+    )
+    assert with_block.get("permission-pull-requests") == "${{ inputs.permission-pull-requests }}", (
+        f"composite mint step must forward permission-pull-requests from inputs unconditionally; "
+        f"got {with_block.get('permission-pull-requests')!r}"
+    )
+    assert with_block.get("permission-issues") == "${{ inputs.permission-issues }}", (
+        f"composite mint step must forward permission-issues from inputs unconditionally; "
+        f"got {with_block.get('permission-issues')!r}"
+    )
 
 
 # ── ADR-036: token-level least privilege (permission-* contracts) ────────────
@@ -286,51 +422,126 @@ EXPECTED_TOKEN_PERMISSIONS = {
     },
 }
 
+# Per #385 review (P2): caller-side `if:` gates preserve pre-refactor scoping
+# (composite is only invoked when the workflow is actually doing fleet work).
+# Map of {workflow → {job → expected `if:` expression on the composite invocation}}.
+# Use `None` for jobs that intentionally have no `if:` gate (e.g., manual-sweep
+# always runs on workflow_dispatch and gates downstream via PR enumeration).
+EXPECTED_COMPOSITE_IF_GATES: dict[str, dict[str, str | None]] = {
+    "fleet-dispatch.yml": {
+        "dispatch": "steps.check.outputs.is_fleet_pr == 'true'",
+    },
+    "fleet-merge.yml": {
+        "merge-on-ci-pass": "steps.find-pr.outputs.skip == 'false'",
+        "manual-sweep": None,
+    },
+    "fleet-dispatch-after-merge.yml": {
+        "dispatch": "steps.session.outputs.have_session == 'true'",
+    },
+}
+
 
 @pytest.mark.parametrize("workflow_name,workflow_path", FLEET_WRITE_WORKFLOWS.items())
 def test_app_token_permissions_match_adr_036_per_workflow(
     workflow_name: str, workflow_path: Path
 ) -> None:
-    """Each App-token mint must request exactly the permissions ADR-036 documents.
+    """Each composite invocation must request exactly the permissions ADR-036 documents.
 
-    Addresses sec L-1 and test-engineer F6. Token-level least privilege: even if
-    the App's INSTALLATION grants {contents,pull_requests,issues,metadata}:write,
-    each minted token narrows to the workflow's actual usage. A regression that
-    drops `permission-issues: write` from Phase 2b silently re-opens Issue #311's
-    `Resource not accessible by integration` failure; a regression that adds
-    `permission-issues: write` to Phase 2a/3 widens token blast radius
-    unnecessarily.
+    Addresses sec L-1 and test-engineer F6 (preserved through #385 refactor).
+    Token-level least privilege: even if the App's INSTALLATION grants
+    {contents,pull_requests,issues,metadata}:write, each minted token narrows
+    to the workflow's actual usage. A regression that drops `permission-issues:
+    write` from Phase 2b silently re-opens Issue #311's `Resource not accessible
+    by integration` failure; a regression that adds `permission-issues: write`
+    to Phase 2a/3 widens token blast radius unnecessarily.
+
+    After #385: the permission-* values are passed via the composite-action
+    `with:` block, not the inlined mint step.
     """
     yaml_doc = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     expected_per_job = EXPECTED_TOKEN_PERMISSIONS[workflow_name]
 
     for job_name, expected_perms in expected_per_job.items():
         job = yaml_doc["jobs"][job_name]
-        mint = next((s for s in job["steps"] if s.get("id") == "app-token"), None)
-        assert mint is not None, f"{workflow_name}/{job_name}: missing mint step"
-        with_block = mint.get("with") or {}
+        invocation = next(
+            (s for s in job["steps"] if s.get("uses") == COMPOSITE_ACTION_USES),
+            None,
+        )
+        assert invocation is not None, (
+            f"{workflow_name}/{job_name}: missing composite invocation"
+        )
+        with_block = invocation.get("with") or {}
 
         # Positive: every expected permission is present with the expected scope
         for key, scope in expected_perms.items():
             assert with_block.get(key) == scope, (
-                f"{workflow_name}/{job_name}: mint step must request {key}: {scope}; "
+                f"{workflow_name}/{job_name}: composite invocation must pass {key}: {scope}; "
                 f"got {with_block.get(key)!r}"
             )
 
-        # Negative: forbidden permissions must NOT be requested
+        # Negative: forbidden permissions must NOT be passed via the composite
         forbidden = {"permission-workflows", "permission-actions", "permission-administration"}
         for key in forbidden:
             assert key not in with_block, (
-                f"{workflow_name}/{job_name}: mint step must NOT request {key} "
+                f"{workflow_name}/{job_name}: composite invocation must NOT pass {key} "
                 f"(ADR-036 'Permissions explicitly NOT granted' subsection)"
             )
 
-        # Job-specific extra constraint: Phase 2a/3 must NOT request issues:write
-        if expected_perms.get("permission-issues") is None:
-            assert "permission-issues" not in with_block, (
-                f"{workflow_name}/{job_name}: mint step must NOT request issues:write — "
-                f"only Phase 2b (which posts tracker comments) needs it per ADR-036"
+        # Job-specific extra constraint: Phase 2a/3 must NOT request issues:write.
+        # The composite action accepts permission-issues as an input (default '');
+        # if the caller does NOT set it, the composite forwards the empty default
+        # which omits the permission. Lock that callers don't accidentally set it.
+        if "permission-issues" not in expected_perms:
+            assert with_block.get("permission-issues", "") in ("", None), (
+                f"{workflow_name}/{job_name}: composite invocation must NOT pass "
+                f"permission-issues — only Phase 2b (which posts tracker comments) "
+                f"needs issues:write per ADR-036; got {with_block.get('permission-issues')!r}"
             )
+
+        # Symmetric: Phase 2b must NOT request pull_requests:write.
+        if "permission-pull-requests" not in expected_perms:
+            assert with_block.get("permission-pull-requests", "") in ("", None), (
+                f"{workflow_name}/{job_name}: composite invocation must NOT pass "
+                f"permission-pull-requests — only Phase 2a/3 (PR auto-merge) needs "
+                f"it per ADR-036; got {with_block.get('permission-pull-requests')!r}"
+            )
+
+
+@pytest.mark.parametrize("workflow_name,workflow_path", FLEET_WRITE_WORKFLOWS.items())
+def test_composite_invocation_caller_if_gates_per_workflow(
+    workflow_name: str, workflow_path: Path
+) -> None:
+    """Each composite invocation MUST carry the caller-side `if:` gate from EXPECTED_COMPOSITE_IF_GATES.
+
+    Per #385 review (P2): the composite extracts the detect+mint logic but
+    callers MUST still gate invocation on their own pre-condition (e.g., Phase 2a
+    only mints when `steps.check.outputs.is_fleet_pr == 'true'`). A regression
+    that drops the gate would cause the composite to mint on every workflow run
+    (e.g., on non-fleet PRs or on workflow_run events that are unrelated to
+    fleet work), unnecessarily exercising the App-token API and emitting noisy
+    warnings.
+
+    The expected `if:` expressions are the exact gates that were inline in the
+    pre-#385 mint steps; they were moved to the composite-invocation step
+    intact when the refactor landed.
+    """
+    yaml_doc = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    expected_per_job = EXPECTED_COMPOSITE_IF_GATES[workflow_name]
+    for job_name, expected_if in expected_per_job.items():
+        job = yaml_doc["jobs"][job_name]
+        invocation = next(
+            (s for s in job["steps"] if s.get("uses") == COMPOSITE_ACTION_USES),
+            None,
+        )
+        assert invocation is not None, (
+            f"{workflow_name}/{job_name}: missing composite invocation"
+        )
+        actual_if = invocation.get("if")
+        assert actual_if == expected_if, (
+            f"{workflow_name}/{job_name}: composite invocation `if:` gate must be "
+            f"{expected_if!r} (pre-#385 inline mint gate, preserved by refactor); "
+            f"got {actual_if!r}"
+        )
 
 
 # ── Existing fleet-dispatch contract (Phase 2a only) — kept for completeness ─
@@ -357,7 +568,12 @@ def test_fleet_dispatch_app_token_created_env_binds_to_token_not_outcome(
         "detector under continue-on-error: true). Got: "
         f"{env.get('APP_TOKEN_CREATED')!r}"
     )
-    assert env.get("APP_TOKEN_AVAILABLE") == "${{ steps.app-token-inputs.outputs.available }}"
+    assert env.get("APP_TOKEN_AVAILABLE") == "${{ steps.app-token.outputs.available }}", (
+        "APP_TOKEN_AVAILABLE must bind to the composite action's `available` "
+        "output (per #385: the composite invocation step has `id: app-token` "
+        "and exposes `outputs.available`). Got: "
+        f"{env.get('APP_TOKEN_AVAILABLE')!r}"
+    )
 
 
 def test_phase_2a_warning_enumerates_all_three_permissions(auto_merge_step_text: str) -> None:

@@ -13,3 +13,4 @@
 /raw/processed/SPEC.md @wryenmeek
 /.pre-commit-config.yaml @wryenmeek
 /.github/workflows/ @wryenmeek
+/.github/actions/ @wryenmeek
