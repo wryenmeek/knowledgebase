@@ -509,8 +509,12 @@ def _slice_fleet_orchestrator_manifest(template: str) -> str:
     first-mention of `fleet-orchestrator`, which broke under doc reorganization.
     This version anchors on the manifest's JSON `"name"` field — a stable marker
     that only appears once in the document and identifies the manifest unambiguously.
+
+    Per #383 (sec L-4): the slug `fleet-orchestrator` is globally unique across
+    GitHub. The manifest now ships with the placeholder `YOUR-OWNER-fleet-orchestrator`
+    so downstream forks substitute their owner prefix without slug collision.
     """
-    start = template.index('"name": "fleet-orchestrator"')
+    start = template.index('"name": "YOUR-OWNER-fleet-orchestrator"')
     end = template.index("</form>", start)
     return template[start:end]
 
@@ -558,6 +562,14 @@ def test_cloneable_template_fleet_orchestrator_manifest_matches_adr_036(
     doesn't match the documented decision.
     """
     block = _slice_fleet_orchestrator_manifest(cloneable_template_text)
+
+    # Placeholder name pattern (per #383 / sec L-4): the slug is globally
+    # unique on GitHub, so the manifest ships with an owner-prefix placeholder
+    # that downstream forks substitute before submission.
+    assert '"name": "YOUR-OWNER-fleet-orchestrator"' in block, (
+        "manifest must use the YOUR-OWNER-fleet-orchestrator placeholder so "
+        "downstream forks substitute their owner prefix (per #383 / sec L-4)"
+    )
 
     # Positive: every permission ADR-036 grants
     assert '"contents": "write"' in block, "manifest must grant contents:write"
