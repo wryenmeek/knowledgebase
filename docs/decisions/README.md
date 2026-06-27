@@ -42,4 +42,4 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-033](ADR-033-fleet-label-driven-dispatch-adoption.md) | Fleet label-driven dispatch adoption with 3-strikes abort | Accepted — extends ADR-019 |
 | [ADR-034](ADR-034-fleet-no-notification-on-quota-saturation.md) | Fleet no-notification policy on quota saturation | Accepted — extends ADR-032 |
 | [ADR-035](ADR-035-tier-3-multi-provider-fallback-deferral.md) | Tier 3 multi-provider implementation-agent fallback — 30-day deferral | Accepted — extends ADR-019 |
-| [ADR-036](ADR-036-fleet-orchestrator-github-app-identity.md) | Fleet orchestrator GitHub App identity | Accepted — extends ADR-019 and resolves Issue #310 |
+| [ADR-036](ADR-036-fleet-orchestrator-github-app-identity.md) | Fleet orchestrator GitHub App identity | Accepted — amended in-place: extend sensitive-path defense to `.github/actions/**` (see § Amendment); extends ADR-019 and resolves Issue #310 |

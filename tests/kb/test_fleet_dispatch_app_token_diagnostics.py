@@ -194,6 +194,15 @@ def test_fleet_readonly_workflows_stay_on_github_token(
         f"{workflow_name} must NOT mint a fleet App token — it only opens HITL-reviewed "
         f"PRs and stays on the default GITHUB_TOKEN per ADR-036 § Decision"
     )
+    # Per #385 review (P2): the composite-action extraction means a regression
+    # that invokes the composite from a read-only workflow would slip past the
+    # `actions/create-github-app-token` substring check above (the composite
+    # encapsulates the inner action). Explicitly assert composite-not-invoked.
+    assert COMPOSITE_ACTION_USES not in workflow_text, (
+        f"{workflow_name} must NOT invoke the fleet-orchestrator-token composite action "
+        f"({COMPOSITE_ACTION_USES}) — it only opens HITL-reviewed PRs and stays on "
+        f"GITHUB_TOKEN per ADR-036 § Decision"
+    )
 
 
 # ── ADR-036: per-workflow App-token contract (YAML-parsed, robust) ───────────
@@ -336,6 +345,62 @@ def test_composite_action_detect_step_uses_step_scoped_env(composite_action_doc:
     )
 
 
+def test_composite_action_declares_using_composite(composite_action_doc: dict) -> None:
+    """Composite action MUST declare `using: composite` per #385 review (P2).
+
+    Without `using: composite`, GitHub Actions rejects the action at runtime
+    (it would be parsed as an unknown action type). `actionlint` does not lint
+    composite-action YAML, so the test suite is the only line of defense
+    against this regression class.
+    """
+    runs = composite_action_doc.get("runs", {})
+    assert runs.get("using") == "composite", (
+        "composite action must declare `runs.using: composite` so GitHub Actions "
+        "recognizes it as a composite action (not a Docker or JavaScript action). "
+        f"Got runs.using={runs.get('using')!r}"
+    )
+
+
+def test_composite_action_forwards_all_permission_inputs(composite_action_doc: dict) -> None:
+    """Composite mint step MUST forward all permission-* inputs unconditionally per #385 review (P1).
+
+    The composite has 3 permission-* inputs (contents/pull_requests/issues),
+    two of which default to '' (empty string). Empty-string forwarding is
+    safe because actions/create-github-app-token@v3.2.0 explicitly skips
+    falsy permission values in its `getPermissionsFromInputs` helper:
+
+        if (!value) return permissions;  // empty string is falsy → permission skipped
+
+    This test documents the load-bearing dependency on that upstream behavior.
+    If the SHA pin moves (caught by test_composite_action_pins_create_github_app_token_v3
+    above), the empty-string semantic MUST be re-verified against the new
+    upstream source before the bump lands.
+
+    Without this test, a future composite-action refactor could silently widen
+    blast radius if it changed empty-string forwarding to literal forwarding
+    of '' that the new action version interpreted as "request full access".
+    """
+    steps = composite_action_doc["runs"]["steps"]
+    mint = next((s for s in steps if s.get("id") == "app-token"), None)
+    assert mint is not None
+    with_block = mint.get("with") or {}
+    # All 3 permission-* values MUST be forwarded from inputs unconditionally.
+    # No conditional logic (e.g., ${{ inputs.x != '' && ... }}) — the empty-string
+    # default in inputs is the contract, not a runtime branch.
+    assert with_block.get("permission-contents") == "${{ inputs.permission-contents }}", (
+        f"composite mint step must forward permission-contents from inputs unconditionally; "
+        f"got {with_block.get('permission-contents')!r}"
+    )
+    assert with_block.get("permission-pull-requests") == "${{ inputs.permission-pull-requests }}", (
+        f"composite mint step must forward permission-pull-requests from inputs unconditionally; "
+        f"got {with_block.get('permission-pull-requests')!r}"
+    )
+    assert with_block.get("permission-issues") == "${{ inputs.permission-issues }}", (
+        f"composite mint step must forward permission-issues from inputs unconditionally; "
+        f"got {with_block.get('permission-issues')!r}"
+    )
+
+
 # ── ADR-036: token-level least privilege (permission-* contracts) ────────────
 
 # Per ADR-036 § Decision: each workflow mints only the permissions it uses.
@@ -354,6 +419,24 @@ EXPECTED_TOKEN_PERMISSIONS = {
         # NOTE: permission-pull-requests intentionally absent (sec L-2 — Phase 2b
         # script only calls issues.createComment).
         "dispatch": {"permission-contents": "write", "permission-issues": "write"},
+    },
+}
+
+# Per #385 review (P2): caller-side `if:` gates preserve pre-refactor scoping
+# (composite is only invoked when the workflow is actually doing fleet work).
+# Map of {workflow → {job → expected `if:` expression on the composite invocation}}.
+# Use `None` for jobs that intentionally have no `if:` gate (e.g., manual-sweep
+# always runs on workflow_dispatch and gates downstream via PR enumeration).
+EXPECTED_COMPOSITE_IF_GATES: dict[str, dict[str, str | None]] = {
+    "fleet-dispatch.yml": {
+        "dispatch": "steps.check.outputs.is_fleet_pr == 'true'",
+    },
+    "fleet-merge.yml": {
+        "merge-on-ci-pass": "steps.find-pr.outputs.skip == 'false'",
+        "manual-sweep": None,
+    },
+    "fleet-dispatch-after-merge.yml": {
+        "dispatch": "steps.session.outputs.have_session == 'true'",
     },
 }
 
@@ -422,6 +505,43 @@ def test_app_token_permissions_match_adr_036_per_workflow(
                 f"permission-pull-requests — only Phase 2a/3 (PR auto-merge) needs "
                 f"it per ADR-036; got {with_block.get('permission-pull-requests')!r}"
             )
+
+
+@pytest.mark.parametrize("workflow_name,workflow_path", FLEET_WRITE_WORKFLOWS.items())
+def test_composite_invocation_caller_if_gates_per_workflow(
+    workflow_name: str, workflow_path: Path
+) -> None:
+    """Each composite invocation MUST carry the caller-side `if:` gate from EXPECTED_COMPOSITE_IF_GATES.
+
+    Per #385 review (P2): the composite extracts the detect+mint logic but
+    callers MUST still gate invocation on their own pre-condition (e.g., Phase 2a
+    only mints when `steps.check.outputs.is_fleet_pr == 'true'`). A regression
+    that drops the gate would cause the composite to mint on every workflow run
+    (e.g., on non-fleet PRs or on workflow_run events that are unrelated to
+    fleet work), unnecessarily exercising the App-token API and emitting noisy
+    warnings.
+
+    The expected `if:` expressions are the exact gates that were inline in the
+    pre-#385 mint steps; they were moved to the composite-invocation step
+    intact when the refactor landed.
+    """
+    yaml_doc = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    expected_per_job = EXPECTED_COMPOSITE_IF_GATES[workflow_name]
+    for job_name, expected_if in expected_per_job.items():
+        job = yaml_doc["jobs"][job_name]
+        invocation = next(
+            (s for s in job["steps"] if s.get("uses") == COMPOSITE_ACTION_USES),
+            None,
+        )
+        assert invocation is not None, (
+            f"{workflow_name}/{job_name}: missing composite invocation"
+        )
+        actual_if = invocation.get("if")
+        assert actual_if == expected_if, (
+            f"{workflow_name}/{job_name}: composite invocation `if:` gate must be "
+            f"{expected_if!r} (pre-#385 inline mint gate, preserved by refactor); "
+            f"got {actual_if!r}"
+        )
 
 
 # ── Existing fleet-dispatch contract (Phase 2a only) — kept for completeness ─
