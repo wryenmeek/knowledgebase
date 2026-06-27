@@ -170,32 +170,19 @@ jobs:
             echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Issue #310 / ADR-036: secrets cannot be referenced directly in step `if:`
-      # conditionals, so detect optional fleet-orchestrator App credentials from
-      # step-scoped env first and gate token creation on this output.
-      - name: Detect fleet-orchestrator App auto-merge credentials
-        id: app-token-inputs
-        if: steps.check.outputs.is_fleet_pr == 'true'
-        env:
-          FLEET_APP_ID: ${{ secrets.FLEET_APP_ID }}
-          FLEET_APP_PRIVATE_KEY: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -n "$FLEET_APP_ID" ] && [ -n "$FLEET_APP_PRIVATE_KEY" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Issue #310 / ADR-036: App-authored auto-merges produce normal push events
-      # so Phase 2b can fire automatically. Uses the dedicated `fleet-orchestrator`
-      # App (FLEET_APP_ID / FLEET_APP_PRIVATE_KEY) — NOT the narrow read-only
+      # Issue #310 / ADR-036 / Issue #385: mint a fleet-orchestrator App
+      # installation token with token-level permission narrowing. App-authored
+      # auto-merges produce normal push events so Phase 2b can fire
+      # automatically. Uses the dedicated `fleet-orchestrator` App
+      # (FLEET_APP_ID / FLEET_APP_PRIVATE_KEY) — NOT the narrow read-only
       # kb-source-monitor App (GH_APP_ID / GH_APP_PRIVATE_KEY).
-      - name: Create fleet-orchestrator App token for auto-merge
+      #
+      # Detect+mint logic extracted to the composite action per #385
+      # (was 4 near-duplicate ~25-line blocks across the 3 fleet workflows).
+      - name: Mint fleet-orchestrator App token for auto-merge
         id: app-token
-        if: steps.app-token-inputs.outputs.available == 'true'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        continue-on-error: true
+        if: steps.check.outputs.is_fleet_pr == 'true'
+        uses: ./.github/actions/fleet-orchestrator-token
         with:
           app-id: ${{ secrets.FLEET_APP_ID }}
           private-key: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
@@ -206,7 +193,7 @@ jobs:
         if: steps.check.outputs.is_fleet_pr == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
-          APP_TOKEN_AVAILABLE: ${{ steps.app-token-inputs.outputs.available }}
+          APP_TOKEN_AVAILABLE: ${{ steps.app-token.outputs.available }}
           APP_TOKEN_CREATED: ${{ steps.app-token.outputs.token != '' }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
