@@ -19,6 +19,7 @@ JSON to stdout and uses stable reason codes for machine-readable outcomes.
 | `maintenance/generate_docs.py` | Optional surface | `run_surface_cli` | Gated (apply mode; `docs/**`) |
 | `validation/check_doc_freshness.py` | Validation | Custom `run_cli` | No |
 | `validation/snapshot_knowledgebase.py` | Validation | Custom `run_cli` | No |
+| `analysis/cost_baseline.py` | Host-local analyzer | Custom `run_cli` | No (stdout text/JSON only; reads `~/.copilot/**`) |
 | `ingest/convert_sources_to_md.py` | Optional surface | `run_surface_cli` | Gated (apply mode; `raw/processed/**`) |
 | `github_monitor/check_drift.py` | GitHub monitor Phase 1 | Module CLI (`python -m`) | No (drift report to file only) |
 | `github_monitor/fetch_content.py` | GitHub monitor Phase 2 | Module CLI (`python -m`) | Gated (`raw/assets/**`, `raw/github-sources/**` registry) |

@@ -12,6 +12,20 @@ The pricing table is the single source of truth for cost estimation in
 same commit; ``MAX_PRICING_STALE_DAYS`` triggers a warning when the file is
 older than the threshold.
 
+**Long-context tier limitation (known gap, not modeled).** docs.github.com
+publishes a separate Long-context tier for three models, triggered when input
+tokens exceed a threshold:
+
+  - ``gpt-5.4`` (> 272K input): 2x input / 1.5x output
+  - ``gpt-5.5`` (> 272K input): 2x input / 1.5x output
+  - ``gemini-3.1-pro`` (> 200K input): 2x input / 1.5x output
+
+This module only stores the Default tier rate for each model. Any invocation
+whose input crossed the threshold will be **under-estimated** by the analyzer.
+The bias direction is opposite to the ``blended_rate()`` conservatism (which
+biases slightly high for Anthropic cache_write). The two effects partially
+cancel for mixed workloads but not in any guaranteed direction.
+
 This module is import-only and contains no I/O. It is safe to import from
 read-only analyzer surfaces.
 """
@@ -44,7 +58,9 @@ class ModelPrice:
 # Keys are the canonical model id used by Copilot CLI / Chat OTEL. See the
 # ``Supported AI models`` page for canonical naming.
 PRICING: dict[str, ModelPrice] = {
-    # OpenAI
+    # OpenAI (Default tier only — long-context tier above 272K input tokens
+    # carries 2x input / 1.5x output rates that THIS table does NOT model.
+    # See "Long-context tier limitation" in module docstring above.)
     "gpt-5-mini": ModelPrice(0.25, 0.025, 2.00),
     "gpt-5.3-codex": ModelPrice(1.75, 0.175, 14.00),
     "gpt-5.4": ModelPrice(2.50, 0.25, 15.00),
@@ -58,11 +74,11 @@ PRICING: dict[str, ModelPrice] = {
     "claude-sonnet-4.6": ModelPrice(3.00, 0.30, 15.00, cache_write_per_m=3.75),
     "claude-opus-4.5": ModelPrice(5.00, 0.50, 25.00, cache_write_per_m=6.25),
     "claude-opus-4.6": ModelPrice(5.00, 0.50, 25.00, cache_write_per_m=6.25),
-    "claude-opus-4.6-fast": ModelPrice(5.00, 0.50, 25.00, cache_write_per_m=6.25),
     "claude-opus-4.7": ModelPrice(5.00, 0.50, 25.00, cache_write_per_m=6.25),
     "claude-opus-4.8": ModelPrice(5.00, 0.50, 25.00, cache_write_per_m=6.25),
     "claude-fable-5": ModelPrice(10.00, 1.00, 50.00, cache_write_per_m=12.50),
-    # Google
+    # Google (Default tier only — gemini-3.1-pro long-context above 200K
+    # tokens is 2x input / 1.5x output; not modeled.)
     "gemini-2.5-pro": ModelPrice(1.25, 0.125, 10.00),
     "gemini-3-flash": ModelPrice(0.50, 0.05, 3.00),
     "gemini-3.1-pro": ModelPrice(2.00, 0.20, 12.00),

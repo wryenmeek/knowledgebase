@@ -65,6 +65,7 @@ Shared vocabulary for the `wryenmeek/knowledgebase` repository. This file is des
 | `scripts/drive_monitor/` | Google Drive drift monitoring. Write modes declared in write-surface matrix. |
 | `scripts/context/` | Context page management: fill placeholders, publish status, generate docs. |
 | `scripts/maintenance/` | Maintenance surfaces: auditing, freshness scanning, follow-up recommendations. |
+| `scripts/analysis/` | Read-only host-data analyzers. Process `~/.copilot/**` telemetry into cost/usage reports. No repository writes. |
 | `scripts/fleet/` | Fleet orchestration (TypeScript/Bun). Independent of Python test suite. |
 | `docs/` | Architecture docs, ADRs, staged content, and design proposals (`docs/ideas/`). |
 | `.github/skills/` | Skill definitions (`SKILL.md`) and logic (`logic/`) for agent workflows. |

@@ -2,7 +2,7 @@
 title: "Copilot CLI + Chat agent cost baseline (last 30 days)"
 status: Implemented
 date: 2026-06-27
-author: copilot-cli session d92e9b07
+author: copilot-cli session &lt;redacted&gt;
 tool: scripts/analysis/cost_baseline.py
 data_window: 2026-05-28 → 2026-06-27 (30 days)
 data_sources:
@@ -51,7 +51,7 @@ The analyzer's failure heuristic = `subagent.completed` events with `totalTokens
 
 | Agent | Model | Invocations | Failure rate | Likely cause |
 | --- | --- | ---: | ---: | --- |
-| `security-auditor` | `gpt-5.5` | 106 | **100%** | gpt-5.5 quota exhaustion (same root cause as session d92e9b07 04:28 UTC) |
+| `security-auditor` | `gpt-5.5` | 106 | **100%** | gpt-5.5 quota exhaustion (same root cause as the diagnostic session previously documented) |
 | `code-reviewer` | `gpt-5.5` | 129 | **100%** | same |
 | `test-engineer` | `gpt-5.5` | 122 | **100%** | same |
 | `documentation-engineer` | `gpt-5.5` | 104 | **100%** | same |
@@ -122,11 +122,17 @@ Chat usage is much more diverse model-wise. The 7K-inference GPT-5.4 line and 3.
 
 2. **Failure heuristic has false positives.** A legitimate <5s no-op dispatch (e.g., a check that finds nothing to do) would be counted as a failure. The aggregated 100% failure rate on `gpt-5.5` across many agents over 750+ invocations is too consistent to be false-positive — it's the quota pattern. Smaller agents need manual triage.
 
-3. **VS Code OTEL is one large file (18 GB on 06-21).** Future runs should stream-parse efficiently; the current tool does so but takes ~2 min on cold disk cache.
+3. **Long-context tier is not modeled.** `gpt-5.4`, `gpt-5.5`, and `gemini-3.1-pro` have a separate Long-context tier (2× input / 1.5× output) above 272K input tokens (272K for OpenAI, 200K for Gemini). The pricing table stores Default-tier rates only. Any general-purpose dispatch with very large context will be **under-estimated**. This bias is opposite to the blended-rate over-estimate in (1) and partially cancels for typical workloads — but the cancellation is not guaranteed.
 
-4. **Sample bias.** All sessions are from one user (`wryenmeek`) in one repo cluster. Recommendations transfer to similarly-sized agentic workloads; not generalizable to other operators.
+4. **VS Code OTEL is one large file (18 GB on 06-21).** Future runs should stream-parse efficiently; the current tool does so but takes ~2 min on cold disk cache.
 
-5. **Pricing freshness.** Pricing table dated 2026-06-27 from docs.github.com. Tool warns after 60 days; rerun with fresh pricing before acting on stale estimates.
+5. **Chat-side dollar figures are upper bounds.** OTEL exposes only `gen_ai.usage.input_tokens` (no cached-input split), so the analyzer charges 100% of input at the fresh-input rate. For Anthropic models the cached-input rate is 10× cheaper. The CLI side mitigates this via `blended_rate()`; the Chat side cannot.
+
+6. **`--days` window is mtime-granular.** The analyzer filters by `events.jsonl` file mtime, not per-event timestamps. A long-running session whose file was appended to recently will contribute all of its events to the window — including events older than the cutoff. For precise per-event windowing, see the deferred follow-up in §Open follow-ups.
+
+7. **Sample bias.** All sessions are from one user (`wryenmeek`) in one repo cluster. Recommendations transfer to similarly-sized agentic workloads; not generalizable to other operators.
+
+8. **Pricing freshness.** Pricing table dated 2026-06-27 from docs.github.com. Tool warns after 60 days; rerun with fresh pricing before acting on stale estimates.
 
 ## How to re-run
 
@@ -146,7 +152,11 @@ Pricing source: `scripts/analysis/pricing.py`
 
 ## Open follow-ups
 
-- Add pytest coverage in `tests/analysis/` for `pricing.py` and the failure-heuristic logic.
-- Cross-functional review (`@code-reviewer + @test-engineer + @security-auditor + @documentation-engineer`) per the AGENTS hard rule for `scripts/**` changes — deferred to a follow-up session.
-- Decide whether to add `scripts/analysis/CONTEXT.md` glossary per the CONTEXT.md required-sections rule (currently no entries to document; can wait until a 2nd analyzer lands).
-- Decide whether the per-(agent, model) baseline should be persisted as a daily artifact under `wiki/reports/agent-cost-*.json` (requires new schema and a `persist` mode similar to `scripts/reporting/quality_runtime.py`).
+All deferred items have been filed as `ready-for-agent` GitHub issues:
+
+- **[#400](https://github.com/wryenmeek/knowledgebase/issues/400)** — Expand `tests/analysis/` coverage: fail-soft contracts, OTEL parser, renderer smoke (P1/P2/P3 blocks from the test-engineer review)
+- **[#401](https://github.com/wryenmeek/knowledgebase/issues/401)** — Add long-context tier pricing to `scripts/analysis/pricing.py` (gpt-5.4, gpt-5.5, gemini-3.1-pro have 2× input / 1.5× output rates above the input threshold)
+- **[#402](https://github.com/wryenmeek/knowledgebase/issues/402)** — Apply blended-rate to Chat-side cost math (fix the structural overestimate noted in Caveat §5)
+- **[#403](https://github.com/wryenmeek/knowledgebase/issues/403)** — Per-event timestamp filter for `--days` window (close the mtime-granularity gap noted in Caveat §6)
+
+Cross-functional review for the initial commit (`feat(analysis): add Copilot agent cost baseline analyzer`) was completed in-session: `@code-reviewer`, `@test-engineer`, `@security-auditor`, `@documentation-engineer` all dispatched in parallel; P0–P2 findings remediated before merge in the same commit pair (initial + remediation).
