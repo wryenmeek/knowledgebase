@@ -21,7 +21,7 @@ from scripts.drive_monitor.fetch_content import fetch_content
 # ---------------------------------------------------------------------------
 
 NORMALIZED_BYTES = b"# My Document\n\nContent.\n"
-MD5 = hashlib.md5(b"raw-pdf-content").hexdigest()
+MD5 = hashlib.md5(b"raw-pdf-content", usedforsecurity=False).hexdigest()
 SHA256 = hashlib.sha256(NORMALIZED_BYTES).hexdigest()
 
 
