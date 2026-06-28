@@ -186,3 +186,41 @@ def test_sanitize_respects_max_len() -> None:
 def test_sanitize_strips_carriage_returns_and_newlines() -> None:
     assert "\n" not in sanitize_gh_md("a\nb\nc")
     assert "\r" not in sanitize_gh_md("a\r\nb")
+
+
+def test_sanitize_gh_md_passes_through_unmatched_double_close_brace() -> None:
+    """JSON with nested closing braces must not be corrupted.
+
+    The old symmetric str.replace pair rewrote any ``}}`` to ``[expr]``,
+    which silently corrupted JSON content.  The balanced-pair regex only
+    neutralizes ``${{ ... }}`` expressions and leaves orphan ``}}`` alone.
+    """
+    assert sanitize_gh_md('{"a": {"b": "c"}}') == '{"a": {"b": "c"}}'
+
+
+def test_sanitize_gh_md_passes_through_orphan_double_close_brace() -> None:
+    """A bare ``}}`` with no preceding ``${{`` must pass through unchanged."""
+    assert sanitize_gh_md("orphan }} end") == "orphan }} end"
+
+
+def test_sanitize_gh_md_neutralizes_expression_with_single_brace_in_body() -> None:
+    """A single ``}`` inside the expression body must not prematurely end the match.
+
+    The old ``[^}]*`` regex terminated at the first ``}`` in the body, so
+    ``${{ foo } bar }}`` wasn't matched (the class stopped at `` } ``, then
+    ``\\}\\}`` required ``}}`` immediately — no match).  The improved
+    ``(?:[^}]|\\}(?!\\}))`` alternation allows a single ``}`` not followed
+    by another ``}`` and correctly captures the whole expression.
+    """
+    assert sanitize_gh_md("${{ foo } bar }}") == "[expr]"
+
+
+def test_sanitize_gh_md_neutralizes_bare_dollar_open_brace() -> None:
+    """A bare ``${{`` with no closing ``}}`` must be neutralized as defense-in-depth.
+
+    The balanced-pair regex leaves orphan openers alone (correct — they
+    have no matching close).  The post-pass ``str.replace`` then neutralizes
+    any remaining ``${{``, restoring the prior behavior for bare openers
+    without re-introducing JSON corruption.
+    """
+    assert sanitize_gh_md("orphan ${{ end") == "orphan [expr] end"

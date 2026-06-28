@@ -70,8 +70,8 @@ class TestSanitizeGhMd:
         assert "fixes #1" not in result.lower()
 
     def test_strips_github_actions_expressions(self) -> None:
-        assert _sanitize_gh_md("${{ secrets.GITHUB_TOKEN }}") == "[expr] secrets.GITHUB_TOKEN [expr]"
-        assert _sanitize_gh_md("some ${{ expr }} here") == "some [expr] expr [expr] here"
+        assert _sanitize_gh_md("${{ secrets.GITHUB_TOKEN }}") == "[expr]"
+        assert _sanitize_gh_md("some ${{ expr }} here") == "some [expr] here"
 
 
 class TestCloseResolvedEntries:
