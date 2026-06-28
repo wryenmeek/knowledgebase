@@ -294,12 +294,20 @@ class ChatBucket:
             input_rate=price.input_per_m,
             output_rate=price.output_per_m,
         )
-        long_input_rate = price.long_context_input_per_m or price.input_per_m
-        long_output_rate = price.long_context_output_per_m or price.output_per_m
+        long_input_rate = (
+            price.long_context_input_per_m
+            if price.long_context_input_per_m is not None
+            else price.input_per_m
+        )
+        long_output_rate = (
+            price.long_context_output_per_m
+            if price.long_context_output_per_m is not None
+            else price.output_per_m
+        )
         total += share_cost(
-            input_tokens=self.long_context_input_tokens,
-            output_tokens=self.long_context_output_tokens,
-            cached_input_tokens=self.long_context_cached_input_tokens,
+            input_tokens=max(self.long_context_input_tokens, 0),
+            output_tokens=max(self.long_context_output_tokens, 0),
+            cached_input_tokens=max(self.long_context_cached_input_tokens, 0),
             input_rate=long_input_rate,
             output_rate=long_output_rate,
         )

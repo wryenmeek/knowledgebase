@@ -124,7 +124,7 @@ Chat usage is much more diverse model-wise. The 7K-inference GPT-5.4 line and 3.
 
 2. **Failure heuristic has false positives.** A legitimate <5s no-op dispatch (e.g., a check that finds nothing to do) would be counted as a failure. The aggregated 100% failure rate on `gpt-5.5` across many agents over 750+ invocations is too consistent to be false-positive — it's the quota pattern. Smaller agents need manual triage.
 
-3. **Long-context tier is now modeled in `pricing.py` (both CLI-side and Chat-side biases remain).** `gpt-5.4`, `gpt-5.5`, and `gemini-3.1-pro` publish a separate Long-context tier (2× input / 1.5× output) above 272K input tokens (272K for OpenAI, 200K for Gemini). As of issue #401, `pricing.py` stores these rates and `estimate_cost_usd` selects the correct tier when the caller supplies the per-call input-token count via `input_tokens_for_threshold` — the API is available. Chat-side OTEL events expose per-call `gen_ai.usage.input_tokens`, making the data available to enable the per-call threshold check; however, the wiring through `ChatBucket.est_cost_usd` is not yet implemented and will land in a follow-up issue. CLI-side sub-agent telemetry exposes only aggregate `totalTokens` with no input/output split, so the per-call threshold is not applicable there either. Both CLI-side (aggregate token granularity prevents per-call threshold) and Chat-side (wiring pending) biases remain until the follow-up lands.
+3. **Long-context tier is now modeled in `pricing.py`, and the Chat-side wiring is implemented (CLI-side bias remains).** `gpt-5.4`, `gpt-5.5`, and `gemini-3.1-pro` publish a separate Long-context tier (2× input / 1.5× output) above 272K input tokens (272K for OpenAI, 200K for Gemini). As of issue #401, `pricing.py` stores these rates and `estimate_cost_usd` selects the correct tier when the caller supplies the per-call input-token count via `input_tokens_for_threshold` — the API is available. As of issue #414, Chat-side OTEL events now preserve per-call threshold decisions during `collect_chat` aggregation and `ChatBucket.est_cost_usd` sums Default-tier and long-context-tier shares accordingly. CLI-side sub-agent telemetry still exposes only aggregate `totalTokens` with no per-call input/output split, so the per-call threshold is not applicable there; the remaining long-context bias is CLI-only.
 
 4. **VS Code OTEL is one large file (18 GB on 06-21).** Future runs should stream-parse efficiently; the current tool does so but takes ~2 min on cold disk cache.
 
@@ -158,6 +158,7 @@ All deferred items have been filed as `ready-for-agent` GitHub issues:
 
 - **[#400](https://github.com/wryenmeek/knowledgebase/issues/400)** — Expand `tests/analysis/` coverage: fail-soft contracts, OTEL parser, renderer smoke (P1/P2/P3 blocks from the test-engineer review)
 - **[#401](https://github.com/wryenmeek/knowledgebase/issues/401)** — ~~Add long-context tier pricing to `scripts/analysis/pricing.py`~~ **Implemented** — long-context rates now stored in `ModelPrice`; `estimate_cost_usd` tier-selects when `input_tokens_for_threshold` is supplied.
+- **[#414](https://github.com/wryenmeek/knowledgebase/issues/414)** — ~~Wire long-context tier per-call check through `ChatBucket`~~ **Implemented** — Chat OTEL now routes per-call tokens into Default-tier vs long-context-tier shares before computing aggregate cost.
 - **[#402](https://github.com/wryenmeek/knowledgebase/issues/402)** — Apply blended-rate to Chat-side cost math (fix the structural overestimate noted in Caveat §5)
 - **[#403](https://github.com/wryenmeek/knowledgebase/issues/403)** — Per-event timestamp filter for `--days` window (close the mtime-granularity gap noted in Caveat §6)
 
@@ -210,4 +211,3 @@ Expected effect (re-measure in 7d):
 - Eliminates the ~706 silent-failure gpt-5.5 dispatches from the v1 report
 - Caps the xhigh-effort spend by routing big-volume agents to non-effort-capable Anthropic models
 - Tests whether `gpt-5.4-mini high` and `gpt-5.3-codex medium` produce work quality matching the sonnet/opus baselines
-
