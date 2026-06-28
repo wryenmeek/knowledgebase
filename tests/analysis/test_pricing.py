@@ -306,3 +306,55 @@ def test_long_context_rates_strictly_greater_than_default_rates() -> None:
         assert price.long_context_output_per_m > price.output_per_m, (  # type: ignore[operator]
             f"{model}: long_context_output_per_m should exceed output_per_m"
         )
+
+
+# ---------- Long-context share-sum validation ----------
+
+
+@pytest.mark.parametrize(
+    "input_share,cache_share,output_share",
+    [
+        (0.50, 0.70, 0.10),        # sum = 1.30 — clearly over
+        (0.10, 0.70, 0.10),        # sum = 0.90 — clearly under
+        (0.20 + 2e-6, 0.70, 0.10), # sum = 1.0 + 2e-6 — just over 1e-6 tolerance
+    ],
+)
+def test_estimate_cost_usd_long_context_rejects_non_unit_share_sum(
+    input_share: float, cache_share: float, output_share: float
+) -> None:
+    """Long-context branch must reject share sums that deviate more than 1e-6 from 1.0."""
+    # gpt-5.5 threshold = 272K; pass over-threshold to activate the LC path
+    with pytest.raises(ValueError):
+        _estimate(
+            "gpt-5.5",
+            1_000_000,
+            input_tokens_for_threshold=300_000,
+            input_share=input_share,
+            cache_share=cache_share,
+            output_share=output_share,
+        )
+
+
+def test_estimate_cost_usd_long_context_accepts_unit_share_sum_within_tolerance() -> None:
+    """Long-context branch must accept share sums within 1e-6 of 1.0."""
+    # Exact split: 0.20 + 0.70 + 0.10 = 1.0
+    cost_exact = _estimate(
+        "gpt-5.5",
+        1_000_000,
+        input_tokens_for_threshold=300_000,
+        input_share=0.20,
+        cache_share=0.70,
+        output_share=0.10,
+    )
+    assert cost_exact > 0.0
+
+    # Within-tolerance split: 0.2000005 + 0.6999995 + 0.10 = 1.0 (difference = 0 < 1e-6)
+    cost_near = _estimate(
+        "gpt-5.5",
+        1_000_000,
+        input_tokens_for_threshold=300_000,
+        input_share=0.2000005,
+        cache_share=0.6999995,
+        output_share=0.10,
+    )
+    assert cost_near > 0.0

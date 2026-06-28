@@ -31,7 +31,12 @@ exposes only aggregate ``totalTokens`` with no input/output split. The
 ``input_tokens_for_threshold`` parameter cannot be populated from CLI events,
 so CLI-side estimates remain bias-down for any invocation that crossed the
 long-context threshold. Chat-side OTEL events expose per-call
-``gen_ai.usage.input_tokens``, making the parameter applicable there.
+``gen_ai.usage.input_tokens``, making the data available to enable the
+per-call threshold check; however, the wiring through
+``ChatBucket.est_cost_usd`` is not yet implemented and will land in a
+follow-up issue. Until that follow-up lands, both CLI-side (aggregate token
+granularity prevents per-call threshold) and Chat-side (wiring pending) biases
+remain active.
 
 This module is import-only and contains no I/O. It is safe to import from
 read-only analyzer surfaces.
@@ -299,6 +304,11 @@ def estimate_cost_usd(
         input_share = shares.get("input_share", 0.20)
         cache_share = shares.get("cache_share", 0.70)
         output_share = shares.get("output_share", 0.10)
+        share_sum = input_share + cache_share + output_share
+        if abs(share_sum - 1.0) > 1e-6:
+            raise ValueError(
+                f"input_share + cache_share + output_share must sum to 1.0, got {share_sum:.6f}"
+            )
         output_mult = _effort_output_multiplier(model, effort)
         lc_rate = (
             input_share * price.long_context_input_per_m
