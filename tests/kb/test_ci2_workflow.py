@@ -29,7 +29,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         self.assertIn("name: CI-2 Analyst Read-Only Diagnostics", self.workflow_text)
         self.assertIn("CI_ID: CI-2", self.workflow_text)
         self.assertIn("TOKEN_PROFILE: tp-analyst-readonly", self.workflow_text)
-        self.assertIn('CLOSURE_EVIDENCE_POLICY_START: "2026-05-25T00:00:00Z"', self.workflow_text)
+        self.assertIn('CLOSURE_EVIDENCE_POLICY_START: "2026-06-30T00:00:00Z"', self.workflow_text)
         self.assertIn("push:", self.workflow_text)
         self.assertIn("pull_request:", self.workflow_text)
         self.assertIn("workflow_dispatch:", self.workflow_text)
