@@ -396,3 +396,148 @@ def test_collect_cli_ignores_bool_nano_aiu(tmp_path: Path) -> None:
     _, _, nano, _, _ = collect_cli(tmp_path, days=30)
     # Only the valid 5e9 should contribute; the bool True must be filtered.
     assert nano == 5_000_000_000.0
+
+
+# ---------- Effort capture (session default + per-call override) ----------
+
+
+def _session_start(reasoning_effort: str = "default") -> dict:
+    return {
+        "type": "session.start",
+        "data": {
+            "sessionId": "test-session",
+            "version": 1,
+            "reasoningEffort": reasoning_effort,
+            "contextTier": "default",
+        },
+    }
+
+
+def _task_tool_start(
+    tool_call_id: str,
+    agent_type: str = "general-purpose",
+    reasoning_effort: str | None = None,
+) -> dict:
+    args: dict[str, object] = {
+        "agent_type": agent_type,
+        "description": "test",
+        "name": "t",
+        "prompt": "p",
+    }
+    if reasoning_effort is not None:
+        args["reasoning_effort"] = reasoning_effort
+    return {
+        "type": "tool.execution_start",
+        "data": {
+            "toolCallId": tool_call_id,
+            "toolName": "task",
+            "arguments": args,
+        },
+    }
+
+
+def _subagent_with_id(
+    tool_call_id: str,
+    agent: str = "general-purpose",
+    model: str = "claude-sonnet-4.6",
+) -> dict:
+    e = _subagent_completed(agent=agent, model=model)
+    e["data"]["toolCallId"] = tool_call_id
+    return e
+
+
+def test_bucket_inherits_session_default_effort(tmp_path: Path) -> None:
+    """When no per-call override is present, bucket gets session.start effort."""
+    _write_session(
+        tmp_path,
+        "sess",
+        [
+            _session_start(reasoning_effort="high"),
+            _subagent_with_id("tc-1"),
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert len(buckets) == 1
+    assert buckets[0].effort == "high"
+
+
+def test_per_call_override_beats_session_default(tmp_path: Path) -> None:
+    """task tool arguments.reasoning_effort overrides session.start.reasoningEffort."""
+    _write_session(
+        tmp_path,
+        "sess",
+        [
+            _session_start(reasoning_effort="medium"),
+            _task_tool_start("tc-A", reasoning_effort="xhigh"),
+            _subagent_with_id("tc-A"),
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert buckets[0].effort == "xhigh"
+
+
+def test_default_effort_when_no_session_start(tmp_path: Path) -> None:
+    """Missing session.start → 'default' (the canonical sentinel)."""
+    _write_session(tmp_path, "sess", [_subagent_with_id("tc-x")])
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert buckets[0].effort == "default"
+
+
+def test_unknown_effort_value_normalizes_to_default(tmp_path: Path) -> None:
+    """Garbled effort value in telemetry must not produce a non-canonical bucket key."""
+    _write_session(
+        tmp_path,
+        "sess",
+        [
+            _session_start(reasoning_effort="UNKNOWN_VALUE"),
+            _subagent_with_id("tc-y"),
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert buckets[0].effort == "default"
+
+
+def test_buckets_split_by_effort(tmp_path: Path) -> None:
+    """Same (agent, model) at different effort levels = separate buckets."""
+    _write_session(
+        tmp_path,
+        "s1",
+        [
+            _session_start(reasoning_effort="medium"),
+            _subagent_with_id("tc-1"),
+        ],
+    )
+    _write_session(
+        tmp_path,
+        "s2",
+        [
+            _session_start(reasoning_effort="high"),
+            _subagent_with_id("tc-2"),
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    keys = sorted((b.agent, b.model, b.effort) for b in buckets)
+    assert keys == [
+        ("general-purpose", "claude-sonnet-4.6", "high"),
+        ("general-purpose", "claude-sonnet-4.6", "medium"),
+    ]
+
+
+def test_per_call_override_only_affects_matched_dispatch(tmp_path: Path) -> None:
+    """toolCallId-keyed override must not leak across dispatches."""
+    _write_session(
+        tmp_path,
+        "sess",
+        [
+            _session_start(reasoning_effort="medium"),
+            _task_tool_start("tc-OVR", reasoning_effort="xhigh"),
+            _subagent_with_id("tc-OVR"),
+            _subagent_with_id("tc-OTHER"),  # no override → session default
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    by_effort = {b.effort: b for b in buckets}
+    assert "xhigh" in by_effort
+    assert "medium" in by_effort
+    assert by_effort["xhigh"].invocations == 1
+    assert by_effort["medium"].invocations == 1

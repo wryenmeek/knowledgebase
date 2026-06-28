@@ -94,3 +94,93 @@ def test_anthropic_models_have_cache_write_set_others_dont() -> None:
                 f"{model_id} is non-Anthropic — must NOT declare "
                 f"cache_write_per_m"
             )
+
+
+# ---------- Effort-aware blended_rate / estimate_cost_usd ----------
+
+
+import pytest as _pytest
+
+from scripts.analysis.pricing import (  # noqa: E402
+    EFFORT_CAPABLE_MODELS,
+    blended_rate as _blended,
+    estimate_cost_usd as _estimate,
+)
+
+
+def test_effort_default_equals_no_effort_arg() -> None:
+    """Passing effort='default' must not change the result vs. omitting it."""
+    base = _blended("gpt-5.4-mini")
+    assert _blended("gpt-5.4-mini", effort="default") == base
+    assert _blended("gpt-5.4-mini", effort="medium") == base
+
+
+def test_effort_high_inflates_only_output_share() -> None:
+    """effort=high must inflate only the 10% output share (2.5× multiplier)."""
+    base = _blended("gpt-5.4-mini")
+    high = _blended("gpt-5.4-mini", effort="high")
+    # Output share = 10% × $4.50/M × 2.5 = $1.125/M added vs. baseline output
+    # baseline output contribution = 10% × $4.50/M = $0.45/M
+    # high contribution = 10% × $4.50/M × 2.5 = $1.125/M
+    # delta = $0.675/M
+    delta = high - base
+    assert abs(delta - 0.675) < 0.01, f"expected ≈$0.675/M, got ${delta:.4f}"
+
+
+def test_effort_xhigh_doubles_high_delta() -> None:
+    """xhigh (5×) should be roughly double the high (2.5×) output share delta."""
+    base = _blended("gpt-5.5")
+    high_delta = _blended("gpt-5.5", effort="high") - base
+    xhigh_delta = _blended("gpt-5.5", effort="xhigh") - base
+    # Ratio of (5.0-1.0)/(2.5-1.0) = 4/1.5 ≈ 2.67
+    ratio = xhigh_delta / high_delta
+    assert 2.5 < ratio < 2.9, f"expected ratio ~2.67, got {ratio:.2f}"
+
+
+def test_effort_ignored_on_non_effort_models() -> None:
+    """Sonnet/Haiku don't expose effort; passing it must be a no-op."""
+    assert _blended("claude-sonnet-4.6") == _blended("claude-sonnet-4.6", effort="high")
+    assert _blended("claude-haiku-4.5") == _blended("claude-haiku-4.5", effort="xhigh")
+
+
+def test_effort_capable_set_matches_docs() -> None:
+    """Pin the effort-capable model set against the documented list."""
+    expected = {
+        "claude-opus-4.6",
+        "claude-opus-4.7",
+        "gpt-5-mini",
+        "gpt-5.3-codex",
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.5",
+    }
+    assert set(EFFORT_CAPABLE_MODELS) == expected
+
+
+def test_unknown_effort_value_falls_back_to_baseline() -> None:
+    """An unknown effort string must not crash; treat as baseline."""
+    assert _blended("gpt-5.4-mini", effort="bogus") == _blended("gpt-5.4-mini")
+
+
+def test_estimate_cost_usd_passes_effort_through() -> None:
+    """estimate_cost_usd must respect the effort param."""
+    base = _estimate("gpt-5.4-mini", 1_000_000)
+    high = _estimate("gpt-5.4-mini", 1_000_000, effort="high")
+    assert high > base
+    assert abs((high - base) - 0.675) < 0.01
+
+
+def test_max_effort_only_meaningful_for_models_supporting_it() -> None:
+    """effort=max should inflate opus-4.7 output but be a no-op on haiku."""
+    opus_max = _blended("claude-opus-4.7", effort="max")
+    opus_base = _blended("claude-opus-4.7")
+    assert opus_max > opus_base
+    # haiku ignores
+    assert _blended("claude-haiku-4.5", effort="max") == _blended("claude-haiku-4.5")
+
+
+def test_low_effort_reduces_output_share() -> None:
+    """effort=low (0.7×) should produce a lower blended rate than default."""
+    base = _blended("gpt-5.4-mini")
+    low = _blended("gpt-5.4-mini", effort="low")
+    assert low < base
