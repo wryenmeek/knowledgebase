@@ -220,3 +220,141 @@ def test_blended_rate_case_sensitive_in_pricing_module() -> None:
     assert _blended("gpt-5.5", effort="HIGH") == _blended("gpt-5.5")
     # Lowercase 'high' produces the inflated rate
     assert _blended("gpt-5.5", effort="high") > _blended("gpt-5.5")
+
+
+# ---------- Long-context tier selection ----------
+
+LONG_CONTEXT_MODELS = [
+    # (model, threshold, lc_input_per_m, lc_output_per_m)
+    ("gpt-5.4", 272_000, 5.00, 22.50),
+    ("gpt-5.5", 272_000, 10.00, 45.00),
+    ("gemini-3.1-pro", 200_000, 4.00, 18.00),
+]
+
+
+def test_estimate_cost_usd_default_tier_when_input_tokens_omitted() -> None:
+    """Omitting input_tokens_for_threshold must yield the Default-tier rate."""
+    # gpt-5.5 Default blended rate: 0.2*5.00 + 0.7*0.50 + 0.1*30.00 = 4.35/M
+    expected = 4.35 * 100_000 / 1_000_000
+    assert _estimate("gpt-5.5", 100_000) == pytest.approx(expected)
+
+
+def test_estimate_cost_usd_default_tier_when_threshold_not_exceeded() -> None:
+    """input_tokens_for_threshold below threshold → Default tier rates."""
+    # gpt-5.4 threshold is 272K; 200K does NOT exceed it
+    default_rate = blended_rate("gpt-5.4")
+    cost_default = default_rate * 1_000_000 / 1_000_000
+    cost_below = _estimate("gpt-5.4", 1_000_000, input_tokens_for_threshold=200_000)
+    assert cost_below == pytest.approx(cost_default)
+
+
+@pytest.mark.parametrize("model,threshold,lc_in,lc_out", LONG_CONTEXT_MODELS)
+def test_estimate_cost_usd_long_context_tier_when_threshold_exceeded(
+    model: str, threshold: int, lc_in: float, lc_out: float
+) -> None:
+    """input_tokens_for_threshold above threshold → long-context rates used."""
+    over_threshold = threshold + 1
+    # Expected blended rate using long-context rates (default 20/70/10 mix).
+    price = PRICING[model]
+    lc_rate = (
+        0.20 * lc_in
+        + 0.70 * price.cached_per_m
+        + 0.10 * lc_out
+    )
+    expected_cost = lc_rate * 1_000_000 / 1_000_000
+    actual = _estimate(model, 1_000_000, input_tokens_for_threshold=over_threshold)
+    assert actual == pytest.approx(expected_cost)
+
+
+def test_estimate_cost_usd_default_tier_for_model_without_threshold() -> None:
+    """Passing input_tokens_for_threshold for a model with no threshold → Default tier, no error."""
+    # claude-sonnet-4.5 has no input_threshold_tokens; must silently use Default
+    default = _estimate("claude-sonnet-4.5", 1_000_000)
+    with_param = _estimate(
+        "claude-sonnet-4.5", 1_000_000, input_tokens_for_threshold=500_000
+    )
+    assert with_param == pytest.approx(default)
+
+
+def test_pricing_table_has_long_context_fields_for_known_long_context_models() -> None:
+    """gpt-5.4, gpt-5.5, gemini-3.1-pro must have all three long-context fields set."""
+    expected_thresholds = {
+        "gpt-5.4": 272_000,
+        "gpt-5.5": 272_000,
+        "gemini-3.1-pro": 200_000,
+    }
+    for model, threshold in expected_thresholds.items():
+        price = PRICING[model]
+        assert price.long_context_input_per_m is not None, (
+            f"{model}: long_context_input_per_m must be set"
+        )
+        assert price.long_context_output_per_m is not None, (
+            f"{model}: long_context_output_per_m must be set"
+        )
+        assert price.input_threshold_tokens == threshold, (
+            f"{model}: expected threshold {threshold}, got {price.input_threshold_tokens}"
+        )
+
+
+def test_long_context_rates_strictly_greater_than_default_rates() -> None:
+    """Long-context input and output rates must exceed Default-tier rates."""
+    for model, *_ in LONG_CONTEXT_MODELS:
+        price = PRICING[model]
+        assert price.long_context_input_per_m > price.input_per_m, (  # type: ignore[operator]
+            f"{model}: long_context_input_per_m should exceed input_per_m"
+        )
+        assert price.long_context_output_per_m > price.output_per_m, (  # type: ignore[operator]
+            f"{model}: long_context_output_per_m should exceed output_per_m"
+        )
+
+
+# ---------- Long-context share-sum validation ----------
+
+
+@pytest.mark.parametrize(
+    "input_share,cache_share,output_share",
+    [
+        (0.50, 0.70, 0.10),        # sum = 1.30 — clearly over
+        (0.10, 0.70, 0.10),        # sum = 0.90 — clearly under
+        (0.20 + 2e-6, 0.70, 0.10), # sum = 1.0 + 2e-6 — just over 1e-6 tolerance
+    ],
+)
+def test_estimate_cost_usd_long_context_rejects_non_unit_share_sum(
+    input_share: float, cache_share: float, output_share: float
+) -> None:
+    """Long-context branch must reject share sums that deviate more than 1e-6 from 1.0."""
+    # gpt-5.5 threshold = 272K; pass over-threshold to activate the LC path
+    with pytest.raises(ValueError):
+        _estimate(
+            "gpt-5.5",
+            1_000_000,
+            input_tokens_for_threshold=300_000,
+            input_share=input_share,
+            cache_share=cache_share,
+            output_share=output_share,
+        )
+
+
+def test_estimate_cost_usd_long_context_accepts_unit_share_sum_within_tolerance() -> None:
+    """Long-context branch must accept share sums within 1e-6 of 1.0."""
+    # Exact split: 0.20 + 0.70 + 0.10 = 1.0
+    cost_exact = _estimate(
+        "gpt-5.5",
+        1_000_000,
+        input_tokens_for_threshold=300_000,
+        input_share=0.20,
+        cache_share=0.70,
+        output_share=0.10,
+    )
+    assert cost_exact > 0.0
+
+    # Within-tolerance split: 0.2000005 + 0.6999995 + 0.10 = 1.0 (difference = 0 < 1e-6)
+    cost_near = _estimate(
+        "gpt-5.5",
+        1_000_000,
+        input_tokens_for_threshold=300_000,
+        input_share=0.2000005,
+        cache_share=0.6999995,
+        output_share=0.10,
+    )
+    assert cost_near > 0.0
