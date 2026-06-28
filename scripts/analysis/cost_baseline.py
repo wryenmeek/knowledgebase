@@ -42,8 +42,12 @@ aligned with sibling analyzers in ``scripts/validation/`` and
   Without ``--strict-window``, a long-running session whose ``events.jsonl``
   was appended recently contributes all of its events, including those older
   than the cutoff.
-* Pricing table covers Default tier only; long-context-tier invocations are
-  under-estimated. See ``pricing.py`` module docstring.
+* Pricing table now models long-context tiers (see ``pricing.py``) for
+  ``gpt-5.4``, ``gpt-5.5``, ``gemini-3.1-pro``. The per-call threshold check
+  is not yet wired through ``ChatBucket.est_cost_usd``; CLI-side estimates
+  also remain Default-tier because ``subagent.completed.totalTokens`` is
+  aggregate (no per-call input/output split). Both wirings are tracked as
+  follow-ups.
 * Failure heuristic (``totalTokens=0`` AND ``totalToolCalls=0`` AND
   ``durationMs<5000ms``) may false-positive on legitimate fast no-op
   dispatches. Aggregated 100% failure-rate rows on a single model across
@@ -221,8 +225,13 @@ class ChatBucket:
         # Option B: exact split when per-event cached tokens are available.
         if self.cached_input_tokens > 0:
             fresh = max(self.input_tokens - self.cached_input_tokens, 0)
+            fresh_rate = (
+                price.cache_write_per_m
+                if price.cache_write_per_m is not None
+                else price.input_per_m
+            )
             return (
-                fresh * price.input_per_m
+                fresh * fresh_rate
                 + self.cached_input_tokens * price.cached_per_m
                 + self.output_tokens * price.output_per_m
             ) / 1_000_000.0
@@ -232,8 +241,13 @@ class ChatBucket:
         )
         fresh_input = self.input_tokens * (1.0 - cache_frac)
         cached_input = self.input_tokens * cache_frac
+        fresh_rate = (
+            price.cache_write_per_m
+            if price.cache_write_per_m is not None
+            else price.input_per_m
+        )
         return (
-            fresh_input * price.input_per_m
+            fresh_input * fresh_rate
             + cached_input * price.cached_per_m
             + self.output_tokens * price.output_per_m
         ) / 1_000_000.0
@@ -368,7 +382,7 @@ def _parse_event_timestamp(ts_value: object) -> float | None:
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             return dt.timestamp()
-        except ValueError:
+        except (ValueError, OverflowError, OSError):
             return None
     return None
 

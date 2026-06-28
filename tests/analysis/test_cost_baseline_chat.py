@@ -187,7 +187,11 @@ def test_collect_chat_handles_missing_token_fields_as_zero(
 
 
 def test_chat_bucket_est_cost_uses_blended_rate_fallback() -> None:
-    """#402 Option A: without cached tokens, 70% of input treated as cached."""
+    """#402 Option A: without cached tokens, 70% of input treated as cached.
+
+    Fresh input is billed at cache_write_per_m for Anthropic models (mirrors
+    the blended_rate() conservatism; see P2 code-review finding).
+    """
     b = ChatBucket(
         model="claude-sonnet-4.6",
         inferences=1,
@@ -195,9 +199,15 @@ def test_chat_bucket_est_cost_uses_blended_rate_fallback() -> None:
         output_tokens=100_000,
     )
     price = PRICING["claude-sonnet-4.6"]
+    # Fresh input uses cache_write_per_m for Anthropic (P2 fix).
+    fresh_rate = (
+        price.cache_write_per_m
+        if price.cache_write_per_m is not None
+        else price.input_per_m
+    )
     # Default mix: 70% cached, 30% fresh
     expected = (
-        0.30 * 1_000_000 * price.input_per_m
+        0.30 * 1_000_000 * fresh_rate
         + 0.70 * 1_000_000 * price.cached_per_m
         + 100_000 * price.output_per_m
     ) / 1_000_000.0
@@ -218,7 +228,10 @@ def test_chat_bucket_est_cost_zero_for_unknown_model() -> None:
 
 
 def test_chat_bucket_with_cached_input_tokens_uses_exact_split() -> None:
-    """#402 Option B: when cached_input_tokens > 0, exact split is applied."""
+    """#402 Option B: when cached_input_tokens > 0, exact split is applied.
+
+    Fresh input is billed at cache_write_per_m for Anthropic models (P2 fix).
+    """
     cached = 700_000
     total_input = 1_000_000
     fresh = total_input - cached
@@ -231,8 +244,13 @@ def test_chat_bucket_with_cached_input_tokens_uses_exact_split() -> None:
         cached_input_tokens=cached,
     )
     price = PRICING["claude-sonnet-4.6"]
+    fresh_rate = (
+        price.cache_write_per_m
+        if price.cache_write_per_m is not None
+        else price.input_per_m
+    )
     expected = (
-        fresh * price.input_per_m
+        fresh * fresh_rate
         + cached * price.cached_per_m
         + 100_000 * price.output_per_m
     ) / 1_000_000.0
@@ -351,8 +369,13 @@ def test_collect_chat_accumulates_otel_cached_input_tokens(tmp_path: Path) -> No
     price = PRICING["claude-sonnet-4.6"]
     total_fresh = 1500 - 1000  # 500
     total_output = 100 + 100   # from default _otel_inference_event output_tokens=100
+    fresh_rate = (
+        price.cache_write_per_m
+        if price.cache_write_per_m is not None
+        else price.input_per_m
+    )
     expected_exact = (
-        total_fresh * price.input_per_m
+        total_fresh * fresh_rate
         + 1000 * price.cached_per_m
         + total_output * price.output_per_m
     ) / 1_000_000.0
@@ -391,3 +414,91 @@ def test_strict_window_excludes_old_otel_event_timestamps(tmp_path: Path) -> Non
     buckets_strict, _ = collect_chat(tmp_path, days=30, strict_window=True)
     assert len(buckets_strict) == 1
     assert buckets_strict[0].input_tokens == 500
+
+
+# ======================================================================
+# P2 — cache_write_per_m for Anthropic fresh input
+# ======================================================================
+
+
+def test_chat_bucket_uses_cache_write_per_m_for_anthropic_fresh_input() -> None:
+    """P2: Anthropic fresh input is billed at cache_write_per_m, not input_per_m.
+
+    claude-sonnet-4.5 has cache_write_per_m=3.75 and input_per_m=3.00.
+    Both Option B paths must use cache_write_per_m for the fresh share.
+    """
+    price = PRICING["claude-sonnet-4.5"]
+    assert price.cache_write_per_m is not None
+    assert price.cache_write_per_m != price.input_per_m
+
+    cached = 700_000
+    total_input = 1_000_000
+    fresh = total_input - cached
+
+    b = ChatBucket(
+        model="claude-sonnet-4.5",
+        inferences=1,
+        input_tokens=total_input,
+        output_tokens=100_000,
+        cached_input_tokens=cached,
+    )
+    expected_with_cache_write = (
+        fresh * price.cache_write_per_m
+        + cached * price.cached_per_m
+        + 100_000 * price.output_per_m
+    ) / 1_000_000.0
+    wrong_with_input_per_m = (
+        fresh * price.input_per_m
+        + cached * price.cached_per_m
+        + 100_000 * price.output_per_m
+    ) / 1_000_000.0
+    assert abs(b.est_cost_usd - expected_with_cache_write) < 1e-9
+    assert b.est_cost_usd != wrong_with_input_per_m
+
+
+def test_chat_bucket_falls_back_to_input_per_m_when_cache_write_per_m_is_none() -> None:
+    """P2: When cache_write_per_m is None (OpenAI), fresh input uses input_per_m."""
+    price = PRICING["gpt-5.4"]
+    assert price.cache_write_per_m is None
+
+    cached = 700_000
+    total_input = 1_000_000
+    fresh = total_input - cached
+
+    b = ChatBucket(
+        model="gpt-5.4",
+        inferences=1,
+        input_tokens=total_input,
+        output_tokens=100_000,
+        cached_input_tokens=cached,
+    )
+    expected = (
+        fresh * price.input_per_m
+        + cached * price.cached_per_m
+        + 100_000 * price.output_per_m
+    ) / 1_000_000.0
+    assert abs(b.est_cost_usd - expected) < 1e-9
+
+
+# ======================================================================
+# CLI smoke test — --chat-cache-share argparse wiring
+# ======================================================================
+
+
+def test_chat_cache_share_cli_flag_smoke(tmp_path: Path) -> None:
+    """--chat-cache-share 0.5 parses and wires through: blended-rate note shows 50%."""
+    import io
+    from scripts.analysis.cost_baseline import run_cli
+
+    _write_otel_session(
+        tmp_path,
+        "vscode-otel-test.jsonl",
+        [_otel_inference_event(model="gpt-5.4", input_tokens=1000)],
+    )
+    buf = io.StringIO()
+    rc = run_cli(
+        ["--home", str(tmp_path), "--days", "30", "--chat-cache-share", "0.5"],
+        output_stream=buf,
+    )
+    assert rc == 0
+    assert "50%" in buf.getvalue()
