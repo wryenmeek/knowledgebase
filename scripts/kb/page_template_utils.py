@@ -272,18 +272,38 @@ def extract_frontmatter_keys(frontmatter: str) -> set[str]:
 
 
 def extract_headings(body: str) -> set[str]:
+    # OPTIMIZATION: Avoid body.splitlines() to achieve O(1) memory overhead
     headings: set[str] = set()
     in_fenced_block = False
-    for line in body.splitlines():
+
+    start = 0
+    end = body.find('\n')
+    while end != -1:
+        line = body[start:end]
+        start = end + 1
+        end = body.find('\n', start)
+
         stripped = line.strip()
         if stripped.startswith("```") or stripped.startswith("~~~"):
             in_fenced_block = not in_fenced_block
             continue
         if in_fenced_block:
             continue
-        match = _HEADING_RE.match(stripped)
-        if match:
-            headings.add(f"{match.group(1)} {match.group(2)}")
+
+        if stripped.startswith("#"):
+            match = _HEADING_RE.match(stripped)
+            if match:
+                headings.add(f"{match.group(1)} {match.group(2)}")
+
+    if start < len(body):
+        stripped = body[start:].strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            pass
+        elif not in_fenced_block and stripped.startswith("#"):
+            match = _HEADING_RE.match(stripped)
+            if match:
+                headings.add(f"{match.group(1)} {match.group(2)}")
+
     return headings
 
 
