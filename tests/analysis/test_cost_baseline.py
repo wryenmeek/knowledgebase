@@ -541,3 +541,268 @@ def test_per_call_override_only_affects_matched_dispatch(tmp_path: Path) -> None
     assert "medium" in by_effort
     assert by_effort["xhigh"].invocations == 1
     assert by_effort["medium"].invocations == 1
+
+
+# ---------- Reviewer remediation: cross-session isolation, explicit-default
+# override, SavingsRow effort, failure-attribution after split,
+# defensive guards (per code-review / test-engineer / security-auditor) ----
+
+
+from scripts.analysis.cost_baseline import _build_savings, AgentBucket
+from scripts.analysis.pricing import EFFORT_CAPABLE_MODELS
+
+
+# P0 (test-eng): effort-aware downgrade-candidate flip
+
+
+def test_cheapest_candidate_flips_to_downgrade_when_effort_inflates_current() -> None:
+    """Headline payoff of the (agent, model, effort) split.
+
+    gpt-5.4 at default is cheaper than every powerful candidate (so no
+    swap), but at effort=high the 2.5× output multiplier pushes it past
+    claude-sonnet-4.6's fixed rate — sonnet then becomes a downgrade
+    candidate. This is the user-visible flip the bucket-key change enables.
+    """
+    assert (
+        _cheapest_candidate("powerful", "gpt-5.4", current_effort="default") is None
+    )
+    assert (
+        _cheapest_candidate("powerful", "gpt-5.4", current_effort="high")
+        == "claude-sonnet-4.6"
+    )
+
+
+# P1-a (test-eng): cross-session toolCallId isolation
+
+
+def test_per_call_override_does_not_leak_across_sessions(tmp_path: Path) -> None:
+    """A toolCallId reused across sessions must keep effort separate.
+
+    Regression guard: a refactor that hoists per_call_effort out of the
+    per-session loop would silently cross-contaminate.
+    """
+    _write_session(
+        tmp_path,
+        "s1",
+        [
+            _session_start(reasoning_effort="medium"),
+            _task_tool_start("shared-id", reasoning_effort="xhigh"),
+            _subagent_with_id("shared-id"),
+        ],
+    )
+    _write_session(
+        tmp_path,
+        "s2",
+        [
+            _session_start(reasoning_effort="medium"),
+            _subagent_with_id("shared-id"),  # NO per-task override here
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    by_effort = {b.effort: b for b in buckets}
+    assert by_effort["xhigh"].invocations == 1
+    assert by_effort["medium"].invocations == 1
+
+
+# P2 (code-rev): explicit reasoning_effort="default" overrides session high
+
+
+def test_explicit_default_override_steps_down_session_default(tmp_path: Path) -> None:
+    """An explicit per-task reasoning_effort='default' must defeat session high.
+
+    Previously the `if eff != "default"` filter silently discarded the
+    explicit step-down. Now any presence of the key (including 'default')
+    is recorded as an override.
+    """
+    _write_session(
+        tmp_path,
+        "sess",
+        [
+            _session_start(reasoning_effort="xhigh"),
+            _task_tool_start("tc-step-down", reasoning_effort="default"),
+            _subagent_with_id("tc-step-down"),
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert buckets[0].effort == "default"
+
+
+# P2 (test-eng): _build_savings coverage
+
+
+def test_build_savings_omits_row_when_no_cheaper_candidate() -> None:
+    """A bucket whose current model is already cheapest produces no row."""
+    bucket = AgentBucket(
+        agent="documentation-engineer",
+        model="claude-haiku-4.5",  # cheapest versatile candidate
+        effort="default",
+        invocations=1,
+        total_tokens=1_000_000,
+        total_duration_ms=1000,
+        failures=0,
+        sessions_count=1,
+    )
+    rows = _build_savings((bucket,))
+    assert rows == ()
+
+
+def test_build_savings_emits_row_with_effort_when_swap_available() -> None:
+    """A bucket with a known-cheaper alt produces a SavingsRow that carries
+    the bucket's effort field so the consumer can distinguish swap-model
+    recommendations from drop-effort alternatives.
+    """
+    bucket = AgentBucket(
+        agent="documentation-engineer",
+        model="claude-opus-4.7",
+        effort="xhigh",
+        invocations=1,
+        total_tokens=1_000_000,
+        total_duration_ms=1000,
+        failures=0,
+        sessions_count=1,
+    )
+    rows = _build_savings((bucket,))
+    assert len(rows) == 1
+    assert rows[0].current_effort == "xhigh"
+    assert rows[0].current_model == "claude-opus-4.7"
+    assert rows[0].savings_usd > 0
+
+
+# P2 (test-eng): failure attribution after bucket-key split
+
+
+def test_failures_attribute_to_current_effort_bucket(tmp_path: Path) -> None:
+    """A failed subagent.completed under session xhigh must NOT phantom-create
+    a separate 'default'-effort bucket — failures land in the active-effort
+    bucket like successes do.
+    """
+    failed = {
+        "type": "subagent.completed",
+        "data": {
+            "toolCallId": "tc-fail",
+            "agentName": "general-purpose",
+            "model": "gpt-5.5",
+            "totalTokens": 0,
+            "totalToolCalls": 0,
+            "durationMs": 1500,  # < 5000ms threshold
+        },
+    }
+    _write_session(
+        tmp_path,
+        "sess",
+        [_session_start(reasoning_effort="xhigh"), failed],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert len(buckets) == 1
+    assert buckets[0].effort == "xhigh"
+    assert buckets[0].failures == 1
+
+
+# P2 (sec-aud): _normalize_effort length guard
+
+
+def test_normalize_effort_rejects_oversize_string() -> None:
+    """Multi-MB strings must short-circuit before .lower() materializes a copy."""
+    from scripts.analysis.cost_baseline import _normalize_effort
+
+    long_value = "x" * 1_000_000
+    assert _normalize_effort(long_value) == "default"
+    # A length-32 input is allowed (boundary), even if it normalizes to default
+    assert _normalize_effort("a" * 32) == "default"
+    # 33 chars is rejected
+    assert _normalize_effort("a" * 33) == "default"
+
+
+# P3 (code-rev): empty-string toolCallId guard
+
+
+def test_empty_string_tool_call_id_is_rejected(tmp_path: Path) -> None:
+    """A tool.execution_start with toolCallId='' must not become a wildcard key."""
+    _write_session(
+        tmp_path,
+        "sess",
+        [
+            _session_start(reasoning_effort="medium"),
+            _task_tool_start("", reasoning_effort="xhigh"),  # invalid id
+            _subagent_with_id("real-tc"),  # falls through to session default
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    # The bucket must inherit session 'medium', not the rogue '' override.
+    assert buckets[0].effort == "medium"
+
+
+# P3 (test-eng): non-string toolCallId on subagent.completed
+
+
+def test_subagent_completed_with_none_tool_call_id(tmp_path: Path) -> None:
+    """A subagent.completed without a toolCallId falls back to session default."""
+    e = _subagent_completed()
+    e["data"].pop("toolCallId", None)  # ensure absent
+    _write_session(
+        tmp_path,
+        "sess",
+        [_session_start(reasoning_effort="high"), e],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert buckets[0].effort == "high"
+
+
+# P3 (test-eng): per-call override with unknown effort value
+# Currently the override-side normalizes "BOGUS" → "default" and records it
+# (because the new contract records the override regardless of value). This
+# is correct: the user explicitly stepped down to default for this dispatch.
+
+
+def test_unknown_effort_in_override_records_default(tmp_path: Path) -> None:
+    """An unknown effort value in a per-call override normalizes to default."""
+    _write_session(
+        tmp_path,
+        "sess",
+        [
+            _session_start(reasoning_effort="xhigh"),
+            _task_tool_start("tc-x", reasoning_effort="BOGUS"),
+            _subagent_with_id("tc-x"),
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    # BOGUS normalizes to default — the override is recorded and bucket
+    # inherits default, NOT the xhigh session default.
+    assert buckets[0].effort == "default"
+
+
+# P3 (code-rev): AgentBucket default-value pin
+
+
+def test_agent_bucket_effort_defaults_to_default_string() -> None:
+    """Pinning the dataclass default — guards a future field reorder regression."""
+    b = AgentBucket(
+        agent="x",
+        model="claude-haiku-4.5",
+        invocations=1,
+        total_tokens=0,
+        total_duration_ms=0,
+        failures=0,
+        sessions_count=1,
+    )
+    assert b.effort == "default"
+
+
+# P3 (code-rev): multiple session.start → last-wins (matches updated docstring)
+
+
+def test_multiple_session_start_events_last_one_wins(tmp_path: Path) -> None:
+    """Real sessions resume across restarts and emit multiple session.start
+    events; the last one reflects the active configuration.
+    """
+    _write_session(
+        tmp_path,
+        "sess",
+        [
+            _session_start(reasoning_effort="medium"),
+            _session_start(reasoning_effort="xhigh"),
+            _subagent_with_id("tc-1"),
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert buckets[0].effort == "xhigh"

@@ -184,3 +184,39 @@ def test_low_effort_reduces_output_share() -> None:
     base = _blended("gpt-5.4-mini")
     low = _blended("gpt-5.4-mini", effort="low")
     assert low < base
+
+
+# ---------- Reviewer remediation: subset invariant, falsy effort, case ----
+
+
+def test_effort_capable_models_subset_of_pricing() -> None:
+    """A model in EFFORT_CAPABLE_MODELS but missing from PRICING would
+    silently zero its blended_rate while keeping the multiplier set,
+    causing recommendations against a $0 baseline. Pin the invariant.
+    """
+    from scripts.analysis.pricing import PRICING
+    missing = EFFORT_CAPABLE_MODELS - set(PRICING.keys())
+    assert missing == set(), f"effort-capable models missing from PRICING: {missing}"
+
+
+@_pytest.mark.parametrize("effort_value", [None, "", 0, False, [], {}])
+def test_blended_rate_treats_falsy_and_non_string_effort_safely(effort_value) -> None:
+    """blended_rate must not crash on falsy/non-string effort values.
+
+    Type hint says ``str`` but Python doesn't enforce; defensive behavior
+    is "fall back to baseline" via _EFFORT_OUTPUT_MULTIPLIER.get default.
+    """
+    rate = _blended("gpt-5.4-mini", effort=effort_value)  # type: ignore[arg-type]
+    assert rate == _blended("gpt-5.4-mini")  # equals baseline
+
+
+def test_blended_rate_case_sensitive_in_pricing_module() -> None:
+    """pricing.blended_rate does NOT lowercase — callers must normalize first.
+
+    Pinning current behavior: a 'HIGH' string at the pricing layer is
+    treated as unknown and falls back to baseline. The normalization
+    contract lives in cost_baseline._normalize_effort, not in pricing.
+    """
+    assert _blended("gpt-5.5", effort="HIGH") == _blended("gpt-5.5")
+    # Lowercase 'high' produces the inflated rate
+    assert _blended("gpt-5.5", effort="high") > _blended("gpt-5.5")

@@ -1,4 +1,4 @@
-"""Official GitHub Copilot per-million-token pricing for AI Credits.
+"""Official GitHub Copilot per-million-token pricing and effort-output multipliers for AI Credits.
 
 Source: docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
 (retrieved 2026-06-27). Prices are USD per 1,000,000 tokens. 1 AI Credit = $0.01.
@@ -201,10 +201,22 @@ EFFORT_CAPABLE_MODELS: frozenset[str] = frozenset({
 def _effort_output_multiplier(model: str, effort: str) -> float:
     """Return the output-token multiplier for ``model`` at ``effort``.
 
-    Returns 1.0 for models that don't support effort, for unknown effort
-    values, or for ``effort="default"``/``"medium"``.
+    Per-effort multipliers (applied to the output share only):
+
+    * ``low``: 0.7× (reduced reasoning tokens)
+    * ``default`` / ``medium``: 1.0× (baseline)
+    * ``high``: 2.5×
+    * ``xhigh``: 5.0×
+    * ``max``: 7.0× (opus-4.7 only)
+
+    Returns 1.0 for models that don't support effort (any model not in
+    :data:`EFFORT_CAPABLE_MODELS`), for non-string or unhashable effort
+    values, for unknown effort strings, or for ``effort="default"`` /
+    ``"medium"``.
     """
     if model not in EFFORT_CAPABLE_MODELS:
+        return 1.0
+    if not isinstance(effort, str):
         return 1.0
     return _EFFORT_OUTPUT_MULTIPLIER.get(effort, 1.0)
 

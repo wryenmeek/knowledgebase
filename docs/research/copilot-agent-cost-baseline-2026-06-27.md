@@ -17,6 +17,8 @@ pricing_source: docs.github.com/en/copilot/reference/copilot-billing/models-and-
 
 ## Headline numbers
 
+> **Update (2026-06-27):** the headline figures pre-date the effort dimension; see [Addendum: effort dimension capture](#addendum-2026-06-27-effort-dimension-capture) for the re-bucketed numbers. The "$12,537 / `general-purpose` / `gpt-5.5`" row below collapsed three effort tiers; re-split it estimates ~$34,488 (xhigh $28,238 + default $4,728 + max $1,522). The estimate-to-actual gap widens from 1.2× to ~3.4× in the effort-aware view because the 5× xhigh output multiplier compounds the existing Anthropic-cache over-estimate. The original recommendation (migrate general-purpose off gpt-5.5) still holds.
+
 | Metric | Value | Source |
 | --- | --- | --- |
 | **Actual billed (CLI sessions, last 30d)** | **$10,262.39** (1,026,238 AI credits) | sum of `session.shutdown.totalNanoAiu` across 153 sessions |
@@ -163,7 +165,7 @@ Cross-functional review for the initial commit (`feat(analysis): add Copilot age
 
 ---
 
-## Addendum (2026-06-27 22:30): effort dimension capture
+## Addendum (2026-06-27): effort dimension capture
 
 After the initial report shipped, telemetry inspection (`session.start.reasoningEffort` + `tool.execution_start.arguments.reasoning_effort` for `task` tool calls) revealed that **effort level is the single largest hidden cost driver** that the effort-blind v1 analyzer was collapsing.
 
@@ -196,7 +198,7 @@ The v1 report could not explain why `general-purpose/gpt-5.5` cost $12k for "428
 
 ### What the user's 14-agent settings.json patch does
 
-Applied 2026-06-27 22:25:
+Applied 2026-06-27:
 
 - Pins `general-purpose`, `code-reviewer`, `code-review`, `security-auditor`, `security-review`, `rubber-duck` to `claude-sonnet-4.6` (no effort knob; quota-stable)
 - Pins `documentation-engineer`, `docs`, `github-customization-steward` to `claude-haiku-4.5` (structured output; no effort knob)

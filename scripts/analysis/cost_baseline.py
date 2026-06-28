@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Aggregate per-(agent, model) Copilot CLI + Chat cost from local telemetry.
+"""Aggregate per-(agent, model, effort) Copilot CLI + Chat cost from local telemetry.
 
 Read-only analyzer for host-local Copilot telemetry. Sources:
 
 * CLI per-agent telemetry: ``~/.copilot/session-state/*/events.jsonl``
   (``subagent.completed`` events carry ``agentName``, ``model``,
-  ``totalTokens``, ``durationMs``; ``session.shutdown`` carries
+  ``totalTokens``, ``durationMs``; ``session.start.reasoningEffort`` sets
+  the session default effort; ``tool.execution_start.arguments.reasoning_effort``
+  for ``task`` tool calls may carry a per-dispatch override (joined to
+  ``subagent.completed`` via ``toolCallId``); ``session.shutdown`` carries
   ``totalNanoAiu`` for ground-truth main-agent cost).
 * VS Code Copilot Chat OTEL: ``~/.copilot/traces/vscode-otel-*.jsonl``
   (``gen_ai.client.inference.operation.details`` events carry per-call
@@ -22,10 +25,10 @@ write-surface matrix entry for ``scripts/analysis/**``.
 
 The surface uses a custom :class:`CostBaselineReport` schema (not the generic
 ``_optional_surface_common.SurfaceResult``) because the analyzer's output is
-richer than the generic envelope — per-(agent, model) buckets, per-model
-chat aggregates, savings projections, and a priority list cannot be cleanly
-expressed as ``SurfaceResult.items``. The standard ``STATUS_PASS`` /
-``STATUS_FAIL`` constants, reason-code conventions, and ``JsonArgumentParser``
+richer than the generic envelope — per-(agent, model, effort) buckets,
+per-model chat aggregates, savings projections, and a priority list cannot
+be cleanly expressed as ``SurfaceResult.items``. The standard ``STATUS_PASS``
+/ ``STATUS_FAIL`` constants, reason-code conventions, and ``JsonArgumentParser``
 helper ARE reused from ``_optional_surface_common`` to keep the contract
 aligned with sibling analyzers in ``scripts/validation/`` and
 ``scripts/reporting/``. (Same pattern as
@@ -45,6 +48,10 @@ aligned with sibling analyzers in ``scripts/validation/`` and
   dispatches. Aggregated 100% failure-rate rows on a single model across
   many agents are reliable (the quota-exhaustion pattern); single-bucket
   small-N rates need manual triage.
+* Effort cost multipliers (see :mod:`scripts.analysis.pricing`) are
+  industry-observed planning-grade heuristics, not per-task measurements;
+  real output-token usage at ``effort=high``/``xhigh``/``max`` varies widely
+  across task complexity.
 """
 
 from __future__ import annotations
@@ -225,11 +232,20 @@ class SavingsRow:
     alt_cost_usd: float
     savings_usd: float
     reduction_pct: float
+    current_effort: str = "default"
+    """Effort level at which ``current_cost_usd`` was billed.
+
+    Surfaced so the reader can distinguish "swap the model" recommendations
+    from "drop the effort" alternatives — a high-effort bucket may save
+    most of its cost by dropping to default effort on the SAME model,
+    which the model-only recommendation cannot express.
+    """
 
     def to_dict(self) -> dict[str, object]:
         return {
             "agent": self.agent,
             "current_model": self.current_model,
+            "current_effort": self.current_effort,
             "current_cost_usd": round(self.current_cost_usd, 4),
             "alt_model": self.alt_model,
             "alt_cost_usd": round(self.alt_cost_usd, 4),
@@ -401,15 +417,74 @@ EFFORT_VALUES: frozenset[str] = frozenset(
     ("default", "low", "medium", "high", "xhigh", "max")
 )
 
+# The longest canonical effort string is "default" (7 chars). Reject inputs
+# longer than this slack threshold up-front to bound per-event work on
+# malformed/adversarial telemetry (see security audit P3 on 40c4860).
+_MAX_EFFORT_INPUT_LEN = 32
+
 
 def _normalize_effort(value: object) -> str:
-    """Return a canonical effort string; map unknown / missing to ``default``."""
+    """Return a canonical effort string; map unknown / missing to ``default``.
+
+    Defensively bounded: any non-string, oversize string (>32 chars), or
+    string that does not normalize to one of :data:`EFFORT_VALUES` returns
+    the ``"default"`` sentinel. The length guard prevents a multi-MB string
+    in malformed telemetry from triggering an unbounded ``.lower()``
+    allocation before the allowlist rejects it.
+    """
     if not isinstance(value, str):
+        return "default"
+    if len(value) > _MAX_EFFORT_INPUT_LEN:
         return "default"
     v = value.strip().lower()
     if v in EFFORT_VALUES:
         return v
     return "default"
+
+
+def _iter_session_event_lists(
+    home: Path, cutoff_epoch: float, skipped: dict[str, int]
+) -> Iterator[tuple[str, list[dict]]]:
+    """Yield ``(session_id, [events])`` one session at a time.
+
+    Per-file streaming: each session's events.jsonl is parsed in full, the
+    materialized list is yielded, and the caller is expected to drop the
+    reference before the next yield. This bounds memory at "one session"
+    instead of "all in-window sessions" — see security audit P2 on
+    40c4860 (8 GB session-state corpus would OOM the prior all-at-once
+    buffering).
+
+    Increments ``skipped["files"]`` for ``OSError`` at ``stat()`` /
+    ``open()`` time, and ``skipped["lines"]`` for any JSON line that fails
+    to parse OR parses to a non-dict value. Files whose mtime predates
+    ``cutoff_epoch`` are skipped silently.
+    """
+    for path in home.glob(SESSION_STATE_GLOB):
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            skipped["files"] += 1
+            continue
+        if mtime < cutoff_epoch:
+            continue
+        session_id = path.parent.name
+        events: list[dict] = []
+        try:
+            with path.open(encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    try:
+                        ev = json.loads(line)
+                    except json.JSONDecodeError:
+                        skipped["lines"] += 1
+                        continue
+                    if not isinstance(ev, dict):
+                        skipped["lines"] += 1
+                        continue
+                    events.append(ev)
+        except OSError:
+            skipped["files"] += 1
+            continue
+        yield session_id, events
 
 
 def collect_cli(
@@ -419,15 +494,24 @@ def collect_cli(
 ]:
     """Aggregate per-(agent, model, effort) cost from CLI session events.
 
-    Two-pass over each session's events.jsonl:
+    Per-session two-pass:
 
-    1. Build a per-session ``session_default_effort`` from the first
-       ``session.start`` event seen, and a ``per_call_effort`` map from
-       ``tool.execution_start`` events for ``task`` tool calls that carry
-       an explicit ``arguments.reasoning_effort``.
+    1. Build ``session_default_effort`` from the **last** ``session.start``
+       event in the session (real sessions resume across restarts and emit
+       multiple ``session.start`` events; the last one reflects the active
+       configuration when the work was billed). Build a ``per_call_effort``
+       map from ``tool.execution_start`` events for ``task`` tool calls
+       that carry an explicit ``arguments.reasoning_effort`` (the key is
+       always present, even if the value is ``"default"`` — explicit
+       ``"default"`` is treated as an intentional step-down from a
+       non-default session default).
     2. For each ``subagent.completed``, resolve effort = per-call override
-       OR session default OR "default". Group buckets by
-       (agent, model, effort).
+       OR session default OR ``"default"``. Group buckets by
+       ``(agent, model, effort)``.
+
+    Memory: one session's events held at a time (see
+    :func:`_iter_session_event_lists`). ``per_call_effort`` is per-session
+    and never leaks across sessions.
 
     The session-level pass is needed because effort is not recorded on the
     ``subagent.completed`` event itself; it is set at session start
@@ -452,17 +536,10 @@ def collect_cli(
     actual_nano_aiu = 0.0
     skipped = {"files": 0, "lines": 0}
 
-    # First pass: group events by session so we can resolve effort context
-    # before bucketing each subagent.completed event. We materialize per
-    # session (typical session has 100s-1000s of events; memory is bounded).
-    per_session: dict[str, list[dict]] = defaultdict(list)
-    for session_id, event in _iter_session_events(home, cutoff, skipped):
-        per_session[session_id].append(event)
-
-    for session_id, events in per_session.items():
+    for session_id, events in _iter_session_event_lists(home, cutoff, skipped):
         session_default_effort = "default"
         per_call_effort: dict[str, str] = {}
-        # Resolve effort context first
+        # First pass over THIS session only: resolve effort context.
         for event in events:
             et = event.get("type")
             if et == "session.start":
@@ -478,14 +555,17 @@ def collect_cli(
                 if data.get("toolName") != "task":
                     continue
                 tool_call_id = data.get("toolCallId")
-                args = data.get("arguments")
-                if not isinstance(tool_call_id, str):
+                if not isinstance(tool_call_id, str) or not tool_call_id:
                     continue
-                if isinstance(args, dict):
-                    eff = _normalize_effort(args.get("reasoning_effort"))
-                    if eff != "default":
-                        per_call_effort[tool_call_id] = eff
-        # Bucketing pass
+                args = data.get("arguments")
+                if isinstance(args, dict) and "reasoning_effort" in args:
+                    # Always record an explicit override — including an
+                    # explicit "default" — so a per-task step-down from a
+                    # high session default is preserved.
+                    per_call_effort[tool_call_id] = _normalize_effort(
+                        args["reasoning_effort"]
+                    )
+        # Second pass: bucket subagent.completed and accumulate shutdown nano.
         for event in events:
             et = event.get("type")
             if et == "subagent.completed":
@@ -499,7 +579,7 @@ def collect_cli(
                 tool_calls = _coerce_int(data.get("totalToolCalls"))
                 tool_call_id = data.get("toolCallId")
                 effort = per_call_effort.get(
-                    tool_call_id if isinstance(tool_call_id, str) else "",
+                    tool_call_id if isinstance(tool_call_id, str) and tool_call_id else "\x00",
                     session_default_effort,
                 )
                 key = (agent, model, effort)
@@ -628,6 +708,7 @@ def _build_savings(
             SavingsRow(
                 agent=b.agent,
                 current_model=b.model,
+                current_effort=b.effort,
                 current_cost_usd=b.est_cost_usd,
                 alt_model=alt,
                 alt_cost_usd=alt_cost,
@@ -785,21 +866,21 @@ def _render_baseline_table(buckets: Sequence[AgentBucket]) -> str:
 
 def _render_savings_table(rows: Sequence[SavingsRow]) -> str:
     out = [
-        f"{'agent':<32} {'current':<22} {'cur_$':>8} {'alt':<22} "
+        f"{'agent':<32} {'current':<22} {'eff':<7} {'cur_$':>8} {'alt':<22} "
         f"{'alt_$':>8} {'save_$':>8} {'redux':>6}"
     ]
-    out.append("-" * 110)
+    out.append("-" * 118)
     for r in rows:
         out.append(
-            f"{r.agent:<32} {r.current_model:<22} "
+            f"{r.agent:<32} {r.current_model:<22} {r.current_effort:<7} "
             f"${r.current_cost_usd:>7.2f} {r.alt_model:<22} "
             f"${r.alt_cost_usd:>7.2f} ${r.savings_usd:>7.2f} "
             f"{r.reduction_pct:>5.1f}%"
         )
     total_savings = sum(r.savings_usd for r in rows)
-    out.append("-" * 110)
+    out.append("-" * 118)
     out.append(
-        f"{'TOTAL projected savings':<32} {'':<22} {'':>8} {'':<22} "
+        f"{'TOTAL projected savings':<32} {'':<22} {'':<7} {'':>8} {'':<22} "
         f"{'':>8} ${total_savings:>7.2f}"
     )
     return "\n".join(out)
