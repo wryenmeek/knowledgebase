@@ -259,6 +259,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("schema/report-artifact-contract.md", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("Missing approval", "lock contention", "wiki path escapes boundary", "fail closed"),
     },
+    "scripts/analysis/**": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "forbidden"),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": ("scripts/analysis/pricing.py", "docs.github.com"),
+        "Hard-fail behavior": ("~/.copilot", "--days", "fail closed"),
+    },
     "scripts/context/**": {
         "Runtime mode": ("blocking-only",),
         "Writable paths": ("None direct", "delegate"),
