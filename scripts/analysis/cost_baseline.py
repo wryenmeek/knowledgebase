@@ -36,13 +36,18 @@ aligned with sibling analyzers in ``scripts/validation/`` and
 
 **Known limitations** (also see ``pricing.py``):
 
-* ``--days N`` window is enforced at **file mtime granularity only**.
-  Events have a per-event ``timestamp`` field but the tool only filters by
-  ``events.jsonl`` mtime. A long-running session whose events file was
-  appended to recently contributes ALL of its events to the window. For
-  precise per-event windowing, see issue tracker.
-* Pricing table covers Default tier only; long-context-tier invocations are
-  under-estimated. See ``pricing.py`` module docstring.
+* ``--days N`` window is enforced at **file mtime granularity by default**.
+  Use ``--strict-window`` to also filter by each event's ``timestamp`` field;
+  events without a parseable ``timestamp`` are included regardless (#403).
+  Without ``--strict-window``, a long-running session whose ``events.jsonl``
+  was appended recently contributes all of its events, including those older
+  than the cutoff.
+* Pricing table now models long-context tiers (see ``pricing.py``) for
+  ``gpt-5.4``, ``gpt-5.5``, ``gemini-3.1-pro``. The per-call threshold check
+  is not yet wired through ``ChatBucket.est_cost_usd``; CLI-side estimates
+  also remain Default-tier because ``subagent.completed.totalTokens`` is
+  aggregate (no per-call input/output split). Both wirings are tracked as
+  follow-ups.
 * Failure heuristic (``totalTokens=0`` AND ``totalToolCalls=0`` AND
   ``durationMs<5000ms``) may false-positive on legitimate fast no-op
   dispatches. Aggregated 100% failure-rate rows on a single model across
@@ -188,28 +193,62 @@ class AgentBucket:
 class ChatBucket:
     """Per-model VS Code Copilot Chat aggregate.
 
-    OTEL split between fresh-input and cached-input tokens is not available
-    in the ``gen_ai.usage.*`` attributes today — only one ``input_tokens``
-    field is published. ``est_cost_usd`` therefore charges 100% of input
-    tokens at the fresh-input rate, which **structurally over-estimates** the
-    cost for Anthropic models (whose cached-input rate is 10x cheaper) and
-    OpenAI models with prompt caching. The CLI side uses a blended rate
-    (70% cached); the Chat side cannot distinguish here. Treat Chat dollar
-    estimates as an upper bound. See report Caveats section.
+    ``est_cost_usd`` uses an Option B-then-A strategy (#402):
+
+    * **Option B (exact split):** If OTEL provides
+      ``gen_ai.usage.cache_read_input_tokens`` (or the alternate
+      ``gen_ai.usage.cached_input_tokens``), the exact fresh/cached split is
+      used: ``fresh_input * input_per_m + cached_input * cached_per_m +
+      output * output_per_m``.
+    * **Option A (blended-rate fallback):** When no cached-token attribute
+      is present, a blended rate is applied to the input tokens (default:
+      70% treated as cached, matching the CLI-side default mix). Override
+      with ``--chat-cache-share`` to model a different cache share.
+
+    Both options are materially more accurate than the previous approach of
+    charging 100% at the fresh-input rate (the former structural overestimate
+    of ~10× on the cached portion for Anthropic models).
     """
 
     model: str
     inferences: int
     input_tokens: int
     output_tokens: int
+    cached_input_tokens: int = 0
+    chat_cache_share: float | None = None  # None → blended_rate default (0.70)
 
     @property
     def est_cost_usd(self) -> float:
         price = PRICING.get(self.model)
         if price is None:
             return 0.0
+        # Option B: exact split when per-event cached tokens are available.
+        if self.cached_input_tokens > 0:
+            fresh = max(self.input_tokens - self.cached_input_tokens, 0)
+            fresh_rate = (
+                price.cache_write_per_m
+                if price.cache_write_per_m is not None
+                else price.input_per_m
+            )
+            return (
+                fresh * fresh_rate
+                + self.cached_input_tokens * price.cached_per_m
+                + self.output_tokens * price.output_per_m
+            ) / 1_000_000.0
+        # Option A: blended-rate fallback.
+        cache_frac = (
+            self.chat_cache_share if self.chat_cache_share is not None else 0.70
+        )
+        fresh_input = self.input_tokens * (1.0 - cache_frac)
+        cached_input = self.input_tokens * cache_frac
+        fresh_rate = (
+            price.cache_write_per_m
+            if price.cache_write_per_m is not None
+            else price.input_per_m
+        )
         return (
-            self.input_tokens * price.input_per_m
+            fresh_input * fresh_rate
+            + cached_input * price.cached_per_m
             + self.output_tokens * price.output_per_m
         ) / 1_000_000.0
 
@@ -218,6 +257,7 @@ class ChatBucket:
             "model": self.model,
             "inferences": self.inferences,
             "input_tokens": self.input_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
             "output_tokens": self.output_tokens,
             "est_cost_usd": round(self.est_cost_usd, 4),
         }
@@ -319,6 +359,34 @@ def _epoch_cutoff(days: int) -> float:
     return time.time() - days * 86400.0
 
 
+def _parse_event_timestamp(ts_value: object) -> float | None:
+    """Parse an event ``timestamp`` field to epoch seconds.
+
+    Accepts:
+    * Numeric (int/float, not bool) → returned as float directly.
+    * ISO 8601 string (with or without timezone; trailing 'Z' treated as UTC).
+
+    Returns ``None`` on parse failure or unsupported type so callers can
+    decide to include or skip the event defensively.
+    """
+    if isinstance(ts_value, bool):
+        return None
+    if isinstance(ts_value, (int, float)):
+        return float(ts_value)
+    if isinstance(ts_value, str) and ts_value:
+        try:
+            s = ts_value
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except (ValueError, OverflowError, OSError):
+            return None
+    return None
+
+
 def _coerce_int(value: object) -> int:
     """Coerce telemetry numeric to int; return 0 for None / non-numeric / bool.
 
@@ -339,7 +407,11 @@ def _coerce_int(value: object) -> int:
 
 
 def _iter_session_events(
-    home: Path, cutoff_epoch: float, skipped: dict[str, int]
+    home: Path,
+    cutoff_epoch: float,
+    skipped: dict[str, int],
+    *,
+    strict_window: bool = False,
 ) -> Iterator[tuple[str, dict]]:
     """Stream (session_id, event_dict) pairs across last-N-day session files.
 
@@ -349,6 +421,10 @@ def _iter_session_events(
     ``errors="replace"`` on open(), which replaces the offending bytes
     rather than aborting the iteration). Sessions whose ``events.jsonl``
     mtime predates ``cutoff_epoch`` are skipped silently.
+
+    When ``strict_window=True``, events whose ``timestamp`` field parses to
+    an epoch value older than ``cutoff_epoch`` are skipped regardless of the
+    file mtime. Events without a parseable timestamp are always included.
     """
     for path in home.glob(SESSION_STATE_GLOB):
         try:
@@ -370,13 +446,21 @@ def _iter_session_events(
                     if not isinstance(event, dict):
                         skipped["lines"] += 1
                         continue
+                    if strict_window:
+                        ts = _parse_event_timestamp(event.get("timestamp"))
+                        if ts is not None and ts < cutoff_epoch:
+                            continue
                     yield session_id, event
         except OSError:
             skipped["files"] += 1
 
 
 def _iter_otel_inferences(
-    home: Path, cutoff_epoch: float, skipped: dict[str, int]
+    home: Path,
+    cutoff_epoch: float,
+    skipped: dict[str, int],
+    *,
+    strict_window: bool = False,
 ) -> Iterator[dict]:
     """Yield gen_ai inference operation events from OTEL traces.
 
@@ -384,6 +468,10 @@ def _iter_otel_inferences(
     ``gen_ai.client.inference.operation.details``. Non-inference events
     (auth, hooks, sessions) are skipped without contributing to the
     ``skipped_*`` counters because they are expected, not malformed.
+
+    When ``strict_window=True``, OTEL events whose top-level ``timestamp``
+    field parses to a value older than ``cutoff_epoch`` are skipped.
+    Events without a parseable timestamp are always included.
     """
     for path in home.glob(OTEL_GLOB):
         try:
@@ -404,6 +492,10 @@ def _iter_otel_inferences(
                     if not isinstance(e, dict):
                         skipped["lines"] += 1
                         continue
+                    if strict_window:
+                        ts = _parse_event_timestamp(e.get("timestamp"))
+                        if ts is not None and ts < cutoff_epoch:
+                            continue
                     attrs = e.get("attributes")
                     if not isinstance(attrs, dict):
                         continue
@@ -443,7 +535,11 @@ def _normalize_effort(value: object) -> str:
 
 
 def _iter_session_event_lists(
-    home: Path, cutoff_epoch: float, skipped: dict[str, int]
+    home: Path,
+    cutoff_epoch: float,
+    skipped: dict[str, int],
+    *,
+    strict_window: bool = False,
 ) -> Iterator[tuple[str, list[dict]]]:
     """Yield ``(session_id, [events])`` one session at a time.
 
@@ -458,6 +554,11 @@ def _iter_session_event_lists(
     ``open()`` time, and ``skipped["lines"]`` for any JSON line that fails
     to parse OR parses to a non-dict value. Files whose mtime predates
     ``cutoff_epoch`` are skipped silently.
+
+    When ``strict_window=True``, events whose ``timestamp`` field parses to
+    a value older than ``cutoff_epoch`` are excluded from the yielded list
+    regardless of the file mtime. Events without a parseable timestamp are
+    always included.
     """
     for path in home.glob(SESSION_STATE_GLOB):
         try:
@@ -480,6 +581,10 @@ def _iter_session_event_lists(
                     if not isinstance(ev, dict):
                         skipped["lines"] += 1
                         continue
+                    if strict_window:
+                        ts = _parse_event_timestamp(ev.get("timestamp"))
+                        if ts is not None and ts < cutoff_epoch:
+                            continue
                     events.append(ev)
         except OSError:
             skipped["files"] += 1
@@ -488,7 +593,7 @@ def _iter_session_event_lists(
 
 
 def collect_cli(
-    home: Path, days: int
+    home: Path, days: int, *, strict_window: bool = False
 ) -> tuple[
     tuple[AgentBucket, ...], int, float, dict[str, int], tuple[str, ...]
 ]:
@@ -536,7 +641,7 @@ def collect_cli(
     actual_nano_aiu = 0.0
     skipped = {"files": 0, "lines": 0}
 
-    for session_id, events in _iter_session_event_lists(home, cutoff, skipped):
+    for session_id, events in _iter_session_event_lists(home, cutoff, skipped, strict_window=strict_window):
         session_default_effort = "default"
         per_call_effort: dict[str, str] = {}
         # First pass over THIS session only: resolve effort context.
@@ -625,15 +730,30 @@ def collect_cli(
 
 
 def collect_chat(
-    home: Path, days: int
+    home: Path,
+    days: int,
+    *,
+    chat_cache_share: float | None = None,
+    strict_window: bool = False,
 ) -> tuple[tuple[ChatBucket, ...], dict[str, int]]:
-    """Aggregate per-model VS Code Copilot Chat inferences from OTEL traces."""
+    """Aggregate per-model VS Code Copilot Chat inferences from OTEL traces.
+
+    When OTEL exposes ``gen_ai.usage.cache_read_input_tokens`` (or the
+    alternate ``gen_ai.usage.cached_input_tokens``), the exact cached split
+    is accumulated per model. Otherwise, ``ChatBucket.est_cost_usd`` falls
+    back to a blended-rate estimate using ``chat_cache_share`` (default 0.70).
+    """
     cutoff = _epoch_cutoff(days)
     raw: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"inferences": 0, "input_tokens": 0, "output_tokens": 0}
+        lambda: {
+            "inferences": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_input_tokens": 0,
+        }
     )
     skipped = {"files": 0, "lines": 0}
-    for attrs in _iter_otel_inferences(home, cutoff, skipped):
+    for attrs in _iter_otel_inferences(home, cutoff, skipped, strict_window=strict_window):
         model = attrs.get("gen_ai.request.model") or "?"
         if model == "?":
             continue
@@ -641,12 +761,21 @@ def collect_chat(
         bucket["inferences"] += 1
         bucket["input_tokens"] += _coerce_int(attrs.get("gen_ai.usage.input_tokens"))
         bucket["output_tokens"] += _coerce_int(attrs.get("gen_ai.usage.output_tokens"))
+        # Option B: pick up exact cached-token count when OTEL provides it.
+        cached = _coerce_int(
+            attrs.get("gen_ai.usage.cache_read_input_tokens")
+        ) or _coerce_int(
+            attrs.get("gen_ai.usage.cached_input_tokens")
+        )
+        bucket["cached_input_tokens"] += cached
     chat_buckets = tuple(
         ChatBucket(
             model=model,
             inferences=v["inferences"],
             input_tokens=v["input_tokens"],
             output_tokens=v["output_tokens"],
+            cached_input_tokens=v["cached_input_tokens"],
+            chat_cache_share=chat_cache_share,
         )
         for model, v in raw.items()
     )
@@ -756,11 +885,20 @@ def build_report(
     days: int,
     top_n: int = 10,
     include_chat: bool = True,
+    chat_cache_share: float | None = None,
+    strict_window: bool = False,
 ) -> CostBaselineReport:
     """Build a :class:`CostBaselineReport` for the configured window.
 
     Fails closed (``STATUS_FAIL``) if ``home`` is not a directory or if
     ``days`` is not a positive integer.
+
+    ``chat_cache_share`` (float in [0,1] or None) overrides the blended-rate
+    cache-share assumption used in ``ChatBucket.est_cost_usd`` when OTEL does
+    not provide exact cached-token counts. ``None`` uses the default (0.70).
+
+    ``strict_window`` enables per-event timestamp filtering in addition to
+    the default file-mtime-only window enforcement.
     """
     if isinstance(days, bool) or not isinstance(days, int) or days < 1:
         return _empty_report(
@@ -781,10 +919,15 @@ def build_report(
         )
 
     cli_buckets, sessions_analyzed, actual_nano_aiu, cli_skipped, unknown = (
-        collect_cli(home, days)
+        collect_cli(home, days, strict_window=strict_window)
     )
     if include_chat:
-        chat_buckets, chat_skipped = collect_chat(home, days)
+        chat_buckets, chat_skipped = collect_chat(
+            home,
+            days,
+            chat_cache_share=chat_cache_share,
+            strict_window=strict_window,
+        )
     else:
         chat_buckets = ()
         chat_skipped = {"files": 0, "lines": 0}
@@ -919,11 +1062,20 @@ def _render_priority_list(rows: Sequence[PriorityRow]) -> str:
     return "\n".join(out)
 
 
-def render_text(report: CostBaselineReport, *, days: int, home: Path) -> str:
+def render_text(
+    report: CostBaselineReport,
+    *,
+    days: int,
+    home: Path,
+    strict_window: bool = False,
+    chat_cache_share: float | None = None,
+) -> str:
     """Render a :class:`CostBaselineReport` as human-readable tables."""
+    window_label = "[strict-window]" if strict_window else "[mtime-window]"
     lines: list[str] = []
     lines.append(
-        f"# Copilot agent cost baseline (last {days}d, home={home})"
+        f"# Copilot agent cost baseline "
+        f"(last {days}d {window_label}, home={home})"
     )
     if report.pricing_stale:
         age = (datetime.now(timezone.utc).date() - PRICING_RETRIEVED).days
@@ -985,12 +1137,22 @@ def render_text(report: CostBaselineReport, *, days: int, home: Path) -> str:
         lines.append("")
         lines.append(_render_chat_table(report.chat_buckets))
         lines.append("")
-        lines.append(
-            "  NOTE: Chat cost estimates apply the fresh-input rate to all "
-            "input tokens. Cached-input savings (typically 10x on Anthropic, "
-            "5-10x on OpenAI with prompt caching) are NOT subtracted. Treat "
-            "Chat dollar estimates as an upper bound."
-        )
+        if any(b.cached_input_tokens > 0 for b in report.chat_buckets):
+            lines.append(
+                "  NOTE: Chat cost estimates use exact cached-input split "
+                "where OTEL provides gen_ai.usage.cache_read_input_tokens; "
+                "remaining models use the blended-rate fallback."
+            )
+        else:
+            share_pct = int(
+                (chat_cache_share if chat_cache_share is not None else 0.70) * 100
+            )
+            lines.append(
+                f"  NOTE: Chat cost estimates apply a blended rate treating "
+                f"{share_pct}% of input tokens as cached "
+                f"(use --chat-cache-share to override). "
+                f"No exact cached-token data found in OTEL traces."
+            )
         lines.append("")
 
     # Observability footer
@@ -1011,6 +1173,19 @@ def render_text(report: CostBaselineReport, *, days: int, home: Path) -> str:
     return "\n".join(lines)
 
 
+def _float_zero_one(s: str) -> float:
+    """Custom argparse type: float in [0.0, 1.0]."""
+    try:
+        v = float(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a float, got {s!r}")
+    if not (0.0 <= v <= 1.0):
+        raise argparse.ArgumentTypeError(
+            f"must be in [0.0, 1.0], got {v!r}"
+        )
+    return v
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = JsonArgumentParser(
         prog="copilot-agent-cost-baseline",
@@ -1021,11 +1196,37 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=30,
         help=(
-            "Look back N days (default: 30). Sessions whose events.jsonl "
-            "mtime predates the cutoff are skipped. NOTE: per-event "
-            "timestamp filtering is not applied — long-running sessions "
-            "contribute their full event history if their file was "
-            "appended to within the window."
+            "Look back N days (default: 30). By default, sessions whose "
+            "events.jsonl mtime predates the cutoff are skipped (mtime-window "
+            "mode). Per-event timestamp filtering is not applied unless "
+            "--strict-window is also set — long-running sessions contribute "
+            "their full event history if the file was appended to within the "
+            "window. See --strict-window."
+        ),
+    )
+    parser.add_argument(
+        "--strict-window",
+        action="store_true",
+        default=False,
+        help=(
+            "When set, also skip individual events whose 'timestamp' field "
+            "is older than the --days window, even if the file mtime is "
+            "within the window. Default: false (mtime-window only, preserves "
+            "backward-compatible behavior). Events without a parseable "
+            "timestamp are always included."
+        ),
+    )
+    parser.add_argument(
+        "--chat-cache-share",
+        type=_float_zero_one,
+        default=None,
+        dest="chat_cache_share",
+        help=(
+            "Fraction [0.0, 1.0] of Chat input tokens to treat as cached "
+            "when OTEL does not provide exact cached-token counts "
+            "(default: 0.70, matching the CLI-side blended-rate mix). "
+            "Use 0.0 to charge all input at the fresh-input rate. "
+            "Ignored when OTEL provides gen_ai.usage.cache_read_input_tokens."
         ),
     )
     parser.add_argument(
@@ -1094,13 +1295,23 @@ def run_cli(
         days=args.days,
         top_n=args.top,
         include_chat=not args.skip_chat,
+        chat_cache_share=args.chat_cache_share,
+        strict_window=args.strict_window,
     )
 
     if args.format == "json":
         output_stream.write(report.to_json())
         output_stream.write("\n")
     else:
-        output_stream.write(render_text(report, days=args.days, home=args.home))
+        output_stream.write(
+            render_text(
+                report,
+                days=args.days,
+                home=args.home,
+                strict_window=args.strict_window,
+                chat_cache_share=args.chat_cache_share,
+            )
+        )
         output_stream.write("\n")
     return 0 if report.status == STATUS_PASS else 1
 

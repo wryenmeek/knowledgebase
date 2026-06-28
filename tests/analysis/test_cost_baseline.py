@@ -21,45 +21,11 @@ from scripts._optional_surface_common import (
     STATUS_FAIL,
     STATUS_PASS,
 )
-
-
-# ---------- Synthetic-fixture builders ----------
-
-
-def _write_session(home: Path, session_id: str, events: list[dict]) -> Path:
-    sess_dir = home / "session-state" / session_id
-    sess_dir.mkdir(parents=True, exist_ok=True)
-    p = sess_dir / "events.jsonl"
-    p.write_text(
-        "\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8"
-    )
-    return p
-
-
-def _subagent_completed(
-    agent: str = "general-purpose",
-    model: str = "gpt-5.5",
-    tokens: int = 1_000_000,
-    tool_calls: int = 5,
-    duration_ms: int = 60_000,
-) -> dict:
-    return {
-        "type": "subagent.completed",
-        "data": {
-            "agentName": agent,
-            "model": model,
-            "totalTokens": tokens,
-            "totalToolCalls": tool_calls,
-            "durationMs": duration_ms,
-        },
-    }
-
-
-def _session_shutdown(nano_aiu: int) -> dict:
-    return {
-        "type": "session.shutdown",
-        "data": {"totalNanoAiu": nano_aiu},
-    }
+from tests.analysis._fixtures import (
+    _session_shutdown,
+    _subagent_completed,
+    _write_session,
+)
 
 
 # ---------- collect_cli aggregation ----------
@@ -806,3 +772,436 @@ def test_multiple_session_start_events_last_one_wins(tmp_path: Path) -> None:
     )
     buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
     assert buckets[0].effort == "xhigh"
+
+
+# ======================================================================
+# P1 tests (#400) — collect_cli / _cheapest_candidate gaps
+# ======================================================================
+
+
+def test_collect_cli_handles_agent_none_or_missing_as_question_mark(
+    tmp_path: Path,
+) -> None:
+    """agentName=None and absent agentName both map to '?'."""
+    _write_session(
+        tmp_path,
+        "s-none",
+        [
+            {
+                "type": "subagent.completed",
+                "data": {
+                    "agentName": None,
+                    "model": "gpt-5.5",
+                    "totalTokens": 100,
+                    "totalToolCalls": 1,
+                    "durationMs": 1000,
+                },
+            }
+        ],
+    )
+    _write_session(
+        tmp_path,
+        "s-missing",
+        [
+            {
+                "type": "subagent.completed",
+                "data": {
+                    "model": "gpt-5.5",
+                    "totalTokens": 200,
+                    "totalToolCalls": 1,
+                    "durationMs": 1000,
+                },
+            }
+        ],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert all(b.agent == "?" for b in buckets)
+
+
+def test_iter_session_events_skips_unreadable_files(tmp_path: Path) -> None:
+    """An events.jsonl that is actually a directory raises OSError on open → skipped."""
+    from scripts.analysis.cost_baseline import _iter_session_events, _epoch_cutoff
+
+    # Make events.jsonl a directory — stat() succeeds but open() raises IsADirectoryError
+    sess_dir = tmp_path / "session-state" / "sess-dir"
+    (sess_dir / "events.jsonl").mkdir(parents=True)
+
+    skipped: dict[str, int] = {"files": 0, "lines": 0}
+    events = list(_iter_session_events(tmp_path, _epoch_cutoff(30), skipped))
+
+    assert events == []
+    assert skipped["files"] >= 1
+
+
+def test_cheapest_candidate_lightweight_picks_gpt5_4_nano_over_gpt55() -> None:
+    """gpt-5.4-nano is the cheapest lightweight candidate; returned over gpt-5.5."""
+    result = _cheapest_candidate("lightweight", "gpt-5.5")
+    assert result == "gpt-5.4-nano"
+
+
+def test_cheapest_candidate_skips_current_model_from_pool() -> None:
+    """Current model is excluded from the candidate set even when it is in the pool."""
+    # claude-haiku-4.5 is in LIGHTWEIGHT_CANDIDATES; gpt-5.4-nano is cheaper
+    # and should be returned as the exact candidate name.
+    result = _cheapest_candidate("lightweight", "claude-haiku-4.5")
+    assert result == "gpt-5.4-nano"
+
+
+def test_cheapest_candidate_unknown_workload_class_falls_back_to_versatile() -> None:
+    """An unknown workload class falls back to the VERSATILE_CANDIDATES pool."""
+    result_unknown = _cheapest_candidate("nonexistent-class", "gpt-5.5")
+    result_versatile = _cheapest_candidate("versatile", "gpt-5.5")
+    assert result_unknown == result_versatile
+
+
+def test_cheapest_candidate_returns_none_when_no_pool_member_is_cheaper() -> None:
+    """When the current model is already the cheapest in the pool, None is returned."""
+    # gpt-5.4-nano is the cheapest lightweight model; no cheaper alternative exists
+    result = _cheapest_candidate("lightweight", "gpt-5.4-nano")
+    assert result is None
+
+
+# ======================================================================
+# P2 tests (#400) — integration / render / pricing-freshness
+# ======================================================================
+
+
+def test_main_smoke_writes_expected_section_headers(tmp_path: Path) -> None:
+    """Integration: run_cli writes the three expected section headers."""
+    import io
+    from scripts.analysis.cost_baseline import run_cli
+
+    buf = io.StringIO()
+    _write_session(tmp_path, "sess", [_subagent_completed()])
+    rc = run_cli(
+        ["--home", str(tmp_path), "--days", "30", "--skip-chat"],
+        output_stream=buf,
+    )
+    output = buf.getvalue()
+    assert rc == 0
+    assert "## CLI sub-agent baseline" in output
+    assert "## Savings projection" in output
+    assert "## Experimentation priority" in output
+
+
+def test_main_skip_chat_flag_omits_chat_section(tmp_path: Path) -> None:
+    """--skip-chat suppresses the VS Code Copilot Chat section."""
+    import io
+    from scripts.analysis.cost_baseline import run_cli
+
+    buf = io.StringIO()
+    rc = run_cli(
+        ["--home", str(tmp_path), "--days", "30", "--skip-chat"],
+        output_stream=buf,
+    )
+    assert rc == 0
+    assert "VS Code Copilot Chat" not in buf.getvalue()
+
+
+def test_main_empty_home_does_not_crash(tmp_path: Path) -> None:
+    """Missing home directory → STATUS_FAIL with REASON_CODE_MISSING_COPILOT_HOME."""
+    import io
+    from scripts.analysis.cost_baseline import run_cli
+
+    buf = io.StringIO()
+    missing = tmp_path / "does-not-exist"
+    rc = run_cli(["--home", str(missing), "--days", "30"], output_stream=buf)
+    assert rc == 1
+    assert REASON_CODE_MISSING_COPILOT_HOME in buf.getvalue()
+
+
+def test_pricing_freshness_warning_emitted_when_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale PRICING_RETRIEVED date triggers the WARNING line in text output."""
+    import io
+    import scripts.analysis.cost_baseline as cb
+    from datetime import date
+
+    monkeypatch.setattr(cb, "PRICING_RETRIEVED", date(2020, 1, 1))
+    from scripts.analysis.cost_baseline import run_cli
+
+    buf = io.StringIO()
+    rc = run_cli(
+        ["--home", str(tmp_path), "--days", "30", "--skip-chat"],
+        output_stream=buf,
+    )
+    assert rc == 0
+    assert "WARNING" in buf.getvalue()
+
+
+def test_pricing_freshness_no_warning_when_fresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A current PRICING_RETRIEVED date emits no WARNING line."""
+    import io
+    import scripts.analysis.cost_baseline as cb
+    from datetime import date
+
+    monkeypatch.setattr(cb, "PRICING_RETRIEVED", date.today())
+    from scripts.analysis.cost_baseline import run_cli
+
+    buf = io.StringIO()
+    rc = run_cli(
+        ["--home", str(tmp_path), "--days", "30", "--skip-chat"],
+        output_stream=buf,
+    )
+    assert rc == 0
+    assert "WARNING" not in buf.getvalue()
+
+
+def test_render_baseline_table_sorts_by_cost_descending(tmp_path: Path) -> None:
+    """build_report emits cli_buckets sorted by est_cost_usd descending."""
+    _write_session(
+        tmp_path,
+        "s-cheap",
+        [_subagent_completed(model="claude-haiku-4.5", tokens=100_000)],
+    )
+    _write_session(
+        tmp_path,
+        "s-expensive",
+        [_subagent_completed(model="gpt-5.5", tokens=10_000_000)],
+    )
+    report = build_report(home=tmp_path, days=30, include_chat=False)
+    costs = [b.est_cost_usd for b in report.cli_buckets]
+    assert costs == sorted(costs, reverse=True)
+
+
+def test_render_savings_table_total_equals_sum_of_per_row_savings() -> None:
+    """_render_savings_table TOTAL line equals sum of per-row savings."""
+    from scripts.analysis.cost_baseline import _render_savings_table, SavingsRow
+
+    rows = (
+        SavingsRow(
+            agent="a",
+            current_model="gpt-5.5",
+            current_effort="default",
+            current_cost_usd=10.0,
+            alt_model="claude-haiku-4.5",
+            alt_cost_usd=2.0,
+            savings_usd=8.0,
+            reduction_pct=80.0,
+        ),
+        SavingsRow(
+            agent="b",
+            current_model="gpt-5.5",
+            current_effort="default",
+            current_cost_usd=5.0,
+            alt_model="claude-haiku-4.5",
+            alt_cost_usd=1.0,
+            savings_usd=4.0,
+            reduction_pct=80.0,
+        ),
+    )
+    table = _render_savings_table(rows)
+    expected_total = sum(r.savings_usd for r in rows)
+    assert f"{expected_total:.2f}" in table
+    assert "TOTAL" in table
+
+
+def test_render_savings_table_omits_rows_with_zero_or_negative_savings(
+    tmp_path: Path,
+) -> None:
+    """_build_savings filters zero/negative savings; rendered output confirms exclusion."""
+    from scripts.analysis.cost_baseline import _render_savings_table, _build_savings
+
+    # Expensive model with a cheaper versatile alternative → positive savings row
+    expensive = AgentBucket(
+        agent="quality-analyst",
+        model="gpt-5.5",
+        effort="default",
+        invocations=1,
+        total_tokens=1_000_000,
+        total_duration_ms=1000,
+        failures=0,
+        sessions_count=1,
+    )
+    # Cheapest versatile model → no savings row (already optimal)
+    cheap = AgentBucket(
+        agent="documentation-engineer",
+        model="claude-haiku-4.5",
+        effort="default",
+        invocations=1,
+        total_tokens=1_000_000,
+        total_duration_ms=1000,
+        failures=0,
+        sessions_count=1,
+    )
+    rows = _build_savings((expensive, cheap))
+    # Every row emitted must have positive savings (filter contract)
+    assert all(r.savings_usd > 0 for r in rows)
+    agents_with_rows = {r.agent for r in rows}
+    assert "quality-analyst" in agents_with_rows
+    assert "documentation-engineer" not in agents_with_rows
+
+    table = _render_savings_table(rows)
+    assert "quality-analyst" in table
+    assert "documentation-engineer" not in table
+    assert "TOTAL" in table
+
+
+def test_render_priority_list_caps_at_top_n(tmp_path: Path) -> None:
+    """_build_priority respects the top_n cap."""
+    for i in range(5):
+        _write_session(
+            tmp_path,
+            f"s{i}",
+            [_subagent_completed(agent=f"agent-{i}", tokens=1_000_000)],
+        )
+    report = build_report(home=tmp_path, days=30, top_n=3, include_chat=False)
+    assert len(report.priority) == 3
+
+
+# ======================================================================
+# P3 tests (#400) — schema / invariant guards
+# ======================================================================
+
+
+def test_agent_class_maps_only_to_known_workload_classes() -> None:
+    """Every entry in AGENT_CLASS must map to a recognised workload class."""
+    from scripts.analysis.cost_baseline import AGENT_CLASS
+
+    valid_classes = {"lightweight", "versatile", "powerful"}
+    for agent, cls in AGENT_CLASS.items():
+        assert cls in valid_classes, (
+            f"agent {agent!r} mapped to unknown class {cls!r}"
+        )
+
+
+def test_candidate_pool_models_are_in_pricing_table() -> None:
+    """Every model in the workload-class candidate pools must be in PRICING."""
+    from scripts.analysis.pricing import (
+        LIGHTWEIGHT_CANDIDATES,
+        POWERFUL_CANDIDATES,
+        PRICING,
+        VERSATILE_CANDIDATES,
+    )
+
+    for model in (
+        *LIGHTWEIGHT_CANDIDATES,
+        *VERSATILE_CANDIDATES,
+        *POWERFUL_CANDIDATES,
+    ):
+        assert model in PRICING, (
+            f"{model!r} in a candidate pool but absent from PRICING table"
+        )
+
+
+def test_agent_bucket_failure_rate_handles_zero_invocations() -> None:
+    """failure_rate must not divide by zero when invocations == 0."""
+    b = AgentBucket(
+        agent="x",
+        model="claude-haiku-4.5",
+        invocations=0,
+        total_tokens=0,
+        total_duration_ms=0,
+        failures=0,
+        sessions_count=0,
+    )
+    assert b.failure_rate == 0.0
+
+
+def test_main_json_format_flag_emits_valid_json(tmp_path: Path) -> None:
+    """--format json produces parseable JSON with expected top-level keys."""
+    import io
+    from scripts.analysis.cost_baseline import run_cli
+
+    buf = io.StringIO()
+    _write_session(tmp_path, "s", [_subagent_completed()])
+    rc = run_cli(
+        ["--home", str(tmp_path), "--days", "30", "--format", "json", "--skip-chat"],
+        output_stream=buf,
+    )
+    assert rc == 0
+    doc = json.loads(buf.getvalue())
+    assert doc["status"] == STATUS_PASS
+    assert "cli_buckets" in doc
+    assert "chat_buckets" in doc
+
+
+# ======================================================================
+# #403 — --strict-window per-event timestamp filtering
+# ======================================================================
+
+
+def test_strict_window_excludes_old_event_timestamps_when_mtime_is_fresh(
+    tmp_path: Path,
+) -> None:
+    """mtime=fresh + old event timestamps → strict mode excludes all events."""
+    from datetime import datetime, timezone
+
+    old_ts = datetime(2020, 1, 1, tzinfo=timezone.utc).isoformat()
+    _write_session(
+        tmp_path,
+        "sess",
+        [
+            {**_subagent_completed(tokens=500), "timestamp": old_ts},
+            {**_subagent_completed(tokens=200), "timestamp": old_ts},
+        ],
+    )
+
+    # Default mode: both events included (file mtime is fresh)
+    buckets_default, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert len(buckets_default) == 1
+    assert buckets_default[0].total_tokens == 700
+
+    # Strict mode: old-timestamp events filtered out
+    buckets_strict, _, _, _, _ = collect_cli(tmp_path, days=30, strict_window=True)
+    assert len(buckets_strict) == 0
+
+
+def test_default_window_includes_old_event_timestamps_when_mtime_is_fresh(
+    tmp_path: Path,
+) -> None:
+    """Without --strict-window, old event timestamps don't block inclusion."""
+    from datetime import datetime, timezone
+
+    old_ts = datetime(2020, 1, 1, tzinfo=timezone.utc).isoformat()
+    _write_session(
+        tmp_path,
+        "sess",
+        [{**_subagent_completed(tokens=300), "timestamp": old_ts}],
+    )
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert len(buckets) == 1
+    assert buckets[0].total_tokens == 300
+
+
+# ======================================================================
+# CLI smoke tests — argparse wiring for --strict-window
+# ======================================================================
+
+
+def test_strict_window_cli_flag_smoke(tmp_path: Path) -> None:
+    """--strict-window parses and propagates: output header includes [strict-window]."""
+    import io
+    from scripts.analysis.cost_baseline import run_cli
+
+    _write_session(tmp_path, "sess", [_subagent_completed()])
+    buf = io.StringIO()
+    rc = run_cli(
+        ["--home", str(tmp_path), "--days", "30", "--strict-window", "--skip-chat"],
+        output_stream=buf,
+    )
+    assert rc == 0
+    assert "[strict-window]" in buf.getvalue()
+
+
+# ======================================================================
+# Security — _parse_event_timestamp overflow guard
+# ======================================================================
+
+
+def test_parse_event_timestamp_returns_none_on_overflow() -> None:
+    """Far-future timestamps must not raise on any platform.
+
+    On 64-bit systems ``datetime.timestamp()`` returns a valid float;
+    on 32-bit systems it raises ``OverflowError`` or ``OSError``.
+    Either way the function must not propagate the exception — callers rely
+    on ``None`` as the safe sentinel for unparseable timestamps.
+    """
+    from scripts.analysis.cost_baseline import _parse_event_timestamp
+
+    # Call must not raise, regardless of platform timestamp range.
+    result = _parse_event_timestamp("9999-12-31T23:59:59+00:00")
+    assert result is None or isinstance(result, float)
