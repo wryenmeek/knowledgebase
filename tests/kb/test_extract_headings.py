@@ -73,11 +73,15 @@ def test_unclosed_fence_at_eof_then_trailing_heading_via_lf() -> None:
 
 
 def test_crlf_line_endings_still_extract_headings() -> None:
-    """CRLF input: the LF still splits the line; the trailing CR is part
-    of the heading text but gets normalized by ``.strip()``.
-    """
+    """CRLF input: normalized to LF before streaming."""
     body = "# H1\r\n# H2\r\n"
     assert extract_headings(body) == {"# H1", "# H2"}
+
+
+def test_bare_cr_line_endings_extract_headings() -> None:
+    """Bare CR (Classic Mac) input: normalized to LF before streaming."""
+    body = "# Title\r## Sub\rbody text\r"
+    assert extract_headings(body) == {"# Title", "## Sub"}
 
 
 def test_non_heading_lines_ignored() -> None:
