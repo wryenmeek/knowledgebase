@@ -42,12 +42,16 @@ aligned with sibling analyzers in ``scripts/validation/`` and
   Without ``--strict-window``, a long-running session whose ``events.jsonl``
   was appended recently contributes all of its events, including those older
   than the cutoff.
-* Pricing table now models long-context tiers (see ``pricing.py``) for
-  ``gpt-5.4``, ``gpt-5.5``, ``gemini-3.1-pro``. The per-call threshold check
-  is not yet wired through ``ChatBucket.est_cost_usd``; CLI-side estimates
-  also remain Default-tier because ``subagent.completed.totalTokens`` is
-  aggregate (no per-call input/output split). Both wirings are tracked as
-  follow-ups.
+* Pricing table models long-context tiers (see ``pricing.py``) for
+  ``gpt-5.4``, ``gpt-5.5``, ``gemini-3.1-pro``. The Chat-side per-call
+  threshold check is now wired (#414): ``collect_chat`` routes each
+  inference call's tokens into the Default-tier or long-context-tier share
+  of ``ChatBucket`` based on whether that call's input-token count exceeds
+  ``price.input_threshold_tokens``; ``ChatBucket.est_cost_usd`` then sums
+  the two shares. CLI-side estimates remain Default-tier only:
+  ``subagent.completed.totalTokens`` is aggregate with no per-call
+  input/output split, so the per-call threshold check cannot be applied
+  on the CLI path.
 * Failure heuristic (``totalTokens=0`` AND ``totalToolCalls=0`` AND
   ``durationMs<5000ms``) may false-positive on legitimate fast no-op
   dispatches. Aggregated 100% failure-rate rows on a single model across
@@ -193,7 +197,9 @@ class AgentBucket:
 class ChatBucket:
     """Per-model VS Code Copilot Chat aggregate.
 
-    ``est_cost_usd`` uses an Option B-then-A strategy (#402):
+    ``est_cost_usd`` uses an Option B-then-A strategy (#402), applied
+    independently to the Default-tier share and any long-context-tier share
+    (#414):
 
     * **Option B (exact split):** If OTEL provides
       ``gen_ai.usage.cache_read_input_tokens`` (or the alternate
@@ -208,6 +214,22 @@ class ChatBucket:
     Both options are materially more accurate than the previous approach of
     charging 100% at the fresh-input rate (the former structural overestimate
     of ~10× on the cached portion for Anthropic models).
+
+    ``collect_chat`` now preserves per-call long-context threshold decisions by
+    aggregating two shares inside the same bucket:
+
+    * ``input_tokens`` / ``output_tokens`` / ``cached_input_tokens`` remain the
+      **total** tokens across all calls for the model.
+    * ``long_context_*`` fields track the subset of tokens from calls whose
+      per-call ``gen_ai.usage.input_tokens`` exceeded
+      ``price.input_threshold_tokens``.
+
+    ``est_cost_usd`` computes the Default-tier cost for
+    ``total - long_context`` plus the long-context cost for the subset. For the
+    long-context fresh-input share, Anthropic cache-write pricing remains
+    authoritative when present; otherwise the long-context input rate is used.
+    Cached-read pricing is unchanged between tiers (the provider docs do not
+    publish a separate long-context cached-read rate).
     """
 
     model: str
@@ -215,6 +237,9 @@ class ChatBucket:
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
+    long_context_input_tokens: int = 0
+    long_context_output_tokens: int = 0
+    long_context_cached_input_tokens: int = 0
     chat_cache_share: float | None = None  # None → blended_rate default (0.70)
 
     @property
@@ -222,35 +247,71 @@ class ChatBucket:
         price = PRICING.get(self.model)
         if price is None:
             return 0.0
-        # Option B: exact split when per-event cached tokens are available.
-        if self.cached_input_tokens > 0:
-            fresh = max(self.input_tokens - self.cached_input_tokens, 0)
+
+        def share_cost(
+            *,
+            input_tokens: int,
+            output_tokens: int,
+            cached_input_tokens: int,
+            input_rate: float,
+            output_rate: float,
+        ) -> float:
+            if input_tokens <= 0 and output_tokens <= 0:
+                return 0.0
             fresh_rate = (
                 price.cache_write_per_m
                 if price.cache_write_per_m is not None
-                else price.input_per_m
+                else input_rate
             )
+            if cached_input_tokens > 0:
+                fresh = max(input_tokens - cached_input_tokens, 0)
+                return (
+                    fresh * fresh_rate
+                    + cached_input_tokens * price.cached_per_m
+                    + output_tokens * output_rate
+                ) / 1_000_000.0
+
+            cache_frac = (
+                self.chat_cache_share if self.chat_cache_share is not None else 0.70
+            )
+            fresh_input = input_tokens * (1.0 - cache_frac)
+            cached_input = input_tokens * cache_frac
             return (
-                fresh * fresh_rate
-                + self.cached_input_tokens * price.cached_per_m
-                + self.output_tokens * price.output_per_m
+                fresh_input * fresh_rate
+                + cached_input * price.cached_per_m
+                + output_tokens * output_rate
             ) / 1_000_000.0
-        # Option A: blended-rate fallback.
-        cache_frac = (
-            self.chat_cache_share if self.chat_cache_share is not None else 0.70
+
+        default_input = max(self.input_tokens - self.long_context_input_tokens, 0)
+        default_output = max(self.output_tokens - self.long_context_output_tokens, 0)
+        default_cached = max(
+            self.cached_input_tokens - self.long_context_cached_input_tokens, 0
         )
-        fresh_input = self.input_tokens * (1.0 - cache_frac)
-        cached_input = self.input_tokens * cache_frac
-        fresh_rate = (
-            price.cache_write_per_m
-            if price.cache_write_per_m is not None
+        total = share_cost(
+            input_tokens=default_input,
+            output_tokens=default_output,
+            cached_input_tokens=default_cached,
+            input_rate=price.input_per_m,
+            output_rate=price.output_per_m,
+        )
+        long_input_rate = (
+            price.long_context_input_per_m
+            if price.long_context_input_per_m is not None
             else price.input_per_m
         )
-        return (
-            fresh_input * fresh_rate
-            + cached_input * price.cached_per_m
-            + self.output_tokens * price.output_per_m
-        ) / 1_000_000.0
+        long_output_rate = (
+            price.long_context_output_per_m
+            if price.long_context_output_per_m is not None
+            else price.output_per_m
+        )
+        total += share_cost(
+            input_tokens=max(self.long_context_input_tokens, 0),
+            output_tokens=max(self.long_context_output_tokens, 0),
+            cached_input_tokens=max(self.long_context_cached_input_tokens, 0),
+            input_rate=long_input_rate,
+            output_rate=long_output_rate,
+        )
+        return total
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -259,6 +320,9 @@ class ChatBucket:
             "input_tokens": self.input_tokens,
             "cached_input_tokens": self.cached_input_tokens,
             "output_tokens": self.output_tokens,
+            "long_context_input_tokens": self.long_context_input_tokens,
+            "long_context_cached_input_tokens": self.long_context_cached_input_tokens,
+            "long_context_output_tokens": self.long_context_output_tokens,
             "est_cost_usd": round(self.est_cost_usd, 4),
         }
 
@@ -742,6 +806,12 @@ def collect_chat(
     alternate ``gen_ai.usage.cached_input_tokens``), the exact cached split
     is accumulated per model. Otherwise, ``ChatBucket.est_cost_usd`` falls
     back to a blended-rate estimate using ``chat_cache_share`` (default 0.70).
+
+    Per-call long-context threshold decisions are preserved in aggregate form:
+    calls whose ``gen_ai.usage.input_tokens`` exceed the model's
+    ``input_threshold_tokens`` are accumulated into the bucket's
+    ``long_context_*`` fields, while the top-level token fields remain totals
+    across all calls for that model.
     """
     cutoff = _epoch_cutoff(days)
     raw: dict[str, dict[str, int]] = defaultdict(
@@ -750,6 +820,9 @@ def collect_chat(
             "input_tokens": 0,
             "output_tokens": 0,
             "cached_input_tokens": 0,
+            "long_context_input_tokens": 0,
+            "long_context_output_tokens": 0,
+            "long_context_cached_input_tokens": 0,
         }
     )
     skipped = {"files": 0, "lines": 0}
@@ -759,8 +832,10 @@ def collect_chat(
             continue
         bucket = raw[model]
         bucket["inferences"] += 1
-        bucket["input_tokens"] += _coerce_int(attrs.get("gen_ai.usage.input_tokens"))
-        bucket["output_tokens"] += _coerce_int(attrs.get("gen_ai.usage.output_tokens"))
+        input_tokens = _coerce_int(attrs.get("gen_ai.usage.input_tokens"))
+        output_tokens = _coerce_int(attrs.get("gen_ai.usage.output_tokens"))
+        bucket["input_tokens"] += input_tokens
+        bucket["output_tokens"] += output_tokens
         # Option B: pick up exact cached-token count when OTEL provides it.
         cached = _coerce_int(
             attrs.get("gen_ai.usage.cache_read_input_tokens")
@@ -768,6 +843,15 @@ def collect_chat(
             attrs.get("gen_ai.usage.cached_input_tokens")
         )
         bucket["cached_input_tokens"] += cached
+        price = PRICING.get(model)
+        if (
+            price is not None
+            and price.input_threshold_tokens is not None
+            and input_tokens > price.input_threshold_tokens
+        ):
+            bucket["long_context_input_tokens"] += input_tokens
+            bucket["long_context_output_tokens"] += output_tokens
+            bucket["long_context_cached_input_tokens"] += cached
     chat_buckets = tuple(
         ChatBucket(
             model=model,
@@ -775,6 +859,9 @@ def collect_chat(
             input_tokens=v["input_tokens"],
             output_tokens=v["output_tokens"],
             cached_input_tokens=v["cached_input_tokens"],
+            long_context_input_tokens=v["long_context_input_tokens"],
+            long_context_output_tokens=v["long_context_output_tokens"],
+            long_context_cached_input_tokens=v["long_context_cached_input_tokens"],
             chat_cache_share=chat_cache_share,
         )
         for model, v in raw.items()

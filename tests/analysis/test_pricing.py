@@ -308,6 +308,26 @@ def test_long_context_rates_strictly_greater_than_default_rates() -> None:
         )
 
 
+def test_no_model_has_both_cache_write_and_long_context_input_rates() -> None:
+    """Guard ChatBucket.share_cost semantics if pricing grows a new combo.
+
+    cost_baseline.ChatBucket currently treats ``cache_write_per_m`` as
+    authoritative for fresh-input pricing whenever it is present. If a future
+    model declares both ``cache_write_per_m`` and ``long_context_input_per_m``,
+    revisit that logic before merging the pricing-table change.
+    """
+    offenders = {
+        model_id
+        for model_id, price in PRICING.items()
+        if price.cache_write_per_m is not None
+        and price.long_context_input_per_m is not None
+    }
+    assert offenders == set(), (
+        "Models declaring both cache_write_per_m and long_context_input_per_m "
+        f"require a share_cost() review: {sorted(offenders)}"
+    )
+
+
 # ---------- Long-context share-sum validation ----------
 
 

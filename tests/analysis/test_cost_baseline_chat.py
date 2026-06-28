@@ -28,7 +28,7 @@ from scripts.analysis.cost_baseline import (
     ChatBucket,
     collect_chat,
 )
-from scripts.analysis.pricing import PRICING
+from scripts.analysis.pricing import ModelPrice, PRICING
 
 
 # ======================================================================
@@ -478,6 +478,227 @@ def test_chat_bucket_falls_back_to_input_per_m_when_cache_write_per_m_is_none() 
         + 100_000 * price.output_per_m
     ) / 1_000_000.0
     assert abs(b.est_cost_usd - expected) < 1e-9
+
+
+# ======================================================================
+# #414 — long-context tier routing on Chat path
+# ======================================================================
+
+
+def test_chat_bucket_below_threshold_uses_default_tier() -> None:
+    """A below-threshold call stays on the Default tier."""
+    price = PRICING["gpt-5.5"]
+    b = ChatBucket(
+        model="gpt-5.5",
+        inferences=1,
+        input_tokens=100_000,
+        output_tokens=10_000,
+        long_context_input_tokens=0,
+        long_context_output_tokens=0,
+    )
+    expected = (
+        0.30 * 100_000 * price.input_per_m
+        + 0.70 * 100_000 * price.cached_per_m
+        + 10_000 * price.output_per_m
+    ) / 1_000_000.0
+    assert abs(b.est_cost_usd - expected) < 1e-9
+
+
+def test_chat_bucket_above_threshold_uses_long_context_tier() -> None:
+    """An above-threshold call uses the long-context rates."""
+    price = PRICING["gpt-5.5"]
+    assert price.long_context_input_per_m is not None
+    assert price.long_context_output_per_m is not None
+    b = ChatBucket(
+        model="gpt-5.5",
+        inferences=1,
+        input_tokens=300_000,
+        output_tokens=12_000,
+        long_context_input_tokens=300_000,
+        long_context_output_tokens=12_000,
+    )
+    expected = (
+        0.30 * 300_000 * price.long_context_input_per_m
+        + 0.70 * 300_000 * price.cached_per_m
+        + 12_000 * price.long_context_output_per_m
+    ) / 1_000_000.0
+    assert abs(b.est_cost_usd - expected) < 1e-9
+
+
+def test_collect_chat_at_threshold_stays_on_default_tier(tmp_path: Path) -> None:
+    """Exactly-threshold calls stay on the Default tier (strict `>` check)."""
+    price = PRICING["gpt-5.5"]
+    assert price.input_threshold_tokens is not None
+    _write_otel_session(
+        tmp_path,
+        "vscode-otel-at-threshold.jsonl",
+        [
+            _otel_inference_event(
+                model="gpt-5.5",
+                input_tokens=price.input_threshold_tokens,
+                output_tokens=5_000,
+            )
+        ],
+    )
+
+    buckets, _ = collect_chat(tmp_path, days=30)
+    assert len(buckets) == 1
+    bucket = buckets[0]
+    assert bucket.input_tokens == price.input_threshold_tokens
+    assert bucket.long_context_input_tokens == 0
+    assert bucket.long_context_output_tokens == 0
+    assert bucket.long_context_cached_input_tokens == 0
+
+
+def test_chat_bucket_mixed_threshold_accumulates_correctly() -> None:
+    """Default-tier and long-context-tier shares sum correctly in one bucket."""
+    price = PRICING["gpt-5.5"]
+    assert price.long_context_input_per_m is not None
+    assert price.long_context_output_per_m is not None
+    b = ChatBucket(
+        model="gpt-5.5",
+        inferences=2,
+        input_tokens=400_000,
+        output_tokens=15_000,
+        long_context_input_tokens=300_000,
+        long_context_output_tokens=12_000,
+    )
+    default_cost = (
+        0.30 * 100_000 * price.input_per_m
+        + 0.70 * 100_000 * price.cached_per_m
+        + 3_000 * price.output_per_m
+    ) / 1_000_000.0
+    long_cost = (
+        0.30 * 300_000 * price.long_context_input_per_m
+        + 0.70 * 300_000 * price.cached_per_m
+        + 12_000 * price.long_context_output_per_m
+    ) / 1_000_000.0
+    assert abs(b.est_cost_usd - (default_cost + long_cost)) < 1e-9
+
+
+def test_collect_chat_routes_per_call_tokens_by_threshold(tmp_path: Path) -> None:
+    """collect_chat preserves long-context routing in aggregate bucket fields."""
+    assert PRICING["claude-sonnet-4.6"].input_threshold_tokens is None
+    events = [
+        _otel_inference_event(model="gpt-5.5", input_tokens=100_000, output_tokens=10_000),
+        _otel_inference_event(
+            model="gpt-5.5",
+            input_tokens=300_000,
+            output_tokens=12_000,
+            cached_input_tokens=50_000,
+        ),
+        _otel_inference_event(
+            model="claude-sonnet-4.6",
+            input_tokens=250_000,
+            output_tokens=8_000,
+        ),
+    ]
+    _write_otel_session(tmp_path, "vscode-otel-threshold.jsonl", events)
+
+    buckets, _ = collect_chat(tmp_path, days=30)
+    by_model = {b.model: b for b in buckets}
+
+    gpt = by_model["gpt-5.5"]
+    assert gpt.input_tokens == 400_000
+    assert gpt.output_tokens == 22_000
+    assert gpt.cached_input_tokens == 50_000
+    assert gpt.long_context_input_tokens == 300_000
+    assert gpt.long_context_output_tokens == 12_000
+    assert gpt.long_context_cached_input_tokens == 50_000
+
+    claude = by_model["claude-sonnet-4.6"]
+    assert claude.input_tokens == 250_000
+    assert claude.long_context_input_tokens == 0
+    assert claude.long_context_output_tokens == 0
+    assert claude.long_context_cached_input_tokens == 0
+
+
+def test_chat_bucket_mixed_cached_shares_subtract_cleanly() -> None:
+    """Default-tier and long-context cached shares subtract without drift."""
+    price = PRICING["gpt-5.5"]
+    assert price.long_context_input_per_m is not None
+    assert price.long_context_output_per_m is not None
+    b = ChatBucket(
+        model="gpt-5.5",
+        inferences=2,
+        input_tokens=400_000,
+        output_tokens=15_000,
+        cached_input_tokens=80_000,
+        long_context_input_tokens=300_000,
+        long_context_output_tokens=12_000,
+        long_context_cached_input_tokens=50_000,
+    )
+    default_cost = (
+        70_000 * price.input_per_m
+        + 30_000 * price.cached_per_m
+        + 3_000 * price.output_per_m
+    ) / 1_000_000.0
+    long_cost = (
+        250_000 * price.long_context_input_per_m
+        + 50_000 * price.cached_per_m
+        + 12_000 * price.long_context_output_per_m
+    ) / 1_000_000.0
+    assert abs(b.est_cost_usd - (default_cost + long_cost)) < 1e-9
+
+
+def test_chat_bucket_unknown_threshold_field_falls_back_to_default() -> None:
+    """Models without input_threshold_tokens never populate long-context fields."""
+    b = ChatBucket(
+        model="claude-sonnet-4.5",
+        inferences=1,
+        input_tokens=500_000,
+        output_tokens=10_000,
+        long_context_input_tokens=0,
+        long_context_output_tokens=0,
+        long_context_cached_input_tokens=0,
+    )
+    price = PRICING["claude-sonnet-4.5"]
+    fresh_rate = price.cache_write_per_m if price.cache_write_per_m is not None else price.input_per_m
+    expected = (
+        0.30 * 500_000 * fresh_rate
+        + 0.70 * 500_000 * price.cached_per_m
+        + 10_000 * price.output_per_m
+    ) / 1_000_000.0
+    assert abs(b.est_cost_usd - expected) < 1e-9
+    assert b.long_context_input_tokens == 0
+
+
+def test_chat_bucket_long_context_share_honors_cache_write_premium(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthetic threshold model with cache_write premium uses that premium."""
+    synthetic = ModelPrice(
+        input_per_m=3.00,
+        cached_per_m=0.30,
+        output_per_m=15.00,
+        cache_write_per_m=3.75,
+        long_context_input_per_m=6.00,
+        long_context_output_per_m=22.50,
+        input_threshold_tokens=200_000,
+    )
+    monkeypatch.setitem(PRICING, "claude-long-context-test", synthetic)
+    b = ChatBucket(
+        model="claude-long-context-test",
+        inferences=1,
+        input_tokens=300_000,
+        output_tokens=10_000,
+        cached_input_tokens=100_000,
+        long_context_input_tokens=300_000,
+        long_context_output_tokens=10_000,
+        long_context_cached_input_tokens=100_000,
+    )
+    expected = (
+        200_000 * synthetic.cache_write_per_m
+        + 100_000 * synthetic.cached_per_m
+        + 10_000 * synthetic.long_context_output_per_m
+    ) / 1_000_000.0
+    wrong_without_premium = (
+        200_000 * synthetic.long_context_input_per_m
+        + 100_000 * synthetic.cached_per_m
+        + 10_000 * synthetic.long_context_output_per_m
+    ) / 1_000_000.0
+    assert abs(b.est_cost_usd - expected) < 1e-9
+    assert b.est_cost_usd != wrong_without_premium
 
 
 # ======================================================================
