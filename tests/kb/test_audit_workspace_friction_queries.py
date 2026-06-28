@@ -261,7 +261,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         self.assertEqual(row["prompt_length"], len("Repeat this instruction"))
         self.assertEqual(
             row["prompt_fingerprint"],
-            hashlib.md5(b"Repeat this instruction").hexdigest(),
+            hashlib.md5(b"Repeat this instruction", usedforsecurity=False).hexdigest(),
         )
 
     def test_retry_loop_rows_match_same_tool_request_payload_without_raw_args(self) -> None:
@@ -285,7 +285,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         self.assertEqual(row["request_length"], len('{"command": "python3 -m pytest tests/kb/test_x.py"}'))
         self.assertEqual(
             row["request_fingerprint"],
-            hashlib.md5(b'{"command": "python3 -m pytest tests/kb/test_x.py"}').hexdigest(),
+            hashlib.md5(b'{"command": "python3 -m pytest tests/kb/test_x.py"}', usedforsecurity=False).hexdigest(),
         )
 
     def test_retry_loop_window_includes_exact_boundary_and_excludes_after_boundary(self) -> None:
@@ -599,7 +599,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
     @staticmethod
     def _sqlite_md5(value: str) -> str:
-        return hashlib.md5(value.encode("utf-8")).hexdigest()
+        return hashlib.md5(value.encode("utf-8"), usedforsecurity=False).hexdigest()
 
     @staticmethod
     def _sqlite_regexp_extract(value: str, pattern: str, group_index: int) -> str:
