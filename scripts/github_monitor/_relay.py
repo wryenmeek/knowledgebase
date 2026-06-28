@@ -383,7 +383,8 @@ def validate_upstream_source_payload(
         "changed_paths",
         "delivery_id",
     }
-    extra_fields = sorted(set(payload.keys()) - expected_fields)
+    # ⚡ Bolt: Use dict view set operations to avoid intermediate set creation
+    extra_fields = sorted(payload.keys() - expected_fields)
     if extra_fields:
         raise RelayValidationError(
             f"payload contains unexpected field(s): {', '.join(extra_fields)}"
