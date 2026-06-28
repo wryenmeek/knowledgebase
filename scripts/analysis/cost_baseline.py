@@ -286,6 +286,25 @@ def _epoch_cutoff(days: int) -> float:
     return time.time() - days * 86400.0
 
 
+def _coerce_int(value: object) -> int:
+    """Coerce telemetry numeric to int; return 0 for None / non-numeric / bool.
+
+    Telemetry schemas drift; a field documented as int can occasionally arrive
+    as a string, list, or null. Returning 0 keeps the aggregator running
+    instead of aborting on a single malformed value.
+    """
+    if value is None or isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        try:
+            return int(value)
+        except (ValueError, OverflowError):
+            return 0
+    return 0
+
+
 def _iter_session_events(
     home: Path, cutoff_epoch: float, skipped: dict[str, int]
 ) -> Iterator[tuple[str, dict]]:
@@ -311,9 +330,14 @@ def _iter_session_events(
             with path.open(encoding="utf-8", errors="replace") as f:
                 for line in f:
                     try:
-                        yield session_id, json.loads(line)
+                        event = json.loads(line)
                     except json.JSONDecodeError:
                         skipped["lines"] += 1
+                        continue
+                    if not isinstance(event, dict):
+                        skipped["lines"] += 1
+                        continue
+                    yield session_id, event
         except OSError:
             skipped["files"] += 1
 
@@ -342,6 +366,9 @@ def _iter_otel_inferences(
                     try:
                         e = json.loads(line)
                     except json.JSONDecodeError:
+                        skipped["lines"] += 1
+                        continue
+                    if not isinstance(e, dict):
                         skipped["lines"] += 1
                         continue
                     attrs = e.get("attributes")
@@ -381,12 +408,14 @@ def collect_cli(
     for session_id, event in _iter_session_events(home, cutoff, skipped):
         et = event.get("type")
         if et == "subagent.completed":
-            data = event.get("data") or {}
+            data = event.get("data")
+            if not isinstance(data, dict):
+                continue
             agent = data.get("agentName") or "?"
             model = data.get("model") or "?"
-            tokens = int(data.get("totalTokens") or 0)
-            dur = int(data.get("durationMs") or 0)
-            tool_calls = int(data.get("totalToolCalls") or 0)
+            tokens = _coerce_int(data.get("totalTokens"))
+            dur = _coerce_int(data.get("durationMs"))
+            tool_calls = _coerce_int(data.get("totalToolCalls"))
             key = (agent, model)
             bucket = raw_buckets[key]
             bucket["invocations"] += 1
@@ -399,9 +428,11 @@ def collect_cli(
             if tokens == 0 and tool_calls == 0 and dur < 5000:
                 bucket["failures"] += 1
         elif et == "session.shutdown":
-            data = event.get("data") or {}
+            data = event.get("data")
+            if not isinstance(data, dict):
+                continue
             nano = data.get("totalNanoAiu")
-            if isinstance(nano, (int, float)):
+            if isinstance(nano, (int, float)) and not isinstance(nano, bool):
                 actual_nano_aiu += float(nano)
             sessions_seen.add(session_id)
     cli_buckets = tuple(
@@ -440,8 +471,8 @@ def collect_chat(
             continue
         bucket = raw[model]
         bucket["inferences"] += 1
-        bucket["input_tokens"] += int(attrs.get("gen_ai.usage.input_tokens") or 0)
-        bucket["output_tokens"] += int(attrs.get("gen_ai.usage.output_tokens") or 0)
+        bucket["input_tokens"] += _coerce_int(attrs.get("gen_ai.usage.input_tokens"))
+        bucket["output_tokens"] += _coerce_int(attrs.get("gen_ai.usage.output_tokens"))
     chat_buckets = tuple(
         ChatBucket(
             model=model,
@@ -554,12 +585,12 @@ def build_report(
     Fails closed (``STATUS_FAIL``) if ``home`` is not a directory or if
     ``days`` is not a positive integer.
     """
-    if not isinstance(days, int) or days < 1:
+    if isinstance(days, bool) or not isinstance(days, int) or days < 1:
         return _empty_report(
             status=STATUS_FAIL,
             reason_code=REASON_CODE_INVALID_INPUT,
             message=f"--days must be a positive integer (got: {days!r})",
-            days=days if isinstance(days, int) else 0,
+            days=days if isinstance(days, int) and not isinstance(days, bool) else 0,
         )
     if not home.is_dir():
         return _empty_report(

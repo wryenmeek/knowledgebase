@@ -197,11 +197,14 @@ def test_collect_cli_handles_totaltokens_none_as_zero(tmp_path: Path) -> None:
 
 
 def test_collect_cli_handles_missing_data_key(tmp_path: Path) -> None:
+    """Missing ``data`` key is treated as malformed telemetry and skipped.
+
+    Previously this produced a bucket with ``agent="?"`` / ``model="?"`` which
+    inflated invocation counts from schema drift. Skipping is more correct.
+    """
     _write_session(tmp_path, "s", [{"type": "subagent.completed"}])
     buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
-    bucket = next(iter(buckets))
-    assert bucket.agent == "?"
-    assert bucket.model == "?"
+    assert buckets == ()
 
 
 @pytest.mark.parametrize("model_value", [None, "", "missing"])
@@ -287,3 +290,109 @@ def test_build_report_succeeds_on_empty_but_valid_home(tmp_path: Path) -> None:
     assert report.status == STATUS_PASS
     assert report.sessions_analyzed == 0
     assert report.cli_buckets == ()
+
+
+# ---------- Defensive guards: non-dict JSON, schema drift, bool/int ----------
+
+
+def test_collect_cli_skips_non_dict_json_lines(tmp_path: Path) -> None:
+    """A line that parses to ``null``/list/string must not abort iteration.
+
+    Regression: a bare ``null`` or ``[]`` in events.jsonl previously raised
+    ``AttributeError`` in ``collect_cli`` on ``.get()``. The streaming reader
+    now filters to dicts and treats the rest as malformed (skipped/lines++).
+    """
+    sess_dir = tmp_path / "session-state" / "sess-nondict"
+    sess_dir.mkdir(parents=True)
+    valid = json.dumps(_subagent_completed())
+    payload = "\n".join([
+        "null",
+        "[1,2,3]",
+        '"a string"',
+        "42",
+        valid,
+    ])
+    (sess_dir / "events.jsonl").write_text(payload + "\n", encoding="utf-8")
+    buckets, sessions, _, skipped, _ = collect_cli(tmp_path, days=30)
+    assert sessions == 1
+    assert len(buckets) == 1
+    # 4 non-dict lines should be counted as skipped lines (alongside the
+    # 1 valid line that produced the bucket).
+    assert skipped["lines"] == 4
+
+
+def test_collect_cli_skips_event_with_non_dict_data_field(tmp_path: Path) -> None:
+    """``event["data"]`` arriving as a string or list must not crash."""
+    sess_dir = tmp_path / "session-state" / "sess-baddata"
+    sess_dir.mkdir(parents=True)
+    bad_subagent = {"type": "subagent.completed", "data": "this should be a dict"}
+    bad_shutdown = {"type": "session.shutdown", "data": [1, 2, 3]}
+    valid = _subagent_completed()
+    (sess_dir / "events.jsonl").write_text(
+        "\n".join(json.dumps(e) for e in [bad_subagent, bad_shutdown, valid]) + "\n",
+        encoding="utf-8",
+    )
+    buckets, sessions, nano, _, _ = collect_cli(tmp_path, days=30)
+    # Only the valid event contributes a bucket; the bad ones are silently
+    # skipped (they parsed as JSON dicts but had malformed ``data`` payloads).
+    assert sessions == 1
+    assert len(buckets) == 1
+    assert nano == 0.0
+
+
+def test_collect_cli_coerces_string_tokens_to_zero(tmp_path: Path) -> None:
+    """Telemetry numeric drift: a stringified ``totalTokens`` must not crash."""
+    sess_dir = tmp_path / "session-state" / "sess-drift"
+    sess_dir.mkdir(parents=True)
+    drifted = {
+        "type": "subagent.completed",
+        "data": {
+            "agentName": "general-purpose",
+            "model": "gpt-5.5",
+            "totalTokens": "not-a-number",
+            "totalToolCalls": None,
+            "durationMs": [1, 2],
+        },
+    }
+    (sess_dir / "events.jsonl").write_text(json.dumps(drifted) + "\n", encoding="utf-8")
+    buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
+    assert len(buckets) == 1
+    b = buckets[0]
+    assert b.total_tokens == 0
+    assert b.total_duration_ms == 0
+    # 0 tokens + 0 tool calls + 0 duration triggers the failure heuristic
+    assert b.failures == 1
+
+
+def test_build_report_rejects_bool_days() -> None:
+    """``isinstance(True, int)`` is True; bool must be explicitly rejected.
+
+    Regression: ``--days True`` (or any bool slipped past argparse via the
+    Python API) would bypass ``days < 1`` because ``True == 1``. The guard
+    now treats bool as invalid input.
+    """
+    report = build_report(home=Path("/tmp"), days=True, include_chat=False)  # type: ignore[arg-type]
+    assert report.status == STATUS_FAIL
+    assert report.reason_code == REASON_CODE_INVALID_INPUT
+    report2 = build_report(home=Path("/tmp"), days=False, include_chat=False)  # type: ignore[arg-type]
+    assert report2.status == STATUS_FAIL
+    assert report2.reason_code == REASON_CODE_INVALID_INPUT
+
+
+def test_collect_cli_ignores_bool_nano_aiu(tmp_path: Path) -> None:
+    """``isinstance(True, (int, float))`` is True; bool must be filtered.
+
+    Regression: a ``totalNanoAiu: true`` in malformed telemetry would have
+    contributed 1.0 to actual_nano_aiu and inflated the cost baseline.
+    """
+    sess_dir = tmp_path / "session-state" / "sess-boolnano"
+    sess_dir.mkdir(parents=True)
+    drifted = {"type": "session.shutdown", "data": {"totalNanoAiu": True}}
+    valid = _session_shutdown(nano_aiu=5_000_000_000)
+    (sess_dir / "events.jsonl").write_text(
+        "\n".join(json.dumps(e) for e in [drifted, valid]) + "\n",
+        encoding="utf-8",
+    )
+    _, _, nano, _, _ = collect_cli(tmp_path, days=30)
+    # Only the valid 5e9 should contribute; the bool True must be filtered.
+    assert nano == 5_000_000_000.0
