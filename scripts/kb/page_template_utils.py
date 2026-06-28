@@ -272,37 +272,45 @@ def extract_frontmatter_keys(frontmatter: str) -> set[str]:
 
 
 def extract_headings(body: str) -> set[str]:
-    # OPTIMIZATION: Avoid body.splitlines() to achieve O(1) memory overhead
+    """Extract markdown headings from ``body`` as a set of ``"# text"`` strings.
+
+    Streams through ``body`` using ``find('\\n')`` slicing instead of
+    ``splitlines()`` to avoid materializing an O(N) line array. Skips
+    headings inside fenced code blocks (``` or ~~~).
+
+    **Bare CR limitation:** Only LF (``\\n``) is treated as a line break.
+    Bare CR (Classic Mac) and CRLF input where the CR is treated as part of
+    the heading text are NOT detected. Practical impact is negligible:
+    bare-CR files are extinct, and CRLF is handled because the LF still
+    splits the line (the trailing CR ends up inside ``.strip()``'s scope).
+    Documented for completeness rather than fixed because the streaming
+    branch would require a regex to be CR-aware, which costs more than
+    the lost compatibility is worth.
+    """
     headings: set[str] = set()
     in_fenced_block = False
 
-    start = 0
-    end = body.find('\n')
-    while end != -1:
-        line = body[start:end]
-        start = end + 1
-        end = body.find('\n', start)
-
+    def _maybe_add(line: str) -> None:
+        nonlocal in_fenced_block
         stripped = line.strip()
         if stripped.startswith("```") or stripped.startswith("~~~"):
             in_fenced_block = not in_fenced_block
-            continue
+            return
         if in_fenced_block:
-            continue
-
+            return
         if stripped.startswith("#"):
             match = _HEADING_RE.match(stripped)
             if match:
                 headings.add(f"{match.group(1)} {match.group(2)}")
 
+    start = 0
+    end = body.find('\n')
+    while end != -1:
+        _maybe_add(body[start:end])
+        start = end + 1
+        end = body.find('\n', start)
     if start < len(body):
-        stripped = body[start:].strip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            pass
-        elif not in_fenced_block and stripped.startswith("#"):
-            match = _HEADING_RE.match(stripped)
-            if match:
-                headings.add(f"{match.group(1)} {match.group(2)}")
+        _maybe_add(body[start:])
 
     return headings
 

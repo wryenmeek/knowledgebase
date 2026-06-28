@@ -19,6 +19,23 @@ import yaml
 
 
 WORKFLOWS_DIR = Path(".github/workflows")
+ACTIONS_DIR = Path(".github/actions")
+
+
+def _all_workflow_and_action_files() -> list[Path]:
+    """Return all workflow files + composite action.yml files.
+
+    Composite actions under ``.github/actions/<name>/action.yml`` carry the
+    same supply-chain risk as workflow files (they ``uses:`` external
+    actions). Per ADR-036 § Amendment, ``.github/actions/`` is now formally
+    a sensitive path, so the SHA-pin invariant must extend to it. See
+    audit-knowledgebase-workspace report 2026-06-27 for the gap that
+    motivated this extension.
+    """
+    files: list[Path] = list(WORKFLOWS_DIR.glob("*.yml"))
+    if ACTIONS_DIR.is_dir():
+        files.extend(ACTIONS_DIR.glob("**/action.yml"))
+    return sorted(files)
 
 # Local/reusable workflow refs start with './' and don't need SHA pinning.
 _LOCAL_REF_PATTERN = re.compile(r"^\s+uses:\s+\./")
@@ -43,8 +60,10 @@ _FLOATING_REF_PATTERN = re.compile(
 class WorkflowShaPinTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.workflow_files = sorted(WORKFLOWS_DIR.glob("*.yml"))
-        assert cls.workflow_files, f"No workflow files found in {WORKFLOWS_DIR}"
+        cls.workflow_files = _all_workflow_and_action_files()
+        assert cls.workflow_files, (
+            f"No workflow files found in {WORKFLOWS_DIR} or {ACTIONS_DIR}"
+        )
 
     def test_no_floating_action_refs(self) -> None:
         """No workflow file may use a known floating action ref (@vN, @main, @latest).
