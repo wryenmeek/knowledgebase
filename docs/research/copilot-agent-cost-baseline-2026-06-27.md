@@ -124,7 +124,7 @@ Chat usage is much more diverse model-wise. The 7K-inference GPT-5.4 line and 3.
 
 2. **Failure heuristic has false positives.** A legitimate <5s no-op dispatch (e.g., a check that finds nothing to do) would be counted as a failure. The aggregated 100% failure rate on `gpt-5.5` across many agents over 750+ invocations is too consistent to be false-positive — it's the quota pattern. Smaller agents need manual triage.
 
-3. **Long-context tier is not modeled.** `gpt-5.4`, `gpt-5.5`, and `gemini-3.1-pro` have a separate Long-context tier (2× input / 1.5× output) above 272K input tokens (272K for OpenAI, 200K for Gemini). The pricing table stores Default-tier rates only. Any general-purpose dispatch with very large context will be **under-estimated**. This bias is opposite to the blended-rate over-estimate in (1) and partially cancels for typical workloads — but the cancellation is not guaranteed.
+3. **Long-context tier is now modeled (CLI-side bias remains).** `gpt-5.4`, `gpt-5.5`, and `gemini-3.1-pro` publish a separate Long-context tier (2× input / 1.5× output) above 272K input tokens (272K for OpenAI, 200K for Gemini). As of issue #401, `pricing.py` stores these rates and `estimate_cost_usd` selects the correct tier when the caller supplies the per-call input-token count via `input_tokens_for_threshold`. Chat-side OTEL events expose per-call `gen_ai.usage.input_tokens`, so the bias is removed on that path. CLI-side sub-agent telemetry exposes only aggregate `totalTokens` with no input/output split, so CLI-side estimates remain bias-down for any invocation that crossed the threshold.
 
 4. **VS Code OTEL is one large file (18 GB on 06-21).** Future runs should stream-parse efficiently; the current tool does so but takes ~2 min on cold disk cache.
 
@@ -157,7 +157,7 @@ Pricing source: `scripts/analysis/pricing.py`
 All deferred items have been filed as `ready-for-agent` GitHub issues:
 
 - **[#400](https://github.com/wryenmeek/knowledgebase/issues/400)** — Expand `tests/analysis/` coverage: fail-soft contracts, OTEL parser, renderer smoke (P1/P2/P3 blocks from the test-engineer review)
-- **[#401](https://github.com/wryenmeek/knowledgebase/issues/401)** — Add long-context tier pricing to `scripts/analysis/pricing.py` (gpt-5.4, gpt-5.5, gemini-3.1-pro have 2× input / 1.5× output rates above the input threshold)
+- **[#401](https://github.com/wryenmeek/knowledgebase/issues/401)** — ~~Add long-context tier pricing to `scripts/analysis/pricing.py`~~ **Implemented** — long-context rates now stored in `ModelPrice`; `estimate_cost_usd` tier-selects when `input_tokens_for_threshold` is supplied.
 - **[#402](https://github.com/wryenmeek/knowledgebase/issues/402)** — Apply blended-rate to Chat-side cost math (fix the structural overestimate noted in Caveat §5)
 - **[#403](https://github.com/wryenmeek/knowledgebase/issues/403)** — Per-event timestamp filter for `--days` window (close the mtime-granularity gap noted in Caveat §6)
 

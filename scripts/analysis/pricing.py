@@ -12,19 +12,26 @@ The pricing table is the single source of truth for cost estimation in
 same commit; ``MAX_PRICING_STALE_DAYS`` triggers a warning when the file is
 older than the threshold.
 
-**Long-context tier limitation (known gap, not modeled).** docs.github.com
-publishes a separate Long-context tier for three models, triggered when input
-tokens exceed a threshold:
+**Long-context tier (optional, opt-in per call).** Three models publish a
+separate Long-context tier triggered when input tokens exceed a threshold:
 
-  - ``gpt-5.4`` (> 272K input): 2x input / 1.5x output
-  - ``gpt-5.5`` (> 272K input): 2x input / 1.5x output
-  - ``gemini-3.1-pro`` (> 200K input): 2x input / 1.5x output
+  - ``gpt-5.4`` (> 272K input): $5.00 / $22.50 per 1M in/out
+  - ``gpt-5.5`` (> 272K input): $10.00 / $45.00 per 1M in/out
+  - ``gemini-3.1-pro`` (> 200K input): $4.00 / $18.00 per 1M in/out
 
-This module only stores the Default tier rate for each model. Any invocation
-whose input crossed the threshold will be **under-estimated** by the analyzer.
-The bias direction is opposite to the ``blended_rate()`` conservatism (which
-biases slightly high for Anthropic cache_write). The two effects partially
-cancel for mixed workloads but not in any guaranteed direction.
+These rates are stored in :class:`ModelPrice` via the optional
+``long_context_input_per_m``, ``long_context_output_per_m``, and
+``input_threshold_tokens`` fields. :func:`estimate_cost_usd` selects the
+long-context tier when the caller passes ``input_tokens_for_threshold`` and
+that value exceeds the model's threshold. When the parameter is omitted (the
+default), Default-tier rates are used — fully backward-compatible.
+
+**Known limitation:** CLI-side sub-agent telemetry (``subagent.completed``)
+exposes only aggregate ``totalTokens`` with no input/output split. The
+``input_tokens_for_threshold`` parameter cannot be populated from CLI events,
+so CLI-side estimates remain bias-down for any invocation that crossed the
+long-context threshold. Chat-side OTEL events expose per-call
+``gen_ai.usage.input_tokens``, making the parameter applicable there.
 
 This module is import-only and contains no I/O. It is safe to import from
 read-only analyzer surfaces.
@@ -44,29 +51,47 @@ MAX_PRICING_STALE_DAYS = 60
 class ModelPrice:
     """Per-1M-token USD pricing for a single Copilot model.
 
-    All four fields are USD per 1,000,000 tokens. ``cache_write`` is ``None``
-    for providers that do not bill cache writes separately (currently
+    All base fields are USD per 1,000,000 tokens. ``cache_write_per_m`` is
+    ``None`` for providers that do not bill cache writes separately (currently
     OpenAI, Google, Microsoft).
+
+    The three ``long_context_*`` fields are populated only for models that
+    publish a separate Long-context tier. When ``input_threshold_tokens`` is
+    set, callers may pass ``input_tokens_for_threshold`` to
+    :func:`estimate_cost_usd` to select the appropriate tier automatically.
+    ``cached_per_m`` is unchanged between tiers (not separately published for
+    the long-context tier).
     """
 
     input_per_m: float
     cached_per_m: float
     output_per_m: float
     cache_write_per_m: float | None = None
+    long_context_input_per_m: float | None = None
+    long_context_output_per_m: float | None = None
+    input_threshold_tokens: int | None = None
 
 
 # Keys are the canonical model id used by Copilot CLI / Chat OTEL. See the
 # ``Supported AI models`` page for canonical naming.
 PRICING: dict[str, ModelPrice] = {
-    # OpenAI (Default tier only — long-context tier above 272K input tokens
-    # carries 2x input / 1.5x output rates that THIS table does NOT model.
-    # See "Long-context tier limitation" in module docstring above.)
+    # OpenAI
     "gpt-5-mini": ModelPrice(0.25, 0.025, 2.00),
     "gpt-5.3-codex": ModelPrice(1.75, 0.175, 14.00),
-    "gpt-5.4": ModelPrice(2.50, 0.25, 15.00),
+    "gpt-5.4": ModelPrice(
+        2.50, 0.25, 15.00,
+        long_context_input_per_m=5.00,
+        long_context_output_per_m=22.50,
+        input_threshold_tokens=272_000,
+    ),
     "gpt-5.4-mini": ModelPrice(0.75, 0.075, 4.50),
     "gpt-5.4-nano": ModelPrice(0.20, 0.02, 1.25),
-    "gpt-5.5": ModelPrice(5.00, 0.50, 30.00),
+    "gpt-5.5": ModelPrice(
+        5.00, 0.50, 30.00,
+        long_context_input_per_m=10.00,
+        long_context_output_per_m=45.00,
+        input_threshold_tokens=272_000,
+    ),
     # Anthropic (cache_write applies)
     "claude-haiku-4.5": ModelPrice(1.00, 0.10, 5.00, cache_write_per_m=1.25),
     "claude-sonnet-4": ModelPrice(3.00, 0.30, 15.00, cache_write_per_m=3.75),
@@ -77,11 +102,15 @@ PRICING: dict[str, ModelPrice] = {
     "claude-opus-4.7": ModelPrice(5.00, 0.50, 25.00, cache_write_per_m=6.25),
     "claude-opus-4.8": ModelPrice(5.00, 0.50, 25.00, cache_write_per_m=6.25),
     "claude-fable-5": ModelPrice(10.00, 1.00, 50.00, cache_write_per_m=12.50),
-    # Google (Default tier only — gemini-3.1-pro long-context above 200K
-    # tokens is 2x input / 1.5x output; not modeled.)
+    # Google
     "gemini-2.5-pro": ModelPrice(1.25, 0.125, 10.00),
     "gemini-3-flash": ModelPrice(0.50, 0.05, 3.00),
-    "gemini-3.1-pro": ModelPrice(2.00, 0.20, 12.00),
+    "gemini-3.1-pro": ModelPrice(
+        2.00, 0.20, 12.00,
+        long_context_input_per_m=4.00,
+        long_context_output_per_m=18.00,
+        input_threshold_tokens=200_000,
+    ),
     "gemini-3.5-flash": ModelPrice(1.50, 0.15, 9.00),
     # Microsoft
     "mai-code-1-flash": ModelPrice(0.75, 0.075, 4.50),
@@ -222,7 +251,12 @@ def _effort_output_multiplier(model: str, effort: str) -> float:
 
 
 def estimate_cost_usd(
-    model: str, total_tokens: int, *, effort: str = "default", **shares: float
+    model: str,
+    total_tokens: int,
+    *,
+    effort: str = "default",
+    input_tokens_for_threshold: int | None = None,
+    **shares: float,
 ) -> float:
     """Estimate USD cost for ``total_tokens`` rendered by ``model``.
 
@@ -230,7 +264,48 @@ def estimate_cost_usd(
     multiplies by ``total_tokens / 1_000_000``. Returns ``0.0`` if the model is
     not in :data:`PRICING`. See :func:`blended_rate` for the ``effort``
     parameter and its multiplier table.
+
+    **Long-context tier selection** (opt-in):
+
+    Pass ``input_tokens_for_threshold`` when the per-call input-token count is
+    known. If the value exceeds the model's ``input_threshold_tokens`` and the
+    model declares long-context rates, the long-context input and output rates
+    are substituted for the Default-tier rates. ``cached_per_m`` is unchanged.
+    When ``input_tokens_for_threshold`` is ``None`` (the default), Default-tier
+    rates are always used — fully backward-compatible with existing callers.
+
+    Note: CLI-side sub-agent telemetry exposes only aggregate ``totalTokens``
+    with no input/output split, so ``input_tokens_for_threshold`` cannot be
+    populated there. CLI-side cost estimates therefore remain bias-down for
+    invocations that crossed the long-context threshold. Chat-side OTEL events
+    expose per-call ``gen_ai.usage.input_tokens``, making this parameter
+    applicable on that path.
     """
+    price = PRICING.get(model)
+    if price is None:
+        return 0.0
+
+    use_long_context = (
+        input_tokens_for_threshold is not None
+        and price.input_threshold_tokens is not None
+        and input_tokens_for_threshold > price.input_threshold_tokens
+        and price.long_context_input_per_m is not None
+        and price.long_context_output_per_m is not None
+    )
+
+    if use_long_context:
+        # Compute blended rate using long-context input/output rates.
+        # Resolve shares with the same defaults as blended_rate (20/70/10).
+        input_share = shares.get("input_share", 0.20)
+        cache_share = shares.get("cache_share", 0.70)
+        output_share = shares.get("output_share", 0.10)
+        output_mult = _effort_output_multiplier(model, effort)
+        lc_rate = (
+            input_share * price.long_context_input_per_m
+            + cache_share * price.cached_per_m
+            + output_share * price.long_context_output_per_m * output_mult
+        )
+        return lc_rate * total_tokens / 1_000_000.0
 
     rate = blended_rate(model, effort=effort, **shares)
     return rate * total_tokens / 1_000_000.0
