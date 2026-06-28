@@ -20,3 +20,7 @@
 **Vulnerability:** Use of weak MD5 hash without `usedforsecurity=False`.
 **Learning:** `hashlib.md5()` triggers `bandit` scanners and FIPS enforcement unless explicitly marked as non-security related.
 **Prevention:** Always pass `usedforsecurity=False` when using MD5 for checksums or versioning to suppress false positives and ensure compatibility in strict environments.
+## 2026-06-26 - [Log Injection and Expression Injection]
+**Vulnerability:** Token exposure via stderr logs and expression injection (`${{ ... }}`) via GitHub-flavoured markdown rendering.
+**Learning:** API error messages can contain sensitive credentials (e.g., `ghp_`, `github_pat_`, base64 strings) which can be exposed if stderr is not properly redacted. GitHub markdown might trigger side effects if `${{ ... }}` expressions are not neutralized.
+**Prevention:** Centralize and ensure consistent markdown sanitization and error log redaction across all scripts interfacing with external platforms (like GitHub and Google Drive).
