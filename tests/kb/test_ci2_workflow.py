@@ -4,29 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import pytest
-
-def assert_in(member, collection, msg=None):
-    assert member in collection, msg
-
-def assert_not_in(member, collection, msg=None):
-    assert member not in collection, msg
-
-def assert_equal(first, second, msg=None):
-    assert first == second, msg
-
-def assert_true(expr, msg=None):
-    assert expr, msg
-
-def assert_is_not_none(obj, msg=None):
-    assert obj is not None, msg
-
-def assert_greater(a, b, msg=None):
-    assert a > b, msg
-
-def assert_is_none(obj, msg=None):
-    assert obj is None, msg
-
+import unittest
 
 from tests.kb._workflow_yaml import (
     extract_named_step_block,
@@ -42,22 +20,22 @@ def _parse_top_level_mapping_block(text: str, key: str) -> dict[str, str]:
     return parse_top_level_mapping_block(text, key, workflow_path=WORKFLOW_PATH)
 
 
-class TestCi2WorkflowContract:
-    def setup_method(self) -> None:
-        assert_true(WORKFLOW_PATH.exists(), f"Missing workflow file: {WORKFLOW_PATH}")
+class Ci2WorkflowContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.assertTrue(WORKFLOW_PATH.exists(), f"Missing workflow file: {WORKFLOW_PATH}")
         self.workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
 
     def test_ci2_metadata_and_triggers_are_explicit(self) -> None:
-        assert_in("name: CI-2 Analyst Read-Only Diagnostics", self.workflow_text)
-        assert_in("CI_ID: CI-2", self.workflow_text)
-        assert_in("TOKEN_PROFILE: tp-analyst-readonly", self.workflow_text)
-        assert_in('CLOSURE_EVIDENCE_POLICY_START: "2026-06-28T07:00:00Z"', self.workflow_text)
-        assert_in("push:", self.workflow_text)
-        assert_in("pull_request:", self.workflow_text)
-        assert_in("workflow_dispatch:", self.workflow_text)
+        self.assertIn("name: CI-2 Analyst Read-Only Diagnostics", self.workflow_text)
+        self.assertIn("CI_ID: CI-2", self.workflow_text)
+        self.assertIn("TOKEN_PROFILE: tp-analyst-readonly", self.workflow_text)
+        self.assertIn('CLOSURE_EVIDENCE_POLICY_START: "2026-05-25T00:00:00Z"', self.workflow_text)
+        self.assertIn("push:", self.workflow_text)
+        self.assertIn("pull_request:", self.workflow_text)
+        self.assertIn("workflow_dispatch:", self.workflow_text)
 
     def test_permissions_match_tp_analyst_readonly(self) -> None:
-        assert_equal(
+        self.assertEqual(
             _parse_top_level_mapping_block(self.workflow_text, "permissions"),
             {
                 "actions": "read",
@@ -65,7 +43,7 @@ class TestCi2WorkflowContract:
                 "contents": "read",
             },
         )
-        assert_is_none(
+        self.assertIsNone(
             re.search(
                 r"(?im)^\s*(actions|checks|contents|pull-requests|issues|packages|id-token)\s*:\s*write\s*$",
                 self.workflow_text,
@@ -76,7 +54,7 @@ class TestCi2WorkflowContract:
         job_perms = parse_job_mapping_block(
             self.workflow_text, "analyst-diagnostics", "permissions", WORKFLOW_PATH
         )
-        assert_equal(
+        self.assertEqual(
             job_perms,
             {
                 "actions": "read",
@@ -91,57 +69,57 @@ class TestCi2WorkflowContract:
         # YAML syntax validation moved to WorkflowYamlSyntaxTests in the Python
         # test suite (issue #16: eliminate duplicate YAML parse in CI-2).
         # The Ruby Psych step was removed; CI-2 no longer parses workflow YAML directly.
-        assert_not_in('require "psych"', self.workflow_text)
-        assert_not_in("Psych.parse_file", self.workflow_text)
+        self.assertNotIn('require "psych"', self.workflow_text)
+        self.assertNotIn("Psych.parse_file", self.workflow_text)
 
     def test_workflow_is_diagnostics_only_with_explicit_failures(self) -> None:
-        assert_in("Install pinned qmd runtime", self.workflow_text)
-        assert_in("Set up Node.js", self.workflow_text)
-        assert_in("uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444", self.workflow_text)
-        assert_in('QMD_NPM_PACKAGE="@tobilu/qmd"', self.workflow_text)
-        assert_in('QMD_VERSION="2.5.1"', self.workflow_text)
-        assert_in(
+        self.assertIn("Install pinned qmd runtime", self.workflow_text)
+        self.assertIn("Set up Node.js", self.workflow_text)
+        self.assertIn("uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444", self.workflow_text)
+        self.assertIn('QMD_NPM_PACKAGE="@tobilu/qmd"', self.workflow_text)
+        self.assertIn('QMD_VERSION="2.5.1"', self.workflow_text)
+        self.assertIn(
             'QMD_EXPECTED_INTEGRITY="sha512-Ep9ccOj1bNRinfTIszp5UZP8xfi5AJNtmzwWDD4ZVm2YdWVS+rFobWJQovj0HD2uIAFrryvbSpZYeGa3flEO7g=="',
             self.workflow_text,
         )
-        assert_in(
+        self.assertIn(
             'npm view "${QMD_NPM_PACKAGE}@${QMD_VERSION}" dist.integrity --registry=https://registry.npmjs.org',
             self.workflow_text,
         )
-        assert_in(
+        self.assertIn(
             'if [ "${QMD_DIST_INTEGRITY}" != "${QMD_EXPECTED_INTEGRITY}" ]; then',
             self.workflow_text,
         )
-        assert_in(
+        self.assertIn(
             "::error::qmd dist.integrity mismatch",
             self.workflow_text,
         )
-        assert_in("exit 1", self.workflow_text)
-        assert_in(
+        self.assertIn("exit 1", self.workflow_text)
+        self.assertIn(
             'npm install --global "${QMD_NPM_PACKAGE}@${QMD_VERSION}" --registry=https://registry.npmjs.org',
             self.workflow_text,
         )
-        assert_in("qmd init", self.workflow_text)
-        assert_in("cp .qmd/index.sqlite .qmd/index/index.sqlite", self.workflow_text)
-        assert_in("cp .qmd/index.yml .qmd/index/index.yml", self.workflow_text)
-        assert_in("python3 scripts/kb/qmd_preflight.py --repo-root .", self.workflow_text)
-        assert_not_in(".ci-bin", self.workflow_text)
-        assert_not_in("cat > .ci-bin/qmd", self.workflow_text)
-        assert_in(
+        self.assertIn("qmd init", self.workflow_text)
+        self.assertIn("cp .qmd/index.sqlite .qmd/index/index.sqlite", self.workflow_text)
+        self.assertIn("cp .qmd/index.yml .qmd/index/index.yml", self.workflow_text)
+        self.assertIn("python3 scripts/kb/qmd_preflight.py --repo-root .", self.workflow_text)
+        self.assertNotIn(".ci-bin", self.workflow_text)
+        self.assertNotIn("cat > .ci-bin/qmd", self.workflow_text)
+        self.assertIn(
             "python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
             self.workflow_text,
         )
-        assert_in("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
-        assert_in("python3 -m pytest tests/ -q", self.workflow_text)
-        assert_in(
+        self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
+        self.assertIn("python3 -m pytest tests/ -q", self.workflow_text)
+        self.assertIn(
             "python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses",
             self.workflow_text,
         )
-        assert_in(
+        self.assertIn(
             "python3 -m scripts.validation.check_issue_closure_evidence",
             self.workflow_text,
         )
-        assert_is_not_none(
+        self.assertIsNotNone(
             re.search(
                 r"python3 -m scripts\.validation\.check_issue_closure_evidence.*?--lookback-days 3650.*?--issue-limit 500.*?--closed-after",
                 self.workflow_text,
@@ -149,22 +127,22 @@ class TestCi2WorkflowContract:
             ),
             "Closure evidence command must include lookback, issue-limit, and closed-after flags",
         )
-        assert_in("--cov=scripts.validation._runtime_budget", self.workflow_text)
-        assert_in("Secret scan (gitleaks)", self.workflow_text)
-        assert_in("Dependency vulnerability audit (pip-audit)", self.workflow_text)
-        assert_in(
+        self.assertIn("--cov=scripts.validation._runtime_budget", self.workflow_text)
+        self.assertIn("Secret scan (gitleaks)", self.workflow_text)
+        self.assertIn("Dependency vulnerability audit (pip-audit)", self.workflow_text)
+        self.assertIn(
             "uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
             self.workflow_text,
         )
-        assert_in("if: always()", self.workflow_text)
-        assert_in(
+        self.assertIn("if: always()", self.workflow_text)
+        self.assertIn(
             "always() && (steps.diagnostics.outcome != 'success' || steps.closure-evidence.outcome != 'success' || steps.diagnostics.outputs.exit_code != '0' || steps.closure-evidence.outputs.closure_evidence_exit != '0' || steps.runtime-budget.outputs.overall_status == 'fail')",
             self.workflow_text,
         )
-        assert_in("Evaluate CI-2 runtime budgets", self.workflow_text)
-        assert_in("schema/runtime-budgets.json", self.workflow_text)
-        assert_in("diagnostics/runtime-budget-report.json", self.workflow_text)
-        assert_in("exit 1", self.workflow_text)
+        self.assertIn("Evaluate CI-2 runtime budgets", self.workflow_text)
+        self.assertIn("schema/runtime-budgets.json", self.workflow_text)
+        self.assertIn("diagnostics/runtime-budget-report.json", self.workflow_text)
+        self.assertIn("exit 1", self.workflow_text)
 
         forbidden_write_or_release_commands = (
             "git push",
@@ -174,7 +152,7 @@ class TestCi2WorkflowContract:
             "scripts/kb/persist_query.py",
         )
         for forbidden in forbidden_write_or_release_commands:
-            assert_not_in(forbidden, self.workflow_text)
+            self.assertNotIn(forbidden, self.workflow_text)
 
     def test_diagnostics_step_propagates_lint_and_test_failures(self) -> None:
         diagnostics_step = extract_named_step_block(
@@ -182,8 +160,8 @@ class TestCi2WorkflowContract:
             "Run analyst diagnostics (lint + unit tests)",
             workflow_path=WORKFLOW_PATH,
         )
-        assert_in("set -uo pipefail", diagnostics_step)
-        assert_in(
+        self.assertIn("set -uo pipefail", diagnostics_step)
+        self.assertIn(
             "set +e",
             diagnostics_step,
             "Diagnostics step must disable inherited bash -e so it can emit all outputs deterministically",
@@ -194,14 +172,14 @@ class TestCi2WorkflowContract:
             "Check issue closure evidence",
             workflow_path=WORKFLOW_PATH,
         )
-        assert_in("set -uo pipefail", closure_step)
-        assert_in(
+        self.assertIn("set -uo pipefail", closure_step)
+        self.assertIn(
             "set +e",
             closure_step,
             "Closure-evidence step must disable inherited bash -e so closure_evidence_exit is always emitted",
         )
 
-        assert_is_not_none(
+        self.assertIsNotNone(
             re.search(
                 r"python3 \.github/skills/validate-wiki-governance/logic/validate_wiki_governance\.py.*?wrapper_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
@@ -209,7 +187,7 @@ class TestCi2WorkflowContract:
             ),
             "Wrapper command status must be captured for final diagnostics exit_code",
         )
-        assert_is_not_none(
+        self.assertIsNotNone(
             re.search(
                 r"python3 scripts/validation/check_doc_freshness\.py.*?freshness_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
@@ -217,7 +195,7 @@ class TestCi2WorkflowContract:
             ),
             "Freshness command status must be captured for final diagnostics exit_code",
         )
-        assert_is_not_none(
+        self.assertIsNotNone(
             re.search(
                 r"python3 scripts/reporting/content_quality_report\.py.*?quality_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
@@ -226,7 +204,7 @@ class TestCi2WorkflowContract:
             "Quality report command status must be captured for final diagnostics exit_code",
         )
         # closure_evidence runs in its own dedicated step (issue #154: GH_TOKEN scoped to that step only)
-        assert_is_not_none(
+        self.assertIsNotNone(
             re.search(
                 r"python3 -m scripts\.validation\.check_issue_closure_evidence.*?closure_evidence_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
@@ -234,12 +212,12 @@ class TestCi2WorkflowContract:
             ),
             "Closure evidence command status must be captured in the dedicated closure-evidence step",
         )
-        assert_in(
+        self.assertIn(
             "steps.closure-evidence.outputs.closure_evidence_exit",
             self.workflow_text,
             "Closure evidence exit must be propagated via steps.closure-evidence.outputs",
         )
-        assert_is_not_none(
+        self.assertIsNotNone(
             re.search(
                 r"python3 scripts/kb/lint_wiki\.py --wiki-root wiki --strict.*?lint_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
@@ -247,7 +225,7 @@ class TestCi2WorkflowContract:
             ),
             "Lint command status must be captured for final diagnostics exit_code",
         )
-        assert_is_not_none(
+        self.assertIsNotNone(
             re.search(
                 r"python3 -m pytest tests/ -q.*?tests_exit=\"\$\{PIPESTATUS\[0\]\}\"",
                 self.workflow_text,
@@ -255,12 +233,12 @@ class TestCi2WorkflowContract:
             ),
             "Test command status must be captured for final diagnostics exit_code",
         )
-        assert_in(
+        self.assertIn(
             'if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
             self.workflow_text,
         )
-        assert_in("CLOSURE_EVIDENCE_EXIT", self.workflow_text)
-        assert_in('echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"', self.workflow_text)
+        self.assertIn("CLOSURE_EVIDENCE_EXIT", self.workflow_text)
+        self.assertIn('echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"', self.workflow_text)
 
     def test_closure_evidence_token_is_step_scoped(self) -> None:
         closure_step = extract_named_step_block(
@@ -268,7 +246,7 @@ class TestCi2WorkflowContract:
             "Check issue closure evidence",
             workflow_path=WORKFLOW_PATH,
         )
-        assert_in(
+        self.assertIn(
             "GH_TOKEN: ${{ github.token }}",
             closure_step,
             "Closure-evidence step must bind GH_TOKEN locally",
@@ -279,12 +257,12 @@ class TestCi2WorkflowContract:
             "Run analyst diagnostics (lint + unit tests)",
             workflow_path=WORKFLOW_PATH,
         )
-        assert_not_in(
+        self.assertNotIn(
             "GH_TOKEN:",
             diagnostics_step,
             "Diagnostics step must not bind GH_TOKEN across all commands",
         )
-        assert_equal(
+        self.assertEqual(
             self.workflow_text.count("GH_TOKEN:"),
             1,
             "CI-2 workflow must bind GH_TOKEN exactly once in the closure-evidence step",
@@ -292,7 +270,7 @@ class TestCi2WorkflowContract:
 
 
 
-class TestWorkflowYamlSyntax:
+class WorkflowYamlSyntaxTests(unittest.TestCase):
     """Validate that all CI workflow YAML files parse cleanly (#16).
 
     This single Python-level check replaces the Ruby Psych step that previously
@@ -304,16 +282,16 @@ class TestWorkflowYamlSyntax:
         import yaml  # pyyaml — available in dev extras
 
         workflows_dir = Path(".github/workflows")
-        assert_true(workflows_dir.is_dir(), f"Missing workflows dir: {workflows_dir}")
+        self.assertTrue(workflows_dir.is_dir(), f"Missing workflows dir: {workflows_dir}")
         yaml_files = sorted(workflows_dir.glob("*.yml"))
-        assert_greater(len(yaml_files), 0, "No workflow YAML files found")
+        self.assertGreater(len(yaml_files), 0, "No workflow YAML files found")
         errors: list[str] = []
         for yf in yaml_files:
             try:
                 yaml.safe_load(yf.read_text(encoding="utf-8"))
             except yaml.YAMLError as exc:
                 errors.append(f"{yf}: {exc}")
-        assert_equal(errors, [], "Workflow YAML syntax errors found:\n" + "\n".join(errors))
+        self.assertEqual(errors, [], "Workflow YAML syntax errors found:\n" + "\n".join(errors))
 
     def test_ci2_workflow_file_is_included_in_scanned_yaml_files(self) -> None:
         """CI-2's own workflow file must be in the YAML scan list.
@@ -324,10 +302,12 @@ class TestWorkflowYamlSyntax:
         """
         workflows_dir = Path(".github/workflows")
         yaml_files = [f.name for f in sorted(workflows_dir.glob("*.yml"))]
-        assert_in(
+        self.assertIn(
             "ci-2-analyst-diagnostics.yml",
             yaml_files,
             "ci-2-analyst-diagnostics.yml must be present and scanned by WorkflowYamlSyntaxTests",
         )
 
 
+if __name__ == "__main__":
+    unittest.main()

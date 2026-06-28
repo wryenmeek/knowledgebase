@@ -33,7 +33,7 @@ jobs:
     env:
       CI_ID: CI-2
       TOKEN_PROFILE: tp-analyst-readonly
-      CLOSURE_EVIDENCE_POLICY_START: "2026-06-28T07:00:00Z"
+      CLOSURE_EVIDENCE_POLICY_START: "2026-05-25T00:00:00Z"
     steps:
       - name: Checkout repository snapshot (read-only token)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -48,7 +48,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: false  # CI-2 is read-only; no pull-requests:write
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
