@@ -17,6 +17,8 @@ pricing_source: docs.github.com/en/copilot/reference/copilot-billing/models-and-
 
 ## Headline numbers
 
+> **Update (2026-06-27):** the headline figures pre-date the effort dimension; see [Addendum: effort dimension capture](#addendum-2026-06-27-effort-dimension-capture) for the re-bucketed numbers. The "$12,537 / `general-purpose` / `gpt-5.5`" row below collapsed three effort tiers; re-split it estimates ~$34,488 (xhigh $28,238 + default $4,728 + max $1,522). The estimate-to-actual gap widens from 1.2× to ~3.4× in the effort-aware view because the 5× xhigh output multiplier compounds the existing Anthropic-cache over-estimate. The original recommendation (migrate general-purpose off gpt-5.5) still holds.
+
 | Metric | Value | Source |
 | --- | --- | --- |
 | **Actual billed (CLI sessions, last 30d)** | **$10,262.39** (1,026,238 AI credits) | sum of `session.shutdown.totalNanoAiu` across 153 sessions |
@@ -160,3 +162,52 @@ All deferred items have been filed as `ready-for-agent` GitHub issues:
 - **[#403](https://github.com/wryenmeek/knowledgebase/issues/403)** — Per-event timestamp filter for `--days` window (close the mtime-granularity gap noted in Caveat §6)
 
 Cross-functional review for the initial commit (`feat(analysis): add Copilot agent cost baseline analyzer`) was completed in-session: `@code-reviewer`, `@test-engineer`, `@security-auditor`, `@documentation-engineer` all dispatched in parallel; P0–P2 findings remediated before merge in the same commit pair (initial + remediation).
+
+---
+
+## Addendum (2026-06-27): effort dimension capture
+
+After the initial report shipped, telemetry inspection (`session.start.reasoningEffort` + `tool.execution_start.arguments.reasoning_effort` for `task` tool calls) revealed that **effort level is the single largest hidden cost driver** that the effort-blind v1 analyzer was collapsing.
+
+### Implementation
+
+`AgentBucket` now keys on `(agent, model, effort)` instead of `(agent, model)`. Effort is resolved per-dispatch via two-pass scan:
+
+1. Per-session: record `session.start.reasoningEffort` as the session default
+2. Per-task-dispatch: record any explicit `task` tool `arguments.reasoning_effort` (~2.7% of dispatches)
+3. Per-`subagent.completed`: resolve effort = per-call override OR session default OR `"default"`
+
+`pricing.py` adds an output-token multiplier per effort level (low 0.7×, medium 1.0×, high 2.5×, xhigh 5.0×, max 7.0×) applied only to effort-capable models (gpt-5.x + claude-opus-4.6/4.7). Sonnet/Haiku/Gemini ignore the parameter.
+
+### Re-bucketed headline numbers (same 30d window)
+
+| Agent / model / effort | Inv | Est cost (30d) | Notes |
+|---|---|---|---|
+| `general-purpose / gpt-5.5 / xhigh` | 245 | **$28,238** | Driven by my `effortLevel: max` session default cascading |
+| `general-purpose / gpt-5.5 / default` | 162 | $4,728 | Pre-`effortLevel:max` sessions |
+| `general-purpose / gpt-5.5 / max` | 21 | $1,522 | Explicit per-dispatch max |
+| `tdd / claude-opus-4.7 / xhigh` | 17 | $1,780 | |
+| `code-reviewer / claude-opus-4.7 / xhigh` | 29 | $1,631 | |
+| `documentation-engineer / claude-opus-4.7 / xhigh` | 24 | $1,253 | |
+
+**Estimate-to-actuals ratio** is now ~3.4× ($34k est vs $10k actual), wider than v1's 1.2×. The aggressive 5× xhigh multiplier compounds the Anthropic-cache over-estimate; treat per-row estimates as planning-grade.
+
+### What this resolves
+
+The v1 report could not explain why `general-purpose/gpt-5.5` cost $12k for "428 invocations at 0.7% fail rate." The answer: ~57% of those invocations ran at xhigh effort, ~38% at default, ~5% at max. The mean cost-per-invocation differs by ~5× across these slices.
+
+### What the user's 14-agent settings.json patch does
+
+Applied 2026-06-27:
+
+- Pins `general-purpose`, `code-reviewer`, `code-review`, `security-auditor`, `security-review`, `rubber-duck` to `claude-sonnet-4.6` (no effort knob; quota-stable)
+- Pins `documentation-engineer`, `docs`, `github-customization-steward` to `claude-haiku-4.5` (structured output; no effort knob)
+- Pins `tdd` to `gpt-5.3-codex` at `effortLevel: medium` (code-specialized; medium effort sufficient)
+- Pins `test-engineer`, `qa`, `research`, `explore` to `gpt-5.4-mini` at `effortLevel: high` (lightweight + high effort to match sonnet-tier reasoning on focused tasks)
+
+Expected effect (re-measure in 7d):
+
+- Eliminates the ~706 silent-failure gpt-5.5 dispatches from the v1 report
+- Caps the xhigh-effort spend by routing big-volume agents to non-effort-capable Anthropic models
+- Tests whether `gpt-5.4-mini high` and `gpt-5.3-codex medium` produce work quality matching the sonnet/opus baselines
+
