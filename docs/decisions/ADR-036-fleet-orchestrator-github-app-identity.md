@@ -4,7 +4,7 @@
 
 ## Status
 
-Accepted — extends ADR-019 and resolves Issue #310
+Accepted — amended in-place: extend sensitive-path defense to `.github/actions/**` (see § Amendment); extends ADR-019 and resolves Issue #310
 
 ## Context
 
@@ -216,11 +216,70 @@ workflow PR is optional; the fallback is the runtime backout.
   rejected because it blocks every Phase 4+ event-driven automation that
   depends on fleet-merge push triggers.
 
+## Amendment
+
+**Date:** 2026-06-27. **PR:** #397 (Issue #385).
+
+### What changed
+
+`.github/actions/**` is now formally a sensitive path within the same trust
+boundary as `.github/workflows/**`. The drift-locked governance surfaces
+(`scripts/kb/contracts.py::SENSITIVE_PATHS`, `.github/CODEOWNERS`, and the
+`sensitive paths` glossary entry in `CONTEXT.md`) all received the new path
+in PR #397.
+
+### Why
+
+PR #397 (Issue #385) extracted the fleet-orchestrator detect+mint logic from
+inline blocks in `.github/workflows/fleet-*.yml` into a composite action at
+`.github/actions/fleet-orchestrator-token/action.yml`. The composite's detect
+step binds `FLEET_APP_PRIVATE_KEY` into bash `env:`, making the new path the
+same secret-handling class as the workflows it replaced.
+
+This ADR's original **"Permissions explicitly NOT granted (load-bearing
+exclusions)"** subsection (above) names `workflows:write` as the load-bearing
+defense against the Jules-PR-merged workflow-modification attack class. That
+exclusion is *geographically scoped* to `.github/workflows/**`. The composite
+action at `.github/actions/**` was not protected by that exclusion, opening a
+concrete attack path: a Jules PR could subtly modify the composite's detect
+step to exfiltrate `FLEET_APP_PRIVATE_KEY`; the App's `contents:write` grant
+(which it must hold to merge PRs) is sufficient to land such a modification
+through Phase 3 auto-merge; an exfiltrated PEM mints installation tokens for
+all four fleet repos offline (per `## Negative consequences` above).
+
+Adding `.github/actions/**` to the sensitive-path surfaces does not eliminate
+the attack class — only the operator's HITL review of every PR can. But it
+**restores the same defense-in-depth that `.github/workflows/**` enjoys**:
+CODEOWNERS notification, commit-scope-check gate B (which flags any PR
+touching sensitive paths without explicit mention in the PR body), and
+optional future enforcement via `require_code_owner_reviews` (currently OFF
+per ADR-036's broader trust model).
+
+### What didn't change
+
+- The App's installation grant (still `contents` + `pull_requests` + `issues` + `metadata`).
+- The `workflows:write` exclusion is preserved as load-bearing for the
+  `.github/workflows/**` defense (this Amendment extends, does not replace).
+- The per-mint token-level least privilege contract (each workflow narrows
+  via `permission-*` inputs).
+- The single-operator deployment model (trust boundary unchanged).
+- The fleet-orchestrator App slug, ID, and PEM (no rotation required).
+
+### Forward-looking note
+
+If multi-operator deployment is adopted later (per ADR-035 Tier-3 revisit
+2026-07-21, tracked in Issue #353), `require_code_owner_reviews` should be
+flipped ON for `.github/workflows/**` and `.github/actions/**` together as
+part of that transition (tracked in Issue #364 CODEOWNERS evaluation).
+
 ## References
 
 - Issue #310 — Fleet Phase 2a auto-merge GitHub App token (resolves)
 - Issue #311 — Fleet dispatch tracker comment permission gap (resolves)
+- Issue #385 — Extract fleet-orchestrator App token mint into composite action (Amendment trigger)
 - ADR-019 — Fleet Jules orchestration (extended)
 - PR #378 — Initial diagnostic shipment (corrected by this ADR)
+- PR #397 — Composite action extraction + Amendment governance surface updates
 - `.github/copilot-instructions.md` — Layer 6 trap canonical reference
 - `raw/inbox/cloneable-template.md` § GitHub App for Fleet Orchestration
+- `.github/actions/fleet-orchestrator-token/action.yml` — Composite action introduced by PR #397
