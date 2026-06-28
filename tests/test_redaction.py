@@ -186,3 +186,27 @@ def test_sanitize_respects_max_len() -> None:
 def test_sanitize_strips_carriage_returns_and_newlines() -> None:
     assert "\n" not in sanitize_gh_md("a\nb\nc")
     assert "\r" not in sanitize_gh_md("a\r\nb")
+
+
+def test_sanitize_gh_md_passes_through_unmatched_double_close_brace() -> None:
+    """JSON with nested closing braces must not be corrupted.
+
+    The old symmetric str.replace pair rewrote any ``}}`` to ``[expr]``,
+    which silently corrupted JSON content.  The balanced-pair regex only
+    neutralizes ``${{ ... }}`` expressions and leaves orphan ``}}`` alone.
+    """
+    assert sanitize_gh_md('{"a": {"b": "c"}}') == '{"a": {"b": "c"}}'
+
+
+def test_sanitize_gh_md_passes_through_orphan_double_close_brace() -> None:
+    """A bare ``}}`` with no preceding ``${{`` must pass through unchanged."""
+    assert sanitize_gh_md("orphan }} end") == "orphan }} end"
+
+
+def test_sanitize_gh_md_does_not_alter_unmatched_dollar_open_brace() -> None:
+    """``${{`` without a closing ``}}`` must not be altered by the regex.
+
+    The balanced-pair regex requires a full ``${{ ... }}`` pair; an
+    opening marker without a matching close produces no substitution.
+    """
+    assert sanitize_gh_md("orphan ${{ end") == "orphan ${{ end"

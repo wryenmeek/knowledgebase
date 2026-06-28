@@ -106,11 +106,9 @@ def sanitize_gh_md(value: str, max_len: int = 200) -> str:
     ``@mentions``, image embeds, auto-close keywords (``fixes #N``), and
     GitHub Actions expression-injection markers (``${{`` / ``}}``).
 
-    Limitation: the ``${{`` / ``}}`` neutralization is a symmetric
-    ``str.replace`` (not regex), so legitimate JSON content like
-    ``{"key": "val"}}`` would have the trailing ``}}`` rewritten to
-    ``[expr]``. This is acceptable for the current call sites (dedupe
-    keys and short identifiers, never JSON bodies).
+    The ``${{`` / ``}}`` neutralization uses a balanced-pair regex so
+    that only intentional GitHub Actions expression syntax is neutralized;
+    orphan ``}}`` (e.g. from JSON content) are left untouched.
     """
     s = value.replace("`", "").replace("\n", " ").replace("\r", "")
     s = re.sub(r"[<>]", "", s)                                     # HTML tags
@@ -122,5 +120,5 @@ def sanitize_gh_md(value: str, max_len: int = 200) -> str:
         s,
         flags=re.IGNORECASE,
     )
-    s = s.replace("${{", "[expr]").replace("}}", "[expr]")
+    s = re.sub(r"\$\{\{[^}]*\}\}", "[expr]", s)
     return s[:max_len].strip()
