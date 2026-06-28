@@ -278,17 +278,20 @@ def extract_headings(body: str) -> set[str]:
     ``splitlines()`` to avoid materializing an O(N) line array. Skips
     headings inside fenced code blocks (``` or ~~~).
 
-    **Bare CR limitation:** Only LF (``\\n``) is treated as a line break.
-    Bare CR (Classic Mac) and CRLF input where the CR is treated as part of
-    the heading text are NOT detected. Practical impact is negligible:
-    bare-CR files are extinct, and CRLF is handled because the LF still
-    splits the line (the trailing CR ends up inside ``.strip()``'s scope).
-    Documented for completeness rather than fixed because the streaming
-    branch would require a regex to be CR-aware, which costs more than
-    the lost compatibility is worth.
+    CRLF and bare CR (Classic Mac) line endings are normalized to LF before
+    streaming, so all three common line-ending conventions are handled correctly.
+    The normalization is guarded by an ``\\r`` membership test so LF-only bodies
+    (the common case) pay only a single O(N) scan rather than two replace passes.
     """
     headings: set[str] = set()
     in_fenced_block = False
+
+    # Normalize line endings: CRLF → LF, then bare CR → LF.
+    # The streaming find('\n') loop only treats LF as a break;
+    # this guards against Classic-Mac CR-only files producing
+    # silently empty heading lists.
+    if "\r" in body:
+        body = body.replace("\r\n", "\n").replace("\r", "\n")
 
     def _maybe_add(line: str) -> None:
         nonlocal in_fenced_block
