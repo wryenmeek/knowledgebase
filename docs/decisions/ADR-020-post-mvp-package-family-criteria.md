@@ -1,7 +1,7 @@
 # ADR-020: Criteria for approving post-MVP script package families
 
 ## Status
-Accepted
+Accepted — amended in-place: scripts/analysis/** added as read-only host-local family (see § Amendment)
 
 ## Date
 2026-04-27
@@ -72,6 +72,7 @@ before any code is committed:
 | `scripts/fleet/**` | Jules-based parallel issue-to-PR dispatch orchestration (TypeScript/Bun) | ADR-019 |
 | `scripts/hooks/**` | Pre-commit governance hook scripts (read-only, no repo writes) | ADR-016 |
 | `scripts/drive_monitor/**` | Google Drive source drift detection, content fetch, and bounded wiki synthesis | ADR-021 |
+| `scripts/analysis/**` | Read-only host-local Copilot telemetry analyzers (no repository reads or writes; consume `~/.copilot/**` only) | Amended 2026-06-27 — see § Amendment |
 
 ### What does NOT require a new package family
 
@@ -121,6 +122,39 @@ before any code is committed:
 - This ADR does not govern `scripts/fleet/**` at the Python level (fleet is
   TypeScript/Bun); it is listed in the approved families table for
   completeness.
+
+## Amendment
+
+**Date:** 2026-06-27
+**Subject:** Adding `scripts/analysis/**` as a read-only host-local family.
+
+The original five criteria (§ Decision) assume the family eventually writes
+to a governed repository surface. `scripts/analysis/**` (introduced by PRs
+#404, #406 for Copilot agent cost-baseline analysis) consumes
+`~/.copilot/session-state/**` and `~/.copilot/traces/**` and emits stdout
+text or JSON only — it never reads or writes the repository. The
+write-surface matrix row therefore declares "no governed write surface,"
+which is the correct contract.
+
+This amendment formalizes the read-only host-local family pattern:
+
+- **Criterion adjustment:** When a family's contract is strictly
+  read-only with no repository write surface (host-local telemetry only,
+  stdout-only output), criteria 2 (write surface separation), 3 (lock
+  scope), and 4 (artifact ownership) become "N/A — no governed surface."
+  Criterion 1 (cross-cutting domain) and criterion 5 (ADR rationale) still
+  apply.
+- **Write-surface matrix declaration:** The matrix row must explicitly
+  state `read-only only` for the runtime-mode column and `None; writes
+  are forbidden` for the writable-paths column. This is the contract the
+  read-only family relies on for governance integrity.
+- **What did NOT change:** The five existing approved families are
+  unaffected. Any future family that DOES write to the repository still
+  must satisfy all five original criteria.
+
+Per `.github/copilot-instructions.md` ADR evolution guidance, this is an
+amendment-in-place — the new family is appended to the existing table
+and the original criteria framework is preserved.
 
 ## References
 

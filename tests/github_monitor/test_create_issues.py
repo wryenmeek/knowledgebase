@@ -62,15 +62,16 @@ class TestSanitizeGhMd:
         assert ">" not in result
         assert "@evil" not in result
         assert "![" not in result
+        # Restored: PR #393 split this assertion into a misnamed orphan test
+        # (test_combined_sanitization_fixes_preserved) which asserted the
+        # opposite of what its name suggested. The auto-close-keyword strip
+        # is a real defense — without it an attacker-controlled drift entry
+        # body could close unrelated upstream issues on issue-merge.
+        assert "fixes #1" not in result.lower()
 
     def test_strips_github_actions_expressions(self) -> None:
         assert _sanitize_gh_md("${{ secrets.GITHUB_TOKEN }}") == "[expr] secrets.GITHUB_TOKEN [expr]"
         assert _sanitize_gh_md("some ${{ expr }} here") == "some [expr] expr [expr] here"
-
-    def test_combined_sanitization_fixes_preserved(self) -> None:
-        raw = "fixes #1 <script>@evil `tick` ![img](x)"
-        result = _sanitize_gh_md(raw)
-        assert "fixes #1" not in result.lower()
 
 
 class TestCloseResolvedEntries:

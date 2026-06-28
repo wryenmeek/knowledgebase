@@ -36,25 +36,10 @@ from scripts._optional_surface_common import (
     base_path_rules,
     run_surface_cli,
 )
-
-def _redact_stderr(stderr: str, max_len: int = 200) -> str:
-    """Truncate and redact stderr before logging to guard against credential leakage.
-
-    GitHub API error messages may contain token fragments or sensitive path
-    information.  We keep only the first ``max_len`` characters and strip any
-    token-like hex strings.
-    """
-    truncated = stderr[:max_len]
-    # Redact 40-char hex strings (git SHAs / token fragments).
-    truncated = re.sub(r"[0-9a-fA-F]{40,}", "<redacted>", truncated)
-    truncated = re.sub(r"ghp_[A-Za-z0-9_]+", "[REDACTED]", truncated)
-    truncated = re.sub(r"github_pat_[A-Za-z0-9_]+", "[REDACTED]", truncated)
-    truncated = re.sub(r"gho_[A-Za-z0-9_]+", "[REDACTED]", truncated)
-    truncated = re.sub(
-        r"Authorization:[ \t]*\S+(?:[ \t]+\S+)?", "[REDACTED]", truncated, flags=re.IGNORECASE
-    )
-    truncated = re.sub(r"[A-Za-z0-9+/=]{30,}", "[REDACTED]", truncated)
-    return truncated.strip()
+from scripts._redaction import (
+    redact_stderr as _redact_stderr,
+    sanitize_gh_md as _sanitize_gh_md,
+)
 
 
 SURFACE = "github_monitor.create_issues"
@@ -66,22 +51,6 @@ def _path_rules() -> dict[str, Any]:
         allowed_roots=["raw/github-sources"],
         allowed_suffixes=[".json"],
     )
-
-
-def _sanitize_gh_md(value: str, max_len: int = 200) -> str:
-    """Strip characters that trigger side effects in GitHub-flavoured markdown."""
-    s = value.replace("`", "").replace("\n", " ").replace("\r", "")
-    s = re.sub(r"[<>]", "", s)                                     # HTML tags
-    s = re.sub(r"@[\w/-]+", "", s)                                  # @mention / @org/team
-    s = re.sub(r"!\[", "[", s)                                      # image embeds
-    s = re.sub(
-        r"\b(fix(es)?|close[sd]?|resolve[sd]?)\s+#\d+",
-        "",
-        s,
-        flags=re.IGNORECASE,
-    )
-    s = s.replace("${{", "[expr]").replace("}}", "[expr]")
-    return s[:max_len].strip()
 
 
 def _search_existing_issue(dedupe_key: str) -> int | None:
