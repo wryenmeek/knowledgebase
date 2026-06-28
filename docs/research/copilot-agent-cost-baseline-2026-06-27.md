@@ -128,9 +128,9 @@ Chat usage is much more diverse model-wise. The 7K-inference GPT-5.4 line and 3.
 
 4. **VS Code OTEL is one large file (18 GB on 06-21).** Future runs should stream-parse efficiently; the current tool does so but takes ~2 min on cold disk cache.
 
-5. **Chat-side dollar figures are upper bounds.** OTEL exposes only `gen_ai.usage.input_tokens` (no cached-input split), so the analyzer charges 100% of input at the fresh-input rate. For Anthropic models the cached-input rate is 10× cheaper. The CLI side mitigates this via `blended_rate()`; the Chat side cannot.
+5. **Chat-side dollar figures now use blended-rate or exact split (updated 2026-06-28).** When OTEL exposes `gen_ai.usage.cache_read_input_tokens` per event, the analyzer uses an exact split: `fresh_input * input_per_m + cached_input * cached_per_m + output * output_per_m` (Option B). When that field is absent, it falls back to `blended_rate()` with the default 20/70/10 mix (Option A), matching the CLI side. The prior 100% fresh-rate overestimate is removed. Use `--chat-cache-share <frac>` to override the assumed cache fraction in the fallback path.
 
-6. **`--days` window is mtime-granular.** The analyzer filters by `events.jsonl` file mtime, not per-event timestamps. A long-running session whose file was appended to recently will contribute all of its events to the window — including events older than the cutoff. For precise per-event windowing, see the deferred follow-up in §Open follow-ups.
+6. **`--days` window is mtime-granular by default; `--strict-window` enables per-event filtering (updated 2026-06-28).** The default mode filters by `events.jsonl` file mtime, so a long-running session appended to recently contributes all events including older ones. Add `--strict-window` to skip individual events whose `timestamp` field predates the cutoff. The header line in the output reports which mode is active.
 
 7. **Sample bias.** All sessions are from one user (`wryenmeek`) in one repo cluster. Recommendations transfer to similarly-sized agentic workloads; not generalizable to other operators.
 
