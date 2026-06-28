@@ -203,10 +203,24 @@ def test_sanitize_gh_md_passes_through_orphan_double_close_brace() -> None:
     assert sanitize_gh_md("orphan }} end") == "orphan }} end"
 
 
-def test_sanitize_gh_md_does_not_alter_unmatched_dollar_open_brace() -> None:
-    """``${{`` without a closing ``}}`` must not be altered by the regex.
+def test_sanitize_gh_md_neutralizes_expression_with_single_brace_in_body() -> None:
+    """A single ``}`` inside the expression body must not prematurely end the match.
 
-    The balanced-pair regex requires a full ``${{ ... }}`` pair; an
-    opening marker without a matching close produces no substitution.
+    The old ``[^}]*`` regex terminated at the first ``}`` in the body, so
+    ``${{ foo } bar }}`` wasn't matched (the class stopped at `` } ``, then
+    ``\\}\\}`` required ``}}`` immediately — no match).  The improved
+    ``(?:[^}]|\\}(?!\\}))`` alternation allows a single ``}`` not followed
+    by another ``}`` and correctly captures the whole expression.
     """
-    assert sanitize_gh_md("orphan ${{ end") == "orphan ${{ end"
+    assert sanitize_gh_md("${{ foo } bar }}") == "[expr]"
+
+
+def test_sanitize_gh_md_neutralizes_bare_dollar_open_brace() -> None:
+    """A bare ``${{`` with no closing ``}}`` must be neutralized as defense-in-depth.
+
+    The balanced-pair regex leaves orphan openers alone (correct — they
+    have no matching close).  The post-pass ``str.replace`` then neutralizes
+    any remaining ``${{``, restoring the prior behavior for bare openers
+    without re-introducing JSON corruption.
+    """
+    assert sanitize_gh_md("orphan ${{ end") == "orphan [expr] end"

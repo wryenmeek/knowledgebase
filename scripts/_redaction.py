@@ -106,9 +106,22 @@ def sanitize_gh_md(value: str, max_len: int = 200) -> str:
     ``@mentions``, image embeds, auto-close keywords (``fixes #N``), and
     GitHub Actions expression-injection markers (``${{`` / ``}}``).
 
-    The ``${{`` / ``}}`` neutralization uses a balanced-pair regex so
-    that only intentional GitHub Actions expression syntax is neutralized;
-    orphan ``}}`` (e.g. from JSON content) are left untouched.
+    The ``${{`` / ``}}`` neutralization is a two-step process:
+
+    1. **Paired expression pass** — a balanced regex replaces every
+       ``${{ … }}`` expression with ``[expr]``.  The inner alternation
+       ``(?:[^}]|\\}(?!\\}))`` allows a single ``}`` inside the body
+       (i.e., ``${{ foo } bar }}``) while still correctly terminating at
+       the first ``}}``.  Orphan ``}}`` (e.g., from JSON content like
+       ``{"a": {"b": "c"}}``) are left untouched — no false-positive
+       corruption.
+
+    2. **Bare-opener defense pass** — after the regex has consumed all
+       balanced pairs, any remaining ``${{`` (orphan opener with no
+       matching ``}}``) is replaced with ``[expr]`` as defense-in-depth.
+       This restores the prior ``str.replace`` behavior for bare openers
+       without re-introducing JSON corruption (paired ``}}`` are already
+       gone, so only genuinely orphan openers remain).
     """
     s = value.replace("`", "").replace("\n", " ").replace("\r", "")
     s = re.sub(r"[<>]", "", s)                                     # HTML tags
@@ -120,5 +133,8 @@ def sanitize_gh_md(value: str, max_len: int = 200) -> str:
         s,
         flags=re.IGNORECASE,
     )
-    s = re.sub(r"\$\{\{[^}]*\}\}", "[expr]", s)
+    # Step 1: neutralize paired ${{ … }} — allows single } inside expression body.
+    s = re.sub(r"\$\{\{(?:[^}]|\}(?!\}))*\}\}", "[expr]", s)
+    # Step 2: neutralize any remaining bare ${{ (orphan opener, no matching }}).
+    s = s.replace("${{", "[expr]")
     return s[:max_len].strip()
