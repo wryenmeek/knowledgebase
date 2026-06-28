@@ -365,6 +365,12 @@ def test_collect_cli_ignores_bool_nano_aiu(tmp_path: Path) -> None:
 
 
 # ---------- Effort capture (session default + per-call override) ----------
+#
+# The three helpers below (_session_start, _task_tool_start, _subagent_with_id)
+# are intentionally local to this file.  They produce CLI session-event shapes
+# used only by the effort-capture / bucket-attribution tests below and are not
+# shared with test_cost_baseline_chat.py or test_pricing.py.
+# See _fixtures.py module docstring for the cross-file fixture audit rationale.
 
 
 def _session_start(reasoning_effort: str = "default") -> dict:

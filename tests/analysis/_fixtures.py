@@ -2,6 +2,23 @@
 
 These helpers are not pytest fixtures (no ``@pytest.fixture`` decorator);
 they are plain functions imported directly by test modules.
+
+**Exported surface** (cross-file helpers only):
+
+* ``_write_session`` — write a synthetic CLI ``events.jsonl`` session file.
+* ``_subagent_completed`` — build a ``subagent.completed`` event dict.
+* ``_session_shutdown`` — build a ``session.shutdown`` event dict.
+* ``_write_otel_session`` — write a synthetic OTEL traces file.
+* ``_otel_inference_event`` — build a ``gen_ai.client.inference...`` OTEL event.
+
+Helpers that are *not* here by design
+--------------------------------------
+``_session_start``, ``_task_tool_start``, and ``_subagent_with_id`` remain
+local to ``test_cost_baseline.py``.  Those helpers produce CLI session-event
+shapes that are only needed for the effort-capture / bucket-attribution tests
+in that file and are not shared with ``test_cost_baseline_chat.py`` (which
+tests OTEL-based chat aggregation) or ``test_pricing.py``.  Moving them here
+would add cross-file coupling without any duplication benefit.
 """
 
 from __future__ import annotations
