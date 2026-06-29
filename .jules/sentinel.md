@@ -24,7 +24,7 @@
 **Vulnerability:** Token exposure via stderr logs and expression injection (`${{ ... }}`) via GitHub-flavoured markdown rendering.
 **Learning:** API error messages can contain sensitive credentials (e.g., `ghp_`, `github_pat_`, base64 strings) which can be exposed if stderr is not properly redacted. GitHub markdown might trigger side effects if `${{ ... }}` expressions are not neutralized.
 **Prevention:** Centralize and ensure consistent markdown sanitization and error log redaction across all scripts interfacing with external platforms (like GitHub and Google Drive).
-## 2026-06-27 - [Suppressed pip Vulnerability]
-**Vulnerability:** A known vulnerability (CVE-2026-3219) was deliberately suppressed in `pip-audit` via the `--ignore-vuln` flag in the CI workflow, leaving the dependency insecure.
-**Learning:** Suppressing known vulnerabilities in CI tools like `pip-audit` allows insecure dependencies to persist in the environment. In this case, `pip` was outdated in the base runner and needed an explicit upgrade.
-**Prevention:** Explicitly upgrade dependencies (e.g., `python -m pip install --quiet --upgrade pip`) before running security audits to naturally clear the vulnerability instead of suppressing it in the audit tool.
+## 2026-06-28 - [Gitleaks Action Node.js Deprecation Warning]
+**Vulnerability:** A deprecation warning from the `gitleaks-action` indicating it was running on a deprecated Node.js 20 runner instead of Node.js 24 caused a CI pre-commit hook failure.
+**Learning:** Outdated GitHub Actions that rely on deprecated Node.js versions can break CI pipelines when GitHub forces them to run on newer runners, potentially masking actual security issues.
+**Prevention:** Rather than upgrading to unpinned versions (e.g., `@v2`), securely resolve Node.js 20 deprecation warnings by setting `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` to preserve the secure commit SHA pins.

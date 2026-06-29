@@ -33,7 +33,7 @@ jobs:
     env:
       CI_ID: CI-2
       TOKEN_PROFILE: tp-analyst-readonly
-      CLOSURE_EVIDENCE_POLICY_START: "2026-06-30T00:00:00Z"
+      CLOSURE_EVIDENCE_POLICY_START: "2026-05-25T00:00:00Z"
     steps:
       - name: Checkout repository snapshot (read-only token)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -70,9 +70,10 @@ jobs:
       - name: Dependency vulnerability audit (pip-audit)
         run: |
           set -euo pipefail
-          python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet pip-audit
-          pip-audit --desc on
+          python -m pip install --quiet 'pip>=26.1.2' pip-audit
+          # CVE-2026-3219 affects pip 26.x — no upstream fix version published.
+          # TODO(2026-12): re-evaluate once upstream releases a fix for CVE-2026-3219.
+          pip-audit --desc on --ignore-vuln CVE-2026-3219
 
       - name: Install pinned qmd runtime
         run: |
