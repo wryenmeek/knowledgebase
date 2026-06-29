@@ -52,6 +52,3 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
-## 2026-06-29 - [Performance] Avoid intermediate set allocation in dict key unions
-**Learning:** When creating a union of dictionary keys, using `set(dict1) | set(dict2)` explicitly allocates new `O(N)` set objects. Because Python 3 dictionary view objects (`dict.keys()`) already support set operations directly, this explicit conversion adds overhead.
-**Action:** Use dictionary view set operations like `dict1.keys() | dict2.keys()` instead to perform the same set arithmetic without materializing temporary intermediate set objects.
