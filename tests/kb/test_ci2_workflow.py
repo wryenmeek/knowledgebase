@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import unittest
+import pytest
 
 from tests.kb._workflow_yaml import (
     extract_named_step_block,
@@ -20,8 +20,9 @@ def _parse_top_level_mapping_block(text: str, key: str) -> dict[str, str]:
     return parse_top_level_mapping_block(text, key, workflow_path=WORKFLOW_PATH)
 
 
-class Ci2WorkflowContractTests(unittest.TestCase):
-    def setUp(self) -> None:
+class TestCi2WorkflowContract:
+    @pytest.fixture(autouse=True)
+    def _setup(self) -> None:
         self.assertTrue(WORKFLOW_PATH.exists(), f"Missing workflow file: {WORKFLOW_PATH}")
         self.workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
 
@@ -270,7 +271,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
 
 
 
-class WorkflowYamlSyntaxTests(unittest.TestCase):
+class TestWorkflowYamlSyntax:
     """Validate that all CI workflow YAML files parse cleanly (#16).
 
     This single Python-level check replaces the Ruby Psych step that previously
@@ -309,5 +310,40 @@ class WorkflowYamlSyntaxTests(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
+
+def assertIn(self, member, container, msg=None):
+    assert member in container, msg
+
+def assertNotIn(self, member, container, msg=None):
+    assert member not in container, msg
+
+def assertIsNone(self, obj, msg=None):
+    assert obj is None, msg
+
+def assertIsNotNone(self, obj, msg=None):
+    assert obj is not None, msg
+
+def assertEqual(self, first, second, msg=None):
+    assert first == second, msg
+
+def assertTrue(self, expr, msg=None):
+    assert expr, msg
+
+def assertGreater(self, a, b, msg=None):
+    assert a > b, msg
+
+TestCi2WorkflowContract.assertIn = assertIn
+TestCi2WorkflowContract.assertNotIn = assertNotIn
+TestCi2WorkflowContract.assertIsNone = assertIsNone
+TestCi2WorkflowContract.assertIsNotNone = assertIsNotNone
+TestCi2WorkflowContract.assertEqual = assertEqual
+TestCi2WorkflowContract.assertTrue = assertTrue
+TestCi2WorkflowContract.assertGreater = assertGreater
+
+TestWorkflowYamlSyntax.assertIn = assertIn
+TestWorkflowYamlSyntax.assertNotIn = assertNotIn
+TestWorkflowYamlSyntax.assertIsNone = assertIsNone
+TestWorkflowYamlSyntax.assertIsNotNone = assertIsNotNone
+TestWorkflowYamlSyntax.assertEqual = assertEqual
+TestWorkflowYamlSyntax.assertTrue = assertTrue
+TestWorkflowYamlSyntax.assertGreater = assertGreater
