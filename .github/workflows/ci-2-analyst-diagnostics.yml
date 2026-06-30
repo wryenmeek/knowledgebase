@@ -33,7 +33,7 @@ jobs:
     env:
       CI_ID: CI-2
       TOKEN_PROFILE: tp-analyst-readonly
-      CLOSURE_EVIDENCE_POLICY_START: "2026-05-25T00:00:00Z"
+      CLOSURE_EVIDENCE_POLICY_START: "2026-06-30T09:47:39Z"
     steps:
       - name: Checkout repository snapshot (read-only token)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -44,6 +44,8 @@ jobs:
       - name: Secret scan (gitleaks)
         # TODO: upgrade once gitleaks/gitleaks-action releases a node24-compatible version.
         # v2.3.9 (latest) still uses node20; tracked at github.com/gitleaks/gitleaks-action/issues.
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
