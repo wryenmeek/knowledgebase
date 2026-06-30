@@ -37,6 +37,7 @@ jobs:
         # v2.3.9 (latest) still uses node20; tracked at github.com/gitleaks/gitleaks-action/issues.
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Assert CI-1 gatekeeper profile context
