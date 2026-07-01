@@ -52,3 +52,7 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
+
+## 2026-06-25 - [Performance] Optimized Python String Slicing vs splitlines()
+**Learning:** Using `text.splitlines()[0]` on large text strings creates a heavy memory footprint by tokenizing the entire string into an `O(N)` array just to extract the first line. For fast-path single-line extraction, using `.find('\n')` on strings or `.readline()` on files achieves true `O(1)` space allocation.
+**Action:** When extracting a single line from a large text document, use `nl_pos = text.find('\n')` and slice `text[:nl_pos]` (or `file.readline()` for files) to avoid memory latency and garbage collection overhead.
