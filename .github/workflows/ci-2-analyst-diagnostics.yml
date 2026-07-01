@@ -33,7 +33,7 @@ jobs:
     env:
       CI_ID: CI-2
       TOKEN_PROFILE: tp-analyst-readonly
-      CLOSURE_EVIDENCE_POLICY_START: "2026-05-25T00:00:00Z"
+      CLOSURE_EVIDENCE_POLICY_START: "2026-06-29T00:00:00Z"
     steps:
       - name: Checkout repository snapshot (read-only token)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
