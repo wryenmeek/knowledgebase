@@ -113,6 +113,9 @@ def validate_afk_output(
     # sub-field may change per ADR-014 §4.
     changed_fields: list[str] = []
     disallowed: list[str] = []
+    # OPTIMIZATION: Use dictionary view set operations natively (dict.keys() | dict.keys())
+    # instead of explicitly creating intermediate sets (set(dict) | set(dict))
+    # to avoid redundant O(N) memory allocations and speed up execution.
     all_keys = orig_fm.keys() | prop_fm.keys()
     for key in all_keys:
         if orig_fm.get(key) != prop_fm.get(key):
@@ -124,6 +127,7 @@ def validate_afk_output(
                     orig_qa = {}
                 if not isinstance(prop_qa, dict):
                     prop_qa = {}
+                # OPTIMIZATION: Avoid intermediate set allocations by using dict keys view operations
                 for qa_key in orig_qa.keys() | prop_qa.keys():
                     if qa_key != "freshness_date" and orig_qa.get(
                         qa_key

@@ -162,6 +162,7 @@ Fixture page.
         after = self._snapshot_hashes()
         changed_paths = {
             path
+            # OPTIMIZATION: Avoid intermediate set allocations by using dict keys view operations
             for path in before.keys() | after.keys()
             if before.get(path) != after.get(path)
         }
