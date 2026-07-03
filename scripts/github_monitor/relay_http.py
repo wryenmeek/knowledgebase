@@ -178,8 +178,7 @@ def app(environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[byt
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    # 🛡️ Sentinel: Bind to localhost by default instead of all interfaces to prevent unintended exposure (Bandit B104)
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
     args = parser.parse_args()
     application = GitHubRelayWsgiApp.from_env()
