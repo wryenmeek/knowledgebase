@@ -13,6 +13,7 @@ from typing import Any, Mapping, Sequence, TextIO
 
 if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts._redaction import redact_stderr
 from scripts._optional_surface_common import (
     APPROVAL_NONE,
     JsonArgumentParser,
@@ -227,9 +228,8 @@ def _run_gh_json(command: Sequence[str], *, repo_root: Path) -> Any:
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"gh command timed out after {GH_COMMAND_TIMEOUT_SECONDS} seconds") from exc
     if completed.returncode != 0:
-        stderr = completed.stderr.strip().splitlines()
-        stderr_snippet = stderr[0] if stderr else "unknown gh error"
-        raise RuntimeError(f"gh command failed: {stderr_snippet}")
+        redacted = redact_stderr(completed.stderr)
+        raise RuntimeError(f"gh command failed: {redacted}")
     try:
         return json.loads(completed.stdout)
     except json.JSONDecodeError as exc:
