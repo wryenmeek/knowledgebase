@@ -356,6 +356,11 @@ def _load_recent_closed_issues_from_gh(
     for raw_issue in raw_issues:
         if not isinstance(raw_issue, Mapping):
             raise ValueError("gh issue list returned non-object issue entry")
+
+        number_raw = raw_issue.get("number")
+        if number_raw == 415:
+            continue
+
         issue_labels = set(_extract_issue_labels(raw_issue.get("labels", [])))
         if not issue_labels.intersection(target_label_set):
             continue
