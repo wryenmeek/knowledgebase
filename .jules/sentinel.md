@@ -24,3 +24,8 @@
 **Vulnerability:** Token exposure via stderr logs and expression injection (`${{ ... }}`) via GitHub-flavoured markdown rendering.
 **Learning:** API error messages can contain sensitive credentials (e.g., `ghp_`, `github_pat_`, base64 strings) which can be exposed if stderr is not properly redacted. GitHub markdown might trigger side effects if `${{ ... }}` expressions are not neutralized.
 **Prevention:** Centralize and ensure consistent markdown sanitization and error log redaction across all scripts interfacing with external platforms (like GitHub and Google Drive).
+
+## 2024-07-04 - Insecure Default Bind Interface in Webhook Receivers
+**Vulnerability:** WSGI webhook receivers (`relay_http.py`) defaulted to binding to all interfaces (`0.0.0.0`).
+**Learning:** Exposing test/relay endpoints to `0.0.0.0` unintentionally allows any network interface to connect unauthenticated to the WSGI application, posing a network exposure risk.
+**Prevention:** Explicitly default bind `--host` to loopback (`127.0.0.1`) when writing WSGI entrypoints or webhook receivers unless explicitly intended to be exposed globally.
