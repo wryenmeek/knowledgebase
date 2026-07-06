@@ -302,7 +302,13 @@ def _read_lock_holder_details(lock_file_path: Path) -> _LockHolderDetails | None
     """
 
     try:
-        line = lock_file_path.read_text(encoding="utf-8").splitlines()[0].strip()
+        content = lock_file_path.read_text(encoding="utf-8")
+        # ⚡ Bolt Optimization: Avoid O(N) splitlines() array allocation
+        nl_pos = content.find("\n")
+        line = content[:nl_pos].strip() if nl_pos != -1 else content.strip()
+        # Ensure we maintain exact IndexError semantics from "".splitlines()[0] on empty files
+        if not content:
+            raise IndexError("list index out of range")
     except IndexError:
         return None
     except (OSError, UnicodeDecodeError):

@@ -103,7 +103,12 @@ def check_gate_b(
     word-boundary token match — in the PR title or the first line of the PR
     body.
     """
-    body_first_line = (pr_body or "").splitlines()[0].strip() if pr_body else ""
+    # ⚡ Bolt Optimization: Avoid O(N) splitlines() array allocation
+    body_first_line = ""
+    if pr_body:
+        nl_pos = pr_body.find("\n")
+        body_first_line = pr_body[:nl_pos].strip() if nl_pos != -1 else pr_body.strip()
+
     combined = f"{pr_title}\n{body_first_line}"
     tokens = _present_tokens(combined)
 
