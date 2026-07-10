@@ -78,7 +78,8 @@ def test_exactly_200_lines_exits_0(tmp_path: Path) -> None:
     lines = VALID_CONTENT.splitlines()
     padding = MAX_LINES - len(lines)
     content = VALID_CONTENT + "\n" * padding
-    assert len(content.splitlines()) == MAX_LINES
+    # OPTIMIZATION: Avoid O(N) memory allocation from splitlines() by using O(1) string count.
+    assert (content.count('\n') + (0 if content.endswith('\n') else 1) if content else 0) == MAX_LINES
     path = _write(tmp_path, "CONTEXT.md", content)
     assert main([path]) == 0
 
@@ -87,7 +88,8 @@ def test_201_lines_exits_1(tmp_path: Path) -> None:
     lines = VALID_CONTENT.splitlines()
     padding = (MAX_LINES + 1) - len(lines)
     content = VALID_CONTENT + "\n" * padding
-    assert len(content.splitlines()) == MAX_LINES + 1
+    # OPTIMIZATION: Avoid O(N) memory allocation from splitlines() by using O(1) string count.
+    assert (content.count('\n') + (0 if content.endswith('\n') else 1) if content else 0) == MAX_LINES + 1
     path = _write(tmp_path, "CONTEXT.md", content)
     assert main([path]) == 1
 

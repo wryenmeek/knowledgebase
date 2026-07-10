@@ -52,3 +52,7 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
+
+## 2026-06-25 - [Performance] Removing O(N) splitlines() array allocation for line counting
+**Learning:** Using `splitlines()` solely to count the number of lines in a large text block unconditionally tokenizes the entire string into an $O(N)$ memory array, creating unnecessary allocations and garbage collection overhead.
+**Action:** When counting lines for validation thresholds or similar operations, use the `O(1)` memory count method: `(content.count('\n') + (0 if content.endswith('\n') else 1) if content else 0)` instead of `len(content.splitlines())`. This approach achieves exact bounds parity with `splitlines()` while avoiding significant memory allocations.
