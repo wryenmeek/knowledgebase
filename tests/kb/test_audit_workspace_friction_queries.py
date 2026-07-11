@@ -10,10 +10,9 @@ from pathlib import Path
 import re
 import sqlite3
 from typing import Any
-import unittest
+import pytest
 
 from tests.kb.harnesses import load_module
-import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -36,7 +35,7 @@ FINDING_SCHEMA_PATH = (
 REPO = "wryenmeek/knowledgebase"
 
 
-class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
+class TestAuditWorkspaceFrictionQueries:
     def _module(self):
         return load_module("audit_workspace_friction_queries", FRICTION_QUERIES_PATH)
 
@@ -56,12 +55,11 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                 "retry_loops",
             }
         for friction_class, template in templates.items():
-            with self.subTest(friction_class=friction_class):
-                assert template["friction_class"] == friction_class
-                assert "primary" in template
-                assert "broader" in template
-                assert template["fallback"] == module.LIMITED_EVIDENCE_SENTINEL
-                assert "finding" in template
+            assert template["friction_class"] == friction_class
+            assert "primary" in template
+            assert "broader" in template
+            assert template["fallback"] == module.LIMITED_EVIDENCE_SENTINEL
+            assert "finding" in template
 
     def test_sql_templates_follow_session_store_safety_rules(self) -> None:
         module = self._module()
@@ -76,28 +74,26 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
         for friction_class, template in self._templates(module).items():
             for pass_name in ("primary", "broader"):
-                with self.subTest(friction_class=friction_class, pass_name=pass_name):
-                    sql = template[pass_name]
-                    lowered = sql.lower()
+                sql = template[pass_name]
+                lowered = sql.lower()
 
-                    assert "select *" not in lowered
-                    assert lowered.startswith(("select", "with"))
-                    assert ";" not in sql
-                    assert re.search(r"\b(insert|update|delete|drop|alter|create)\b", lowered) is None
-                    assert "now() - interval '7 days'" in lowered
-                    assert "limit 50" in lowered
-                    if pass_name == "primary":
-                        assert "s.repository = 'wryenmeek/knowledgebase'" in sql
-                    else:
-                        assert "s.repository =" not in sql
-                    if " ilike " in lowered:
-                        for anchor in ilike_exact_match_anchors[friction_class]:
+                assert "select *" not in lowered
+                assert lowered.startswith(("select", "with"))
+                assert ";" not in sql
+            assert re.search(r"\b(insert|update|delete|drop|alter|create)\b", lowered) is None
+            assert "now() - interval '7 days'" in lowered
+            assert "limit 50" in lowered
+            if pass_name == "primary":
+                    assert "s.repository = 'wryenmeek/knowledgebase'" in sql
+            else:
+                    assert "s.repository =" not in sql
+            if " ilike " in lowered:
+                    for anchor in ilike_exact_match_anchors[friction_class]:
                             assert anchor in lowered
 
         days_30_template = module.retry_loops_query(repo=REPO, days=30)
-        with self.subTest(friction_class="retry_loops", days=30):
-            assert "now() - INTERVAL '30 days'" in days_30_template["primary"]
-            assert "now() - INTERVAL '30 days'" in days_30_template["broader"]
+        assert "now() - INTERVAL '30 days'" in days_30_template["primary"]
+        assert "now() - INTERVAL '30 days'" in days_30_template["broader"]
 
     def test_sql_templates_include_friction_specific_predicates(self) -> None:
         module = self._module()
@@ -129,7 +125,6 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             "_hook_bypasses_sql",
             "_retry_loops_sql",
         ):
-            with self.subTest(helper_name=helper_name):
                 signature = inspect.signature(getattr(module, helper_name))
                 assert tuple(signature.parameters) == ("repo_filter", "interval")
                 for parameter in signature.parameters.values():
@@ -137,7 +132,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
     def test_sql_templates_parse_under_duckdb_session_store_dialect(self) -> None:
         if importlib.util.find_spec("duckdb") is None:
-            self.skipTest(
+            pytest.skip(
                 "duckdb package unavailable; SQLite fixture covers semantics, "
                 "this smoke test only checks session_store_sql dialect compatibility"
             )
@@ -150,7 +145,6 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             self._create_duckdb_session_store_schema(db)
             for friction_class, template in self._templates(module).items():
                 for pass_name in ("primary", "broader"):
-                    with self.subTest(friction_class=friction_class, pass_name=pass_name):
                         db.execute(template[pass_name]).fetchall()
         finally:
             db.close()
@@ -167,7 +161,6 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         }
 
         for friction_class, template in templates.items():
-            with self.subTest(friction_class=friction_class):
                 query_log: list[str] = []
                 db = self._build_session_store_fixture(repository=REPO)
                 query_runner = self._sqlite_query_runner(
@@ -185,7 +178,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                 for row in result["rows"]:
                     assert row["repository"] == REPO
                     assert row["friction_class"] == friction_class
-                    if friction_class == "chronicle_commits":
+                if friction_class == "chronicle_commits":
                         assert row["chronicle_prompt_at"] <= row["commit_recorded_at"]
                 if friction_class == "chronicle_commits":
                     rows_by_commit = {row["commit_sha"]: row for row in result["rows"]}
@@ -208,7 +201,6 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         }
 
         for friction_class, template in templates.items():
-            with self.subTest(friction_class=friction_class):
                 query_log: list[str] = []
                 db = self._build_session_store_fixture(repository="other/repo")
                 query_runner = self._sqlite_query_runner(
@@ -226,7 +218,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                 for row in result["rows"]:
                     assert row["repository"] == "other/repo"
                     assert row["friction_class"] == friction_class
-                    if friction_class == "chronicle_commits":
+                if friction_class == "chronicle_commits":
                         assert row["chronicle_prompt_at"] <= row["commit_recorded_at"]
                 if friction_class == "chronicle_commits":
                     rows_by_commit = {row["commit_sha"]: row for row in result["rows"]}
@@ -301,7 +293,6 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         module = self._module()
 
         for friction_class, template in self._templates(module).items():
-            with self.subTest(friction_class=friction_class):
                 query_log: list[str] = []
 
                 def query_runner(sql: str):
@@ -337,8 +328,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         module = self._module()
 
         for valid_days in (1, 365):
-            with self.subTest(valid_days=valid_days):
-                assert module._validate_days(valid_days) == valid_days
+            assert module._validate_days(valid_days) == valid_days
 
         for factory in (
             module.chronicle_commits_query,
@@ -347,8 +337,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             module.hook_bypasses_query,
             module.retry_loops_query,
         ):
-            with self.subTest(factory=factory.__name__, invalid="repo"):
-                with pytest.raises(ValueError):
+            with pytest.raises(ValueError):
                     factory(repo="wryenmeek/knowledgebase'; DROP TABLE turns; --")
             for invalid_repo in (
                 "./knowledgebase",
@@ -358,11 +347,9 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                 "wryenmeek/..",
                 "wryenmeek/...",
             ):
-                with self.subTest(factory=factory.__name__, invalid_repo=invalid_repo):
                     with pytest.raises(ValueError):
                         factory(repo=invalid_repo)
             for invalid_days in (0, 366, True, 7.5):
-                with self.subTest(factory=factory.__name__, invalid_days=invalid_days):
                     with pytest.raises((TypeError, ValueError)):
                         factory(repo=REPO, days=invalid_days)
 
@@ -377,21 +364,20 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         repo_path_pattern = re.compile(schema["properties"]["source_file"]["pattern"])
 
         for friction_class, template in self._templates(module).items():
-            with self.subTest(friction_class=friction_class):
-                finding = template["finding"]
-                assert required_keys.issubset(finding)
-                assert set(finding).issubset(allowed_keys)
-                assert finding["proposed_destination"] in allowed_destinations
-                assert finding["compliance_risk"] in allowed_risks
-                assert finding["cache_strategy"] in allowed_cache_strategies
-                assert isinstance(finding["expected_token_efficiency_rank"], int)
-                assert finding["expected_token_efficiency_rank"] >= 0
-                assert re.search(repo_path_pattern, finding["source_file"])
-                assert re.search(repo_path_pattern, finding["suggested_artifact_path"])
-                for required_key in required_keys:
-                    value = finding[required_key]
-                    if isinstance(value, str):
-                        assert value != ""
+            finding = template["finding"]
+            assert required_keys.issubset(finding)
+            assert set(finding).issubset(allowed_keys)
+            assert finding["proposed_destination"] in allowed_destinations
+            assert finding["compliance_risk"] in allowed_risks
+            assert finding["cache_strategy"] in allowed_cache_strategies
+            assert isinstance(finding["expected_token_efficiency_rank"], int)
+            assert finding["expected_token_efficiency_rank"] >= 0
+            assert re.search(repo_path_pattern, finding["source_file"])
+            assert re.search(repo_path_pattern, finding["suggested_artifact_path"])
+            for required_key in required_keys:
+                value = finding[required_key]
+                if isinstance(value, str):
+                    assert value != ""
 
     def test_sqlite_regexp_extract_rejects_python_only_regex_features(self) -> None:
         with pytest.raises(AssertionError):
@@ -408,7 +394,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             query_log.append(sql)
             cursor = db.execute(
                 self._sqlite_compatible_sql(
-                    sql,
+                sql,
                     retry_window_minutes=retry_window_minutes,
                 )
             )
@@ -601,5 +587,3 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         return match.group(group_index)
 
 
-if __name__ == "__main__":
-    unittest.main()
