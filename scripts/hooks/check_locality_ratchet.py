@@ -244,7 +244,8 @@ def _agents_matrix_body_lines(content: str) -> set[int]:
 
 
 def _gated_lines(path: str, content: str) -> set[int]:
-    line_count = len(content.splitlines())
+    # OPTIMIZATION: Avoid O(N) memory allocation from splitlines()
+    line_count = (content.count('\n') + (0 if content.endswith('\n') else 1) if content else 0)
     if path == COPILOT_INSTRUCTIONS_PATH:
         return _copilot_gated_lines(content)
     if path == AGENTS_PATH:
