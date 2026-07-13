@@ -24,3 +24,8 @@
 **Vulnerability:** Token exposure via stderr logs and expression injection (`${{ ... }}`) via GitHub-flavoured markdown rendering.
 **Learning:** API error messages can contain sensitive credentials (e.g., `ghp_`, `github_pat_`, base64 strings) which can be exposed if stderr is not properly redacted. GitHub markdown might trigger side effects if `${{ ... }}` expressions are not neutralized.
 **Prevention:** Centralize and ensure consistent markdown sanitization and error log redaction across all scripts interfacing with external platforms (like GitHub and Google Drive).
+
+## 2026-07-13 - [Hardcoded Bind Address]
+**Vulnerability:** WSGI entrypoints defaulted their bind address (`--host`) to `0.0.0.0`, potentially exposing the server to all network interfaces unintentionally.
+**Learning:** Hardcoding `0.0.0.0` as the default bind address poses a network exposure risk (Bandit B104) if the server runs in an untrusted or non-containerized environment.
+**Prevention:** Use an environment variable with a safe local fallback like `os.environ.get("HOST", "127.0.0.1")` to ensure security while maintaining flexibility.
