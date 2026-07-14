@@ -24,7 +24,3 @@
 **Vulnerability:** Token exposure via stderr logs and expression injection (`${{ ... }}`) via GitHub-flavoured markdown rendering.
 **Learning:** API error messages can contain sensitive credentials (e.g., `ghp_`, `github_pat_`, base64 strings) which can be exposed if stderr is not properly redacted. GitHub markdown might trigger side effects if `${{ ... }}` expressions are not neutralized.
 **Prevention:** Centralize and ensure consistent markdown sanitization and error log redaction across all scripts interfacing with external platforms (like GitHub and Google Drive).
-## 2026-07-14 - Use of weak MD5 hash for security
-**Vulnerability:** Use of weak MD5 hash without `usedforsecurity=False` in Python code (Bandit B324).
-**Learning:** When using `hashlib.md5()` or other potentially weak hashing algorithms for non-security purposes, FIPS enforcement and security scanners like Bandit require an explicit flag to acknowledge the risk.
-**Prevention:** Always explicitly pass `usedforsecurity=False` when using `hashlib.md5()` for non-security purposes like checksums or versioning.
