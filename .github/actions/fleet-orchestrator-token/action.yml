@@ -30,8 +30,8 @@
 #     if: <caller-specific gate>
 #     uses: ./.github/actions/fleet-orchestrator-token
 #     with:
-#       app-id: ${{ secrets.FLEET_APP_ID }}
-#       private-key: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
+#       app-id: [secrets.FLEET_APP_ID]
+#       private-key: [secrets.FLEET_APP_PRIVATE_KEY]
 #       permission-contents: write
 #       permission-pull-requests: write    # OR permission-issues: write
 #
@@ -52,12 +52,12 @@ description: |
 inputs:
   app-id:
     description: |
-      FLEET_APP_ID secret value. Caller passes ${{ secrets.FLEET_APP_ID }}.
+      FLEET_APP_ID secret value. Caller passes [secrets.FLEET_APP_ID].
     required: true
   private-key:
     description: |
       FLEET_APP_PRIVATE_KEY secret value. Caller passes
-      ${{ secrets.FLEET_APP_PRIVATE_KEY }}.
+      [secrets.FLEET_APP_PRIVATE_KEY].
     required: true
   permission-contents:
     description: |
@@ -83,7 +83,7 @@ outputs:
     description: |
       App installation token. Empty string when secrets absent OR when the
       mint step failed (continue-on-error). Caller falls back via
-      `${{ steps.<id>.outputs.token || secrets.GITHUB_TOKEN }}`.
+      `[steps.<id>.outputs.token || secrets.GITHUB_TOKEN]`.
     value: ${{ steps.app-token.outputs.token }}
   available:
     description: |
@@ -113,7 +113,7 @@ runs:
         fi
 
     # Mint the token. continue-on-error is load-bearing: callers fall back
-    # to GITHUB_TOKEN via `${{ steps.<id>.outputs.token || secrets.GITHUB_TOKEN }}`.
+    # to GITHUB_TOKEN via `[steps.<id>.outputs.token || secrets.GITHUB_TOKEN]`.
     # SHA pin per ADR-036 (v3.2.0 supports permission-* token-level narrowing).
     - id: app-token
       if: steps.detect.outputs.available == 'true'
