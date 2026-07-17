@@ -113,7 +113,8 @@ def test_permissions_no_extra_entries() -> None:
     _text, data = _load_workflow()
     perms = data.get("permissions", {}) or {}
     expected_keys = {"contents", "issues"}
-    extra = set(perms.keys()) - expected_keys
+    # OPTIMIZATION: Use dict view set operations
+    extra = perms.keys() - expected_keys
     assert not extra, (
         f"permissions block has unexpected entries: {extra}. "
         f"Must be exactly 'contents: read' + 'issues: write'."
