@@ -274,46 +274,26 @@ def extract_frontmatter_keys(frontmatter: str) -> set[str]:
 def extract_headings(body: str) -> set[str]:
     """Extract markdown headings from ``body`` as a set of ``"# text"`` strings.
 
-    Streams through ``body`` using ``find('\\n')`` slicing instead of
-    ``splitlines()`` to avoid materializing an O(N) line array. Skips
-    headings inside fenced code blocks (``` or ~~~).
-
-    CRLF and bare CR (Classic Mac) line endings are normalized to LF before
-    streaming, so all three common line-ending conventions are handled correctly.
-    The normalization is guarded by an ``\\r`` membership test so LF-only bodies
-    (the common case) pay only a single O(N) scan rather than two replace passes.
+    Skips headings inside fenced code blocks (``` or ~~~).
     """
     headings: set[str] = set()
     in_fenced_block = False
 
-    # Normalize line endings: CRLF → LF, then bare CR → LF.
-    # The streaming find('\n') loop only treats LF as a break;
-    # this guards against Classic-Mac CR-only files producing
-    # silently empty heading lists.
-    if "\r" in body:
-        body = body.replace("\r\n", "\n").replace("\r", "\n")
-
-    def _maybe_add(line: str) -> None:
-        nonlocal in_fenced_block
+    # ⚡ Bolt Optimization: Use splitlines() instead of manual find('\n') loop.
+    # While splitlines() allocates a list, it is implemented in highly optimized C
+    # and natively handles universal newlines, making it significantly faster in
+    # CPU time than a manual Python while loop, especially for large markdown files.
+    for line in body.splitlines():
         stripped = line.strip()
         if stripped.startswith("```") or stripped.startswith("~~~"):
             in_fenced_block = not in_fenced_block
-            return
+            continue
         if in_fenced_block:
-            return
+            continue
         if stripped.startswith("#"):
             match = _HEADING_RE.match(stripped)
             if match:
                 headings.add(f"{match.group(1)} {match.group(2)}")
-
-    start = 0
-    end = body.find('\n')
-    while end != -1:
-        _maybe_add(body[start:end])
-        start = end + 1
-        end = body.find('\n', start)
-    if start < len(body):
-        _maybe_add(body[start:])
 
     return headings
 
