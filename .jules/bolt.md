@@ -52,3 +52,7 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
+
+## 2026-06-25 - [Performance] Removing redundant LBYL is_relative_to calls
+**Learning:** Using `path.is_relative_to(root)` immediately followed by `path.relative_to(root)` on the happy path computes the path resolution and bounds checking logic twice. In modern Python versions, `is_relative_to()` is often implemented internally using a `try/except ValueError` block around `relative_to()`.
+**Action:** Use an EAFP pattern with a single `try/except ValueError` block around `path.relative_to(root)` to extract relative paths efficiently.
