@@ -258,13 +258,12 @@ def _read_staged_repo_file(path: str) -> str:
             SyncReasonCode.INVALID_ARGUMENTS,
             f"staged source must be a regular repo file: {path}",
         )
-    try:
-        staged_path.relative_to(repo_root)
-    except ValueError as exc:
+    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
+    if not staged_path.is_relative_to(repo_root):
         raise SyncArgumentError(
             SyncReasonCode.INVALID_ARGUMENTS,
             f"staged source must stay within the repository: {path}",
-        ) from exc
+        )
     return staged_path.read_text(encoding="utf-8")
 
 

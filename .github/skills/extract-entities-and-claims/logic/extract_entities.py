@@ -78,9 +78,8 @@ def _load_primary_source_text(
     if not source_path_part:
         return fallback_text
     candidate = (repo_root / source_path_part).resolve()
-    try:
-        candidate.relative_to(repo_root.resolve())
-    except ValueError:
+    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
+    if not candidate.is_relative_to(repo_root.resolve()):
         print(
             f"warning: source_ref path escapes repo root; falling back to source page body: {source_ref}",
             file=sys.stderr,
@@ -345,9 +344,8 @@ def run(
     source_path = (repo_root / source_page_path).resolve()
 
     # Boundary check — source page must be inside repo root.
-    try:
-        source_path.relative_to(repo_root.resolve())
-    except ValueError:
+    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
+    if not source_path.is_relative_to(repo_root.resolve()):
         print(
             f"error: source page path escapes repo root: {source_page_path}",
             file=sys.stderr,
