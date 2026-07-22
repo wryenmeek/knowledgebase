@@ -3,7 +3,7 @@
   "items": [
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:approval-gating",
       "last_attempted_at": null,
       "last_error": null,
@@ -16,7 +16,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:content-layer",
       "last_attempted_at": null,
       "last_error": null,
@@ -29,7 +29,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:context-md-domain-model",
       "last_attempted_at": null,
       "last_error": null,
@@ -42,7 +42,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:control-plane",
       "last_attempted_at": null,
       "last_error": null,
@@ -55,7 +55,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:deterministic-execution",
       "last_attempted_at": null,
       "last_error": null,
@@ -68,7 +68,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:entity-resolution",
       "last_attempted_at": null,
       "last_error": null,
@@ -81,7 +81,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:framework-layer",
       "last_attempted_at": null,
       "last_error": null,
@@ -94,7 +94,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:github-customizations-governance",
       "last_attempted_at": null,
       "last_error": null,
@@ -107,7 +107,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:google-drive-source-monitoring",
       "last_attempted_at": null,
       "last_error": null,
@@ -120,7 +120,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:infrastructure-validation",
       "last_attempted_at": null,
       "last_error": null,
@@ -133,7 +133,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:knowledge-schema-governance",
       "last_attempted_at": null,
       "last_error": null,
@@ -146,7 +146,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:knowledgebase-spec",
       "last_attempted_at": null,
       "last_error": null,
@@ -159,7 +159,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:mvp",
       "last_attempted_at": null,
       "last_error": null,
@@ -172,7 +172,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:pre-commit-guardrails",
       "last_attempted_at": null,
       "last_error": null,
@@ -185,7 +185,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:synthesis-pipeline",
       "last_attempted_at": null,
       "last_error": null,
@@ -198,7 +198,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:taxonomy-governance",
       "last_attempted_at": null,
       "last_error": null,
@@ -211,7 +211,7 @@
     },
     {
       "artifact_type": "wiki_concept_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_concept_page:wiki-quality-best-practices",
       "last_attempted_at": null,
       "last_error": null,
@@ -224,7 +224,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:change-patrol",
       "last_attempted_at": null,
       "last_error": null,
@@ -237,7 +237,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:ci-1",
       "last_attempted_at": null,
       "last_error": null,
@@ -250,7 +250,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:ci-3",
       "last_attempted_at": null,
       "last_error": null,
@@ -263,7 +263,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:devcontainer",
       "last_attempted_at": null,
       "last_error": null,
@@ -276,7 +276,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:evidence-verifier",
       "last_attempted_at": null,
       "last_error": null,
@@ -289,7 +289,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:github-template-repository",
       "last_attempted_at": null,
       "last_error": null,
@@ -302,7 +302,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:human-steward",
       "last_attempted_at": null,
       "last_error": null,
@@ -315,7 +315,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:knowledgebase-orchestrator",
       "last_attempted_at": null,
       "last_error": null,
@@ -328,7 +328,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:maintenance-auditor",
       "last_attempted_at": null,
       "last_error": null,
@@ -341,7 +341,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:policy-arbiter",
       "last_attempted_at": null,
       "last_error": null,
@@ -354,7 +354,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:post-mvp-rollout-planning-spec",
       "last_attempted_at": null,
       "last_error": null,
@@ -367,7 +367,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:pytest",
       "last_attempted_at": null,
       "last_error": null,
@@ -380,7 +380,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:quality-analyst",
       "last_attempted_at": null,
       "last_error": null,
@@ -393,7 +393,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:query-synthesist",
       "last_attempted_at": null,
       "last_error": null,
@@ -406,7 +406,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:scriptscontext",
       "last_attempted_at": null,
       "last_error": null,
@@ -419,7 +419,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:scriptsdrivemonitor",
       "last_attempted_at": null,
       "last_error": null,
@@ -432,7 +432,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:scriptsgithubmonitor",
       "last_attempted_at": null,
       "last_error": null,
@@ -445,7 +445,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:scriptsingest",
       "last_attempted_at": null,
       "last_error": null,
@@ -458,7 +458,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:scriptskbbatchpersistquerypy",
       "last_attempted_at": null,
       "last_error": null,
@@ -471,7 +471,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:scriptsmaintenance",
       "last_attempted_at": null,
       "last_error": null,
@@ -484,7 +484,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:scriptsreporting",
       "last_attempted_at": null,
       "last_error": null,
@@ -497,7 +497,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:scriptsreportingcoveragereportpy",
       "last_attempted_at": null,
       "last_error": null,
@@ -510,7 +510,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:scriptsvalidation",
       "last_attempted_at": null,
       "last_error": null,
@@ -523,7 +523,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:source-intake-steward",
       "last_attempted_at": null,
       "last_error": null,
@@ -536,7 +536,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:synthesis-curator",
       "last_attempted_at": null,
       "last_error": null,
@@ -549,7 +549,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:topology-librarian",
       "last_attempted_at": null,
       "last_error": null,
@@ -562,7 +562,7 @@
     },
     {
       "artifact_type": "wiki_entity_page",
-      "dependency_fingerprint": "f9931602444f7bc79b1c934f324f90e0d7e17c6a3c7c7d376a8c1cddf6c1ed1f",
+      "dependency_fingerprint": "b7d4e8c748d787c19e5c341a65196be1faaaa1ed0d78975651b685258484ee36",
       "item_key": "wiki_entity_page:wiki-curation-framework",
       "last_attempted_at": null,
       "last_error": null,
