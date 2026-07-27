@@ -7,9 +7,9 @@
 
 ## Executive assessment
 
-Knowledgebase is intended to be a production-usable, repository-scoped knowledgebase where humans curate sources, agents perform governed maintenance, knowledge persists as auditable Markdown, and every write is provenance-bound and fail-closed. It achieves that intent well at the deterministic governance layer: the source boundary, controlled artifacts, executable ingest/index/lint/query-persistence surfaces, lock model, and verification architecture are concrete and mutually reinforcing.
+Knowledgebase is intended to be a production-usable, repository-scoped knowledgebase where humans curate sources, agents perform governed maintenance, knowledge persists as auditable Markdown, and every write is provenance-bound and fail-closed. The current instance is Medicare-focused: `mkdocs.yml` names it "Medicare Coverage Tools - Knowledgebase" and the maintained style guide defines Medicare coverage vocabulary and CMS-first sourcing. It achieves the general intent well at the deterministic governance layer: the source boundary, controlled artifacts, executable ingest/index/lint/query-persistence surfaces, lock model, and verification architecture are concrete and mutually reinforcing.
 
-It achieves the intent partially as an operating knowledge service. Several system capabilities are configured or implemented but not composed into their planned automated workflow, and the checked-in wiki is largely a framework corpus rather than a substantive Medicare coverage corpus. The distinction matters: the repository is a credible governed knowledgebase platform, but it is not yet evidence of a mature Medicare coverage knowledge product.
+It achieves the intent partially as an operating knowledge service. Several system capabilities are configured or implemented but not composed into their planned automated workflow, and the checked-in wiki is largely a framework corpus rather than a substantive Medicare coverage corpus. The distinction matters: this is a Medicare-focused deployment of a reusable knowledgebase framework, but it is not yet evidence of a mature Medicare coverage knowledge product.
 
 ## Intended operating model
 
@@ -22,6 +22,8 @@ The normative specification defines four outcomes: human-curated source inputs, 
 5. Agent and skill layers route work while `scripts/kb/**` remains the authoritative deterministic runtime.
 
 This is intentionally a governance-first design. The architecture separates read-only diagnostics from limited write paths, retains immutable processed source artifacts, and treats the agent framework as a control plane rather than a replacement runtime (`docs/architecture.md`, Core workflow; Automation model; Wiki-curation framework MVP boundary).
+
+The framework is still domain-neutral by design. `TEMPLATE.md` identifies the repository as a GitHub Template Repository, requires users to replace the content layer with their own domain, and labels the scripts, tests, schemas, and agent infrastructure reusable across any domain. The current repository is therefore not a Medicare-only framework; it is a Medicare-branded instance with reusable infrastructure.
 
 ## Capability assessment
 
@@ -66,3 +68,9 @@ This is intentionally a governance-first design. The architecture separates read
 ## Limits
 
 This assessment does not claim that any GitHub Action has executed successfully, that secrets or external services are configured, or that the published site is currently reachable. Those are different evidence states and require run logs, environment inspection, or production monitoring. It also does not treat documented future work as a defect unless the repository's stated intent depends on it today.
+
+## Domain-identity evidence
+
+- `mkdocs.yml` identifies the published site as the Medicare Coverage Tools knowledgebase.
+- `.github/skills/references/manual-of-style.md` treats Medicare coverage as the expected prose domain and requires CMS-first authoritative sourcing.
+- `TEMPLATE.md` and `raw/processed/cloneable-template.md` establish that the implementation is reusable across domains and that the content layer must be replaced for a new instance.

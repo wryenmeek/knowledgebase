@@ -29,7 +29,7 @@ Knowledgebase presents itself as a self-contained, deterministic, provenance-fir
 
 ### Actionability and accuracy
 
-- R4. Distinguish framework capabilities from the current Medicare domain corpus so readers do not infer content maturity from tooling maturity.
+- R4. Distinguish the reusable framework from this instance's Medicare domain corpus so readers do not infer content maturity from tooling maturity.
 - R5. Prioritize gaps by their effect on core knowledgebase outcomes and cite the supporting repository evidence for every conclusion.
 - R6. Keep the assessment read-only: it must not alter governed wiki, raw, automation, or runtime artifacts.
 
@@ -40,7 +40,7 @@ Knowledgebase presents itself as a self-contained, deterministic, provenance-fir
 - **Use repository evidence as the sole authority:** This is an artifact-of-design-intent assessment, so claims must link to specifications, architecture, code, tests, workflows, ADRs, or existing research rather than external comparison.
 - **Use a closed gap taxonomy:** The assessment will use only R3's five labels. A scaffolded surface is partially wired, and an under-adopted content surface is a content-adoption gap.
 - **Separate implementation evidence from operational evidence:** Each capability will identify its strongest available evidence state: static-verified, locally-executed, CI-execution-observed, or production-operation-observed. This assessment uses static-verified evidence unless checked-in run artifacts support a stronger state.
-- **Treat the framework and corpus as separate layers:** Strong provenance tooling does not establish that the repository contains a mature Medicare coverage corpus; the assessment must report both layers independently.
+- **Treat the framework and corpus as separate layers:** This Medicare-branded instance uses a reusable framework. Strong provenance tooling does not establish that the instance contains a mature Medicare coverage corpus, so the assessment must report both layers independently.
 - **Preserve a narrow output:** The deliverable recommends a prioritized follow-up sequence but does not implement the candidate remediation projects.
 
 ---
@@ -83,8 +83,8 @@ flowchart TB
 - **Goal:** Map the repository's stated objective and trust boundaries to concrete implementation and verification evidence.
 - **Requirements:** R1, R2, R4.
 - **Dependencies:** None.
-- **Files:** `docs/research/knowledgebase-design-intent-assessment.md`, `README.md`, `raw/processed/SPEC.md`, `docs/architecture.md`, `AGENTS.md`, `scripts/kb/`, `tests/kb/`.
-- **Approach:** Record the assessed commit SHA, branch/ref, and worktree state. Define the intended operating model from normative and architecture documents. For each core workflow, record the responsible code or workflow surface, the available verification evidence, and its evidence state so static contracts are not reported as observed operations.
+- **Files:** `docs/research/knowledgebase-design-intent-assessment.md`, `README.md`, `TEMPLATE.md`, `mkdocs.yml`, `.github/skills/references/manual-of-style.md`, `raw/processed/SPEC.md`, `docs/architecture.md`, `AGENTS.md`, `scripts/kb/`, `tests/kb/`.
+- **Approach:** Record the assessed commit SHA, branch/ref, and worktree state. Establish the current instance's domain identity separately from the reusable framework boundary, then define the operating model from normative and architecture documents. For each core workflow, record the responsible code or workflow surface, the available verification evidence, and its evidence state so static contracts are not reported as observed operations.
 - **Patterns to follow:** The evidence-bound research style in `docs/research/wiki-processing-checkpoint-registry-implementation-status.md`; the framework/content boundary in `TEMPLATE.md`.
 - **Test expectation:** none -- this unit creates a read-only assessment artifact rather than executable behavior.
 - **Verification:** Every reported core capability identifies both a design-intent source and a concrete implementation, test, or workflow source.
@@ -115,6 +115,7 @@ flowchart TB
 - `raw/processed/SPEC.md` defines the objective, workflow contracts, trust model, and success criteria.
 - `docs/architecture.md` describes the authoritative execution layer, automation lanes, safety controls, and framework MVP boundary.
 - `README.md` documents supported commands and the public operator model.
+- `mkdocs.yml` and `.github/skills/references/manual-of-style.md` establish the Medicare identity of the current instance, while `TEMPLATE.md` establishes the reusable framework/content-layer split.
 - `docs/ideas/wiki-processing-checkpoint-registry.md`, `scripts/kb/checkpoint_registry.py`, and `.github/workflows/ci-3-pr-producer.yml` establish the current checkpoint registry capability and deferred CI-3 mutation wiring. `docs/research/wiki-processing-checkpoint-registry-implementation-status.md` is historical context only.
 - `.github/skills/audit-knowledgebase-workspace/SKILL.md` identifies the workspace-audit orchestration gap.
 - `wiki/search.md`, `docs/user-guide.md`, and `docs/mvp-runbook.md` define the optional browser-side semantic endpoint contract and its Pagefind fallback.
