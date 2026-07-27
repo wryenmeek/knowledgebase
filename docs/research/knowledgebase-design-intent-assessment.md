@@ -3,7 +3,7 @@
 **Assessment date:** 2026-07-27
 **Repository revision:** `f4d46dc65e5da156bc6087ce5ab1a61508fefdd9` on `main`
 **Worktree state at capture:** Dirty; the assessment plan under `docs/plans/` was untracked.
-**Evidence state:** Static-verified. This assessment establishes checked-in design, implementation, tests, and workflow wiring. It does not establish local execution, successful CI runs, deployed service availability, or production operation.
+**Evidence state:** Static-verified, supplemented by a 2026-07-27 planning snapshot. This assessment establishes checked-in design, implementation, tests, and workflow wiring. It does not establish local execution, successful CI runs, deployed service availability, or production operation.
 
 ## Executive assessment
 
@@ -37,14 +37,25 @@ The framework is domain-neutral by design. `TEMPLATE.md` identifies the reposito
 | Local and browser-facing discovery | `docs/user-guide.md`; `wiki/search.md`; `docs/mvp-runbook.md` semantic API contract | Static-verified | Partial. Local qmd search and Pagefind are documented; the semantic browser lane is only an optional client contract with no repository-owned endpoint. |
 | Resumable processing visibility | `scripts/kb/checkpoint_registry.py`; `tests/kb/test_checkpoint_registry.py`; `.github/workflows/ci-3-pr-producer.yml` | Static-verified | Partially wired. The registry runtime and CI-3 verification report exist, but per-batch mutation input wiring remains deferred. |
 
+## Delivery-plan evidence
+
+The planning surfaces support, but do not substitute for, implementation evidence. At the planning snapshot, `docs/ideas/` contains 13 tracked proposals: 11 are marked implemented or phase-implemented, while the test-framework migration and fleet defensive-layer proposals remain in progress. Those status fields describe intended delivery state; the assessment verifies their material claims against code, tests, and workflows where they affect a capability conclusion.
+
+The GitHub issue tracker contained 16 open issues at the same snapshot, including 14 labeled `ready-for-human`. This indicates a substantial, explicitly queued remediation backlog, but an open issue is not evidence that its acceptance criteria are implemented. In particular:
+
+- [#377](https://github.com/wryenmeek/knowledgebase/issues/377) specifies the missing CI-3 checkpoint-mutation adapter, tests, and workflow integration.
+- [#341](https://github.com/wryenmeek/knowledgebase/issues/341) documents the high-severity absence of a fleet fallback, while [#353](https://github.com/wryenmeek/knowledgebase/issues/353) remains open after its 2026-07-21 decision deadline.
+- [#156](https://github.com/wryenmeek/knowledgebase/issues/156) assigns semantic-query hosting, ownership, and production security controls to a human decision lane.
+- [#425](https://github.com/wryenmeek/knowledgebase/issues/425) requires the remaining workspace-audit work to be rebaselined against a multi-plane telemetry contract.
+
 ## Gap analysis
 
 | Priority | Gap state | Gap | Why it matters | Evidence |
 |---|---|---|---|---|
-| High | Deferred | CI-3 does not create the fully formed mutation input needed to update the checkpoint registry for each processing batch. | The registry can verify and report state but cannot represent the normal automated batch lifecycle end-to-end. | `docs/ideas/wiki-processing-checkpoint-registry.md` marks CI-3 `--mutate` wiring deferred to issue #377; CI-3 invokes `checkpoint_registry.py --verify --warn-only`. |
-| High | Deferred | The 30-day revisit for the Jules-only fleet's lack of multi-provider fallback passed on 2026-07-21. | An outage can still block automated implementation dispatch; visibility improvements reduce detection time but do not supply continuity. | `docs/decisions/ADR-035-tier-3-multi-provider-fallback-deferral.md`, Decision and Consequences. |
-| Medium | Partially wired | The workspace-audit skill has classifier modules, schema, and tests, but its `improve` orchestrator does not compose classifier output. | The intended self-audit capability cannot independently produce the findings its remediation workflow needs. | `.github/skills/audit-knowledgebase-workspace/SKILL.md`, Overview, Phase 4 components, and Contract. |
-| Medium | Operationally undecided | The semantic search page accepts a maintainer-provided endpoint and falls back to Pagefind; no repository-owned service, deployment, or operator ownership is defined. | The user interface advertises an optional semantic lane, but its availability is external to this repository. The endpoint is stored in browser localStorage, so repository-bound agents cannot discover or use an individual user's configured endpoint; they correctly fall back to the curated wiki. | `wiki/search.md`; `docs/user-guide.md`, Optional semantic API results; `docs/mvp-runbook.md`, Wiki search semantic API contract; `.github/agents/query-synthesist.md`. |
+| High | Tracked deferred | CI-3 does not create the fully formed mutation input needed to update the checkpoint registry for each processing batch. | The registry can verify and report state but cannot represent the normal automated batch lifecycle end-to-end. The bounded implementation work is ready for human design and delivery, not unspecified. | `docs/ideas/wiki-processing-checkpoint-registry.md`; [#377](https://github.com/wryenmeek/knowledgebase/issues/377); CI-3 invokes `checkpoint_registry.py --verify --warn-only`. |
+| High | Overdue decision | The 30-day revisit for the Jules-only fleet's lack of multi-provider fallback passed on 2026-07-21 and its decision issue remains open. | An outage can still block automated implementation dispatch; visibility improvements reduce detection time but do not supply continuity. | `docs/decisions/ADR-035-tier-3-multi-provider-fallback-deferral.md`; [#341](https://github.com/wryenmeek/knowledgebase/issues/341); [#353](https://github.com/wryenmeek/knowledgebase/issues/353). |
+| Medium | Partially wired | The workspace-audit skill has classifier modules, schema, and tests, but its `improve` orchestrator does not compose classifier output. Its remaining plan also needs a multi-plane telemetry rebaseline. | The intended self-audit capability cannot independently produce the findings its remediation workflow needs, and its future validation evidence needs clearer provenance boundaries. | `.github/skills/audit-knowledgebase-workspace/SKILL.md`; [#425](https://github.com/wryenmeek/knowledgebase/issues/425). |
+| Medium | Operationally undecided | The semantic search page accepts a maintainer-provided endpoint and falls back to Pagefind; no repository-owned service, deployment, or operator ownership is defined. | The user interface advertises an optional semantic lane, but its availability is external to this repository. The endpoint is stored in browser localStorage, so repository-bound agents cannot discover or use an individual user's configured endpoint; they correctly fall back to the curated wiki. | `wiki/search.md`; `docs/user-guide.md`, Optional semantic API results; `docs/mvp-runbook.md`, Wiki search semantic API contract; `.github/agents/query-synthesist.md`; [#156](https://github.com/wryenmeek/knowledgebase/issues/156). |
 | Medium | Content-adoption gap | The generated index contains framework and governance material, while `wiki/analyses/` is empty and no substantive domain corpus is evident in the catalog. | The tooling can govern a domain corpus, but a template should not be presented as a mature domain knowledge product. | `wiki/index.md`, Sources, Entities, Concepts, and Analyses sections. |
 | Low | Deferred | Pytest is the declared direction, but 58 unittest-style test files remain under the ratchet baseline. | The ratchet prevents further regression but retains two testing idioms and a finite migration burden. | `docs/ideas/test-framework-pytest-migration.md`. |
 
@@ -54,7 +65,7 @@ The framework is domain-neutral by design. `TEMPLATE.md` identifies the reposito
 
 **Knowledge accumulation and retrieval: ready to specialize.** The system has durable artifact structures, local qmd retrieval, deterministic indexing, Pagefind, and a policy gate for preserving high-value query output. The available catalog primarily documents the framework itself, which is appropriate until a template user replaces the content layer with a domain corpus.
 
-**Autonomous operations and resilience: partial.** The automation architecture is carefully designed, but several capabilities stop at static wiring or a defined handoff. Checkpoint mutation is not integrated into CI-3, the workspace audit cannot compose its classifiers, semantic service ownership is outside the repository, and fleet continuity depends on a single provider after the documented deferral date.
+**Autonomous operations and resilience: partial, with a tracked backlog.** The automation architecture is carefully designed, but several capabilities stop at static wiring or a defined handoff. Checkpoint mutation is not integrated into CI-3, the workspace audit cannot compose its classifiers, semantic service ownership is outside the repository, and fleet continuity depends on a single provider after the documented deferral date. The open issue backlog makes these remediation paths visible, but it does not mitigate the fleet risk or complete the missing automation.
 
 ## Recommended sequence
 
@@ -63,11 +74,12 @@ The framework is domain-neutral by design. `TEMPLATE.md` identifies the reposito
 3. **Choose ownership for optional services.** Either define a supported semantic-endpoint deployment and operations model or clearly position the browser field as an external integration point.
 4. **Revisit fleet resilience now.** Record an explicit post-2026-07-21 decision: adopt a bounded fallback, renew the deferral with current evidence, or document a tested manual failover procedure.
 5. **Compose the existing audit components.** Wire classifier output into the workspace-audit orchestrator so its improvement workflow can produce the evidence it already knows how to validate.
-6. **Reduce the test-framework backlog opportunistically.** Preserve the ratchet and migrate legacy unittest files as they are meaningfully touched.
+6. **Rebaseline the workspace-audit plan.** Define the telemetry plane and provenance requirements before closing its remaining validation slices.
+7. **Reduce the test-framework backlog opportunistically.** Preserve the ratchet and migrate legacy unittest files as they are meaningfully touched.
 
 ## Limits
 
-This assessment does not claim that any GitHub Action has executed successfully, that secrets or external services are configured, or that the published site is currently reachable. Those are different evidence states and require run logs, environment inspection, or production monitoring. It also does not treat documented future work as a defect unless the repository's stated intent depends on it today.
+This assessment does not claim that any GitHub Action has executed successfully, that secrets or external services are configured, or that the published site is currently reachable. Those are different evidence states and require run logs, environment inspection, or production monitoring. The issue and plan statuses are a point-in-time delivery snapshot, not proof that the underlying work is complete. The assessment also does not treat documented future work as a defect unless the repository's stated intent depends on it today.
 
 ## Template-boundary evidence
 
