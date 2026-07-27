@@ -108,7 +108,7 @@ class FolderEntry(TypedDict, total=False):
 
     folder_id: str
     folder_name: str          # display only; may be stale after Drive rename
-    wiki_namespace: str       # relative namespace, e.g. "cms/" → wiki/cms/{slug}.md
+    wiki_namespace: str       # relative namespace, e.g. "policy/" → wiki/policy/{slug}.md
     tracking_status: str      # "active" | "paused" | "archived"
 
 

@@ -5,7 +5,7 @@ Usage::
     python -m scripts.kb.log_rejection \\
         --repo-root . \\
         --approval approved \\
-        --slug cms-manual-chapter-4 \\
+        --slug source-manual-chapter-4 \\
         --sha256 <64-hex> \\
         --rejected-date 2025-07-16T14:30:00Z \\
         --source-path raw/inbox/some-document.pdf \\

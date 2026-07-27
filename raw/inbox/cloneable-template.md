@@ -256,5 +256,5 @@ EOF
 
 ## Open Questions
 
-- What taxonomy should the sample inbox document use — real Medicare stub or a generic
+- What taxonomy should the sample inbox document use — domain-specific stub or a generic
   "example policy document" to avoid content-layer leakage into the framework?
