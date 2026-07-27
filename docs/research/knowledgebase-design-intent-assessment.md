@@ -9,7 +9,7 @@
 
 Knowledgebase is intended to be a production-usable, repository-scoped knowledgebase template where humans curate sources, agents perform governed maintenance, knowledge persists as auditable Markdown, and every write is provenance-bound and fail-closed. It achieves that intent well at the deterministic governance layer: the source boundary, controlled artifacts, executable ingest/index/lint/query-persistence surfaces, lock model, and verification architecture are concrete and mutually reinforcing.
 
-It achieves the intent partially as a ready-to-specialize template. Several system capabilities are configured or implemented but not composed into their planned automated workflow, and the checked-in wiki is largely a framework corpus rather than a substantive domain corpus. The distinction matters: the repository is a reusable governed knowledgebase framework, not evidence of a mature domain knowledge product.
+It achieves the intent partially as a reusable template. Several system capabilities are configured or implemented but not composed into their planned automated workflow. The repository should therefore be evaluated as governed knowledgebase infrastructure, not as a deployed knowledge product for any particular subject.
 
 ## Intended operating model
 
@@ -56,30 +56,28 @@ The GitHub issue tracker contained 16 open issues at the same snapshot, includin
 | High | Overdue decision | The 30-day revisit for the Jules-only fleet's lack of multi-provider fallback passed on 2026-07-21 and its decision issue remains open. | An outage can still block automated implementation dispatch; visibility improvements reduce detection time but do not supply continuity. | `docs/decisions/ADR-035-tier-3-multi-provider-fallback-deferral.md`; [#341](https://github.com/wryenmeek/knowledgebase/issues/341); [#353](https://github.com/wryenmeek/knowledgebase/issues/353). |
 | Medium | Partially wired | The workspace-audit skill has classifier modules, schema, and tests, but its `improve` orchestrator does not compose classifier output. Its remaining plan also needs a multi-plane telemetry rebaseline. | The intended self-audit capability cannot independently produce the findings its remediation workflow needs, and its future validation evidence needs clearer provenance boundaries. | `.github/skills/audit-knowledgebase-workspace/SKILL.md`; [#425](https://github.com/wryenmeek/knowledgebase/issues/425). |
 | Medium | Operationally undecided | The semantic search page accepts a maintainer-provided endpoint and falls back to Pagefind; no repository-owned service, deployment, or operator ownership is defined. | The user interface advertises an optional semantic lane, but its availability is external to this repository. The endpoint is stored in browser localStorage, so repository-bound agents cannot discover or use an individual user's configured endpoint; they correctly fall back to the curated wiki. | `wiki/search.md`; `docs/user-guide.md`, Optional semantic API results; `docs/mvp-runbook.md`, Wiki search semantic API contract; `.github/agents/query-synthesist.md`; [#156](https://github.com/wryenmeek/knowledgebase/issues/156). |
-| Medium | Content-adoption gap | The generated index contains framework and governance material, while `wiki/analyses/` is empty and no substantive domain corpus is evident in the catalog. | The tooling can govern a domain corpus, but a template should not be presented as a mature domain knowledge product. | `wiki/index.md`, Sources, Entities, Concepts, and Analyses sections. |
 | Low | Deferred | Pytest is the declared direction, but 58 unittest-style test files remain under the ratchet baseline. | The ratchet prevents further regression but retains two testing idioms and a finite migration burden. | `docs/ideas/test-framework-pytest-migration.md`. |
 
 ## How well the design intent is achieved
 
 **Governance, provenance, and deterministic execution: strong.** The repository expresses its guarantees in multiple independent layers: normative contracts, canonical utility modules, bounded write surfaces, lock discipline, tests, and CI role separation. That redundancy is appropriate for a system whose distinguishing promise is that LLM-assisted curation cannot silently publish untraceable or unsafe changes.
 
-**Knowledge accumulation and retrieval: ready to specialize.** The system has durable artifact structures, local qmd retrieval, deterministic indexing, Pagefind, and a policy gate for preserving high-value query output. The available catalog primarily documents the framework itself, which is appropriate until a template user replaces the content layer with a domain corpus.
+**Knowledge accumulation and retrieval: template-ready.** The system supplies durable artifact structures, local qmd retrieval, deterministic indexing, Pagefind, and a policy gate for preserving high-value query output. Its bundled material demonstrates the framework rather than prescribing what a user must curate.
 
 **Autonomous operations and resilience: partial, with a tracked backlog.** The automation architecture is carefully designed, but several capabilities stop at static wiring or a defined handoff. Checkpoint mutation is not integrated into CI-3, the workspace audit cannot compose its classifiers, semantic service ownership is outside the repository, and fleet continuity depends on a single provider after the documented deferral date. The open issue backlog makes these remediation paths visible, but it does not mitigate the fleet risk or complete the missing automation.
 
 ## Recommended sequence
 
-1. **Keep the content layer ready for specialization.** Template users should ingest authoritative domain sources through the existing governed lane and publish evidence-backed source, concept, entity, and analysis artifacts.
-2. **Finish the processing feedback loop.** Define and test a CI-3 mutation-input adapter, then wire checkpoint `--mutate` under the existing lock and policy contracts.
-3. **Choose ownership for optional services.** Either define a supported semantic-endpoint deployment and operations model or clearly position the browser field as an external integration point.
-4. **Revisit fleet resilience now.** Record an explicit post-2026-07-21 decision: adopt a bounded fallback, renew the deferral with current evidence, or document a tested manual failover procedure.
-5. **Compose the existing audit components.** Wire classifier output into the workspace-audit orchestrator so its improvement workflow can produce the evidence it already knows how to validate.
-6. **Rebaseline the workspace-audit plan.** Define the telemetry plane and provenance requirements before closing its remaining validation slices.
-7. **Reduce the test-framework backlog opportunistically.** Preserve the ratchet and migrate legacy unittest files as they are meaningfully touched.
+1. **Finish the processing feedback loop.** Define and test a CI-3 mutation-input adapter, then wire checkpoint `--mutate` under the existing lock and policy contracts.
+2. **Choose ownership for optional services.** Either define a supported semantic-endpoint deployment and operations model or clearly position the browser field as an external integration point.
+3. **Revisit fleet resilience now.** Record an explicit post-2026-07-21 decision: adopt a bounded fallback, renew the deferral with current evidence, or document a tested manual failover procedure.
+4. **Compose the existing audit components.** Wire classifier output into the workspace-audit orchestrator so its improvement workflow can produce the evidence it already knows how to validate.
+5. **Rebaseline the workspace-audit plan.** Define the telemetry plane and provenance requirements before closing its remaining validation slices.
+6. **Reduce the test-framework backlog opportunistically.** Preserve the ratchet and migrate legacy unittest files as they are meaningfully touched.
 
 ## Limits
 
-This assessment does not claim that any GitHub Action has executed successfully, that secrets or external services are configured, or that the published site is currently reachable. Those are different evidence states and require run logs, environment inspection, or production monitoring. The issue and plan statuses are a point-in-time delivery snapshot, not proof that the underlying work is complete. The assessment also does not treat documented future work as a defect unless the repository's stated intent depends on it today.
+This assessment does not claim that any GitHub Action has executed successfully, that secrets or external services are configured, or that the published site is currently reachable. Those are different evidence states and require run logs, environment inspection, or production monitoring. The issue and plan statuses are a point-in-time delivery snapshot, not proof that the underlying work is complete. The assessment evaluates template infrastructure and does not assess the completeness of any user-defined content collection.
 
 ## Template-boundary evidence
 
