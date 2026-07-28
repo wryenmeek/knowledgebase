@@ -55,3 +55,6 @@
 ## 2026-06-25 - [Performance] Removing intermediate O(N) allocation for set subtraction
 **Learning:** Using `set(instance) - set(properties)` or `EFFORT_CAPABLE_MODELS - set(PRICING.keys())` to find the missing keys creates an unnecessary explicit set in memory for the right side operand. The natively implemented `difference()` method handles iteration over keys directly, e.g. `set(instance).difference(properties)`, eliminating an entire object allocation.
 **Action:** Always prefer using `.difference(iterable)` when finding missing keys in dictionaries to optimize execution performance and memory footprint.
+## 2026-07-28 - [Testing] Migrating unittest test files to pytest
+**Learning:** Legacy test files using `unittest.TestCase` are governed by a test framework ratchet (`MAX_UNITTEST_FILES`) in `scripts/kb/contracts.py`. Any non-docstring edits to these files requires migrating them to `pytest` in the same commit, and decrementing the `MAX_UNITTEST_FILES` value by 1.
+**Action:** Always migrate modified `unittest.TestCase` files to `pytest` and decrement `MAX_UNITTEST_FILES` in `scripts/kb/contracts.py` and `tests/kb/test_contracts.py`.

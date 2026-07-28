@@ -904,7 +904,7 @@ class AuditWorkspaceStaleGeneratorTests(RuntimeWorkspaceTestCase):
         self.assertEqual(captured[0][2], 10)
 
     def assert_schema_valid(self, finding: dict[str, object]) -> None:
-        _finding_schema.AuditWorkspaceFindingSchemaTests._validate_with_schema(
+        _finding_schema.TestAuditWorkspaceFindingSchema._validate_with_schema(
             finding,
             self.schema,
         )
