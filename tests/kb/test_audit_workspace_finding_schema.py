@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-import unittest
+import pytest
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -48,16 +48,18 @@ class SchemaValidationError(AssertionError):
     """Raised by the stdlib-only schema validator used in this test module."""
 
 
-class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
+class TestAuditWorkspaceFindingSchema:
+    schema: dict = {}
+
     @classmethod
-    def setUpClass(cls) -> None:
+    def setup_class(cls) -> None:
         cls.schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
     def test_all_10_destination_bins_validate(self) -> None:
         """AC #2 (issue #203): all 10 destination bins validate."""
 
         for finding in self._destination_examples():
-            with self.subTest(proposed_destination=finding["proposed_destination"]):
+            if True:
                 self.assert_schema_valid(finding)
 
     def test_two_examples_per_compliance_risk_value_validate(self) -> None:
@@ -75,8 +77,8 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
         }
 
         for compliance_risk, findings in examples.items():
-            with self.subTest(compliance_risk=compliance_risk):
-                self.assertEqual(len(findings), 2)
+            if True:
+                assert len(findings) == 2
                 for finding in findings:
                     self.assert_schema_valid(finding)
 
@@ -84,7 +86,7 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
         """AC #1 (issue #203): every required finding field is enforced."""
 
         for required_field in self.schema["required"]:
-            with self.subTest(required_field=required_field):
+            if True:
                 finding = self._finding()
                 finding.pop(required_field)
                 self.assert_schema_rejects(finding, required_field, "missing required property")
@@ -100,14 +102,14 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
         """AC #6 (issue #203): optional citation fields accept string, null, or absent."""
 
         for field_name in ("deletion_candidate", "citation"):
-            with self.subTest(field_name=field_name, value="absent"):
+            if True:
                 self.assert_schema_valid(self._finding())
-            with self.subTest(field_name=field_name, value=None):
+            if True:
                 self.assert_schema_valid(self._finding(**{field_name: None}))
-            with self.subTest(field_name=field_name, value="artifact path + snippet"):
+            if True:
                 self.assert_schema_valid(self._finding(**{field_name: "artifact path + snippet"}))
             for invalid_value in (42, []):
-                with self.subTest(field_name=field_name, invalid_value=invalid_value):
+                if True:
                     finding = self._finding(**{field_name: invalid_value})
                     self.assert_schema_rejects(finding, field_name, "expected type")
 
@@ -136,7 +138,7 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
         )
 
         for invalid_rank, expected_message in invalid_cases:
-            with self.subTest(invalid_rank=invalid_rank):
+            if True:
                 finding = self._finding(expected_token_efficiency_rank=invalid_rank)
                 self.assert_schema_rejects(
                     finding,
@@ -153,11 +155,11 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
         """AC #5 (issue #203): cache_strategy is the closed Phase 4/Q11 enum."""
 
         for valid_strategy in ("mtime_first_para", "hybrid_signature"):
-            with self.subTest(valid_strategy=valid_strategy):
+            if True:
                 self.assert_schema_valid(self._finding(cache_strategy=valid_strategy))
 
         for invalid_strategy in ("", "mtime_first_paragraph"):
-            with self.subTest(invalid_strategy=invalid_strategy):
+            if True:
                 finding = self._finding(cache_strategy=invalid_strategy)
                 self.assert_schema_rejects(finding, "cache_strategy", "not in enum")
 
@@ -165,7 +167,7 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
         """AC #1 (issue #203): required text fields reject empty strings."""
 
         for field_name in ("source_file", "source_section", "rationale", "suggested_artifact_path"):
-            with self.subTest(field_name=field_name):
+            if True:
                 finding = self._finding(**{field_name: ""})
                 self.assert_schema_rejects(finding, field_name, "minLength")
 
@@ -190,7 +192,7 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
         )
 
         for field_name, unsafe_path in unsafe_cases:
-            with self.subTest(field_name=field_name, unsafe_path=unsafe_path):
+            if True:
                 finding = self._finding(**{field_name: unsafe_path})
                 self.assert_schema_rejects(finding, field_name, "pattern")
 
@@ -203,7 +205,7 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
             | ANNOTATION_KEYWORDS_IGNORED_BY_STDLIB_VALIDATOR
         )
 
-        self.assertLessEqual(used_keywords, documented_keywords)
+        assert used_keywords <= documented_keywords
 
     def assert_schema_valid(self, finding: dict[str, Any]) -> None:
         self._validate_with_schema(deepcopy(finding), self.schema)
@@ -214,11 +216,11 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
         field_name: str,
         expected_message: str,
     ) -> None:
-        with self.assertRaises(SchemaValidationError) as context:
+        with pytest.raises(SchemaValidationError) as context:
             self._validate_with_schema(finding, self.schema)
-        message = str(context.exception)
-        self.assertIn(field_name, message)
-        self.assertIn(expected_message, message)
+        message = str(context.value)
+        assert field_name in message
+        assert expected_message in message
 
     @staticmethod
     def _finding(**overrides: Any) -> dict[str, Any]:
@@ -328,8 +330,7 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
 
             properties = schema.get("properties", {})
             if schema.get("additionalProperties") is False:
-                # ⚡ Bolt Optimization: Use .difference() instead of creating intermediate sets
-                extra = sorted(set(instance).difference(properties))
+                extra = sorted(set(instance) - set(properties))
                 if extra:
                     raise SchemaValidationError(f"{path}: unexpected properties {extra!r}")
 
@@ -386,5 +387,3 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
         return keywords
 
 
-if __name__ == "__main__":
-    unittest.main()
