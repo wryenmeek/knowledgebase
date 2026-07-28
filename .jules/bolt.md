@@ -52,3 +52,6 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
+## 2026-06-25 - [Performance] Removing intermediate O(N) allocation for set subtraction
+**Learning:** Using `set(instance) - set(properties)` or `EFFORT_CAPABLE_MODELS - set(PRICING.keys())` to find the missing keys creates an unnecessary explicit set in memory for the right side operand. The natively implemented `difference()` method handles iteration over keys directly, e.g. `set(instance).difference(properties)`, eliminating an entire object allocation.
+**Action:** Always prefer using `.difference(iterable)` when finding missing keys in dictionaries to optimize execution performance and memory footprint.

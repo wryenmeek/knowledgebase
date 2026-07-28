@@ -328,7 +328,8 @@ class AuditWorkspaceFindingSchemaTests(unittest.TestCase):
 
             properties = schema.get("properties", {})
             if schema.get("additionalProperties") is False:
-                extra = sorted(set(instance) - set(properties))
+                # ⚡ Bolt Optimization: Use .difference() instead of creating intermediate sets
+                extra = sorted(set(instance).difference(properties))
                 if extra:
                     raise SchemaValidationError(f"{path}: unexpected properties {extra!r}")
 
