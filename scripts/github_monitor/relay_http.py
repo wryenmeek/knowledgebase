@@ -178,7 +178,8 @@ def app(environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[byt
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", default="0.0.0.0")
+    # SECURITY: Avoid hardcoding bind-all interfaces (0.0.0.0) which could expose local servers. Use environment variable with a safe local fallback.
+    parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
     args = parser.parse_args()
     application = GitHubRelayWsgiApp.from_env()
