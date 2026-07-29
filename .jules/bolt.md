@@ -52,3 +52,6 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
+## 2024-07-29 - Optimize extract_headings with splitlines()
+**Learning:** Python Performance: Do not replace `str.splitlines()` with a manual `while` loop using `text.find('\n')` for standard text parsing. Although the manual loop avoids O(N) memory allocation, it is measurably slower in CPU execution time because `splitlines()` is highly optimized in C. Furthermore, `splitlines()` natively supports universal newlines, whereas a basic `.find('\n')` breaks legacy newline support.
+**Action:** Always prefer native string methods like `splitlines()` over manual indexing loops in Python, measuring performance impact first before attempting memory micro-optimizations.
