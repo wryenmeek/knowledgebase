@@ -52,3 +52,6 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
+## 2024-07-31 - Path Resolution Optimization
+**Learning:** Using `Path.is_relative_to(target)` followed by `Path.relative_to(target)` evaluates path resolution twice on the happy path, slowing down relative path extraction.
+**Action:** When extracting a relative path, use an EAFP `try...except ValueError` block around `Path.relative_to(target)` to optimize the happy path.

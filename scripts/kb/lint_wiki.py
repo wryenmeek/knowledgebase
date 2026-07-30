@@ -119,10 +119,11 @@ def _resolve_internal_markdown_target(
 
 
 def _display_path(path: Path, wiki_root: Path) -> str:
-    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
-    if path.is_relative_to(wiki_root):
+    # ⚡ Bolt Optimization: Use EAFP try/except for relative path extraction to avoid evaluating path resolution twice on the happy path
+    try:
         return str(path.relative_to(wiki_root))
-    return str(path)
+    except ValueError:
+        return str(path)
 
 
 def _read_page(p: Path) -> str:
