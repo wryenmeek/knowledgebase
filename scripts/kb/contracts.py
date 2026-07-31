@@ -94,15 +94,18 @@ GOVERNANCE_SIBLING_LOCKS: frozenset[str] = frozenset(
 # above so that this frozenset stays in sync automatically (ADR-011: single
 # source of truth — do NOT hardcode lock basenames independently).
 import os as _os
-GOVERNANCE_LOCK_FILES: frozenset[str] = frozenset({
-    _os.path.basename(WRITE_LOCK_PATH),
-    _os.path.basename(GITHUB_SOURCES_LOCK_PATH),
-    _os.path.basename(REJECTION_REGISTRY_LOCK_PATH),
-    _os.path.basename(DRIVE_SOURCES_LOCK_PATH),
-    _os.path.basename(CHECKPOINT_REGISTRY_LOCK_PATH),
-    _os.path.basename(CUSTOMIZATIONS_LOCK_PATH),
-    _os.path.basename(GOVERNANCE_META_LOCK_PATH),
-})
+
+GOVERNANCE_LOCK_FILES: frozenset[str] = frozenset(
+    {
+        _os.path.basename(WRITE_LOCK_PATH),
+        _os.path.basename(GITHUB_SOURCES_LOCK_PATH),
+        _os.path.basename(REJECTION_REGISTRY_LOCK_PATH),
+        _os.path.basename(DRIVE_SOURCES_LOCK_PATH),
+        _os.path.basename(CHECKPOINT_REGISTRY_LOCK_PATH),
+        _os.path.basename(CUSTOMIZATIONS_LOCK_PATH),
+        _os.path.basename(GOVERNANCE_META_LOCK_PATH),
+    }
+)
 
 CHECKPOINT_REGISTRY_SIZE_WARN_BYTES = 5 * 1024 * 1024
 CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES = 10 * 1024 * 1024
@@ -160,6 +163,7 @@ DEPENDENCY_FINGERPRINT_SOURCES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+
 class ArtifactMutability(StrEnum):
     """Allowed mutation modes for governed state artifacts."""
 
@@ -200,7 +204,11 @@ class GovernedArtifactContract:
         object.__setattr__(self, "mutability", str(self.mutability))
         object.__setattr__(self, "write_strategy", str(self.write_strategy))
         # Cross-validate: EXCLUSIVE_CREATE_WRITE_ONCE implies IMMUTABLE.
-        if str(self.write_strategy) == ArtifactWriteStrategy.EXCLUSIVE_CREATE_WRITE_ONCE and str(self.mutability) != ArtifactMutability.IMMUTABLE:
+        if (
+            str(self.write_strategy)
+            == ArtifactWriteStrategy.EXCLUSIVE_CREATE_WRITE_ONCE
+            and str(self.mutability) != ArtifactMutability.IMMUTABLE
+        ):
             raise ValueError(
                 f"GovernedArtifactContract '{self.artifact_id}': "
                 f"EXCLUSIVE_CREATE_WRITE_ONCE requires IMMUTABLE mutability, "
@@ -318,12 +326,7 @@ def governed_artifact_contract_by_pattern(path: str) -> GovernedArtifactContract
         return None  # Reject Windows separators/UNC forms
     if path.startswith("/"):
         return None  # Reject absolute paths
-    if (
-        len(path) >= 2
-        and path[1] == ":"
-        and path[0].isascii()
-        and path[0].isalpha()
-    ):
+    if len(path) >= 2 and path[1] == ":" and path[0].isascii() and path[0].isalpha():
         return None  # Reject drive-prefixed paths (e.g., C:foo or C:/foo)
     if any(component == ".." for component in path.split("/") if component):
         return None  # Reject traversal paths
@@ -427,7 +430,9 @@ class ResultEnvelope:
         # work whether callers pass a StrEnum member or a plain string.
         object.__setattr__(self, "status", str(self.status))
         object.__setattr__(self, "reason_code", str(self.reason_code))
-        object.__setattr__(self, "policy", tuple(str(policy_id) for policy_id in self.policy))
+        object.__setattr__(
+            self, "policy", tuple(str(policy_id) for policy_id in self.policy)
+        )
         object.__setattr__(self, "sources", tuple(self.sources))
 
     def to_dict(self) -> dict[str, Any]:

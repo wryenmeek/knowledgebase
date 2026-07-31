@@ -108,7 +108,9 @@ def _parse_name_status_z(
     return parsed, None
 
 
-def _test_paths_from_git_diff(*diff_args: str) -> tuple[list[StagedTestPath], str | None]:
+def _test_paths_from_git_diff(
+    *diff_args: str,
+) -> tuple[list[StagedTestPath], str | None]:
     rc, out, err = _run_git(
         "diff",
         "--name-status",
@@ -152,7 +154,10 @@ def _get_previous_content(path: str, base_ref: str | None) -> tuple[str, str | N
     revision = f"{base_ref}:{path}" if base_ref else f"HEAD:{path}"
     rc, out, err = _run_git("show", revision)
     if rc != 0:
-        return "", f"{path}: cannot read previous content from {revision}: {err.strip() or out.strip()}"
+        return (
+            "",
+            f"{path}: cannot read previous content from {revision}: {err.strip() or out.strip()}",
+        )
     return out, None
 
 
@@ -183,7 +188,9 @@ class _DocstringStripper(ast.NodeTransformer):
         self.generic_visit(node)
         return node
 
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> ast.AsyncFunctionDef:
+    def visit_AsyncFunctionDef(
+        self, node: ast.AsyncFunctionDef
+    ) -> ast.AsyncFunctionDef:
         node.body = self._strip_leading_docstring(node.body)
         self.generic_visit(node)
         return node
@@ -218,7 +225,9 @@ def _contains_non_docstring_change(previous_text: str, current_text: str) -> boo
 def _contains_unittest_testcase_fallback(text: str) -> bool:
     if _DOTTED_TESTCASE_RE.search(text) or _FROM_IMPORT_TESTCASE_RE.search(text):
         return True
-    return bool(_IMPORT_UNITTEST_RE.search(text) and _TESTCASE_REFERENCE_RE.search(text))
+    return bool(
+        _IMPORT_UNITTEST_RE.search(text) and _TESTCASE_REFERENCE_RE.search(text)
+    )
 
 
 def contains_unittest_testcase(text: str) -> bool:
@@ -370,7 +379,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         previous_path = staged.old_path or staged.path
-        previous_text, previous_error = _get_previous_content(previous_path, ci_base_ref)
+        previous_text, previous_error = _get_previous_content(
+            previous_path, ci_base_ref
+        )
         if previous_error is not None:
             errors.append(previous_error)
             continue

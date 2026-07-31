@@ -197,7 +197,9 @@ def run(output_path: Path | None = None) -> int:
         try:
             output_path.write_text(serialized, encoding="utf-8")
         except OSError as exc:
-            print(f"error: cannot write report to {output_path}: {exc}", file=sys.stderr)
+            print(
+                f"error: cannot write report to {output_path}: {exc}", file=sys.stderr
+            )
             return 2
     else:
         sys.stdout.write(serialized + "\n")

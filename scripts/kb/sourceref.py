@@ -78,7 +78,10 @@ class SourceRef:
 def parse_sourceref(value: str) -> SourceRef:
     """Parse and validate a canonical SourceRef string."""
     if not isinstance(value, str) or not value:
-        _raise(SourceRefReasonCode.INVALID_STRUCTURE, "SourceRef must be a non-empty string")
+        _raise(
+            SourceRefReasonCode.INVALID_STRUCTURE,
+            "SourceRef must be a non-empty string",
+        )
 
     if not value.startswith("repo://"):
         _raise(SourceRefReasonCode.INVALID_SCHEME, "SourceRef must start with repo://")
@@ -106,7 +109,10 @@ def parse_sourceref(value: str) -> SourceRef:
     if not has_anchor or not anchor:
         _raise(SourceRefReasonCode.MISSING_ANCHOR, "SourceRef must include #<anchor>")
     if not _ANCHOR_RE.fullmatch(anchor):
-        _raise(SourceRefReasonCode.INVALID_ANCHOR, "Anchor must use canonical token characters")
+        _raise(
+            SourceRefReasonCode.INVALID_ANCHOR,
+            "Anchor must use canonical token characters",
+        )
 
     locator, has_sha, git_sha = pre_anchor.rpartition("@")
     if not has_sha or not git_sha:
@@ -144,7 +150,10 @@ def validate_sourceref(
 ) -> SourceRef:
     """Validate and return parsed SourceRef components."""
     if not isinstance(value, str):
-        _raise(SourceRefReasonCode.INVALID_STRUCTURE, "SourceRef must be a non-empty string")
+        _raise(
+            SourceRefReasonCode.INVALID_STRUCTURE,
+            "SourceRef must be a non-empty string",
+        )
     if not value.strip():
         _raise(SourceRefReasonCode.INVALID_FORMAT, "Value cannot be empty.")
     parsed = parse_sourceref(value)
@@ -172,9 +181,15 @@ def _parse_locator(locator: str) -> tuple[str, str, str]:
     source_path = "/".join(parts[2:])
 
     if not _OWNER_RE.fullmatch(owner):
-        _raise(SourceRefReasonCode.INVALID_OWNER, "Owner contains invalid characters (use only alphanumeric characters, hyphens, or underscores)")
+        _raise(
+            SourceRefReasonCode.INVALID_OWNER,
+            "Owner contains invalid characters (use only alphanumeric characters, hyphens, or underscores)",
+        )
     if not _REPO_RE.fullmatch(repo):
-        _raise(SourceRefReasonCode.INVALID_REPO, "Repository name contains invalid characters (use only alphanumeric characters, hyphens, underscores, or dots)")
+        _raise(
+            SourceRefReasonCode.INVALID_REPO,
+            "Repository name contains invalid characters (use only alphanumeric characters, hyphens, underscores, or dots)",
+        )
     if not source_path:
         _raise(SourceRefReasonCode.INVALID_PATH, "Path must not be empty")
 
@@ -241,7 +256,9 @@ def _validate_authoritative_sourceref(
             SourceRefReasonCode.PATH_TRAVERSAL,
             "Authoritative SourceRef path escapes repository boundary",
         )
-    resolved_relative = resolved_artifact_path.relative_to(normalized_repo_root).as_posix()
+    resolved_relative = resolved_artifact_path.relative_to(
+        normalized_repo_root
+    ).as_posix()
     _validate_source_path(resolved_relative)
 
     if _path_has_symlink_component(artifact_path, stop_at=normalized_repo_root):
@@ -250,19 +267,19 @@ def _validate_authoritative_sourceref(
             "Authoritative SourceRef artifacts must not resolve through symlinks",
         )
 
-    resolved_git_sha = _resolve_commit_revision(normalized_repo_root, source_ref.git_sha)
+    resolved_git_sha = _resolve_commit_revision(
+        normalized_repo_root, source_ref.git_sha
+    )
     _validate_revision_artifact_path(
         normalized_repo_root,
         resolved_git_sha=resolved_git_sha,
         source_path=source_ref.path,
     )
 
-    artifact_bytes = (
-        _read_artifact_bytes_from_revision(
-            normalized_repo_root,
-            resolved_git_sha=resolved_git_sha,
-            source_path=source_ref.path,
-        )
+    artifact_bytes = _read_artifact_bytes_from_revision(
+        normalized_repo_root,
+        resolved_git_sha=resolved_git_sha,
+        source_path=source_ref.path,
     )
     checksum = hashlib.sha256(artifact_bytes).hexdigest()
     if checksum != source_ref.sha256:
@@ -298,10 +315,19 @@ def _resolve_commit_revision(repo_root: Path, git_sha: str) -> str:
     return resolved_git_sha
 
 
-def _validate_revision_artifact_path(repo_root: Path, *, resolved_git_sha: str, source_path: str) -> None:
+def _validate_revision_artifact_path(
+    repo_root: Path, *, resolved_git_sha: str, source_path: str
+) -> None:
     try:
         artifact_exists = subprocess.run(
-            ["git", "-C", str(repo_root), "cat-file", "-e", f"{resolved_git_sha}:{source_path}"],
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "cat-file",
+                "-e",
+                f"{resolved_git_sha}:{source_path}",
+            ],
             capture_output=True,
             text=True,
             check=False,
@@ -345,7 +371,9 @@ def _validate_revision_artifact_path(repo_root: Path, *, resolved_git_sha: str, 
         )
 
 
-def _read_artifact_bytes_from_revision(repo_root: Path, *, resolved_git_sha: str, source_path: str) -> bytes:
+def _read_artifact_bytes_from_revision(
+    repo_root: Path, *, resolved_git_sha: str, source_path: str
+) -> bytes:
     completed = _run_git(
         repo_root,
         "show",

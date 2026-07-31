@@ -13,11 +13,11 @@ This module is a lightweight advisory surface under ``scripts/validation/``
 (read-only only in the AGENTS.md write-surface matrix).  The ``--output``
 artifact is a transient CI artifact, not a governed repository write.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 
 SURFACE = "validation.classify_stale"
 

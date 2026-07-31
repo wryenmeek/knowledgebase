@@ -10,8 +10,9 @@ from pathlib import Path
 import sys
 from typing import Any, Callable, Sequence, TextIO, TypedDict
 
-from scripts.kb import write_utils
-from scripts.kb.contracts import WRITE_LOCK_PATH as LOCK_PATH  # single source of truth (ADR-011)
+from scripts.kb.contracts import (
+    WRITE_LOCK_PATH as LOCK_PATH,
+)  # single source of truth (ADR-011)
 
 STATUS_PASS = "pass"
 STATUS_FAIL = "fail"
@@ -243,7 +244,9 @@ def _ensure_safe_relative_path(
     if not resolved.is_relative_to(repo_root):
         raise ValueError(f"path escapes repository root: {normalized}")
     allowed_root_paths = tuple((repo_root / root).resolve() for root in allowed_roots)
-    if not any(resolved == root or resolved.is_relative_to(root) for root in allowed_root_paths):
+    if not any(
+        resolved == root or resolved.is_relative_to(root) for root in allowed_root_paths
+    ):
         raise ValueError(f"path is outside the declared scope: {normalized}")
     if not resolved.exists():
         raise ValueError(f"path does not exist: {normalized}")
@@ -260,18 +263,28 @@ def expand_repo_paths(
 ) -> tuple[Path, ...]:
     selected: list[Path] = []
     seen: set[Path] = set()
-    requested_paths = list(raw_paths) if raw_paths else list(default_roots or allowed_roots)
+    requested_paths = (
+        list(raw_paths) if raw_paths else list(default_roots or allowed_roots)
+    )
     normalized_suffixes = {suffix.lower() for suffix in (allowed_suffixes or ())}
     for raw_path in requested_paths:
-        resolved = _ensure_safe_relative_path(repo_root, raw_path, allowed_roots=allowed_roots)
-        iterator = sorted(path.resolve() for path in resolved.rglob("*") if path.is_file()) if resolved.is_dir() else [resolved]
+        resolved = _ensure_safe_relative_path(
+            repo_root, raw_path, allowed_roots=allowed_roots
+        )
+        iterator = (
+            sorted(path.resolve() for path in resolved.rglob("*") if path.is_file())
+            if resolved.is_dir()
+            else [resolved]
+        )
         for path in iterator:
             relative = path.relative_to(repo_root)
             current = repo_root
             for part in relative.parts:
                 current = current / part
                 if current.is_symlink():
-                    raise ValueError(f"path must not use symlinks: {relative.as_posix()}")
+                    raise ValueError(
+                        f"path must not use symlinks: {relative.as_posix()}"
+                    )
             if normalized_suffixes and path.suffix.lower() not in normalized_suffixes:
                 continue
             if path in seen:
@@ -331,16 +344,23 @@ def resolve_write_target(
     if not resolved.is_relative_to(repo_root):
         raise ValueError(f"path escapes repository root: {normalized}")
     allowed_root_paths = tuple((repo_root / root).resolve() for root in allowed_roots)
-    if not any(resolved == root or resolved.is_relative_to(root) for root in allowed_root_paths):
+    if not any(
+        resolved == root or resolved.is_relative_to(root) for root in allowed_root_paths
+    ):
         raise ValueError(f"path is outside the declared write scope: {normalized}")
     if denied_roots:
         denied_root_paths = tuple((repo_root / root).resolve() for root in denied_roots)
-        if any(resolved == root or resolved.is_relative_to(root) for root in denied_root_paths):
+        if any(
+            resolved == root or resolved.is_relative_to(root)
+            for root in denied_root_paths
+        ):
             raise ValueError(f"path is within a denied write root: {normalized}")
     if allowed_suffixes:
         normalized_suffixes = {s.lower() for s in allowed_suffixes}
         if resolved.suffix.lower() not in normalized_suffixes:
-            raise ValueError(f"path suffix '{resolved.suffix}' is not in the allowed set: {normalized}")
+            raise ValueError(
+                f"path suffix '{resolved.suffix}' is not in the allowed set: {normalized}"
+            )
     return resolved
 
 
@@ -379,12 +399,18 @@ def validate_staged_manifest(
         if not isinstance(item, dict):
             raise ValueError(f"manifest item {idx} must be an object")
         if not isinstance(item.get("path"), str):
-            raise ValueError(f"manifest item {idx} missing required string field 'path'")
+            raise ValueError(
+                f"manifest item {idx} missing required string field 'path'"
+            )
         if not isinstance(item.get("content"), str):
-            raise ValueError(f"manifest item {idx} missing required string field 'content'")
+            raise ValueError(
+                f"manifest item {idx} missing required string field 'content'"
+            )
         expected_sha = item.get("expected_before_sha256")
         if expected_sha is not None and not isinstance(expected_sha, str):
-            raise ValueError(f"manifest item {idx} field 'expected_before_sha256' must be a hex string or null")
+            raise ValueError(
+                f"manifest item {idx} field 'expected_before_sha256' must be a hex string or null"
+            )
         resolved = resolve_write_target(
             repo_root,
             item["path"],

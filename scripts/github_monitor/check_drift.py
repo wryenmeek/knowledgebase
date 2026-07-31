@@ -137,7 +137,11 @@ def _compute_line_metrics(
 
     try:
         prior_path = _validators.build_asset_path(
-            repo_root, owner, repo, last_applied_commit_sha, path,
+            repo_root,
+            owner,
+            repo,
+            last_applied_commit_sha,
+            path,
         )
     except ValueError:
         return {
@@ -231,9 +235,7 @@ def _check_active_entry(
             message=f"Path validation failed: {exc}",
         )
 
-    contents_url = (
-        f"{_GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{validated_path}"
-    )
+    contents_url = f"{_GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{validated_path}"
     try:
         raw_contents = _make_github_request(contents_url, token)
         contents = validate_contents_response(raw_contents)
@@ -300,8 +302,12 @@ def _check_active_entry(
         current_bytes = None
 
     metrics = _compute_line_metrics(
-        repo_root, owner, repo, validated_path,
-        last_applied_commit_sha, current_bytes,
+        repo_root,
+        owner,
+        repo,
+        validated_path,
+        last_applied_commit_sha,
+        current_bytes,
     )
 
     compare_url: str | None = None
@@ -390,7 +396,9 @@ def check_drift(
                 )
                 continue
 
-            category, entry_data = _check_active_entry(entry, owner, repo, github_token, repo_root)
+            category, entry_data = _check_active_entry(
+                entry, owner, repo, github_token, repo_root
+            )
             if category == "drifted":
                 drifted.append(entry_data)  # type: ignore[arg-type]
             elif category == "up_to_date":

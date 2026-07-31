@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -60,10 +59,15 @@ def _search_existing_issue(dedupe_key: str) -> int | None:
     """
     result = subprocess.run(
         [
-            "gh", "issue", "list",
-            "--search", f'"{dedupe_key}" in:body',
-            "--json", "number",
-            "--limit", "1",
+            "gh",
+            "issue",
+            "list",
+            "--search",
+            f'"{dedupe_key}" in:body',
+            "--json",
+            "number",
+            "--limit",
+            "1",
         ],
         capture_output=True,
         text=True,
@@ -92,8 +96,12 @@ def _comment_on_issue(issue_num: int, run_id: str) -> bool:
     """Add a comment to an existing issue. Returns ``True`` on success."""
     result = subprocess.run(
         [
-            "gh", "issue", "comment", str(issue_num),
-            "--body", f"Updated drift detected in run {run_id}.",
+            "gh",
+            "issue",
+            "comment",
+            str(issue_num),
+            "--body",
+            f"Updated drift detected in run {run_id}.",
         ],
         capture_output=True,
         text=True,
@@ -111,10 +119,15 @@ def _create_issue(title: str, body: str, labels: str) -> bool:
     """Create a new GitHub Issue. Returns ``True`` on success."""
     result = subprocess.run(
         [
-            "gh", "issue", "create",
-            "--title", title,
-            "--body", body,
-            "--label", labels,
+            "gh",
+            "issue",
+            "create",
+            "--title",
+            title,
+            "--body",
+            body,
+            "--label",
+            labels,
         ],
         capture_output=True,
         text=True,
@@ -132,8 +145,12 @@ def _close_issue(issue_num: int, run_id: str) -> bool:
     """Close an issue with a resolution comment. Returns ``True`` on success."""
     comment_result = subprocess.run(
         [
-            "gh", "issue", "comment", str(issue_num),
-            "--body", f"Resolved: applied in run {run_id}.",
+            "gh",
+            "issue",
+            "comment",
+            str(issue_num),
+            "--body",
+            f"Resolved: applied in run {run_id}.",
         ],
         capture_output=True,
         text=True,
@@ -207,7 +224,9 @@ def process_hitl_entries(hitl_entries_path: Path) -> SurfaceResult:
         dedupe_key = f"ci5-drift:{registry}:{source_key}"
 
         safe_dedupe_key = _sanitize_gh_md(dedupe_key.replace('"', ""))
-        safe_key = _sanitize_gh_md(source_key, max_len=120).replace("[", "").replace("]", "")
+        safe_key = (
+            _sanitize_gh_md(source_key, max_len=120).replace("[", "").replace("]", "")
+        )
         safe_registry = _sanitize_gh_md(registry)
         safe_body_source = _sanitize_gh_md(source_key)
         safe_body_dedupe = _sanitize_gh_md(dedupe_key)
@@ -256,6 +275,7 @@ def process_hitl_entries(hitl_entries_path: Path) -> SurfaceResult:
             "failed": failed,
         },
     )
+
 
 def close_resolved_entries(drift_report_path: Path) -> SurfaceResult:
     """Close GitHub Issues for entries that are now up-to-date.
@@ -321,7 +341,9 @@ def close_resolved_entries(drift_report_path: Path) -> SurfaceResult:
         else:
             failed += 1
 
-    message = f"Close-resolved: {closed} closed, {not_found} no issue found, {failed} failed"
+    message = (
+        f"Close-resolved: {closed} closed, {not_found} no issue found, {failed} failed"
+    )
     return SurfaceResult(
         surface=SURFACE,
         mode="close",
@@ -400,7 +422,10 @@ def _runner(**kwargs: Any) -> SurfaceResult:
                 else close_result.reason_code
             )
         )
-        combined_summary = {**(result.summary or {}), "close_resolved": close_result.summary}
+        combined_summary = {
+            **(result.summary or {}),
+            "close_resolved": close_result.summary,
+        }
         result = SurfaceResult(
             surface=SURFACE,
             mode=MODE,

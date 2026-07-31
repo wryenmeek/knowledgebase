@@ -77,9 +77,7 @@ def validate_file_id(file_id: str) -> str:
     if not isinstance(file_id, str) or not file_id:
         raise ValueError(f"Drive file_id must be a non-empty string, got {file_id!r}")
     if not _DRIVE_FILE_ID_RE.match(file_id):
-        raise ValueError(
-            f"Drive file_id contains unsafe characters: {file_id!r}"
-        )
+        raise ValueError(f"Drive file_id contains unsafe characters: {file_id!r}")
     return file_id
 
 
@@ -111,11 +109,11 @@ def validate_display_name(name: str) -> str:
         raise ValueError(f"Display name contains control characters: {name!r}")
     # Reject any name that looks like a path (contains / or \)
     if "/" in name or "\\" in name:
-        raise ValueError(
-            f"Display name must not contain path separators: {name!r}"
-        )
+        raise ValueError(f"Display name must not contain path separators: {name!r}")
     if name in ("..", "."):
-        raise ValueError(f"Display name must not be a path traversal component: {name!r}")
+        raise ValueError(
+            f"Display name must not be a path traversal component: {name!r}"
+        )
     return name
 
 
@@ -170,7 +168,14 @@ def build_drive_asset_path(
 
     gdrive_root = (repo_root / "raw" / "assets" / "gdrive").resolve()
     target = (
-        repo_root / "raw" / "assets" / "gdrive" / alias / file_id / version_segment / filename
+        repo_root
+        / "raw"
+        / "assets"
+        / "gdrive"
+        / alias
+        / file_id
+        / version_segment
+        / filename
     ).resolve()
 
     if not target.is_relative_to(gdrive_root):
@@ -239,7 +244,5 @@ def build_wiki_page_path(repo_root: Path, wiki_page: str) -> Path:
     wiki_root = (repo_root / "wiki").resolve()
     target = (repo_root / wiki_page).resolve()
     if not target.is_relative_to(wiki_root):
-        raise ValueError(
-            f"wiki_page path {wiki_page!r} escapes wiki/ boundary"
-        )
+        raise ValueError(f"wiki_page path {wiki_page!r} escapes wiki/ boundary")
     return target

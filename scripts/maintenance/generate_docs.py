@@ -8,7 +8,10 @@ from pathlib import Path
 import sys
 from typing import Sequence, TextIO
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (
+    None,
+    "",
+):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
@@ -31,7 +34,12 @@ from scripts._optional_surface_common import (
     run_surface_cli,
     validate_staged_manifest,
 )
-from scripts.kb.write_utils import LockUnavailableError, exclusive_write_lock, rollback_file_state, write_text_capturing_previous_safe
+from scripts.kb.write_utils import (
+    LockUnavailableError,
+    exclusive_write_lock,
+    rollback_file_state,
+    write_text_capturing_previous_safe,
+)
 
 SURFACE = "scripts/maintenance/generate_docs.py"
 SUPPORTED_MODES: tuple[str, ...] = ("inventory", "plan", "apply")
@@ -91,7 +99,9 @@ def run_generate_docs(
     path_rules = _path_rules()
     normalized_repo_root = Path(repo_root).resolve()
     if not looks_like_repo_root(normalized_repo_root):
-        return repo_root_failure(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules)
+        return repo_root_failure(
+            surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules
+        )
 
     if mode in {"inventory", "plan"}:
         try:
@@ -103,8 +113,11 @@ def run_generate_docs(
             )
         except ValueError as exc:
             return invalid_input_result(
-                surface=SURFACE, mode=mode, approval=approval,
-                message=str(exc), path_rules=path_rules,
+                surface=SURFACE,
+                mode=mode,
+                approval=approval,
+                message=str(exc),
+                path_rules=path_rules,
             )
         items = tuple(
             {
@@ -114,46 +127,70 @@ def run_generate_docs(
             }
             for path in resolved_paths
         )
-        message = "maintenance doc inventory computed" if mode == "inventory" else "maintenance doc generation plan computed"
+        message = (
+            "maintenance doc inventory computed"
+            if mode == "inventory"
+            else "maintenance doc generation plan computed"
+        )
         return SurfaceResult(
-            surface=SURFACE, mode=mode, status=STATUS_PASS, reason_code=REASON_CODE_OK,
-            message=message, approval=approval, path_rules=path_rules, items=items,
+            surface=SURFACE,
+            mode=mode,
+            status=STATUS_PASS,
+            reason_code=REASON_CODE_OK,
+            message=message,
+            approval=approval,
+            path_rules=path_rules,
+            items=items,
             summary={
                 "selected_count": len(items),
                 "script_targets": sum(1 for item in items if item["kind"] == "script"),
-                "document_targets": sum(1 for item in items if item["kind"] == "document"),
+                "document_targets": sum(
+                    1 for item in items if item["kind"] == "document"
+                ),
             },
         )
 
     # apply mode
     if approval != APPROVAL_APPROVED:
         return approval_required_result(
-            surface=SURFACE, mode=mode, path_rules=path_rules, lock_required=True,
+            surface=SURFACE,
+            mode=mode,
+            path_rules=path_rules,
+            lock_required=True,
         )
     if not staged_docs_path:
         return invalid_input_result(
-            surface=SURFACE, mode=mode, approval=approval,
+            surface=SURFACE,
+            mode=mode,
+            approval=approval,
             message="apply mode requires --staged-docs-path pointing to an agent-produced docs manifest",
             path_rules=path_rules,
         )
     try:
         staged_resolved = expand_repo_paths(
-            normalized_repo_root, [staged_docs_path],
+            normalized_repo_root,
+            [staged_docs_path],
             allowed_roots=STAGED_DOCS_ROOTS,
             allowed_suffixes=(".json",),
         )
     except ValueError as exc:
         return invalid_input_result(
-            surface=SURFACE, mode=mode, approval=approval,
-            message=f"staged-docs-path invalid: {exc}", path_rules=path_rules,
+            surface=SURFACE,
+            mode=mode,
+            approval=approval,
+            message=f"staged-docs-path invalid: {exc}",
+            path_rules=path_rules,
         )
     staged_path = staged_resolved[0]
     try:
         raw_manifest = json.loads(staged_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         return invalid_input_result(
-            surface=SURFACE, mode=mode, approval=approval,
-            message=f"could not parse staged docs manifest: {exc}", path_rules=path_rules,
+            surface=SURFACE,
+            mode=mode,
+            approval=approval,
+            message=f"could not parse staged docs manifest: {exc}",
+            path_rules=path_rules,
         )
     try:
         manifest_items = validate_staged_manifest(
@@ -166,8 +203,11 @@ def run_generate_docs(
         )
     except ValueError as exc:
         return invalid_input_result(
-            surface=SURFACE, mode=mode, approval=approval,
-            message=str(exc), path_rules=path_rules,
+            surface=SURFACE,
+            mode=mode,
+            approval=approval,
+            message=str(exc),
+            path_rules=path_rules,
         )
 
     snapshots: list[tuple[Path, str | None]] = []
@@ -175,29 +215,49 @@ def run_generate_docs(
     try:
         with exclusive_write_lock(normalized_repo_root):
             for resolved_path, content, _sha in manifest_items:
-                changed, previous = write_text_capturing_previous_safe(resolved_path, content)
+                changed, previous = write_text_capturing_previous_safe(
+                    resolved_path, content
+                )
                 snapshots.append((resolved_path, previous))
-                written_items.append({
-                    "path": repo_relative(normalized_repo_root, resolved_path),
-                    "changed": changed,
-                })
+                written_items.append(
+                    {
+                        "path": repo_relative(normalized_repo_root, resolved_path),
+                        "changed": changed,
+                    }
+                )
     except LockUnavailableError as exc:
-        return lock_unavailable_result(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules, exc=exc)
+        return lock_unavailable_result(
+            surface=SURFACE,
+            mode=mode,
+            approval=approval,
+            path_rules=path_rules,
+            exc=exc,
+        )
     except OSError as exc:
         rollback_file_state(snapshots)
         return SurfaceResult(
-            surface=SURFACE, mode=mode, status=STATUS_FAIL,
+            surface=SURFACE,
+            mode=mode,
+            status=STATUS_FAIL,
             reason_code="write_failed",
             message=f"write failed and changes were rolled back: {exc}",
-            approval=approval, lock_path=LOCK_PATH, lock_required=True,
+            approval=approval,
+            lock_path=LOCK_PATH,
+            lock_required=True,
             path_rules=path_rules,
         )
 
     return SurfaceResult(
-        surface=SURFACE, mode=mode, status=STATUS_PASS, reason_code=REASON_CODE_OK,
+        surface=SURFACE,
+        mode=mode,
+        status=STATUS_PASS,
+        reason_code=REASON_CODE_OK,
         message="docs generation applied",
-        approval=approval, lock_path=LOCK_PATH, lock_required=True,
-        path_rules=path_rules, items=tuple(written_items),
+        approval=approval,
+        lock_path=LOCK_PATH,
+        lock_required=True,
+        path_rules=path_rules,
+        items=tuple(written_items),
         summary={
             "written_count": sum(1 for i in written_items if i["changed"]),
             "unchanged_count": sum(1 for i in written_items if not i["changed"]),
@@ -205,7 +265,9 @@ def run_generate_docs(
     )
 
 
-def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+def run_cli(
+    argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout
+) -> int:
     return run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,
@@ -240,4 +302,3 @@ __all__ = [
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

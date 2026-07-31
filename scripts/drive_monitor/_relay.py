@@ -292,9 +292,13 @@ def build_drive_channel_token(
             field_name="resource_id", value=resource_id
         )
 
-    encoded_context = base64.urlsafe_b64encode(
-        json.dumps(context, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).decode("ascii").rstrip("=")
+    encoded_context = (
+        base64.urlsafe_b64encode(
+            json.dumps(context, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
     signature = hmac.new(
         token_secret.encode("utf-8"),
         encoded_context.encode("utf-8"),
@@ -330,7 +334,9 @@ def parse_drive_channel_token(
         decoded = _decode_b64url(encoded_context).decode("utf-8")
         raw_context = json.loads(decoded)
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RelayValidationError(f"invalid Drive channel token payload: {exc}") from exc
+        raise RelayValidationError(
+            f"invalid Drive channel token payload: {exc}"
+        ) from exc
 
     if not isinstance(raw_context, dict):
         raise RelayValidationError("Drive channel token payload must be an object")
@@ -356,7 +362,9 @@ def parse_drive_channel_token(
     validated_file_ids: list[str] = []
     for file_id in raw_file_ids:
         if not isinstance(file_id, str):
-            raise RelayValidationError("Drive channel token file_ids must contain strings")
+            raise RelayValidationError(
+                "Drive channel token file_ids must contain strings"
+            )
         try:
             validated_file_ids.append(validate_file_id(file_id))
         except ValueError as exc:
@@ -369,13 +377,17 @@ def parse_drive_channel_token(
     }
     if raw_channel_id is not None:
         if not isinstance(raw_channel_id, str):
-            raise RelayValidationError("Drive channel token channel_id must be a string")
+            raise RelayValidationError(
+                "Drive channel token channel_id must be a string"
+            )
         context["channel_id"] = _validate_identifier(
             field_name="channel_id", value=raw_channel_id
         )
     if raw_resource_id is not None:
         if not isinstance(raw_resource_id, str):
-            raise RelayValidationError("Drive channel token resource_id must be a string")
+            raise RelayValidationError(
+                "Drive channel token resource_id must be a string"
+            )
         context["resource_id"] = _validate_identifier(
             field_name="resource_id", value=raw_resource_id
         )
@@ -530,7 +542,9 @@ def drive_replay_key(notification: DriveNotification) -> str:
     )
 
 
-def validate_drive_registry_context(*, repo_root: Path, notification: DriveNotification) -> None:
+def validate_drive_registry_context(
+    *, repo_root: Path, notification: DriveNotification
+) -> None:
     """Fail-closed validation for alias/registry_path context from channel token."""
 
     repo_root_resolved = repo_root.resolve()
@@ -539,7 +553,9 @@ def validate_drive_registry_context(*, repo_root: Path, notification: DriveNotif
     if not registry_file.is_relative_to(registry_root):
         raise RelayValidationError("registry_path escapes raw/drive-sources boundary")
     if not registry_file.exists():
-        raise RelayValidationError(f"registry_path does not exist: {notification.registry_path}")
+        raise RelayValidationError(
+            f"registry_path does not exist: {notification.registry_path}"
+        )
 
     try:
         parsed = json.loads(registry_file.read_text(encoding="utf-8"))
@@ -556,7 +572,9 @@ def validate_drive_registry_context(*, repo_root: Path, notification: DriveNotif
         )
 
 
-def build_drive_source_payload(notification: DriveNotification) -> DriveSourceUpdatedPayload:
+def build_drive_source_payload(
+    notification: DriveNotification,
+) -> DriveSourceUpdatedPayload:
     payload: DriveSourceUpdatedPayload = {
         "source_kind": _DRIVE_SOURCE_KIND,
         "alias": notification.alias,
@@ -571,7 +589,9 @@ def build_drive_source_payload(notification: DriveNotification) -> DriveSourceUp
     return validate_drive_source_payload(payload)
 
 
-def validate_drive_source_payload(payload: Mapping[str, Any]) -> DriveSourceUpdatedPayload:
+def validate_drive_source_payload(
+    payload: Mapping[str, Any],
+) -> DriveSourceUpdatedPayload:
     """Validate the stable payload contract for CI-6 dispatch events."""
 
     expected_fields = {
@@ -615,13 +635,22 @@ def validate_drive_source_payload(payload: Mapping[str, Any]) -> DriveSourceUpda
 
     if len(normalized_values["registry_path"]) > _MAX_REGISTRY_PATH_LENGTH:
         raise RelayValidationError("payload field 'registry_path' exceeds max length")
-    for field in ("alias", "file_id", "change_id", "channel_id", "resource_id", "delivery_id"):
+    for field in (
+        "alias",
+        "file_id",
+        "change_id",
+        "channel_id",
+        "resource_id",
+        "delivery_id",
+    ):
         if len(normalized_values[field]) > _MAX_IDENTIFIER_LENGTH:
             raise RelayValidationError(f"payload field {field!r} exceeds max length")
 
     try:
         alias = validate_alias(normalized_values["alias"])
-        registry_path = _validate_registry_path_literal(normalized_values["registry_path"])
+        registry_path = _validate_registry_path_literal(
+            normalized_values["registry_path"]
+        )
         file_id = validate_file_id(normalized_values["file_id"])
         change_id = _validate_change_id(normalized_values["change_id"])
         channel_id = _validate_identifier(
@@ -631,7 +660,9 @@ def validate_drive_source_payload(payload: Mapping[str, Any]) -> DriveSourceUpda
             field_name="resource_id", value=normalized_values["resource_id"]
         )
         delivery_id = _validate_delivery_id(normalized_values["delivery_id"])
-        observed_at = _format_utc_iso8601(_parse_observed_at(normalized_values["observed_at"]))
+        observed_at = _format_utc_iso8601(
+            _parse_observed_at(normalized_values["observed_at"])
+        )
     except ValueError as exc:
         raise RelayValidationError(str(exc)) from exc
 
@@ -659,7 +690,9 @@ def relay_drive_notification(
     """Validate a Drive notification, suppress replays, and emit dispatch."""
 
     try:
-        notification = parse_drive_notification(headers=headers, token_secret=token_secret)
+        notification = parse_drive_notification(
+            headers=headers, token_secret=token_secret
+        )
         validate_drive_registry_context(repo_root=repo_root, notification=notification)
     except RelayValidationError as exc:
         return DriveRelayResult(

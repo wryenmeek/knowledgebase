@@ -38,14 +38,16 @@ DRIFT_REPORT_VERSION = "1"
 # MIME type constants
 # ---------------------------------------------------------------------------
 
-DRIVE_MIME_ALLOWLIST: frozenset[str] = frozenset({
-    "application/vnd.google-apps.document",
-    "application/pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "text/plain",
-    "text/markdown",
-    "application/vnd.google-apps.presentation",
-})
+DRIVE_MIME_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "application/vnd.google-apps.document",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
+        "text/markdown",
+        "application/vnd.google-apps.presentation",
+    }
+)
 
 # For native formats: maps Drive MIME type → export MIME type.
 # Non-native formats are downloaded directly (no export needed).
@@ -107,9 +109,9 @@ class FolderEntry(TypedDict, total=False):
     """
 
     folder_id: str
-    folder_name: str          # display only; may be stale after Drive rename
-    wiki_namespace: str       # relative namespace, e.g. "policy/" → wiki/policy/{slug}.md
-    tracking_status: str      # "active" | "paused" | "archived"
+    folder_name: str  # display only; may be stale after Drive rename
+    wiki_namespace: str  # relative namespace, e.g. "policy/" → wiki/policy/{slug}.md
+    tracking_status: str  # "active" | "paused" | "archived"
 
 
 class DriveFileEntry(TypedDict, total=False):
@@ -121,17 +123,17 @@ class DriveFileEntry(TypedDict, total=False):
     """
 
     file_id: str
-    display_name: str         # filename at last fetch (informational)
-    display_path: str         # folder-relative path (informational, may be stale)
-    mime_type: str            # MIME type at last fetch
+    display_name: str  # filename at last fetch (informational)
+    display_path: str  # folder-relative path (informational, may be stale)
+    mime_type: str  # MIME type at last fetch
     tracking_status: str
-    wiki_page: str | None     # repo-relative wiki page path
+    wiki_page: str | None  # repo-relative wiki page path
 
     # Three-stage state machine — native formats (google-apps.document / presentation)
-    drive_version: int | None               # Drive version integer at last applied
+    drive_version: int | None  # Drive version integer at last applied
     last_applied_drive_version: int | None
-    last_applied_at: str | None             # ISO 8601
-    sha256_at_last_applied: str | None      # SHA-256 of normalized export bytes
+    last_applied_at: str | None  # ISO 8601
+    sha256_at_last_applied: str | None  # SHA-256 of normalized export bytes
     last_fetched_drive_version: int | None
     last_fetched_at: str | None
     sha256_at_last_fetched: str | None
@@ -148,9 +150,9 @@ class DriveRegistryFile(TypedDict):
 
     version: str
     alias: str
-    credential_secret_name: str       # default "GDRIVE_SA_KEY"
-    changes_page_token: str | None    # Drive Changes API cursor
-    last_full_scan_at: str | None     # ISO 8601; periodic safety-net timestamp
+    credential_secret_name: str  # default "GDRIVE_SA_KEY"
+    changes_page_token: str | None  # Drive Changes API cursor
+    last_full_scan_at: str | None  # ISO 8601; periodic safety-net timestamp
     folder_entries: list[FolderEntry]
     file_entries: list[DriveFileEntry]
 
@@ -172,7 +174,9 @@ class DriveDriftedEntry(TypedDict, total=False):
     display_name: str
     display_path: str
     mime_type: str
-    event_type: str   # "content_changed" | "new_file" | "trashed" | "deleted" | "out_of_scope"
+    event_type: (
+        str  # "content_changed" | "new_file" | "trashed" | "deleted" | "out_of_scope"
+    )
     tracking_status: str
     wiki_page: str | None
 
@@ -231,7 +235,7 @@ class DriveDriftReport(TypedDict, total=False):
 
     version: str
     generated_at: str
-    registry: str           # path to the registry file that produced this report
+    registry: str  # path to the registry file that produced this report
     has_drift: bool
     drifted: list[DriveDriftedEntry]
     up_to_date: list[DriveUpToDateEntry]
@@ -410,12 +414,19 @@ def validate_drive_drift_report(data: Any) -> DriveDriftReport:
     """
     if not isinstance(data, dict):
         raise ValueError(
-            f"Drive drift report must be a JSON object, "
-            f"got {type(data).__name__!r}"
+            f"Drive drift report must be a JSON object, got {type(data).__name__!r}"
         )
 
-    for key in ("version", "generated_at", "registry", "has_drift",
-                "drifted", "up_to_date", "uninitialized", "errors"):
+    for key in (
+        "version",
+        "generated_at",
+        "registry",
+        "has_drift",
+        "drifted",
+        "up_to_date",
+        "uninitialized",
+        "errors",
+    ):
         if key not in data:
             raise ValueError(f"Drive drift report missing required field {key!r}")
 
@@ -473,9 +484,7 @@ def _validate_drifted_entry(entry: Any, idx: int) -> None:
         if key not in entry:
             raise ValueError(f"drifted[{idx}] missing required field {key!r}")
         if not isinstance(entry[key], str) or not entry[key]:
-            raise ValueError(
-                f"drifted[{idx}] field {key!r} must be a non-empty string"
-            )
+            raise ValueError(f"drifted[{idx}] field {key!r} must be a non-empty string")
 
     if entry["event_type"] not in _VALID_EVENT_TYPES:
         raise ValueError(

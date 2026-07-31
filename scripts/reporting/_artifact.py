@@ -24,27 +24,57 @@ REPORT_ARTIFACT_WRITE_ROOT = "wiki/reports"
 _MAX_REPORT_COLLISIONS = 99
 
 _REPORT_TYPE_FINDINGS_KEYS: dict[str, tuple[str, ...]] = {
-    "content-quality": ("path", "missing_sources", "missing_updated_at", "placeholder_count"),
+    "content-quality": (
+        "path",
+        "missing_sources",
+        "missing_updated_at",
+        "placeholder_count",
+    ),
     "quality-scores": (
-        "path", "priority_score", "confidence", "missing_sources", "missing_updated_at",
-        "placeholder_count", "missed_query_count", "missed_query_demand", "recommended_next_step",
+        "path",
+        "priority_score",
+        "confidence",
+        "missing_sources",
+        "missing_updated_at",
+        "placeholder_count",
+        "missed_query_count",
+        "missed_query_demand",
+        "recommended_next_step",
     ),
     "quality-report": (
-        "path", "priority_score", "confidence", "missing_sources", "missing_updated_at",
-        "placeholder_count", "missed_query_count", "missed_query_demand", "recommended_next_step",
+        "path",
+        "priority_score",
+        "confidence",
+        "missing_sources",
+        "missing_updated_at",
+        "placeholder_count",
+        "missed_query_count",
+        "missed_query_demand",
+        "recommended_next_step",
     ),
     "coverage-report": ("path", "namespace", "is_placeholder", "is_stale"),
 }
 
 _REPORT_TYPE_SUMMARY_KEYS: dict[str, tuple[str, ...]] = {
     "content-quality": (
-        "selected_count", "missing_sources_count", "missing_updated_at_count", "placeholder_file_count",
+        "selected_count",
+        "missing_sources_count",
+        "missing_updated_at_count",
+        "placeholder_file_count",
     ),
     "quality-scores": (
-        "selected_count", "prioritized_count", "query_evidence_count", "recommendation_only", "scoring_mode",
+        "selected_count",
+        "prioritized_count",
+        "query_evidence_count",
+        "recommendation_only",
+        "scoring_mode",
     ),
     "quality-report": (
-        "selected_count", "prioritized_count", "query_evidence_count", "recommendation_only", "scoring_mode",
+        "selected_count",
+        "prioritized_count",
+        "query_evidence_count",
+        "recommendation_only",
+        "scoring_mode",
     ),
     "coverage-report": (
         "total_pages",
@@ -58,7 +88,14 @@ _REPORT_TYPE_SUMMARY_KEYS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-_REPORT_ENVELOPE_REQUIRED = ("report_type", "generated_at", "scope", "surface", "findings", "summary")
+_REPORT_ENVELOPE_REQUIRED = (
+    "report_type",
+    "generated_at",
+    "scope",
+    "surface",
+    "findings",
+    "summary",
+)
 
 
 def validate_report_artifact(artifact: dict, report_type: str) -> None:

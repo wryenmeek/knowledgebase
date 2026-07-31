@@ -31,7 +31,10 @@ from pathlib import Path
 import sys
 from typing import Sequence, TextIO
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (
+    None,
+    "",
+):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
@@ -166,7 +169,10 @@ def _collect_pages(wiki_root: Path) -> list[Path]:
                     stack.append(candidate)
             elif entry.is_file(follow_symlinks=False) and entry.name.endswith(".md"):
                 # Exclude canonical top-level artifact files
-                if entry_path.parent.resolve() == resolved_wiki and entry.name in _EXCLUDED_TOP_LEVEL:
+                if (
+                    entry_path.parent.resolve() == resolved_wiki
+                    and entry.name in _EXCLUDED_TOP_LEVEL
+                ):
                     continue
                 pages.append(entry_path)
     return sorted(pages)
@@ -221,9 +227,7 @@ def _compute_coverage(
 
     total_pages = len(pages)
     coverage_ratio = (
-        1.0
-        if total_pages == 0
-        else (total_pages - total_placeholders) / total_pages
+        1.0 if total_pages == 0 else (total_pages - total_placeholders) / total_pages
     )
 
     # empty_namespaces: TOPICAL_NAMESPACES declared entries with 0 pages
@@ -313,7 +317,9 @@ def run_coverage_report(
             "total_stale": summary_stats["total_stale"],
             "coverage_ratio": summary_stats["coverage_ratio"],
             "pages_by_namespace": summary_stats["pages_by_namespace"],
-            "placeholder_pages_by_namespace": summary_stats["placeholder_pages_by_namespace"],
+            "placeholder_pages_by_namespace": summary_stats[
+                "placeholder_pages_by_namespace"
+            ],
             "stale_pages_by_namespace": summary_stats["stale_pages_by_namespace"],
             "empty_namespaces": summary_stats["empty_namespaces"],
         },
@@ -360,7 +366,9 @@ def run_coverage_report(
     )
 
 
-def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+def run_cli(
+    argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout
+) -> int:
     return run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,

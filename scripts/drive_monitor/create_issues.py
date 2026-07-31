@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -61,10 +60,15 @@ def _search_existing_issue(dedupe_key: str) -> int | None:
     """Search for an existing open issue containing *dedupe_key* in its body."""
     result = subprocess.run(
         [
-            "gh", "issue", "list",
-            "--search", f'"{dedupe_key}" in:body',
-            "--json", "number",
-            "--limit", "1",
+            "gh",
+            "issue",
+            "list",
+            "--search",
+            f'"{dedupe_key}" in:body',
+            "--json",
+            "number",
+            "--limit",
+            "1",
         ],
         capture_output=True,
         text=True,
@@ -86,9 +90,13 @@ def _search_existing_issue(dedupe_key: str) -> int | None:
 def _create_issue(title: str, body: str, labels: list[str]) -> bool:
     """Create a GitHub Issue via the ``gh`` CLI.  Returns True on success."""
     cmd = [
-        "gh", "issue", "create",
-        "--title", title,
-        "--body", body,
+        "gh",
+        "issue",
+        "create",
+        "--title",
+        title,
+        "--body",
+        body,
     ]
     for label in labels:
         cmd += ["--label", label]
@@ -110,8 +118,12 @@ def _update_issue(issue_number: int, body_suffix: str) -> bool:
     """Append *body_suffix* to an existing issue's body via a comment."""
     result = subprocess.run(
         [
-            "gh", "issue", "comment", str(issue_number),
-            "--body", body_suffix,
+            "gh",
+            "issue",
+            "comment",
+            str(issue_number),
+            "--body",
+            body_suffix,
         ],
         capture_output=True,
         text=True,
@@ -218,8 +230,7 @@ def _build_bulk_body(entry: dict[str, Any], dedupe_key: str) -> str:
     run_id = os.environ.get("GITHUB_RUN_ID", "unknown")
 
     file_list = "\n".join(
-        f"- `{_sanitize_gh_md(fid, 60)}`"
-        for fid in bulk_file_ids[:20]
+        f"- `{_sanitize_gh_md(fid, 60)}`" for fid in bulk_file_ids[:20]
     )
     if len(bulk_file_ids) > 20:
         file_list += f"\n- … and {len(bulk_file_ids) - 20} more"

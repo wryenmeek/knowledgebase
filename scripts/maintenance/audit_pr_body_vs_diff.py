@@ -10,12 +10,14 @@ import subprocess
 import sys
 from typing import Any, Mapping, Sequence, TextIO
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (
+    None,
+    "",
+):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts._optional_surface_common import (
     APPROVAL_NONE,
     JsonArgumentParser,
-    REASON_CODE_INVALID_INPUT,
     REASON_CODE_OK,
     STATUS_FAIL,
     STATUS_PASS,
@@ -31,7 +33,19 @@ from scripts._optional_surface_common import (
 SURFACE = "scripts/maintenance/audit_pr_body_vs_diff.py"
 SUPPORTED_MODES: tuple[str, ...] = ("audit",)
 GH_COMMAND_TIMEOUT_SECONDS = 30
-PATH_EXTENSIONS: tuple[str, ...] = ("py", "ts", "md", "yml", "yaml", "json", "sh", "tsx", "js", "toml", "txt")
+PATH_EXTENSIONS: tuple[str, ...] = (
+    "py",
+    "ts",
+    "md",
+    "yml",
+    "yaml",
+    "json",
+    "sh",
+    "tsx",
+    "js",
+    "toml",
+    "txt",
+)
 REASON_CODE_GH_CLI_FAILED = "gh_cli_failed"
 REASON_CODE_BODY_DIFF_DRIFT = "body_diff_drift_detected"
 REASON_CODE_EMPTY_DIFF_TYPE_C = "severity_1_empty_diff_type_c"
@@ -56,7 +70,9 @@ class GhCommandError(RuntimeError):
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = JsonArgumentParser(description="Audit a merged PR body against its actual diff file list.")
+    parser = JsonArgumentParser(
+        description="Audit a merged PR body against its actual diff file list."
+    )
     add_common_surface_args(
         parser,
         modes=SUPPORTED_MODES,
@@ -64,9 +80,24 @@ def _build_parser() -> argparse.ArgumentParser:
         include_path=False,
         include_approval=False,
     )
-    parser.add_argument("--pr", dest="pr_number", required=True, type=int, help="Pull request number to audit.")
-    parser.add_argument("--repo", default=None, help="Optional owner/repo. Defaults to gh's current repository.")
-    parser.add_argument("--no-comment", action="store_true", default=False, help="Skip advisory GitHub comments.")
+    parser.add_argument(
+        "--pr",
+        dest="pr_number",
+        required=True,
+        type=int,
+        help="Pull request number to audit.",
+    )
+    parser.add_argument(
+        "--repo",
+        default=None,
+        help="Optional owner/repo. Defaults to gh's current repository.",
+    )
+    parser.add_argument(
+        "--no-comment",
+        action="store_true",
+        default=False,
+        help="Skip advisory GitHub comments.",
+    )
     parser.add_argument(
         "--issues-json",
         dest="issues_json_path",
@@ -98,14 +129,20 @@ def _resolve_repo_json_path(repo_root: Path, raw_path: str) -> Path:
     if not resolved.is_relative_to(repo_root):
         raise ValueError("--issues-json escapes repository root")
     if not resolved.is_file() or resolved.suffix.lower() != ".json":
-        raise ValueError("--issues-json must reference an existing .json file in the repository")
+        raise ValueError(
+            "--issues-json must reference an existing .json file in the repository"
+        )
     return resolved
 
 
 def _normalize_path_claim(raw_path: str) -> str | None:
     normalized = raw_path.strip().strip(_STRIP_CHARS).rstrip(".")
     normalized = normalized.removeprefix("./")
-    if not normalized or "://" in normalized or normalized.lower().startswith(("http:", "https:")):
+    if (
+        not normalized
+        or "://" in normalized
+        or normalized.lower().startswith(("http:", "https:"))
+    ):
         return None
     if " " in normalized or "\t" in normalized or "\n" in normalized:
         return None
@@ -133,7 +170,9 @@ def extract_file_mentions(body: str) -> tuple[str, ...]:
     return tuple(sorted(claims))
 
 
-def _coerce_int(value: Any, *, field_name: str, default: int | None = None) -> int | None:
+def _coerce_int(
+    value: Any, *, field_name: str, default: int | None = None
+) -> int | None:
     if value is None:
         return default
     if isinstance(value, bool) or not isinstance(value, int):
@@ -183,9 +222,15 @@ def _normalize_pr_payload(raw_pr: Any) -> dict[str, Any]:
     url_raw = raw_pr.get("url", "")
     if not isinstance(url_raw, str):
         raise ValueError(f"PR #{number_raw} url must be a string")
-    raw_files = raw_pr.get("files", raw_pr.get("diff_files", raw_pr.get("changed_files", [])))
+    raw_files = raw_pr.get(
+        "files", raw_pr.get("diff_files", raw_pr.get("changed_files", []))
+    )
     diff_files = _coerce_file_list(raw_files)
-    changed_files = _coerce_int(raw_pr.get("changedFiles", raw_pr.get("changed_files_count")), field_name="changedFiles", default=len(diff_files))
+    changed_files = _coerce_int(
+        raw_pr.get("changedFiles", raw_pr.get("changed_files_count")),
+        field_name="changedFiles",
+        default=len(diff_files),
+    )
     additions = _coerce_int(raw_pr.get("additions"), field_name="additions", default=0)
     deletions = _coerce_int(raw_pr.get("deletions"), field_name="deletions", default=0)
     return {
@@ -209,15 +254,21 @@ def _parse_pr_fixture_payload(payload: Any) -> tuple[dict[str, Any], ...]:
         elif "number" in payload:
             entries = [payload]
         else:
-            raise ValueError("PR fixture payload must contain 'pull_requests', 'prs', or a single PR object")
+            raise ValueError(
+                "PR fixture payload must contain 'pull_requests', 'prs', or a single PR object"
+            )
     else:
         entries = payload
     if not isinstance(entries, list):
-        raise ValueError("PR fixture payload must be a list or object containing a PR list")
+        raise ValueError(
+            "PR fixture payload must be a list or object containing a PR list"
+        )
     return tuple(_normalize_pr_payload(entry) for entry in entries)
 
 
-def _load_pr_from_fixture(repo_root: Path, issues_json_path: str, pr_number: int) -> dict[str, Any]:
+def _load_pr_from_fixture(
+    repo_root: Path, issues_json_path: str, pr_number: int
+) -> dict[str, Any]:
     resolved = _resolve_repo_json_path(repo_root, issues_json_path)
     try:
         payload = json.loads(resolved.read_text(encoding="utf-8"))
@@ -230,7 +281,9 @@ def _load_pr_from_fixture(repo_root: Path, issues_json_path: str, pr_number: int
     raise ValueError(f"--issues-json fixture does not contain PR #{pr_number}")
 
 
-def _run_gh(command: Sequence[str], *, repo_root: Path, input_text: str | None = None) -> str:
+def _run_gh(
+    command: Sequence[str], *, repo_root: Path, input_text: str | None = None
+) -> str:
     try:
         completed = subprocess.run(
             list(command),
@@ -244,7 +297,9 @@ def _run_gh(command: Sequence[str], *, repo_root: Path, input_text: str | None =
     except FileNotFoundError as exc:
         raise GhCommandError("gh CLI is required but not installed") from exc
     except subprocess.TimeoutExpired as exc:
-        raise GhCommandError(f"gh command timed out after {GH_COMMAND_TIMEOUT_SECONDS} seconds") from exc
+        raise GhCommandError(
+            f"gh command timed out after {GH_COMMAND_TIMEOUT_SECONDS} seconds"
+        ) from exc
     if completed.returncode != 0:
         stderr = completed.stderr.strip().splitlines()
         stderr_snippet = stderr[0] if stderr else "unknown gh error"
@@ -258,7 +313,9 @@ def _append_repo_flag(command: list[str], repo: str | None) -> list[str]:
     return command
 
 
-def _load_pr_from_gh(repo_root: Path, pr_number: int, repo: str | None) -> dict[str, Any]:
+def _load_pr_from_gh(
+    repo_root: Path, pr_number: int, repo: str | None
+) -> dict[str, Any]:
     view_command = _append_repo_flag(
         [
             "gh",
@@ -277,9 +334,13 @@ def _load_pr_from_gh(repo_root: Path, pr_number: int, repo: str | None) -> dict[
         raise GhCommandError("gh pr view returned malformed JSON") from exc
     pr = _normalize_pr_payload({**view_payload, "files": []})
 
-    diff_command = _append_repo_flag(["gh", "pr", "diff", str(pr_number), "--name-only"], repo)
+    diff_command = _append_repo_flag(
+        ["gh", "pr", "diff", str(pr_number), "--name-only"], repo
+    )
     diff_output = _run_gh(diff_command, repo_root=repo_root)
-    pr["diff_files"] = tuple(sorted({line.strip() for line in diff_output.splitlines() if line.strip()}))
+    pr["diff_files"] = tuple(
+        sorted({line.strip() for line in diff_output.splitlines() if line.strip()})
+    )
     pr["changed_files"] = len(pr["diff_files"])
     return pr
 
@@ -287,7 +348,7 @@ def _load_pr_from_gh(repo_root: Path, pr_number: int, repo: str | None) -> dict[
 def _severity_comment(pr: Mapping[str, Any]) -> str:
     return f"""### Severity 1: empty merged PR diff detected
 
-Post-merge body-vs-diff audit found PR #{pr['number']} has `0 added, 0 deleted, 0 files`.
+Post-merge body-vs-diff audit found PR #{pr["number"]} has `0 added, 0 deleted, 0 files`.
 
 This is a Type C drift signature: the PR body or squash commit may describe work that did not ship. Review the merged commit and open remediation if shipped behavior differs from the PR description.
 """
@@ -301,10 +362,14 @@ def _drift_comment(
     drift_kind: str,
 ) -> str:
     unmet_lines = "\n".join(f"- `{path}`" for path in unmet_claims)
-    extra_lines = "\n".join(f"- `{path}`" for path in extra_diff_files) if extra_diff_files else "- _None_"
+    extra_lines = (
+        "\n".join(f"- `{path}`" for path in extra_diff_files)
+        if extra_diff_files
+        else "- _None_"
+    )
     return f"""### Post-merge body-vs-diff audit warning
 
-The merged PR body mentions file paths that are not present in the actual merged diff for PR #{pr['number']}.
+The merged PR body mentions file paths that are not present in the actual merged diff for PR #{pr["number"]}.
 
 - Drift classification: `{drift_kind}`
 - Unmet body file claims:
@@ -316,12 +381,18 @@ Recommendation: compare the PR body, squash commit message, and merged diff. If 
 """
 
 
-def _post_comment(*, repo_root: Path, pr_number: int, repo: str | None, body: str) -> None:
-    command = _append_repo_flag(["gh", "issue", "comment", str(pr_number), "--body-file", "-"], repo)
+def _post_comment(
+    *, repo_root: Path, pr_number: int, repo: str | None, body: str
+) -> None:
+    command = _append_repo_flag(
+        ["gh", "issue", "comment", str(pr_number), "--body-file", "-"], repo
+    )
     _run_gh(command, repo_root=repo_root, input_text=body)
 
 
-def _resolve_claim_matches(claims: Sequence[str], diff_files: Sequence[str]) -> dict[str, str]:
+def _resolve_claim_matches(
+    claims: Sequence[str], diff_files: Sequence[str]
+) -> dict[str, str]:
     diff_set = set(diff_files)
     matches: dict[str, str] = {}
     basename_index: dict[str, list[str]] = {}
@@ -362,7 +433,9 @@ def run_pr_body_vs_diff_audit(
     path_rules = _path_rules()
     normalized_repo_root = Path(repo_root).resolve()
     if not looks_like_repo_root(normalized_repo_root):
-        return repo_root_failure(surface=SURFACE, mode=mode, approval=APPROVAL_NONE, path_rules=path_rules)
+        return repo_root_failure(
+            surface=SURFACE, mode=mode, approval=APPROVAL_NONE, path_rules=path_rules
+        )
     if pr_number <= 0:
         return invalid_input_result(
             surface=SURFACE,
@@ -404,14 +477,20 @@ def run_pr_body_vs_diff_audit(
             message=str(exc),
             approval=APPROVAL_NONE,
             path_rules=path_rules,
-            summary={"pr_number": pr_number, "repo": repo or "current", "source": "gh_cli"},
+            summary={
+                "pr_number": pr_number,
+                "repo": repo or "current",
+                "source": "gh_cli",
+            },
         )
 
     claims = extract_file_mentions(pr["body"])
     diff_files = tuple(pr["diff_files"])
     claim_matches = _resolve_claim_matches(claims, diff_files)
     matched_claims = tuple(sorted(claim_matches))
-    unmet_claims = tuple(sorted(claim for claim in claims if claim not in claim_matches))
+    unmet_claims = tuple(
+        sorted(claim for claim in claims if claim not in claim_matches)
+    )
     matched_diff_files = set(claim_matches.values())
     extra_diff_files = tuple(sorted(set(diff_files).difference(matched_diff_files)))
     additions = pr.get("additions")
@@ -422,8 +501,14 @@ def run_pr_body_vs_diff_audit(
     # Full hallucination means every body file claim is absent from the shipped diff.
     is_type_c_full = bool(unmet_claims and len(matched_claims) == 0 and not is_type_c)
     # Type B drift is the mixed overlap case: some body claims shipped, some did not, and other files shipped.
-    is_type_b_drift = bool(unmet_claims and extra_diff_files and matched_claims and not is_type_c)
-    drift_kind = _drift_kind(is_type_c=is_type_c, is_type_b_drift=is_type_b_drift, is_type_c_full=is_type_c_full)
+    is_type_b_drift = bool(
+        unmet_claims and extra_diff_files and matched_claims and not is_type_c
+    )
+    drift_kind = _drift_kind(
+        is_type_c=is_type_c,
+        is_type_b_drift=is_type_b_drift,
+        is_type_c_full=is_type_c_full,
+    )
 
     items: list[dict[str, Any]] = []
     if is_type_c:
@@ -442,8 +527,12 @@ def run_pr_body_vs_diff_audit(
             {
                 "path": claim,
                 "status": STATUS_PASS if is_met else STATUS_FAIL,
-                "reason_code": REASON_CODE_CLAIM_SATISFIED if is_met else REASON_CODE_UNMET_BODY_CLAIM,
-                "message": "body file claim appears in diff" if is_met else "body file claim is absent from diff",
+                "reason_code": REASON_CODE_CLAIM_SATISFIED
+                if is_met
+                else REASON_CODE_UNMET_BODY_CLAIM,
+                "message": "body file claim appears in diff"
+                if is_met
+                else "body file claim is absent from diff",
                 "matched_diff_path": claim_matches.get(claim),
                 "severity": 2 if not is_met else 0,
             }
@@ -467,7 +556,12 @@ def run_pr_body_vs_diff_audit(
     if comments_to_post and not no_comment and not fixture_mode:
         for comment_body in comments_to_post:
             try:
-                _post_comment(repo_root=normalized_repo_root, pr_number=pr_number, repo=repo, body=comment_body)
+                _post_comment(
+                    repo_root=normalized_repo_root,
+                    pr_number=pr_number,
+                    repo=repo,
+                    body=comment_body,
+                )
                 comments_posted_count += 1
             except GhCommandError as exc:
                 comment_errors.append(str(exc))
@@ -527,7 +621,9 @@ def run_pr_body_vs_diff_audit(
     )
 
 
-def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+def run_cli(
+    argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout
+) -> int:
     run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,

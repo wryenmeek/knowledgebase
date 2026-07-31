@@ -39,10 +39,12 @@ MODE = "validate"
 # Frontmatter fields that AFK updates may change.
 # For ``quality_assessment``, only the ``freshness_date`` sub-field may change
 # per ADR-014 §4.  The ``updated_at`` field records the AFK timestamp.
-_AFK_ALLOWED_FIELDS: frozenset[str] = frozenset({
-    "updated_at",
-    "quality_assessment",
-})
+_AFK_ALLOWED_FIELDS: frozenset[str] = frozenset(
+    {
+        "updated_at",
+        "quality_assessment",
+    }
+)
 
 _WIKI_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+\.md(?:#[^)]*)?)\)")
 
@@ -67,7 +69,7 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     if end == -1:
         return {}, text
     fm_block = text[4:end]
-    body = text[end + 4:].strip()
+    body = text[end + 4 :].strip()
     try:
         fields = yaml.safe_load(fm_block) or {}
         if not isinstance(fields, dict):
@@ -123,54 +125,66 @@ def validate_afk_output(
                 if not isinstance(prop_qa, dict):
                     prop_qa = {}
                 for qa_key in set(orig_qa) | set(prop_qa):
-                    if qa_key != "freshness_date" and orig_qa.get(qa_key) != prop_qa.get(qa_key):
+                    if qa_key != "freshness_date" and orig_qa.get(
+                        qa_key
+                    ) != prop_qa.get(qa_key):
                         disallowed.append(f"quality_assessment.{qa_key}")
             elif key not in _AFK_ALLOWED_FIELDS:
                 disallowed.append(key)
-    checks.append({
-        "check": "frontmatter_fields",
-        "pass": len(disallowed) == 0,
-        "changed": changed_fields,
-        "disallowed": disallowed,
-    })
+    checks.append(
+        {
+            "check": "frontmatter_fields",
+            "pass": len(disallowed) == 0,
+            "changed": changed_fields,
+            "disallowed": disallowed,
+        }
+    )
 
     # Check 2: No body text changes (after YAML whitespace normalization).
     orig_normalized = _normalize_yaml_whitespace(orig_body)
     prop_normalized = _normalize_yaml_whitespace(prop_body)
     body_unchanged = orig_normalized == prop_normalized
-    checks.append({
-        "check": "body_unchanged",
-        "pass": body_unchanged,
-    })
+    checks.append(
+        {
+            "check": "body_unchanged",
+            "pass": body_unchanged,
+        }
+    )
 
     # Check 3: No citation/SourceRef changes.
     orig_refs = set(SOURCEREF_RE.findall(orig_body))
     prop_refs = set(SOURCEREF_RE.findall(prop_body))
     refs_unchanged = orig_refs == prop_refs
-    checks.append({
-        "check": "citations_unchanged",
-        "pass": refs_unchanged,
-        "added": sorted(prop_refs - orig_refs),
-        "removed": sorted(orig_refs - prop_refs),
-    })
+    checks.append(
+        {
+            "check": "citations_unchanged",
+            "pass": refs_unchanged,
+            "added": sorted(prop_refs - orig_refs),
+            "removed": sorted(orig_refs - prop_refs),
+        }
+    )
 
     # Check 4: No link/topology changes.
     orig_links = set(_WIKI_LINK_RE.findall(orig_body))
     prop_links = set(_WIKI_LINK_RE.findall(prop_body))
     links_unchanged = orig_links == prop_links
-    checks.append({
-        "check": "links_unchanged",
-        "pass": links_unchanged,
-    })
+    checks.append(
+        {
+            "check": "links_unchanged",
+            "pass": links_unchanged,
+        }
+    )
 
     # Check 5: No entity/alias/title changes.
     # With proper YAML parsing, compare title and aliases directly.
     title_unchanged = orig_fm.get("title") == prop_fm.get("title")
     aliases_unchanged = orig_fm.get("aliases") == prop_fm.get("aliases")
-    checks.append({
-        "check": "identity_unchanged",
-        "pass": title_unchanged and aliases_unchanged,
-    })
+    checks.append(
+        {
+            "check": "identity_unchanged",
+            "pass": title_unchanged and aliases_unchanged,
+        }
+    )
 
     all_passed = all(c["pass"] for c in checks)
     failed_checks = [c["check"] for c in checks if not c["pass"]]
@@ -224,9 +238,7 @@ def _args_to_kwargs(args: Any) -> dict[str, Any]:
     try:
         resolved_original = original_path.resolve()
         if not resolved_original.is_relative_to(wiki_root):
-            raise ValueError(
-                f"--original must be within wiki/: {original_path}"
-            )
+            raise ValueError(f"--original must be within wiki/: {original_path}")
     except ValueError as exc:
         raise ValueError(str(exc)) from exc
     return {

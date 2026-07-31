@@ -28,7 +28,9 @@ class StageBudget:
 
     @property
     def fail_seconds(self) -> int:
-        return _compute_threshold_seconds(target_seconds=self.target_seconds, pct=self.fail_pct)
+        return _compute_threshold_seconds(
+            target_seconds=self.target_seconds, pct=self.fail_pct
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,12 +66,16 @@ def load_runtime_budgets(path: str | Path) -> RuntimeBudgetConfig:
 def parse_runtime_budgets(payload: Mapping[str, Any]) -> RuntimeBudgetConfig:
     if not isinstance(payload, Mapping):
         raise ValueError("payload must be a mapping")
-    schema_version = _parse_positive_int(payload.get("schema_version"), field="schema_version", allow_zero=False)
+    schema_version = _parse_positive_int(
+        payload.get("schema_version"), field="schema_version", allow_zero=False
+    )
     severity_model_raw = payload.get("severity_model")
     if not isinstance(severity_model_raw, Mapping):
         raise ValueError("severity_model must be a mapping")
     severity_model = {
-        status: _parse_non_empty_string(severity_model_raw.get(status), field=f"severity_model.{status}")
+        status: _parse_non_empty_string(
+            severity_model_raw.get(status), field=f"severity_model.{status}"
+        )
         for status in _STATUS_ORDER
     }
 
@@ -79,19 +85,27 @@ def parse_runtime_budgets(payload: Mapping[str, Any]) -> RuntimeBudgetConfig:
 
     workflows: dict[str, dict[str, StageBudget]] = {}
     for workflow_id in sorted(workflows_raw):
-        normalized_workflow_id = _parse_non_empty_string(workflow_id, field="workflow_id")
+        normalized_workflow_id = _parse_non_empty_string(
+            workflow_id, field="workflow_id"
+        )
         workflow_entry = workflows_raw[workflow_id]
         if not isinstance(workflow_entry, Mapping):
             raise ValueError(f"workflow '{normalized_workflow_id}' must be a mapping")
         stages_raw = workflow_entry.get("stages")
         if not isinstance(stages_raw, Mapping) or not stages_raw:
-            raise ValueError(f"workflow '{normalized_workflow_id}' must declare a non-empty stages mapping")
+            raise ValueError(
+                f"workflow '{normalized_workflow_id}' must declare a non-empty stages mapping"
+            )
         stage_budgets: dict[str, StageBudget] = {}
         for stage_id in sorted(stages_raw):
-            normalized_stage_id = _parse_non_empty_string(stage_id, field=f"workflows.{normalized_workflow_id}.stage_id")
+            normalized_stage_id = _parse_non_empty_string(
+                stage_id, field=f"workflows.{normalized_workflow_id}.stage_id"
+            )
             stage_entry = stages_raw[stage_id]
             if not isinstance(stage_entry, Mapping):
-                raise ValueError(f"stage '{normalized_stage_id}' in workflow '{normalized_workflow_id}' must be a mapping")
+                raise ValueError(
+                    f"stage '{normalized_stage_id}' in workflow '{normalized_workflow_id}' must be a mapping"
+                )
             target_seconds = _parse_positive_int(
                 stage_entry.get("target_seconds"),
                 field=f"workflows.{normalized_workflow_id}.stages.{normalized_stage_id}.target_seconds",
@@ -124,12 +138,20 @@ def parse_runtime_budgets(payload: Mapping[str, Any]) -> RuntimeBudgetConfig:
     )
 
 
-def classify_stage_result(*, duration_seconds: int, target_seconds: int, fail_seconds: int) -> str:
+def classify_stage_result(
+    *, duration_seconds: int, target_seconds: int, fail_seconds: int
+) -> str:
     """Classify a stage using target and fail thresholds only."""
 
-    normalized_duration = _parse_positive_int(duration_seconds, field="duration_seconds", allow_zero=True)
-    normalized_target = _parse_positive_int(target_seconds, field="target_seconds", allow_zero=False)
-    normalized_fail = _parse_positive_int(fail_seconds, field="fail_seconds", allow_zero=False)
+    normalized_duration = _parse_positive_int(
+        duration_seconds, field="duration_seconds", allow_zero=True
+    )
+    normalized_target = _parse_positive_int(
+        target_seconds, field="target_seconds", allow_zero=False
+    )
+    normalized_fail = _parse_positive_int(
+        fail_seconds, field="fail_seconds", allow_zero=False
+    )
     if normalized_target >= normalized_fail:
         raise ValueError("target_seconds must be less than fail_seconds")
     if normalized_duration >= normalized_fail:
@@ -142,7 +164,9 @@ def classify_stage_result(*, duration_seconds: int, target_seconds: int, fail_se
 def aggregate_overall_status(statuses: Sequence[str]) -> str:
     if not statuses:
         raise ValueError("statuses must be non-empty")
-    unknown_statuses = sorted({status for status in statuses if status not in _STATUS_RANK})
+    unknown_statuses = sorted(
+        {status for status in statuses if status not in _STATUS_RANK}
+    )
     if unknown_statuses:
         raise ValueError(f"unsupported status values: {', '.join(unknown_statuses)}")
     return max(statuses, key=lambda status: _STATUS_RANK[status])
@@ -156,7 +180,9 @@ def evaluate_workflow_budgets(
 ) -> WorkflowEvaluation:
     normalized_workflow_id = _parse_non_empty_string(workflow_id, field="workflow_id")
     if normalized_workflow_id not in config.workflows:
-        raise ValueError(f"workflow '{normalized_workflow_id}' is not declared in runtime budget config")
+        raise ValueError(
+            f"workflow '{normalized_workflow_id}' is not declared in runtime budget config"
+        )
 
     workflow_stage_budgets = config.workflows[normalized_workflow_id]
     expected_stage_ids = set(workflow_stage_budgets)
@@ -198,7 +224,9 @@ def evaluate_workflow_budgets(
             )
         )
 
-    overall_status = aggregate_overall_status([result.status for result in stage_results])
+    overall_status = aggregate_overall_status(
+        [result.status for result in stage_results]
+    )
     return WorkflowEvaluation(
         workflow_id=normalized_workflow_id,
         overall_status=overall_status,
@@ -213,9 +241,15 @@ def build_artifact_payload(
     budget_config_path: str,
 ) -> dict[str, object]:
     ok_count = sum(1 for stage in evaluation.stage_results if stage.status == STATUS_OK)
-    warn_count = sum(1 for stage in evaluation.stage_results if stage.status == STATUS_WARN)
-    fail_count = sum(1 for stage in evaluation.stage_results if stage.status == STATUS_FAIL)
-    max_duration_seconds = max((stage.duration_seconds for stage in evaluation.stage_results), default=0)
+    warn_count = sum(
+        1 for stage in evaluation.stage_results if stage.status == STATUS_WARN
+    )
+    fail_count = sum(
+        1 for stage in evaluation.stage_results if stage.status == STATUS_FAIL
+    )
+    max_duration_seconds = max(
+        (stage.duration_seconds for stage in evaluation.stage_results), default=0
+    )
 
     stages = [
         {
@@ -226,7 +260,9 @@ def build_artifact_payload(
             "fail_pct": stage.fail_pct,
             "fail_seconds": stage.fail_seconds,
             "status": stage.status,
-            "target_overage_seconds": max(0, stage.duration_seconds - stage.target_seconds),
+            "target_overage_seconds": max(
+                0, stage.duration_seconds - stage.target_seconds
+            ),
             "target_overage_pct": _compute_overage_pct(
                 duration_seconds=stage.duration_seconds,
                 target_seconds=stage.target_seconds,
@@ -253,7 +289,9 @@ def build_artifact_payload(
 
 
 def build_summary_markdown(artifact_payload: Mapping[str, object]) -> str:
-    workflow_id = _parse_non_empty_string(artifact_payload.get("workflow_id"), field="artifact_payload.workflow_id")
+    workflow_id = _parse_non_empty_string(
+        artifact_payload.get("workflow_id"), field="artifact_payload.workflow_id"
+    )
     overall_status = _parse_non_empty_string(
         artifact_payload.get("overall_status"),
         field="artifact_payload.overall_status",
@@ -286,29 +324,59 @@ def build_summary_markdown(artifact_payload: Mapping[str, object]) -> str:
     for stage_raw in stages_raw:
         if not isinstance(stage_raw, Mapping):
             raise ValueError("artifact_payload.stages entries must be mappings")
-        stage_id = _parse_non_empty_string(stage_raw.get("stage_id"), field="stage.stage_id")
-        duration_seconds = _parse_positive_int(stage_raw.get("duration_seconds"), field=f"stage.{stage_id}.duration_seconds", allow_zero=True)
-        target_seconds = _parse_positive_int(stage_raw.get("target_seconds"), field=f"stage.{stage_id}.target_seconds", allow_zero=False)
-        warn_pct = _parse_non_negative_int(stage_raw.get("warn_pct"), field=f"stage.{stage_id}.warn_pct")
-        fail_pct = _parse_positive_int(stage_raw.get("fail_pct"), field=f"stage.{stage_id}.fail_pct", allow_zero=False)
-        fail_seconds = _parse_positive_int(stage_raw.get("fail_seconds"), field=f"stage.{stage_id}.fail_seconds", allow_zero=False)
+        stage_id = _parse_non_empty_string(
+            stage_raw.get("stage_id"), field="stage.stage_id"
+        )
+        duration_seconds = _parse_positive_int(
+            stage_raw.get("duration_seconds"),
+            field=f"stage.{stage_id}.duration_seconds",
+            allow_zero=True,
+        )
+        target_seconds = _parse_positive_int(
+            stage_raw.get("target_seconds"),
+            field=f"stage.{stage_id}.target_seconds",
+            allow_zero=False,
+        )
+        warn_pct = _parse_non_negative_int(
+            stage_raw.get("warn_pct"), field=f"stage.{stage_id}.warn_pct"
+        )
+        fail_pct = _parse_positive_int(
+            stage_raw.get("fail_pct"),
+            field=f"stage.{stage_id}.fail_pct",
+            allow_zero=False,
+        )
+        fail_seconds = _parse_positive_int(
+            stage_raw.get("fail_seconds"),
+            field=f"stage.{stage_id}.fail_seconds",
+            allow_zero=False,
+        )
         if warn_pct >= fail_pct:
             raise ValueError(f"stage '{stage_id}' must satisfy warn_pct < fail_pct")
         if target_seconds >= fail_seconds:
-            raise ValueError(f"stage '{stage_id}' must satisfy target_seconds < fail_seconds")
-        stage_status = _parse_non_empty_string(stage_raw.get("status"), field=f"stage.{stage_id}.status")
+            raise ValueError(
+                f"stage '{stage_id}' must satisfy target_seconds < fail_seconds"
+            )
+        stage_status = _parse_non_empty_string(
+            stage_raw.get("status"), field=f"stage.{stage_id}.status"
+        )
         if stage_status not in _STATUS_RANK:
-            raise ValueError(f"unsupported stage status for '{stage_id}': {stage_status}")
+            raise ValueError(
+                f"unsupported stage status for '{stage_id}': {stage_status}"
+            )
         lines.append(
             f"| `{stage_id}` | {duration_seconds} | {target_seconds} | {warn_pct} | {fail_pct} | {fail_seconds} | **{stage_status.upper()}** |"
         )
 
     if overall_status == STATUS_WARN:
         lines.append("")
-        lines.append("_Remediation: investigate WARN stages and reduce runtime before they cross fail thresholds._")
+        lines.append(
+            "_Remediation: investigate WARN stages and reduce runtime before they cross fail thresholds._"
+        )
     elif overall_status == STATUS_FAIL:
         lines.append("")
-        lines.append("_Remediation: fail-closed threshold breached. Triage the listed FAIL stage(s) before rerunning._")
+        lines.append(
+            "_Remediation: fail-closed threshold breached. Triage the listed FAIL stage(s) before rerunning._"
+        )
 
     return "\n".join(lines)
 

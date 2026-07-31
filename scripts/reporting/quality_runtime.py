@@ -9,7 +9,10 @@ from pathlib import Path
 import sys
 from typing import Any, Sequence, TextIO
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (
+    None,
+    "",
+):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
@@ -104,7 +107,9 @@ def _resolve_query_evidence(
     )
     aggregates: dict[str, dict[str, int]] = {}
     total_entries = 0
-    allowed_root_paths = tuple((repo_root / root).resolve() for root in ALLOWED_CONTENT_ROOTS)
+    allowed_root_paths = tuple(
+        (repo_root / root).resolve() for root in ALLOWED_CONTENT_ROOTS
+    )
     for path in resolved_paths:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(payload, dict):
@@ -117,7 +122,9 @@ def _resolve_query_evidence(
             )
         for entry in entries:
             if not isinstance(entry, dict):
-                raise ValueError(f"query evidence entries must be objects: {repo_relative(repo_root, path)}")
+                raise ValueError(
+                    f"query evidence entries must be objects: {repo_relative(repo_root, path)}"
+                )
             total_entries += 1
             if entry.get("missed") is not True:
                 continue
@@ -128,14 +135,25 @@ def _resolve_query_evidence(
                 )
             target = (repo_root / target_path).resolve()
             if not target.is_relative_to(repo_root):
-                raise ValueError(f"query evidence target escapes repository root: {target_path}")
-            if not any(target == root or target.is_relative_to(root) for root in allowed_root_paths):
-                raise ValueError(f"query evidence target is outside declared scope: {target_path}")
+                raise ValueError(
+                    f"query evidence target escapes repository root: {target_path}"
+                )
+            if not any(
+                target == root or target.is_relative_to(root)
+                for root in allowed_root_paths
+            ):
+                raise ValueError(
+                    f"query evidence target is outside declared scope: {target_path}"
+                )
             demand = entry.get("demand", 1)
             if not isinstance(demand, int) or demand < 1:
-                raise ValueError(f"missed query demand must be an integer >= 1: {repo_relative(repo_root, path)}")
+                raise ValueError(
+                    f"missed query demand must be an integer >= 1: {repo_relative(repo_root, path)}"
+                )
             relative_target = repo_relative(repo_root, target)
-            bucket = aggregates.setdefault(relative_target, {"missed_query_count": 0, "missed_query_demand": 0})
+            bucket = aggregates.setdefault(
+                relative_target, {"missed_query_count": 0, "missed_query_demand": 0}
+            )
             bucket["missed_query_count"] += 1
             bucket["missed_query_demand"] += demand
     return aggregates, total_entries
@@ -164,7 +182,9 @@ def run_quality_runtime(
     path_rules = _path_rules()
     normalized_repo_root = Path(repo_root).resolve()
     if not looks_like_repo_root(normalized_repo_root):
-        return repo_root_failure(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules)
+        return repo_root_failure(
+            surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules
+        )
 
     if mode in LOCK_REQUIRED_MODES:
         if approval != APPROVAL_APPROVED:
@@ -272,15 +292,27 @@ def run_quality_runtime(
         },
     }
     try:
-        written_path = write_report_artifact(normalized_repo_root, report_type, artifact)
+        written_path = write_report_artifact(
+            normalized_repo_root, report_type, artifact
+        )
     except LockUnavailableError as exc:
-        return lock_unavailable_result(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules, exc=exc)
+        return lock_unavailable_result(
+            surface=SURFACE,
+            mode=mode,
+            approval=approval,
+            path_rules=path_rules,
+            exc=exc,
+        )
     except OSError as exc:
         return SurfaceResult(
-            surface=SURFACE, mode=mode, status=STATUS_FAIL,
+            surface=SURFACE,
+            mode=mode,
+            status=STATUS_FAIL,
             reason_code="write_failed",
             message=f"report write failed: {exc}",
-            approval=approval, lock_path=LOCK_PATH, lock_required=True,
+            approval=approval,
+            lock_path=LOCK_PATH,
+            lock_required=True,
             path_rules=path_rules,
         )
     return SurfaceResult(
@@ -305,7 +337,9 @@ def run_quality_runtime(
     )
 
 
-def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+def run_cli(
+    argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout
+) -> int:
     return run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,

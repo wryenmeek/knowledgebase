@@ -10,7 +10,10 @@ from pathlib import Path
 import sys
 from typing import Sequence, TextIO
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (
+    None,
+    "",
+):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts.kb import page_template_utils
 from scripts._optional_surface_common import (
@@ -21,6 +24,7 @@ from scripts._optional_surface_common import (
     REASON_CODE_INVALID_INPUT,
     looks_like_repo_root,
 )
+
 REASON_CODE_MISSING_UPDATED_AT = "missing_updated_at"
 REASON_CODE_INVALID_UPDATED_AT = "invalid_updated_at"
 REASON_CODE_STALE_DOCUMENT = "stale_document"
@@ -118,10 +122,17 @@ def run_freshness(
         )
 
     results = tuple(
-        _check_file(path, repo_root=normalized_repo_root, as_of_date=as_of_date, max_age_days=normalized_max_age)
+        _check_file(
+            path,
+            repo_root=normalized_repo_root,
+            as_of_date=as_of_date,
+            max_age_days=normalized_max_age,
+        )
         for path in markdown_files
     )
-    first_failure = next((result for result in results if result.status == STATUS_FAIL), None)
+    first_failure = next(
+        (result for result in results if result.status == STATUS_FAIL), None
+    )
     if first_failure is None:
         return FreshnessReport(
             status=STATUS_PASS,
@@ -176,7 +187,9 @@ def run_cli(
     )
     if getattr(args, "failures_only", False):
         report_dict = report.to_dict()
-        report_dict["files"] = [f for f in report_dict["files"] if f["status"] == STATUS_FAIL]
+        report_dict["files"] = [
+            f for f in report_dict["files"] if f["status"] == STATUS_FAIL
+        ]
         output_stream.write(json.dumps(report_dict, sort_keys=True))
     else:
         output_stream.write(report.to_json())
@@ -189,12 +202,30 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = JsonArgumentParser(description="Run deterministic freshness analysis over repo-local markdown.")
+    parser = JsonArgumentParser(
+        description="Run deterministic freshness analysis over repo-local markdown."
+    )
     parser.add_argument("--scope", choices=tuple(SCOPE_ROOTS), default="wiki")
-    parser.add_argument("--path", action="append", default=[], help="Optional repo-relative markdown file or directory.")
-    parser.add_argument("--as-of", required=True, help="Required ISO date used for deterministic age checks.")
-    parser.add_argument("--max-age-days", required=True, type=int, help="Maximum allowed age in days.")
-    parser.add_argument("--failures-only", action="store_true", default=False, help="Suppress passing files; emit only stale or invalid entries.")
+    parser.add_argument(
+        "--path",
+        action="append",
+        default=[],
+        help="Optional repo-relative markdown file or directory.",
+    )
+    parser.add_argument(
+        "--as-of",
+        required=True,
+        help="Required ISO date used for deterministic age checks.",
+    )
+    parser.add_argument(
+        "--max-age-days", required=True, type=int, help="Maximum allowed age in days."
+    )
+    parser.add_argument(
+        "--failures-only",
+        action="store_true",
+        default=False,
+        help="Suppress passing files; emit only stale or invalid entries.",
+    )
     return parser
 
 
@@ -214,7 +245,9 @@ def _normalize_max_age_days(value: int) -> int:
     return value
 
 
-def _resolve_markdown_files(*, repo_root: Path, scope: str, paths: Sequence[str] | None) -> tuple[Path, ...]:
+def _resolve_markdown_files(
+    *, repo_root: Path, scope: str, paths: Sequence[str] | None
+) -> tuple[Path, ...]:
     scope_roots = SCOPE_ROOTS.get(scope)
     if scope_roots is None:
         raise ValueError(f"unsupported scope: {scope}")
@@ -225,7 +258,9 @@ def _resolve_markdown_files(*, repo_root: Path, scope: str, paths: Sequence[str]
 
     if paths:
         for raw_path in paths:
-            for candidate in _expand_path_candidate(raw_path, repo_root=repo_root, allowed_roots=allowed_roots):
+            for candidate in _expand_path_candidate(
+                raw_path, repo_root=repo_root, allowed_roots=allowed_roots
+            ):
                 if candidate in seen:
                     continue
                 seen.add(candidate)
@@ -246,7 +281,9 @@ def _resolve_markdown_files(*, repo_root: Path, scope: str, paths: Sequence[str]
     return tuple(selected)
 
 
-def _expand_path_candidate(raw_path: str, *, repo_root: Path, allowed_roots: Sequence[Path]) -> tuple[Path, ...]:
+def _expand_path_candidate(
+    raw_path: str, *, repo_root: Path, allowed_roots: Sequence[Path]
+) -> tuple[Path, ...]:
     normalized_path = raw_path.strip()
     if not normalized_path:
         raise ValueError("path values must be non-empty repo-relative paths")
@@ -263,13 +300,17 @@ def _expand_path_candidate(raw_path: str, *, repo_root: Path, allowed_roots: Seq
     if not resolved_candidate.exists():
         raise ValueError(f"path does not exist: {normalized_path}")
     if resolved_candidate.is_dir():
-        return tuple(sorted(path.resolve() for path in resolved_candidate.rglob("*.md")))
+        return tuple(
+            sorted(path.resolve() for path in resolved_candidate.rglob("*.md"))
+        )
     if resolved_candidate.suffix.lower() != ".md":
         raise ValueError(f"path must reference markdown content: {normalized_path}")
     return (resolved_candidate,)
 
 
-def _check_file(path: Path, *, repo_root: Path, as_of_date: date, max_age_days: int) -> FreshnessFileResult:
+def _check_file(
+    path: Path, *, repo_root: Path, as_of_date: date, max_age_days: int
+) -> FreshnessFileResult:
     relative_path = path.relative_to(repo_root).as_posix()
     updated_at_value = _extract_updated_at(path.read_text(encoding="utf-8"))
     if updated_at_value is None:

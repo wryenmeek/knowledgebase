@@ -12,7 +12,11 @@ from typing import Sequence, TextIO
 
 from scripts.kb import contracts, sourceref, update_index, write_utils
 from scripts.kb.path_utils import RepoRelativePathError, resolve_within_repo
-from scripts.kb.write_utils import read_optional_text, rollback_file_state, write_text_if_changed
+from scripts.kb.write_utils import (
+    read_optional_text,
+    rollback_file_state,
+    write_text_if_changed,
+)
 from scripts.kb.write_utils import check_no_symlink_path
 
 
@@ -24,7 +28,9 @@ _POLICY_IDS: tuple[str, ...] = (
     contracts.PolicyId.AUTO_PERSIST_WHEN_HIGH_VALUE.value,
     contracts.PolicyId.LOG_ONLY_STATE_CHANGES.value,
 )
-_VALID_SENSITIVITY_VALUES: frozenset[str] = frozenset({"public", "internal", "restricted"})
+_VALID_SENSITIVITY_VALUES: frozenset[str] = frozenset(
+    {"public", "internal", "restricted"}
+)
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -112,8 +118,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--result-json",
         action="store_true",
         help="Compatibility flag for automation; JSON envelope is emitted for all runs. "
-             "(No-op: JSON output is always produced. This flag is retained for backward "
-             "compatibility only.)",
+        "(No-op: JSON output is always produced. This flag is retained for backward "
+        "compatibility only.)",
     )
     parser.add_argument(
         "--updated-at",
@@ -179,7 +185,9 @@ def _validate_request(args: argparse.Namespace, repo_root: Path) -> PersistReque
         raise PersistQueryInputError("confidence must be an integer in the range 1..5")
 
     if args.min_confidence < 1 or args.min_confidence > 5:
-        raise PersistQueryInputError("min-confidence must be an integer in the range 1..5")
+        raise PersistQueryInputError(
+            "min-confidence must be an integer in the range 1..5"
+        )
 
     if args.min_sources < 1:
         raise PersistQueryInputError("min-sources must be >= 1")
@@ -196,7 +204,9 @@ def _validate_request(args: argparse.Namespace, repo_root: Path) -> PersistReque
             "wiki-root must resolve to repository path 'wiki' (pass --wiki-root wiki)"
         )
     if not wiki_root.exists() or not wiki_root.is_dir():
-        raise PersistQueryInputError(f"wiki-root does not exist or is not a directory: {wiki_root}")
+        raise PersistQueryInputError(
+            f"wiki-root does not exist or is not a directory: {wiki_root}"
+        )
 
     schema_path = _resolve_within_repo(repo_root, args.schema, label="schema")
     if not schema_path.exists() or not schema_path.is_file():
@@ -205,7 +215,9 @@ def _validate_request(args: argparse.Namespace, repo_root: Path) -> PersistReque
     canonical_sources: list[str] = []
     for source_value in args.source:
         try:
-            canonical_sources.append(sourceref.parse_sourceref(source_value).to_canonical())
+            canonical_sources.append(
+                sourceref.parse_sourceref(source_value).to_canonical()
+            )
         except sourceref.SourceRefValidationError as exc:
             raise PersistQueryInputError(f"invalid SourceRef: {exc}") from exc
 
@@ -325,7 +337,9 @@ def _envelope(
     )
 
 
-def _execute(args: argparse.Namespace, repo_root: Path) -> tuple[contracts.ResultEnvelope, int, str | None]:
+def _execute(
+    args: argparse.Namespace, repo_root: Path
+) -> tuple[contracts.ResultEnvelope, int, str | None]:
     try:
         request = _validate_request(args, repo_root)
     except PersistQueryInputError as exc:
@@ -365,8 +379,14 @@ def _execute(args: argparse.Namespace, repo_root: Path) -> tuple[contracts.Resul
                 (log_path, read_optional_text(log_path)),
             )
             try:
-                analysis_changed = write_text_if_changed(analysis_absolute, analysis_markdown)
-                index_updated = _update_index_if_changed(request.wiki_root) if analysis_changed else False
+                analysis_changed = write_text_if_changed(
+                    analysis_absolute, analysis_markdown
+                )
+                index_updated = (
+                    _update_index_if_changed(request.wiki_root)
+                    if analysis_changed
+                    else False
+                )
                 state_changed = analysis_changed or index_updated
                 log_appended = write_utils.append_log_only_state_changes(
                     repo_root,

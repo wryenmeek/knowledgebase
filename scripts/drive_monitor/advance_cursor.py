@@ -87,13 +87,17 @@ def advance_cursor(
     """
     if approval != APPROVAL_APPROVED:
         return approval_required_result(
-            surface=SURFACE, mode=MODE, path_rules=_path_rules(),
+            surface=SURFACE,
+            mode=MODE,
+            path_rules=_path_rules(),
             lock_required=True,
         )
 
     if not looks_like_repo_root(repo_root):
         return repo_root_failure(
-            surface=SURFACE, mode=MODE, approval=approval,
+            surface=SURFACE,
+            mode=MODE,
+            approval=approval,
             path_rules=_path_rules(),
         )
 
@@ -101,7 +105,9 @@ def advance_cursor(
         raw = drift_report_path.read_text(encoding="utf-8")
     except OSError as exc:
         return invalid_input_result(
-            surface=SURFACE, mode=MODE, approval=approval,
+            surface=SURFACE,
+            mode=MODE,
+            approval=approval,
             path_rules=_path_rules(),
             message=f"Cannot read drift report: {exc}",
         )
@@ -110,7 +116,9 @@ def advance_cursor(
         report = json.loads(raw)
     except json.JSONDecodeError as exc:
         return invalid_input_result(
-            surface=SURFACE, mode=MODE, approval=approval,
+            surface=SURFACE,
+            mode=MODE,
+            approval=approval,
             path_rules=_path_rules(),
             message=f"Malformed JSON: {exc}",
         )
@@ -149,9 +157,7 @@ def advance_cursor(
 
         registry_path = find_registry_by_alias(repo_root, alias)
         if not registry_path:
-            advance_errors.append(
-                f"No registry found for alias {alias!r}"
-            )
+            advance_errors.append(f"No registry found for alias {alias!r}")
             continue
 
         try:
@@ -159,9 +165,7 @@ def advance_cursor(
             advanced += 1
             print(f"Cursor advanced for {alias!r}", file=sys.stderr)
         except OSError as exc:
-            advance_errors.append(
-                f"Failed to advance cursor for {alias!r}: {exc}"
-            )
+            advance_errors.append(f"Failed to advance cursor for {alias!r}: {exc}")
 
     message = (
         f"Cursor advance: {advanced} advanced, {skipped} skipped, "

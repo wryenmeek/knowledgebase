@@ -41,9 +41,11 @@ SURFACE = "drive_monitor.classify_drift"
 MODE = "classify"
 
 # MIME types that are eligible for AFK (native Docs → Markdown export only).
-_AFK_ELIGIBLE_MIME_TYPES: frozenset[str] = frozenset({
-    "application/vnd.google-apps.document",
-})
+_AFK_ELIGIBLE_MIME_TYPES: frozenset[str] = frozenset(
+    {
+        "application/vnd.google-apps.document",
+    }
+)
 
 
 def _path_rules() -> dict[str, Any]:
@@ -122,26 +124,28 @@ def _aggregate_bulk_hitl(
     for (event_type, parent_id), group in buckets.items():
         if len(group) >= bulk_threshold:
             # Emit one aggregated entry
-            result.append({
-                "alias": group[0].get("alias", ""),
-                "file_id": f"__bulk_{event_type}_{parent_id}__",
-                "display_name": (
-                    f"[{len(group)} files] bulk {event_type} in folder {parent_id}"
-                ),
-                "display_path": f"<folder:{parent_id}>",
-                "mime_type": "",
-                "event_type": event_type,
-                "tracking_status": "active",
-                "wiki_page": None,
-                "is_bulk_aggregation": True,
-                "bulk_count": len(group),
-                "bulk_file_ids": [e["file_id"] for e in group],
-                "parent_folder_id": parent_id,
-                "lines_added": None,
-                "lines_removed": None,
-                "is_binary": None,
-                "file_size_bytes": None,
-            })
+            result.append(
+                {
+                    "alias": group[0].get("alias", ""),
+                    "file_id": f"__bulk_{event_type}_{parent_id}__",
+                    "display_name": (
+                        f"[{len(group)} files] bulk {event_type} in folder {parent_id}"
+                    ),
+                    "display_path": f"<folder:{parent_id}>",
+                    "mime_type": "",
+                    "event_type": event_type,
+                    "tracking_status": "active",
+                    "wiki_page": None,
+                    "is_bulk_aggregation": True,
+                    "bulk_count": len(group),
+                    "bulk_file_ids": [e["file_id"] for e in group],
+                    "parent_folder_id": parent_id,
+                    "lines_added": None,
+                    "lines_removed": None,
+                    "is_binary": None,
+                    "file_size_bytes": None,
+                }
+            )
         else:
             result.extend(group)
 
@@ -218,8 +222,12 @@ def classify_drift(
     output_dir.mkdir(parents=True, exist_ok=True)
     afk_path = output_dir / "afk-entries.json"
     hitl_path = output_dir / "hitl-entries.json"
-    afk_path.write_text(json.dumps({"entries": afk_entries}, indent=2), encoding="utf-8")
-    hitl_path.write_text(json.dumps({"entries": hitl_entries}, indent=2), encoding="utf-8")
+    afk_path.write_text(
+        json.dumps({"entries": afk_entries}, indent=2), encoding="utf-8"
+    )
+    hitl_path.write_text(
+        json.dumps({"entries": hitl_entries}, indent=2), encoding="utf-8"
+    )
 
     message = f"Drive classification: {len(afk_entries)} AFK, {len(hitl_entries)} HITL"
     print(message, file=sys.stderr)

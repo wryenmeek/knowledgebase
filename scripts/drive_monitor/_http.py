@@ -55,8 +55,7 @@ def _load_credentials(credential_secret_name: str = "GDRIVE_SA_KEY") -> Any:
     except ImportError as exc:
         raise DriveAPIRequestError(
             detail=(
-                "google-auth is not installed. "
-                "Run: pip install -e \".[drive-monitor]\""
+                'google-auth is not installed. Run: pip install -e ".[drive-monitor]"'
             )
         ) from exc
 
@@ -108,7 +107,7 @@ def build_drive_client(credential_secret_name: str = "GDRIVE_SA_KEY") -> Any:
         raise DriveAPIRequestError(
             detail=(
                 "google-api-python-client is not installed. "
-                "Run: pip install -e \".[drive-monitor]\""
+                'Run: pip install -e ".[drive-monitor]"'
             )
         ) from exc
 
@@ -119,14 +118,12 @@ def build_drive_client(credential_secret_name: str = "GDRIVE_SA_KEY") -> Any:
         raise DriveAPIRequestError(
             detail=(
                 "httplib2 / google-auth-httplib2 is not installed. "
-                "Run: pip install -e \".[drive-monitor]\""
+                'Run: pip install -e ".[drive-monitor]"'
             )
         ) from exc
 
     creds = _load_credentials(credential_secret_name)
-    http = google_auth_httplib2.AuthorizedHttp(
-        creds, http=httplib2.Http(timeout=30)
-    )
+    http = google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=30))
     return build("drive", "v3", http=http, cache_discovery=False)
 
 
@@ -165,7 +162,7 @@ def _with_retry(fn: Any, *args: Any, **kwargs: Any) -> Any:
             ) from exc
     raise DriveAPIRequestError(
         detail=f"Drive API request failed after {_MAX_RETRIES} retries; "
-               f"last error: {last_exc}",
+        f"last error: {last_exc}",
     )
 
 
@@ -176,9 +173,7 @@ def get_changes_start_page_token(drive: Any) -> str:
     Returns the token as a string.  Raises ``DriveAPIRequestError`` on failure.
     """
     result = _with_retry(
-        lambda: drive.changes()
-        .getStartPageToken(supportsAllDrives=True)
-        .execute()
+        lambda: drive.changes().getStartPageToken(supportsAllDrives=True).execute()
     )
     token = result.get("startPageToken")
     if not token:
@@ -208,18 +203,20 @@ def list_changes(
 
     while True:
         response = _with_retry(
-            lambda t=current_token: drive.changes()
-            .list(
-                pageToken=t,
-                pageSize=page_size,
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-                fields=(
-                    "nextPageToken,newStartPageToken,"
-                    f"changes(fileId,file({_FILE_FIELDS}),removed)"
-                ),
+            lambda t=current_token: (
+                drive.changes()
+                .list(
+                    pageToken=t,
+                    pageSize=page_size,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    fields=(
+                        "nextPageToken,newStartPageToken,"
+                        f"changes(fileId,file({_FILE_FIELDS}),removed)"
+                    ),
+                )
+                .execute()
             )
-            .execute()
         )
 
         changes = response.get("changes", [])
@@ -248,9 +245,11 @@ def get_file_metadata(
     network failure or ``DriveAPIResponseError`` on unexpected shape.
     """
     result = _with_retry(
-        lambda: drive.files()
-        .get(fileId=file_id, fields=_FILE_FIELDS, supportsAllDrives=True)
-        .execute()
+        lambda: (
+            drive.files()
+            .get(fileId=file_id, fields=_FILE_FIELDS, supportsAllDrives=True)
+            .execute()
+        )
     )
     if not isinstance(result, dict) or "id" not in result:
         raise DriveAPIResponseError(
@@ -267,9 +266,11 @@ def get_file_parents(drive: Any, file_id: str) -> list[str]:
     Raises ``DriveAPIRequestError`` on failure.
     """
     result = _with_retry(
-        lambda: drive.files()
-        .get(fileId=file_id, fields="id,parents", supportsAllDrives=True)
-        .execute()
+        lambda: (
+            drive.files()
+            .get(fileId=file_id, fields="id,parents", supportsAllDrives=True)
+            .execute()
+        )
     )
     if not isinstance(result, dict):
         raise DriveAPIResponseError(
@@ -309,9 +310,7 @@ def export_file_as_pdf(drive: Any, file_id: str) -> bytes:
             detail="google-api-python-client is not installed."
         ) from exc
 
-    request = drive.files().export_media(
-        fileId=file_id, mimeType="application/pdf"
-    )
+    request = drive.files().export_media(fileId=file_id, mimeType="application/pdf")
     buf = io.BytesIO()
     downloader = MediaIoBaseDownload(buf, request)
     done = False

@@ -58,9 +58,7 @@ class GitHubAPIRequestError(OSError):
         self.url = url
         self.status_code = status_code
         self.detail = detail
-        super().__init__(
-            f"GitHub API request failed: {status_code} {detail} — {url}"
-        )
+        super().__init__(f"GitHub API request failed: {status_code} {detail} — {url}")
 
 
 # ---------------------------------------------------------------------------
@@ -295,9 +293,7 @@ def validate_registry_file(data: Any) -> RegistryFile:
     closed rather than continuing with a partially-validated registry.
     """
     if not isinstance(data, dict):
-        raise ValueError(
-            f"Registry must be a JSON object, got {type(data).__name__!r}"
-        )
+        raise ValueError(f"Registry must be a JSON object, got {type(data).__name__!r}")
 
     for key in ("version", "owner", "repo", "entries"):
         if key not in data:
@@ -381,8 +377,16 @@ def validate_drift_report(data: Any) -> DriftReport:
             f"Drift report must be a JSON object, got {type(data).__name__!r}"
         )
 
-    for key in ("version", "generated_at", "registry", "has_drift", "drifted",
-                "up_to_date", "uninitialized", "errors"):
+    for key in (
+        "version",
+        "generated_at",
+        "registry",
+        "has_drift",
+        "drifted",
+        "up_to_date",
+        "uninitialized",
+        "errors",
+    ):
         if key not in data:
             raise ValueError(f"Drift report missing required field {key!r}")
 
@@ -420,9 +424,7 @@ def _validate_drifted_entry(entry: Any, idx: int) -> None:
         if key not in entry:
             raise ValueError(f"drifted[{idx}] missing required field {key!r}")
         if not isinstance(entry[key], str) or not entry[key]:
-            raise ValueError(
-                f"drifted[{idx}] field {key!r} must be a non-empty string"
-            )
+            raise ValueError(f"drifted[{idx}] field {key!r} must be a non-empty string")
 
     if not _SAFE_SEGMENT_RE.match(entry["owner"]):
         raise ValueError(
@@ -451,7 +453,9 @@ def _validate_drifted_entry(entry: Any, idx: int) -> None:
 
     last_applied_blob = entry.get("last_applied_blob_sha")
     if last_applied_blob is not None:
-        if not isinstance(last_applied_blob, str) or not _COMMIT_SHA_RE.match(last_applied_blob):
+        if not isinstance(last_applied_blob, str) or not _COMMIT_SHA_RE.match(
+            last_applied_blob
+        ):
             raise ValueError(
                 f"drifted[{idx}]['last_applied_blob_sha'] must be a 40-char "
                 f"lowercase hex string or null"
@@ -460,9 +464,7 @@ def _validate_drifted_entry(entry: Any, idx: int) -> None:
     compare_url = entry.get("compare_url")
     if compare_url is not None:
         if not isinstance(compare_url, str):
-            raise ValueError(
-                f"drifted[{idx}]['compare_url'] must be a string or null"
-            )
+            raise ValueError(f"drifted[{idx}]['compare_url'] must be a string or null")
         if not _COMPARE_URL_RE.match(compare_url):
             raise ValueError(
                 f"drifted[{idx}]['compare_url'] must be a GitHub compare URL "

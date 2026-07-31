@@ -36,7 +36,6 @@ from scripts._optional_surface_common import (
     JsonArgumentParser,
     SurfaceResult,
     base_path_rules,
-    invalid_input_result,
     looks_like_repo_root,
     repo_root_failure,
     run_surface_cli,
@@ -46,10 +45,6 @@ from scripts.drive_monitor._types import (
     DRIFT_REPORT_VERSION,
     DRIVE_MIME_ALLOWLIST,
     MIME_EXPORT_MAP,
-    DriveDriftedEntry,
-    DriveUpToDateEntry,
-    DriveUninitializedEntry,
-    DriveErrorEntry,
     validate_drive_registry_file,
 )
 from scripts.drive_monitor._http import (
@@ -61,7 +56,6 @@ from scripts.drive_monitor._http import (
     DriveAPIResponseError,
 )
 from scripts.drive_monitor._registry import find_registry_files
-from scripts.drive_monitor._validators import validate_file_id
 
 SURFACE = "drive_monitor.check_drift"
 MODE = "check"
@@ -117,12 +111,14 @@ def _check_single_registry(
         raw = json.loads(registry_path.read_text(encoding="utf-8"))
         registry = validate_drive_registry_file(raw)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
-        errors.append({
-            "alias": str(registry_path.stem),
-            "file_id": "",
-            "reason_code": str(DriveMonitorReasonCode.FETCH_FAILED),
-            "message": f"Failed to read/validate registry: {exc}",
-        })
+        errors.append(
+            {
+                "alias": str(registry_path.stem),
+                "file_id": "",
+                "reason_code": str(DriveMonitorReasonCode.FETCH_FAILED),
+                "message": f"Failed to read/validate registry: {exc}",
+            }
+        )
         return {
             "registry": str(registry_path.relative_to(repo_root)),
             "alias": str(registry_path.stem),
@@ -141,12 +137,14 @@ def _check_single_registry(
     try:
         drive = build_drive_client(credential_secret)
     except DriveAPIRequestError as exc:
-        errors.append({
-            "alias": alias,
-            "file_id": "",
-            "reason_code": str(DriveMonitorReasonCode.AUTH_FAILED),
-            "message": str(exc),
-        })
+        errors.append(
+            {
+                "alias": alias,
+                "file_id": "",
+                "reason_code": str(DriveMonitorReasonCode.AUTH_FAILED),
+                "message": str(exc),
+            }
+        )
         return {
             "registry": str(registry_path.relative_to(repo_root)),
             "alias": alias,
@@ -172,9 +170,7 @@ def _check_single_registry(
 
     # Build lookup: file_id → file_entry
     file_entry_map: dict[str, dict[str, Any]] = {
-        e["file_id"]: e
-        for e in registry.get("file_entries", [])
-        if e.get("file_id")
+        e["file_id"]: e for e in registry.get("file_entries", []) if e.get("file_id")
     }
 
     # Handle uninitialized cursor
@@ -183,12 +179,14 @@ def _check_single_registry(
         try:
             start_token = get_changes_start_page_token(drive)
         except (DriveAPIRequestError, DriveAPIResponseError) as exc:
-            errors.append({
-                "alias": alias,
-                "file_id": "",
-                "reason_code": str(DriveMonitorReasonCode.FETCH_FAILED),
-                "message": f"Failed to get start page token: {exc}",
-            })
+            errors.append(
+                {
+                    "alias": alias,
+                    "file_id": "",
+                    "reason_code": str(DriveMonitorReasonCode.FETCH_FAILED),
+                    "message": f"Failed to get start page token: {exc}",
+                }
+            )
             return {
                 "registry": str(registry_path.relative_to(repo_root)),
                 "alias": alias,
@@ -201,12 +199,14 @@ def _check_single_registry(
             }
         # All existing file entries are uninitialized on first run
         for entry in registry.get("file_entries", []):
-            uninitialized.append({
-                "alias": alias,
-                "file_id": entry.get("file_id", ""),
-                "display_name": entry.get("display_name", ""),
-                "tracking_status": entry.get("tracking_status", "uninitialized"),
-            })
+            uninitialized.append(
+                {
+                    "alias": alias,
+                    "file_id": entry.get("file_id", ""),
+                    "display_name": entry.get("display_name", ""),
+                    "tracking_status": entry.get("tracking_status", "uninitialized"),
+                }
+            )
         return {
             "registry": str(registry_path.relative_to(repo_root)),
             "alias": alias,
@@ -222,12 +222,14 @@ def _check_single_registry(
     try:
         changes, new_page_token = list_changes(drive, page_token)
     except (DriveAPIRequestError, DriveAPIResponseError) as exc:
-        errors.append({
-            "alias": alias,
-            "file_id": "",
-            "reason_code": str(DriveMonitorReasonCode.FETCH_FAILED),
-            "message": f"changes.list failed: {exc}",
-        })
+        errors.append(
+            {
+                "alias": alias,
+                "file_id": "",
+                "reason_code": str(DriveMonitorReasonCode.FETCH_FAILED),
+                "message": f"changes.list failed: {exc}",
+            }
+        )
         return {
             "registry": str(registry_path.relative_to(repo_root)),
             "alias": alias,
@@ -251,33 +253,41 @@ def _check_single_registry(
         if change.get("removed"):
             if file_id in file_entry_map:
                 entry = file_entry_map[file_id]
-                drifted.append({
-                    "alias": alias,
-                    "file_id": file_id,
-                    "display_name": entry.get("display_name", file_id),
-                    "display_path": entry.get("display_path", ""),
-                    "mime_type": entry.get("mime_type", ""),
-                    "event_type": "deleted",
-                    "tracking_status": entry.get("tracking_status", "active"),
-                    "wiki_page": entry.get("wiki_page"),
-                    "current_drive_version": None,
-                    "last_applied_drive_version": entry.get("last_applied_drive_version"),
-                    "sha256_at_last_applied": entry.get("sha256_at_last_applied"),
-                    "current_md5_checksum": None,
-                    "md5_checksum_at_last_applied": entry.get("md5_checksum_at_last_applied"),
-                    "parent_folder_id": None,
-                    "lines_added": None,
-                    "lines_removed": None,
-                    "is_binary": None,
-                    "file_size_bytes": None,
-                })
+                drifted.append(
+                    {
+                        "alias": alias,
+                        "file_id": file_id,
+                        "display_name": entry.get("display_name", file_id),
+                        "display_path": entry.get("display_path", ""),
+                        "mime_type": entry.get("mime_type", ""),
+                        "event_type": "deleted",
+                        "tracking_status": entry.get("tracking_status", "active"),
+                        "wiki_page": entry.get("wiki_page"),
+                        "current_drive_version": None,
+                        "last_applied_drive_version": entry.get(
+                            "last_applied_drive_version"
+                        ),
+                        "sha256_at_last_applied": entry.get("sha256_at_last_applied"),
+                        "current_md5_checksum": None,
+                        "md5_checksum_at_last_applied": entry.get(
+                            "md5_checksum_at_last_applied"
+                        ),
+                        "parent_folder_id": None,
+                        "lines_added": None,
+                        "lines_removed": None,
+                        "is_binary": None,
+                        "file_size_bytes": None,
+                    }
+                )
             continue
 
         file_meta = change.get("file") or {}
         mime_type = file_meta.get("mimeType", "")
         drive_version = file_meta.get("version")
         md5_checksum = file_meta.get("md5Checksum")
-        trashed = file_meta.get("trashed") or file_meta.get("explicitlyTrashed") or False
+        trashed = (
+            file_meta.get("trashed") or file_meta.get("explicitlyTrashed") or False
+        )
         display_name = file_meta.get("name", file_id)
         file_size = file_meta.get("size")
 
@@ -285,52 +295,60 @@ def _check_single_registry(
         if trashed:
             if file_id in file_entry_map:
                 entry = file_entry_map[file_id]
-                drifted.append({
-                    "alias": alias,
-                    "file_id": file_id,
-                    "display_name": display_name,
-                    "display_path": entry.get("display_path", ""),
-                    "mime_type": mime_type,
-                    "event_type": "trashed",
-                    "tracking_status": entry.get("tracking_status", "active"),
-                    "wiki_page": entry.get("wiki_page"),
-                    "current_drive_version": None,
-                    "last_applied_drive_version": entry.get("last_applied_drive_version"),
-                    "sha256_at_last_applied": entry.get("sha256_at_last_applied"),
-                    "current_md5_checksum": None,
-                    "md5_checksum_at_last_applied": entry.get("md5_checksum_at_last_applied"),
-                    "parent_folder_id": None,
-                    "lines_added": None,
-                    "lines_removed": None,
-                    "is_binary": None,
-                    "file_size_bytes": None,
-                })
+                drifted.append(
+                    {
+                        "alias": alias,
+                        "file_id": file_id,
+                        "display_name": display_name,
+                        "display_path": entry.get("display_path", ""),
+                        "mime_type": mime_type,
+                        "event_type": "trashed",
+                        "tracking_status": entry.get("tracking_status", "active"),
+                        "wiki_page": entry.get("wiki_page"),
+                        "current_drive_version": None,
+                        "last_applied_drive_version": entry.get(
+                            "last_applied_drive_version"
+                        ),
+                        "sha256_at_last_applied": entry.get("sha256_at_last_applied"),
+                        "current_md5_checksum": None,
+                        "md5_checksum_at_last_applied": entry.get(
+                            "md5_checksum_at_last_applied"
+                        ),
+                        "parent_folder_id": None,
+                        "lines_added": None,
+                        "lines_removed": None,
+                        "is_binary": None,
+                        "file_size_bytes": None,
+                    }
+                )
             continue
 
         # MIME type not in allowlist
         if mime_type not in DRIVE_MIME_ALLOWLIST:
             if file_id in file_entry_map:
                 entry = file_entry_map[file_id]
-                drifted.append({
-                    "alias": alias,
-                    "file_id": file_id,
-                    "display_name": display_name,
-                    "display_path": entry.get("display_path", ""),
-                    "mime_type": mime_type,
-                    "event_type": "out_of_scope",
-                    "tracking_status": entry.get("tracking_status", "active"),
-                    "wiki_page": entry.get("wiki_page"),
-                    "current_drive_version": None,
-                    "last_applied_drive_version": None,
-                    "sha256_at_last_applied": None,
-                    "current_md5_checksum": None,
-                    "md5_checksum_at_last_applied": None,
-                    "parent_folder_id": None,
-                    "lines_added": None,
-                    "lines_removed": None,
-                    "is_binary": None,
-                    "file_size_bytes": None,
-                })
+                drifted.append(
+                    {
+                        "alias": alias,
+                        "file_id": file_id,
+                        "display_name": display_name,
+                        "display_path": entry.get("display_path", ""),
+                        "mime_type": mime_type,
+                        "event_type": "out_of_scope",
+                        "tracking_status": entry.get("tracking_status", "active"),
+                        "wiki_page": entry.get("wiki_page"),
+                        "current_drive_version": None,
+                        "last_applied_drive_version": None,
+                        "sha256_at_last_applied": None,
+                        "current_md5_checksum": None,
+                        "md5_checksum_at_last_applied": None,
+                        "parent_folder_id": None,
+                        "lines_added": None,
+                        "lines_removed": None,
+                        "is_binary": None,
+                        "file_size_bytes": None,
+                    }
+                )
             continue
 
         # Known file: compare version/checksum
@@ -348,7 +366,46 @@ def _check_single_registry(
                     current_v = int(drive_version)
                     has_changed = (last_version is None) or (current_v != last_version)
                     if has_changed:
-                        drifted.append({
+                        drifted.append(
+                            {
+                                "alias": alias,
+                                "file_id": file_id,
+                                "display_name": display_name,
+                                "display_path": entry.get("display_path", ""),
+                                "mime_type": mime_type,
+                                "event_type": "content_changed",
+                                "tracking_status": tracking_status,
+                                "wiki_page": entry.get("wiki_page"),
+                                "current_drive_version": current_v,
+                                "last_applied_drive_version": last_version,
+                                "sha256_at_last_applied": entry.get(
+                                    "sha256_at_last_applied"
+                                ),
+                                "current_md5_checksum": None,
+                                "md5_checksum_at_last_applied": None,
+                                "parent_folder_id": None,
+                                "lines_added": None,
+                                "lines_removed": None,
+                                "is_binary": None,
+                                "file_size_bytes": int(file_size)
+                                if file_size
+                                else None,
+                            }
+                        )
+                    else:
+                        up_to_date.append(
+                            {
+                                "alias": alias,
+                                "file_id": file_id,
+                                "display_name": display_name,
+                            }
+                        )
+            else:
+                last_md5 = entry.get("md5_checksum_at_last_applied")
+                has_changed = (last_md5 is None) or (md5_checksum != last_md5)
+                if has_changed:
+                    drifted.append(
+                        {
                             "alias": alias,
                             "file_id": file_id,
                             "display_name": display_name,
@@ -357,53 +414,26 @@ def _check_single_registry(
                             "event_type": "content_changed",
                             "tracking_status": tracking_status,
                             "wiki_page": entry.get("wiki_page"),
-                            "current_drive_version": current_v,
-                            "last_applied_drive_version": last_version,
-                            "sha256_at_last_applied": entry.get("sha256_at_last_applied"),
-                            "current_md5_checksum": None,
-                            "md5_checksum_at_last_applied": None,
+                            "current_drive_version": None,
+                            "last_applied_drive_version": None,
+                            "sha256_at_last_applied": None,
+                            "current_md5_checksum": md5_checksum,
+                            "md5_checksum_at_last_applied": last_md5,
                             "parent_folder_id": None,
                             "lines_added": None,
                             "lines_removed": None,
                             "is_binary": None,
                             "file_size_bytes": int(file_size) if file_size else None,
-                        })
-                    else:
-                        up_to_date.append({
+                        }
+                    )
+                else:
+                    up_to_date.append(
+                        {
                             "alias": alias,
                             "file_id": file_id,
                             "display_name": display_name,
-                        })
-            else:
-                last_md5 = entry.get("md5_checksum_at_last_applied")
-                has_changed = (last_md5 is None) or (md5_checksum != last_md5)
-                if has_changed:
-                    drifted.append({
-                        "alias": alias,
-                        "file_id": file_id,
-                        "display_name": display_name,
-                        "display_path": entry.get("display_path", ""),
-                        "mime_type": mime_type,
-                        "event_type": "content_changed",
-                        "tracking_status": tracking_status,
-                        "wiki_page": entry.get("wiki_page"),
-                        "current_drive_version": None,
-                        "last_applied_drive_version": None,
-                        "sha256_at_last_applied": None,
-                        "current_md5_checksum": md5_checksum,
-                        "md5_checksum_at_last_applied": last_md5,
-                        "parent_folder_id": None,
-                        "lines_added": None,
-                        "lines_removed": None,
-                        "is_binary": None,
-                        "file_size_bytes": int(file_size) if file_size else None,
-                    })
-                else:
-                    up_to_date.append({
-                        "alias": alias,
-                        "file_id": file_id,
-                        "display_name": display_name,
-                    })
+                        }
+                    )
         else:
             # New file: resolve parent chain to find its registered folder
             try:
@@ -411,12 +441,16 @@ def _check_single_registry(
                     drive, file_id, active_folder_ids
                 )
             except (DriveAPIRequestError, DriveAPIResponseError) as exc:
-                errors.append({
-                    "alias": alias,
-                    "file_id": file_id,
-                    "reason_code": str(DriveMonitorReasonCode.PARENT_RESOLUTION_FAILED),
-                    "message": f"Parent-chain resolution failed for {file_id!r}: {exc}",
-                })
+                errors.append(
+                    {
+                        "alias": alias,
+                        "file_id": file_id,
+                        "reason_code": str(
+                            DriveMonitorReasonCode.PARENT_RESOLUTION_FAILED
+                        ),
+                        "message": f"Parent-chain resolution failed for {file_id!r}: {exc}",
+                    }
+                )
                 continue
 
             if parent_folder_id is None:
@@ -425,26 +459,30 @@ def _check_single_registry(
 
             wiki_namespace = folder_namespace.get(parent_folder_id, "")
             is_native = mime_type in MIME_EXPORT_MAP
-            drifted.append({
-                "alias": alias,
-                "file_id": file_id,
-                "display_name": display_name,
-                "display_path": display_name,
-                "mime_type": mime_type,
-                "event_type": "new_file",
-                "tracking_status": "uninitialized",
-                "wiki_page": None,
-                "current_drive_version": int(drive_version) if is_native and drive_version else None,
-                "last_applied_drive_version": None,
-                "sha256_at_last_applied": None,
-                "current_md5_checksum": md5_checksum if not is_native else None,
-                "md5_checksum_at_last_applied": None,
-                "parent_folder_id": parent_folder_id,
-                "lines_added": None,
-                "lines_removed": None,
-                "is_binary": None,
-                "file_size_bytes": int(file_size) if file_size else None,
-            })
+            drifted.append(
+                {
+                    "alias": alias,
+                    "file_id": file_id,
+                    "display_name": display_name,
+                    "display_path": display_name,
+                    "mime_type": mime_type,
+                    "event_type": "new_file",
+                    "tracking_status": "uninitialized",
+                    "wiki_page": None,
+                    "current_drive_version": int(drive_version)
+                    if is_native and drive_version
+                    else None,
+                    "last_applied_drive_version": None,
+                    "sha256_at_last_applied": None,
+                    "current_md5_checksum": md5_checksum if not is_native else None,
+                    "md5_checksum_at_last_applied": None,
+                    "parent_folder_id": parent_folder_id,
+                    "lines_added": None,
+                    "lines_removed": None,
+                    "is_binary": None,
+                    "file_size_bytes": int(file_size) if file_size else None,
+                }
+            )
 
     # Any remaining active file_entries not touched by changes remain up_to_date
     for entry in registry.get("file_entries", []):
@@ -452,18 +490,22 @@ def _check_single_registry(
         if fid and fid not in seen_file_ids:
             tracking_status = entry.get("tracking_status", "active")
             if tracking_status == "uninitialized":
-                uninitialized.append({
-                    "alias": alias,
-                    "file_id": fid,
-                    "display_name": entry.get("display_name", ""),
-                    "tracking_status": tracking_status,
-                })
+                uninitialized.append(
+                    {
+                        "alias": alias,
+                        "file_id": fid,
+                        "display_name": entry.get("display_name", ""),
+                        "tracking_status": tracking_status,
+                    }
+                )
             elif tracking_status == "active":
-                up_to_date.append({
-                    "alias": alias,
-                    "file_id": fid,
-                    "display_name": entry.get("display_name", ""),
-                })
+                up_to_date.append(
+                    {
+                        "alias": alias,
+                        "file_id": fid,
+                        "display_name": entry.get("display_name", ""),
+                    }
+                )
 
     return {
         "registry": str(registry_path.relative_to(repo_root)),
@@ -577,7 +619,8 @@ def check_drift(
         )
 
     reason = (
-        DriveMonitorReasonCode.DRIFT_DETECTED if has_drift
+        DriveMonitorReasonCode.DRIFT_DETECTED
+        if has_drift
         else DriveMonitorReasonCode.NO_DRIFT
     )
     error_note = f"; {len(all_errors)} error(s)" if all_errors else ""

@@ -29,8 +29,8 @@ _AGENTS_MD = _REPO_ROOT / "AGENTS.md"
 
 # Patterns of files that must be covered by the write-surface matrix.
 _COVERED_PATTERNS = [
-    "scripts/*.py",       # root-level scripts (e.g. scripts/init.py)
-    "scripts/**/*.py",    # subdirectory scripts (e.g. scripts/kb/*.py)
+    "scripts/*.py",  # root-level scripts (e.g. scripts/init.py)
+    "scripts/**/*.py",  # subdirectory scripts (e.g. scripts/kb/*.py)
     ".github/skills/**/logic/**",
 ]
 
@@ -69,6 +69,7 @@ def _normalize(path_str: str) -> str | None:
         return None
     try:
         from scripts.kb import path_utils
+
         return path_utils.normalize_repo_relative_path(path_str)
     except Exception:
         # Fallback: use raw posix path relative to repo root.
@@ -88,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     # Load matrix surfaces from AGENTS.md.
     try:
         from scripts.kb.agents_matrix_utils import parse_matrix_surfaces
+
         matrix_surfaces = parse_matrix_surfaces(_AGENTS_MD)
     except Exception as exc:
         print(f"ERROR: could not parse AGENTS.md matrix: {exc}", file=sys.stderr)
@@ -103,7 +105,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         # Check if file matches a pattern that requires coverage.
-        needs_coverage = any(fnmatch.fnmatch(repo_rel, pat) for pat in _COVERED_PATTERNS)
+        needs_coverage = any(
+            fnmatch.fnmatch(repo_rel, pat) for pat in _COVERED_PATTERNS
+        )
         if not needs_coverage:
             continue
 

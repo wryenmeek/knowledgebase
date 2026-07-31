@@ -219,7 +219,9 @@ def parse_github_push_event(
     repo_name = repo_name.strip()
     owner_login = owner_login.strip()
     if not _SAFE_REPO_SEGMENT_RE.fullmatch(repo_name):
-        raise RelayValidationError("push payload repository.name contains unsafe characters")
+        raise RelayValidationError(
+            "push payload repository.name contains unsafe characters"
+        )
     if not _SAFE_REPO_SEGMENT_RE.fullmatch(owner_login):
         raise RelayValidationError(
             "push payload repository.owner.login contains unsafe characters"
@@ -238,7 +240,9 @@ def parse_github_push_event(
     try:
         changed_paths = extract_changed_paths(payload)
     except ValueError as exc:
-        raise RelayValidationError(f"invalid changed path in push payload: {exc}") from exc
+        raise RelayValidationError(
+            f"invalid changed path in push payload: {exc}"
+        ) from exc
     return GitHubPushEvent(
         owner=owner_login,
         repo=repo_name,
@@ -303,9 +307,9 @@ def _validate_upstream_repo(value: str) -> str:
             "payload field 'upstream_repo' must be formatted as '<owner>/<repo>'"
         )
     owner, repo = parts
-    if not _SAFE_REPO_SEGMENT_RE.fullmatch(owner) or not _SAFE_REPO_SEGMENT_RE.fullmatch(
-        repo
-    ):
+    if not _SAFE_REPO_SEGMENT_RE.fullmatch(
+        owner
+    ) or not _SAFE_REPO_SEGMENT_RE.fullmatch(repo):
         raise RelayValidationError(
             "payload field 'upstream_repo' contains unsafe characters"
         )
@@ -419,7 +423,9 @@ def validate_upstream_source_payload(
         raise RelayValidationError("payload field 'delivery_id' exceeds max length")
 
     if not _DELIVERY_ID_RE.fullmatch(normalized_values["delivery_id"]):
-        raise RelayValidationError("payload field 'delivery_id' contains unsafe characters")
+        raise RelayValidationError(
+            "payload field 'delivery_id' contains unsafe characters"
+        )
 
     changed_paths = payload.get("changed_paths")
     if not isinstance(changed_paths, list):
@@ -458,7 +464,9 @@ def validate_upstream_source_payload(
     upstream_repo = _validate_upstream_repo(normalized_values["upstream_repo"])
     upstream_ref = _validate_upstream_ref(normalized_values["upstream_ref"])
     upstream_after_sha = _normalize_commit_sha(normalized_values["upstream_after_sha"])
-    observed_at = _format_utc_iso8601(_parse_observed_at(normalized_values["observed_at"]))
+    observed_at = _format_utc_iso8601(
+        _parse_observed_at(normalized_values["observed_at"])
+    )
 
     validated: UpstreamSourceUpdatedPayload = {
         "source_kind": _GITHUB_SOURCE_KIND,

@@ -174,8 +174,12 @@ def _emit_fail(
 ) -> None:
     """Write a top-level failure envelope and return."""
     n_failed = sum(1 for e in entries if e is not None and e.get("status") == "failed")
-    n_skipped = sum(1 for e in entries if e is not None and e.get("status") == "skipped")
-    n_written = sum(1 for e in entries if e is not None and e.get("status") == "written")
+    n_skipped = sum(
+        1 for e in entries if e is not None and e.get("status") == "skipped"
+    )
+    n_written = sum(
+        1 for e in entries if e is not None and e.get("status") == "written"
+    )
     envelope = {
         "status": "fail",
         "surface": SURFACE,
@@ -296,7 +300,7 @@ def _execute_batch(
     # ------------------------------------------------------------------ #
     # entry_results[i] = None until the entry is processed.
     entry_results: list[dict[str, Any] | None] = [None] * total
-    validated: list[tuple[int, PersistRequest]]  = []
+    validated: list[tuple[int, PersistRequest]] = []
 
     for i, raw_entry in enumerate(batch):
         query_text = raw_entry.get("query", "") if isinstance(raw_entry, dict) else ""
@@ -354,7 +358,9 @@ def _execute_batch(
             # -------------------------------------------------------------- #
             for idx, request in validated:
                 raw_entry = batch[idx]
-                query_text = raw_entry.get("query", "") if isinstance(raw_entry, dict) else ""
+                query_text = (
+                    raw_entry.get("query", "") if isinstance(raw_entry, dict) else ""
+                )
 
                 policy_passed, policy_reason = _evaluate_policy(request)
                 if not policy_passed:
@@ -432,7 +438,9 @@ def _execute_batch(
         # Mark all pre-validated entries as failed due to lock contention.
         for idx, _ in validated:
             raw_entry = batch[idx]
-            query_text = raw_entry.get("query", "") if isinstance(raw_entry, dict) else ""
+            query_text = (
+                raw_entry.get("query", "") if isinstance(raw_entry, dict) else ""
+            )
             entry_results[idx] = _entry_result(
                 query_text,
                 status="failed",
@@ -450,7 +458,9 @@ def _execute_batch(
     # ------------------------------------------------------------------ #
     # 8. Emit final pass envelope                                          #
     # ------------------------------------------------------------------ #
-    _finalize_envelope(output_stream=output_stream, total=total, entry_results=entry_results)
+    _finalize_envelope(
+        output_stream=output_stream, total=total, entry_results=entry_results
+    )
     return 0
 
 

@@ -48,9 +48,7 @@ import re
 # fine, but log noise like `prefix-ghs_…` would skip the match with `\b`).
 # Removing `\b` is safe because the prefix list (`ghp_`, `ghs_`, etc.) is
 # unique enough to not false-match natural text.
-_GITHUB_TOKEN_RE = re.compile(
-    r"(?:ghp|ghs|ghu|ghr|gho)_[A-Za-z0-9_]+"
-)
+_GITHUB_TOKEN_RE = re.compile(r"(?:ghp|ghs|ghu|ghr|gho)_[A-Za-z0-9_]+")
 _GITHUB_PAT_RE = re.compile(r"github_pat_[A-Za-z0-9_]+")
 _SHA_OR_TOKEN_HEX_RE = re.compile(r"[0-9a-fA-F]{40,}")
 _AUTHORIZATION_RE = re.compile(
@@ -61,15 +59,13 @@ _AUTHORIZATION_RE = re.compile(
 # char (+/), to avoid clobbering alphanumeric paths. The trailing optional
 # `=` group accepts the 0/1/2-pad cases.
 _BASE64_BLOB_RE = re.compile(
-    r"(?:[A-Za-z0-9+/]{20,}={1,2})"          # padded base64
+    r"(?:[A-Za-z0-9+/]{20,}={1,2})"  # padded base64
     r"|(?:[A-Za-z0-9]{20,}[+/][A-Za-z0-9+/]{10,}={0,2})"  # mixed-char base64
 )
 # JWT (header.payload.signature) — base64url alphabet uses `-_`, distinct
 # from `+/`. Caught here because the base64 catch-all above doesn't see
 # `-_` chars.
-_JWT_RE = re.compile(
-    r"[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}"
-)
+_JWT_RE = re.compile(r"[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}")
 
 
 def redact_stderr(stderr: str, max_len: int = 200) -> str:
@@ -124,9 +120,9 @@ def sanitize_gh_md(value: str, max_len: int = 200) -> str:
        gone, so only genuinely orphan openers remain).
     """
     s = value.replace("`", "").replace("\n", " ").replace("\r", "")
-    s = re.sub(r"[<>]", "", s)                                     # HTML tags
-    s = re.sub(r"@[\w/-]+", "", s)                                  # @mention / @org/team
-    s = re.sub(r"!\[", "[", s)                                      # image embeds
+    s = re.sub(r"[<>]", "", s)  # HTML tags
+    s = re.sub(r"@[\w/-]+", "", s)  # @mention / @org/team
+    s = re.sub(r"!\[", "[", s)  # image embeds
     s = re.sub(
         r"\b(fix(es)?|close[sd]?|resolve[sd]?)\s+#\d+",
         "",

@@ -17,13 +17,15 @@ _SLUG_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SLUG_MAX_LENGTH = 64
 
-REJECTION_CATEGORIES: frozenset[str] = frozenset({
-    "provenance_missing",
-    "format_unsupported",
-    "duplicate",
-    "out_of_scope",
-    "quality_insufficient",
-})
+REJECTION_CATEGORIES: frozenset[str] = frozenset(
+    {
+        "provenance_missing",
+        "format_unsupported",
+        "duplicate",
+        "out_of_scope",
+        "quality_insufficient",
+    }
+)
 
 
 def validate_slug(slug: str) -> list[str]:
@@ -107,9 +109,16 @@ def validate_filename(filename: str) -> list[str]:
 def validate_frontmatter(fields: dict[str, Any]) -> list[str]:
     """Validate required frontmatter fields.  Returns a list of error messages."""
     errors: list[str] = []
-    required = {"slug", "sha256", "rejected_date", "source_path",
-                "rejection_reason", "rejection_category", "reviewed_by",
-                "reconsidered_date"}
+    required = {
+        "slug",
+        "sha256",
+        "rejected_date",
+        "source_path",
+        "rejection_reason",
+        "rejection_category",
+        "reviewed_by",
+        "reconsidered_date",
+    }
     # OPTIMIZATION: Use .difference(dict) instead of - set(dict.keys())
     # to avoid allocating an intermediate set object.
     missing = required.difference(fields)

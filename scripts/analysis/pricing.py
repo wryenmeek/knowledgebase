@@ -84,7 +84,9 @@ PRICING: dict[str, ModelPrice] = {
     "gpt-5-mini": ModelPrice(0.25, 0.025, 2.00),
     "gpt-5.3-codex": ModelPrice(1.75, 0.175, 14.00),
     "gpt-5.4": ModelPrice(
-        2.50, 0.25, 15.00,
+        2.50,
+        0.25,
+        15.00,
         long_context_input_per_m=5.00,
         long_context_output_per_m=22.50,
         input_threshold_tokens=272_000,
@@ -92,7 +94,9 @@ PRICING: dict[str, ModelPrice] = {
     "gpt-5.4-mini": ModelPrice(0.75, 0.075, 4.50),
     "gpt-5.4-nano": ModelPrice(0.20, 0.02, 1.25),
     "gpt-5.5": ModelPrice(
-        5.00, 0.50, 30.00,
+        5.00,
+        0.50,
+        30.00,
         long_context_input_per_m=10.00,
         long_context_output_per_m=45.00,
         input_threshold_tokens=272_000,
@@ -111,7 +115,9 @@ PRICING: dict[str, ModelPrice] = {
     "gemini-2.5-pro": ModelPrice(1.25, 0.125, 10.00),
     "gemini-3-flash": ModelPrice(0.50, 0.05, 3.00),
     "gemini-3.1-pro": ModelPrice(
-        2.00, 0.20, 12.00,
+        2.00,
+        0.20,
+        12.00,
         long_context_input_per_m=4.00,
         long_context_output_per_m=18.00,
         input_threshold_tokens=200_000,
@@ -221,15 +227,17 @@ _EFFORT_OUTPUT_MULTIPLIER: dict[str, float] = {
 # Models that support an effort knob. Models NOT in this set ignore
 # ``effort=`` because the provider does not expose a reasoning budget.
 # Source: task tool model registry (system prompt; verified 2026-06-27).
-EFFORT_CAPABLE_MODELS: frozenset[str] = frozenset({
-    "claude-opus-4.6",
-    "claude-opus-4.7",
-    "gpt-5-mini",
-    "gpt-5.3-codex",
-    "gpt-5.4",
-    "gpt-5.4-mini",
-    "gpt-5.5",
-})
+EFFORT_CAPABLE_MODELS: frozenset[str] = frozenset(
+    {
+        "claude-opus-4.6",
+        "claude-opus-4.7",
+        "gpt-5-mini",
+        "gpt-5.3-codex",
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.5",
+    }
+)
 
 
 def _effort_output_multiplier(model: str, effort: str) -> float:

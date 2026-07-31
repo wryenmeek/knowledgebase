@@ -8,7 +8,10 @@ from pathlib import Path
 import sys
 from typing import Sequence, TextIO
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (
+    None,
+    "",
+):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
@@ -76,7 +79,9 @@ def run_quality_report(
     path_rules = _path_rules()
     normalized_repo_root = Path(repo_root).resolve()
     if not looks_like_repo_root(normalized_repo_root):
-        return repo_root_failure(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules)
+        return repo_root_failure(
+            surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules
+        )
     try:
         resolved_paths = expand_repo_paths(
             normalized_repo_root,
@@ -114,11 +119,18 @@ def run_quality_report(
             }
         )
     if mode in {"summary", "placeholder-audit"}:
-        reported_items = tuple(items if mode == "summary" else [item for item in items if item["placeholder_count"] > 0])
+        reported_items = tuple(
+            items
+            if mode == "summary"
+            else [item for item in items if item["placeholder_count"] > 0]
+        )
         if failures_only:
             reported_items = tuple(
-                item for item in reported_items
-                if item["missing_sources"] or item["missing_updated_at"] or item["placeholder_count"]
+                item
+                for item in reported_items
+                if item["missing_sources"]
+                or item["missing_updated_at"]
+                or item["placeholder_count"]
             )
         return SurfaceResult(
             surface=SURFACE,
@@ -157,15 +169,27 @@ def run_quality_report(
         },
     }
     try:
-        written_path = write_report_artifact(normalized_repo_root, "content-quality", artifact)
+        written_path = write_report_artifact(
+            normalized_repo_root, "content-quality", artifact
+        )
     except LockUnavailableError as exc:
-        return lock_unavailable_result(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules, exc=exc)
+        return lock_unavailable_result(
+            surface=SURFACE,
+            mode=mode,
+            approval=approval,
+            path_rules=path_rules,
+            exc=exc,
+        )
     except OSError as exc:
         return SurfaceResult(
-            surface=SURFACE, mode=mode, status=STATUS_FAIL,
+            surface=SURFACE,
+            mode=mode,
+            status=STATUS_FAIL,
             reason_code="write_failed",
             message=f"report write failed: {exc}",
-            approval=approval, lock_path=LOCK_PATH, lock_required=True,
+            approval=approval,
+            lock_path=LOCK_PATH,
+            lock_required=True,
             path_rules=path_rules,
         )
     return SurfaceResult(
@@ -189,7 +213,9 @@ def run_quality_report(
     )
 
 
-def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+def run_cli(
+    argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout
+) -> int:
     return run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,

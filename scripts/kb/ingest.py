@@ -16,7 +16,6 @@ from scripts.kb.ingest_render import (
     PROVISIONAL_GIT_SHA,
     build_provisional_source_provenance,
     build_source_ref,
-    escape_quotes,
     render_source_page,
     resolve_ingest_git_sha,
 )
@@ -62,7 +61,9 @@ class SourceOutcome:
             "source_page": self.source_page,
             "processed_path": self.processed_path,
             "source_ref": self.source_ref,
-            "provenance": None if self.provenance is None else self.provenance.to_dict(),
+            "provenance": None
+            if self.provenance is None
+            else self.provenance.to_dict(),
         }
 
 
@@ -123,7 +124,9 @@ class IngestError(RuntimeError):
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Ingest source files into deterministic wiki pages.")
+    parser = argparse.ArgumentParser(
+        description="Ingest source files into deterministic wiki pages."
+    )
     source_group = parser.add_mutually_exclusive_group(required=True)
     source_group.add_argument("--source", help="Single source file under raw/inbox/**.")
     source_group.add_argument(
@@ -135,8 +138,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=_REQUIRED_BATCH_POLICY,
         help="Must be continue_and_report_per_source.",
     )
-    parser.add_argument("--wiki-root", default="wiki", help="Wiki root directory (default: wiki).")
-    parser.add_argument("--schema", default="AGENTS.md", help="Schema path (default: AGENTS.md).")
+    parser.add_argument(
+        "--wiki-root", default="wiki", help="Wiki root directory (default: wiki)."
+    )
+    parser.add_argument(
+        "--schema", default="AGENTS.md", help="Schema path (default: AGENTS.md)."
+    )
     parser.add_argument(
         "--report-json",
         action="store_true",
@@ -204,7 +211,9 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
             f"batch policy must be {_REQUIRED_BATCH_POLICY}",
         )
 
-    wiki_root_path, wiki_root_relative = _resolve_path_within_repo(repo_root, args.wiki_root)
+    wiki_root_path, wiki_root_relative = _resolve_path_within_repo(
+        repo_root, args.wiki_root
+    )
     if not _is_under_wiki_root(Path(wiki_root_relative)):
         raise IngestError(
             contracts.ReasonCode.INVALID_INPUT.value,
@@ -229,7 +238,9 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
         successful_outcomes: list[SourceOutcome] = []
         source_mutations: list[_SourceMutation] = []
         for source_input in source_inputs:
-            attempt = _ingest_source(repo_root, source_input, git_sha=git_sha, git_sha_kind=git_sha_kind)
+            attempt = _ingest_source(
+                repo_root, source_input, git_sha=git_sha, git_sha_kind=git_sha_kind
+            )
             outcome = attempt.outcome
             outcomes.append(outcome)
             if outcome.status == contracts.ResultStatus.WRITTEN.value:
@@ -295,7 +306,9 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
             )
             failure_message = str(exc)
             if rollback_error is not None:
-                failure_message = f"{failure_message}; rollback failed: {rollback_error}"
+                failure_message = (
+                    f"{failure_message}; rollback failed: {rollback_error}"
+                )
             return IngestResult(
                 status=contracts.ResultStatus.FAILED.value,
                 reason_code=exc.reason_code,
@@ -326,7 +339,9 @@ def _execute_ingest(args: argparse.Namespace, repo_root: Path) -> IngestResult:
         if outcome.provenance is not None
     )
     failures = [
-        outcome for outcome in outcomes if outcome.status == contracts.ResultStatus.FAILED.value
+        outcome
+        for outcome in outcomes
+        if outcome.status == contracts.ResultStatus.FAILED.value
     ]
 
     if failures:
@@ -359,7 +374,9 @@ def _resolve_source_inputs(args: argparse.Namespace, repo_root: Path) -> list[st
         _source_path, _source_relative = _resolve_inbox_path(repo_root, args.source)
         return [args.source]
 
-    manifest_path, _manifest_relative = _resolve_inbox_path(repo_root, args.sources_manifest)
+    manifest_path, _manifest_relative = _resolve_inbox_path(
+        repo_root, args.sources_manifest
+    )
     if not manifest_path.exists() or not manifest_path.is_file():
         raise IngestError(
             contracts.ReasonCode.INVALID_INPUT.value,
@@ -396,7 +413,9 @@ def _resolve_path_within_repo(repo_root: Path, raw_path: str) -> tuple[Path, str
 
 def _resolve_inbox_path(repo_root: Path, raw_path: str) -> tuple[Path, str]:
     requested_path = Path(raw_path)
-    lexical_path = requested_path if requested_path.is_absolute() else repo_root / requested_path
+    lexical_path = (
+        requested_path if requested_path.is_absolute() else repo_root / requested_path
+    )
     try:
         check_no_symlink_path(lexical_path)
     except OSError as exc:
@@ -418,7 +437,9 @@ def _is_under_inbox(relative_path: Path) -> bool:
     parts = relative_path.parts
     if len(parts) < 3:
         return False
-    return parts[0] == _ALLOWED_SOURCE_PREFIX[0] and parts[1] == _ALLOWED_SOURCE_PREFIX[1]
+    return (
+        parts[0] == _ALLOWED_SOURCE_PREFIX[0] and parts[1] == _ALLOWED_SOURCE_PREFIX[1]
+    )
 
 
 def _is_under_wiki_root(relative_path: Path) -> bool:
@@ -428,9 +449,7 @@ def _is_under_wiki_root(relative_path: Path) -> bool:
     return parts[0] == "wiki"
 
 
-def _load_source_bytes(
-    repo_root: Path, source_input: str
-) -> tuple[Path, str, bytes]:
+def _load_source_bytes(repo_root: Path, source_input: str) -> tuple[Path, str, bytes]:
     """Resolve, check, and read the source file from the inbox.
 
     Returns (source_path, source_relative, source_bytes). Raises IngestError
@@ -464,7 +483,9 @@ def _ingest_source(
 ) -> _SourceIngestAttempt:
     # --- Phase 1: Resolve path and read source file ---
     try:
-        source_path, source_relative, source_bytes = _load_source_bytes(repo_root, source_input)
+        source_path, source_relative, source_bytes = _load_source_bytes(
+            repo_root, source_input
+        )
     except IngestError as exc:
         return _SourceIngestAttempt(
             outcome=SourceOutcome(
@@ -504,12 +525,16 @@ def _ingest_source(
             )
         )
 
-    source_page_relative = (Path("wiki/sources") / inbox_suffix).with_suffix(".md").as_posix()
+    source_page_relative = (
+        (Path("wiki/sources") / inbox_suffix).with_suffix(".md").as_posix()
+    )
     source_page_path = repo_root / source_page_relative
     checksum = hashlib.sha256(source_bytes).hexdigest()
 
     try:
-        source_ref = build_source_ref(repo_root, processed_relative, checksum, git_sha=git_sha)
+        source_ref = build_source_ref(
+            repo_root, processed_relative, checksum, git_sha=git_sha
+        )
     except SourceRefValidationError as exc:
         return _SourceIngestAttempt(
             outcome=SourceOutcome(
@@ -521,7 +546,9 @@ def _ingest_source(
                 processed_path=processed_relative,
             )
         )
-    provenance = build_provisional_source_provenance(git_sha=git_sha, git_sha_kind=git_sha_kind)
+    provenance = build_provisional_source_provenance(
+        git_sha=git_sha, git_sha_kind=git_sha_kind
+    )
 
     # --- Phase 3: Write source page and move file to processed ---
     source_page_content = render_source_page(
@@ -534,7 +561,9 @@ def _ingest_source(
     )
 
     try:
-        page_changed, previous_content = write_text_capturing_previous_safe(source_page_path, source_page_content)
+        page_changed, previous_content = write_text_capturing_previous_safe(
+            source_page_path, source_page_content
+        )
     except OSError as exc:
         return _SourceIngestAttempt(
             outcome=SourceOutcome(
@@ -638,7 +667,9 @@ def _rollback_ingest_mutations(
             check_no_symlink_path(processed_path)
             source_path.parent.mkdir(parents=True, exist_ok=True)
             if source_path.exists() or source_path.is_symlink():
-                raise OSError(f"source path already exists during rollback: {mutation.source}")
+                raise OSError(
+                    f"source path already exists during rollback: {mutation.source}"
+                )
             if processed_path.is_symlink():
                 raise OSError(
                     f"processed path must not be symlinked during rollback: {mutation.processed_path}"
@@ -667,7 +698,9 @@ def _rollback_ingest_mutations(
         try:
             _restore_previous_content(index_path, index_previous_content)
         except OSError as exc:
-            errors.append(f"unable to restore index during rollback: {index_path} ({exc})")
+            errors.append(
+                f"unable to restore index during rollback: {index_path} ({exc})"
+            )
 
     if log_snapshot_captured:
         try:

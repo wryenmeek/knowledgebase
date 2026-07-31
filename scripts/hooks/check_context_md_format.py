@@ -31,7 +31,9 @@ def _check_file(path_str: str) -> list[str]:
         return [f"{path_str}: cannot read file: {exc}"]
 
     if not text.strip():
-        errors.append(f"{path_str}: empty file — CONTEXT.md requires frontmatter and sections")
+        errors.append(
+            f"{path_str}: empty file — CONTEXT.md requires frontmatter and sections"
+        )
         return errors
 
     lines = text.splitlines()
@@ -53,7 +55,9 @@ def _check_file(path_str: str) -> list[str]:
     else:
         for field in REQUIRED_FRONTMATTER:
             if field not in frontmatter:
-                errors.append(f"{path_str}: missing required frontmatter field '{field}'")
+                errors.append(
+                    f"{path_str}: missing required frontmatter field '{field}'"
+                )
             elif not frontmatter[field] and frontmatter[field] != 0:
                 errors.append(f"{path_str}: frontmatter field '{field}' is empty")
 

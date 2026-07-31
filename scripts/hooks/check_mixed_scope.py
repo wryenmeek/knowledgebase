@@ -110,7 +110,9 @@ def _resolve_default_base_ref() -> str:
         if exists.returncode == 0:
             return candidate
 
-    raise RuntimeError("unable to resolve default-branch reference (origin/main or main)")
+    raise RuntimeError(
+        "unable to resolve default-branch reference (origin/main or main)"
+    )
 
 
 def _current_branch_paths() -> set[str]:

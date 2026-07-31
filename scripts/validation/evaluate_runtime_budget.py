@@ -56,12 +56,16 @@ def evaluate_runtime_budget(
     )
 
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    report_path.write_text(
+        json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     if summary_file_path is not None:
         summary_file_path.parent.mkdir(parents=True, exist_ok=True)
         with summary_file_path.open("a", encoding="utf-8") as summary_handle:
-            summary_handle.write(_runtime_budget.build_summary_markdown(artifact) + "\n")
+            summary_handle.write(
+                _runtime_budget.build_summary_markdown(artifact) + "\n"
+            )
 
     if github_output_path is not None:
         github_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,7 +117,9 @@ def main(argv: list[str] | None = None) -> int:
         budget_config_path=Path(args.budget_config),
         report_path=Path(args.report),
         summary_file_path=Path(args.summary_file) if args.summary_file else None,
-        github_output_path=Path(args.github_output_file) if args.github_output_file else None,
+        github_output_path=Path(args.github_output_file)
+        if args.github_output_file
+        else None,
         output_key=str(args.output_key),
     )
     return 0

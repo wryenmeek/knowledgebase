@@ -25,7 +25,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -93,8 +92,7 @@ def _fetch_and_store_asset(
     expected_blob_sha = entry["current_blob_sha"]
 
     contents_url = (
-        f"{_GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}"
-        f"?ref={commit_sha}"
+        f"{_GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}?ref={commit_sha}"
     )
     raw = _make_github_request(contents_url, github_token)
     contents = validate_contents_response(raw)
@@ -157,10 +155,16 @@ def fetch_content(
             _, commit_sha, _sha256 = _fetch_and_store_asset(
                 repo_root, entry, github_token
             )
-        except (GitHubAPIRequestError, GitHubAPIResponseError, ValueError, OSError) as exc:
+        except (
+            GitHubAPIRequestError,
+            GitHubAPIResponseError,
+            ValueError,
+            OSError,
+        ) as exc:
             reason = (
                 str(GitHubMonitorReasonCode.UNREACHABLE)
-                if isinstance(exc, GitHubAPIRequestError) and exc.status_code in (401, 403, 404)
+                if isinstance(exc, GitHubAPIRequestError)
+                and exc.status_code in (401, 403, 404)
                 else str(GitHubMonitorReasonCode.FETCH_FAILED)
             )
             errors.append(
@@ -211,7 +215,7 @@ def fetch_content(
                 "blob_sha": entry["current_blob_sha"],
                 "status": STATUS_PASS,
                 "reason_code": str(GitHubMonitorReasonCode.NO_DRIFT),
-                "message": f"Asset fetched and stored",
+                "message": "Asset fetched and stored",
             }
         )
 
@@ -221,9 +225,7 @@ def fetch_content(
         if errors
         else str(GitHubMonitorReasonCode.NO_DRIFT)
     )
-    message = (
-        f"fetch complete: {len(fetched)} fetched, {len(errors)} errors"
-    )
+    message = f"fetch complete: {len(fetched)} fetched, {len(errors)} errors"
 
     return SurfaceResult(
         surface=SURFACE,

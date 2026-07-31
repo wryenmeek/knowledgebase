@@ -221,9 +221,6 @@ def _assert_repo_root(root: Path) -> None:
         )
 
 
-
-
-
 def _confirm(prompt: str) -> bool:
     try:
         answer = input(f"{prompt} [y/N] ").strip().lower()

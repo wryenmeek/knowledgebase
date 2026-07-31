@@ -101,9 +101,7 @@ def _check_path_components(path: str, *, original: str) -> None:
                 f"External path contains forbidden component {part!r}: {original!r}"
             )
         if part.startswith("~"):
-            raise ValueError(
-                f"External path component starts with '~': {original!r}"
-            )
+            raise ValueError(f"External path component starts with '~': {original!r}")
 
 
 def build_asset_path(
@@ -152,7 +150,9 @@ def build_asset_path(
         )
 
     assets_root = (repo_root / "raw" / "assets").resolve()
-    target = (repo_root / "raw" / "assets" / owner / repo / commit_sha / file_path).resolve()
+    target = (
+        repo_root / "raw" / "assets" / owner / repo / commit_sha / file_path
+    ).resolve()
 
     if not target.is_relative_to(assets_root):
         raise ValueError(

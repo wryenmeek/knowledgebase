@@ -55,9 +55,7 @@ SCHEMA_VERSION = "1"
 STALE_TIMEOUT = timedelta(hours=1)
 ITEM_COUNT_WARN_THRESHOLD = 5_000
 MAX_INPUT_BYTES = 1_000_000
-DRY_RUN_REDUNDANT_WARNING = (
-    "--dry-run is redundant with --bootstrap; bootstrap is dry-run unless --apply is supplied"
-)
+DRY_RUN_REDUNDANT_WARNING = "--dry-run is redundant with --bootstrap; bootstrap is dry-run unless --apply is supplied"
 
 ITEM_STATUSES = frozenset(
     {"pending", "in_progress", "completed", "stale", "failed", "skipped"}
@@ -135,7 +133,9 @@ def _result(
         reason_code=reason_code,
         message=message,
         approval=approval,
-        lock_path=(lock_path or contracts.CHECKPOINT_REGISTRY_LOCK_PATH) if lock_required else None,
+        lock_path=(lock_path or contracts.CHECKPOINT_REGISTRY_LOCK_PATH)
+        if lock_required
+        else None,
         lock_required=lock_required,
         path_rules=_path_rules(),
         items=tuple(items),
@@ -172,7 +172,11 @@ def _is_single_line_text(value: Any, *, allow_empty: bool = False) -> bool:
         return False
     if not allow_empty and not value:
         return False
-    return "\n" not in value and "\r" not in value and all(ord(char) >= 32 for char in value)
+    return (
+        "\n" not in value
+        and "\r" not in value
+        and all(ord(char) >= 32 for char in value)
+    )
 
 
 def _markdown_safe(value: Any) -> str:
@@ -199,7 +203,7 @@ def _validate_item_key_for_artifact(item_key: Any, artifact_type: Any) -> str:
     prefix = f"{artifact_type}:"
     if not item_key.startswith(prefix):
         raise ValueError(f"item_key must start with {prefix}")
-    suffix = item_key[len(prefix):]
+    suffix = item_key[len(prefix) :]
     if not IDENTITY_SUFFIX_RE.fullmatch(suffix):
         raise ValueError("item_key identity suffix must be a canonical slug")
     return item_key
@@ -227,9 +231,13 @@ def _validate_output_path(repo_root: Path, output_path: str, artifact_type: str)
     if root is None:
         raise ValueError(f"unsupported artifact_type: {artifact_type}")
     if not normalized.startswith(f"{root}/") or not normalized.endswith(".md"):
-        raise ValueError(f"{artifact_type} output_path must be under {root}/ and end in .md")
+        raise ValueError(
+            f"{artifact_type} output_path must be under {root}/ and end in .md"
+        )
     if len(normalized.removeprefix(f"{root}/").split("/")) != 1:
-        raise ValueError(f"{artifact_type} output_path must be a direct child of {root}/")
+        raise ValueError(
+            f"{artifact_type} output_path must be a direct child of {root}/"
+        )
     write_utils.check_no_symlink_path(repo_root / normalized)
     resolved = (repo_root / normalized).resolve(strict=False)
     root_path = (repo_root / root).resolve(strict=False)
@@ -254,12 +262,16 @@ def _item_key_for_page(path: Path, repo_root: Path, artifact_type: str) -> str:
     text = path.read_text(encoding="utf-8")
     metadata = page_template_utils.parse_page_frontmatter(text)
     if artifact_type == contracts.ArtifactType.WIKI_ENTITY_PAGE.value:
-        identity = page_template_utils.strip_quotes(metadata.get("entity_id", "")) or path.stem
+        identity = (
+            page_template_utils.strip_quotes(metadata.get("entity_id", "")) or path.stem
+        )
     elif artifact_type == contracts.ArtifactType.WIKI_CONCEPT_PAGE.value:
         identity = path.stem
     else:
         if not FP16_SUFFIX_RE.fullmatch(path.stem):
-            raise ValueError("analysis page filename must end with a 16-character fingerprint")
+            raise ValueError(
+                "analysis page filename must end with a 16-character fingerprint"
+            )
         identity = path.stem
     _validate_output_path(repo_root, rel, artifact_type)
     return f"{artifact_type}:{_slugify(identity)}"
@@ -289,9 +301,13 @@ def _compute_dependency_fingerprint(repo_root: Path) -> str:
                 # fingerprints deterministic across the supported interpreter
                 # range (CI runs 3.12; local dev may run 3.13/3.14), normalize
                 # trailing `**` to `**/*` so files are enumerated explicitly.
-                normalized_pattern = pattern[:-2] + "**/*" if pattern.endswith("/**") else pattern
+                normalized_pattern = (
+                    pattern[:-2] + "**/*" if pattern.endswith("/**") else pattern
+                )
                 paths.update(
-                    path for path in repo_root.glob(normalized_pattern) if path.is_file()
+                    path
+                    for path in repo_root.glob(normalized_pattern)
+                    if path.is_file()
                 )
             else:
                 candidate = repo_root / pattern
@@ -306,8 +322,7 @@ def _compute_dependency_fingerprint(repo_root: Path) -> str:
     paths = {
         path
         for path in paths
-        if "__pycache__" not in path.parts
-        and path.suffix not in {".pyc", ".pyo"}
+        if "__pycache__" not in path.parts and path.suffix not in {".pyc", ".pyo"}
     }
     for path in paths:
         write_utils.check_no_symlink_path(path)
@@ -322,7 +337,9 @@ def _source_fingerprint_for_page(
     path: Path,
     source_fingerprints: dict[str, str],
 ) -> str:
-    frontmatter, _ = page_template_utils.extract_frontmatter(path.read_text(encoding="utf-8"))
+    frontmatter, _ = page_template_utils.extract_frontmatter(
+        path.read_text(encoding="utf-8")
+    )
     sources = page_template_utils.extract_sources_from_frontmatter(frontmatter or "")
     payload = {
         "sources": sorted(sources),
@@ -335,7 +352,12 @@ def _source_fingerprint_for_page(
     return _sha256_text(json.dumps(payload, sort_keys=True))
 
 
-def _candidate_item(path: Path, repo_root: Path, dependency_fingerprint: str, source_fingerprints: dict[str, str]) -> dict[str, Any]:
+def _candidate_item(
+    path: Path,
+    repo_root: Path,
+    dependency_fingerprint: str,
+    source_fingerprints: dict[str, str],
+) -> dict[str, Any]:
     write_utils.check_no_symlink_path(path)
     artifact_type = _artifact_type_for_path(path, repo_root)
     if artifact_type is None:
@@ -366,7 +388,9 @@ def _candidate_item(path: Path, repo_root: Path, dependency_fingerprint: str, so
 
 
 def _bootstrap_success_timestamp(path: Path) -> str:
-    metadata = page_template_utils.parse_page_frontmatter(path.read_text(encoding="utf-8"))
+    metadata = page_template_utils.parse_page_frontmatter(
+        path.read_text(encoding="utf-8")
+    )
     timestamp = page_template_utils.strip_quotes(metadata.get("updated_at", ""))
     try:
         _parse_timestamp(timestamp)
@@ -375,7 +399,9 @@ def _bootstrap_success_timestamp(path: Path) -> str:
     return timestamp
 
 
-def _empty_registry(source_fingerprints: dict[str, str], items: list[dict[str, Any]]) -> dict[str, Any]:
+def _empty_registry(
+    source_fingerprints: dict[str, str], items: list[dict[str, Any]]
+) -> dict[str, Any]:
     return {
         "version": SCHEMA_VERSION,
         "source_fingerprints": dict(sorted(source_fingerprints.items())),
@@ -384,7 +410,9 @@ def _empty_registry(source_fingerprints: dict[str, str], items: list[dict[str, A
     }
 
 
-def _build_bootstrap_registry(repo_root: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _build_bootstrap_registry(
+    repo_root: Path,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     source_fingerprints = _scan_source_fingerprints(repo_root)
     dependency_fingerprint = _compute_dependency_fingerprint(repo_root)
     candidates: list[dict[str, Any]] = []
@@ -394,7 +422,9 @@ def _build_bootstrap_registry(repo_root: Path) -> tuple[dict[str, Any], list[dic
         for path in sorted((wiki_root / namespace).glob("*.md")):
             try:
                 candidates.append(
-                    _candidate_item(path, repo_root, dependency_fingerprint, source_fingerprints)
+                    _candidate_item(
+                        path, repo_root, dependency_fingerprint, source_fingerprints
+                    )
                 )
             except (OSError, ValueError) as exc:
                 excluded.append(
@@ -444,10 +474,14 @@ def _dedupe_exclusions(excluded: Sequence[dict[str, Any]]) -> list[dict[str, Any
             str(item.get("message", "")),
         )
         deduped.setdefault(key, item)
-    return sorted(deduped.values(), key=lambda item: (item["reason_code"], item["path"]))
+    return sorted(
+        deduped.values(), key=lambda item: (item["reason_code"], item["path"])
+    )
 
 
-def _group_by(items: Sequence[dict[str, Any]], field: str) -> dict[str, list[dict[str, Any]]]:
+def _group_by(
+    items: Sequence[dict[str, Any]], field: str
+) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in items:
         grouped[str(item[field])].append(item)
@@ -530,16 +564,32 @@ def _validate_batches(raw_batches: Any) -> list[str]:
             except (TypeError, ValueError):
                 errors.append(f"batches[{index}].{field} must be ISO 8601 or null")
         error_summary = batch.get("error_summary")
-        if error_summary is not None and not _is_single_line_text(error_summary, allow_empty=False):
-            errors.append(f"batches[{index}].error_summary must be a single-line string or null")
+        if error_summary is not None and not _is_single_line_text(
+            error_summary, allow_empty=False
+        ):
+            errors.append(
+                f"batches[{index}].error_summary must be a single-line string or null"
+            )
         if batch.get("status") in {"failed", "partial"} and not error_summary:
-            errors.append(f"batches[{index}].error_summary is required for failed/partial")
-        if batch.get("status") in {"running", "completed"} and error_summary is not None:
-            errors.append(f"batches[{index}].error_summary must be null for running/completed")
+            errors.append(
+                f"batches[{index}].error_summary is required for failed/partial"
+            )
+        if (
+            batch.get("status") in {"running", "completed"}
+            and error_summary is not None
+        ):
+            errors.append(
+                f"batches[{index}].error_summary must be null for running/completed"
+            )
         if batch.get("status") == "running" and batch.get("finished_at") is not None:
             errors.append(f"batches[{index}].finished_at must be null while running")
-        if batch.get("status") in TERMINAL_BATCH_STATUSES and batch.get("finished_at") is None:
-            errors.append(f"batches[{index}].finished_at is required for terminal batches")
+        if (
+            batch.get("status") in TERMINAL_BATCH_STATUSES
+            and batch.get("finished_at") is None
+        ):
+            errors.append(
+                f"batches[{index}].finished_at is required for terminal batches"
+            )
     return errors
 
 
@@ -586,24 +636,32 @@ def _validate_items(raw_items: Any, repo_root: Path) -> list[str]:
             elif isinstance(key, str):
                 seen_keys.add(key)
             try:
-                output = _validate_output_path(repo_root, str(item.get("output_path", "")), artifact_type)
+                output = _validate_output_path(
+                    repo_root, str(item.get("output_path", "")), artifact_type
+                )
                 if output in seen_outputs:
                     errors.append(f"duplicate output_path: {output}")
                 seen_outputs[output] = index
             except (OSError, ValueError) as exc:
                 errors.append(f"items[{index}].output_path invalid: {exc}")
         path_aliases = item.get("path_aliases")
-        if not isinstance(path_aliases, list) or not all(isinstance(path, str) for path in path_aliases):
+        if not isinstance(path_aliases, list) or not all(
+            isinstance(path, str) for path in path_aliases
+        ):
             errors.append(f"items[{index}].path_aliases must be an array of strings")
         elif artifact_type in ARTIFACT_TYPE_VALUES:
             for alias in path_aliases:
                 try:
-                    normalized_alias = _validate_output_path(repo_root, alias, str(artifact_type))
+                    normalized_alias = _validate_output_path(
+                        repo_root, alias, str(artifact_type)
+                    )
                 except (OSError, ValueError) as exc:
                     errors.append(f"items[{index}].path_aliases entry invalid: {exc}")
                     continue
                 if normalized_alias in alias_owners:
-                    errors.append(f"contradictory path_aliases entry: {normalized_alias}")
+                    errors.append(
+                        f"contradictory path_aliases entry: {normalized_alias}"
+                    )
                 alias_owners[normalized_alias] = index
         for field in ("source_fingerprint", "dependency_fingerprint"):
             if not _is_hex64(item.get(field)):
@@ -615,10 +673,20 @@ def _validate_items(raw_items: Any, repo_root: Path) -> list[str]:
                 _parse_timestamp(item.get(field))
             except (TypeError, ValueError):
                 errors.append(f"items[{index}].{field} must be ISO 8601 or null")
-        if item.get("last_error") is not None and not _is_single_line_text(item.get("last_error")):
-            errors.append(f"items[{index}].last_error must be a single-line string or null")
-        if item.get("last_successful_batch_id") is not None and not _is_single_line_text(item.get("last_successful_batch_id")):
-            errors.append(f"items[{index}].last_successful_batch_id must be a single-line string or null")
+        if item.get("last_error") is not None and not _is_single_line_text(
+            item.get("last_error")
+        ):
+            errors.append(
+                f"items[{index}].last_error must be a single-line string or null"
+            )
+        if item.get(
+            "last_successful_batch_id"
+        ) is not None and not _is_single_line_text(
+            item.get("last_successful_batch_id")
+        ):
+            errors.append(
+                f"items[{index}].last_successful_batch_id must be a single-line string or null"
+            )
     for alias, owner_index in alias_owners.items():
         if alias in seen_outputs:
             errors.append(
@@ -648,38 +716,113 @@ def bootstrap_registry(
     mode = "bootstrap"
     root = Path(repo_root).resolve()
     if not looks_like_repo_root(root):
-        return _result(mode=mode, status=STATUS_FAIL, reason_code="prereq_missing:repo_root", message="repository root must contain AGENTS.md")
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code="prereq_missing:repo_root",
+            message="repository root must contain AGENTS.md",
+        )
     try:
         target = _resolve_registry_path(root, registry_path)
         registry, excluded = _build_bootstrap_registry(root)
     except (OSError, ValueError) as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code=REASON_CODE_INVALID_INPUT, message=str(exc))
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code=REASON_CODE_INVALID_INPUT,
+            message=str(exc),
+        )
     errors = _validate_registry(registry, root)
     if errors:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code="schema_validation_failed", message="bootstrap registry failed schema validation", items=_error_items(errors))
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code="schema_validation_failed",
+            message="bootstrap registry failed schema validation",
+            items=_error_items(errors),
+        )
     content = _canonical_json(registry)
     summary = _bootstrap_summary(registry, excluded, target, would_write=apply)
     if dry_run and not apply:
         summary["warnings"] = [DRY_RUN_REDUNDANT_WARNING]
     if not apply:
-        return _result(mode=mode, status=STATUS_PASS, reason_code="ok", message="bootstrap dry-run completed", items=(*registry["items"], *excluded), summary=summary)
+        return _result(
+            mode=mode,
+            status=STATUS_PASS,
+            reason_code="ok",
+            message="bootstrap dry-run completed",
+            items=(*registry["items"], *excluded),
+            summary=summary,
+        )
     if approval != APPROVAL_APPROVED:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code=REASON_CODE_APPROVAL_REQUIRED, message="bootstrap apply requires --approval approved", approval=approval, lock_required=True, summary=summary)
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code=REASON_CODE_APPROVAL_REQUIRED,
+            message="bootstrap apply requires --approval approved",
+            approval=approval,
+            lock_required=True,
+            summary=summary,
+        )
     try:
-        with write_utils.exclusive_write_lock(root, lock_path=contracts.CHECKPOINT_REGISTRY_LOCK_PATH):
+        with write_utils.exclusive_write_lock(
+            root, lock_path=contracts.CHECKPOINT_REGISTRY_LOCK_PATH
+        ):
             if target.exists():
                 existing = target.read_text(encoding="utf-8")
                 if existing == content:
                     summary["changed"] = False
-                    return _result(mode=mode, status=STATUS_PASS, reason_code="ok", message="bootstrap registry already up to date", approval=approval, lock_required=True, items=(*registry["items"], *excluded), summary=summary)
-                return _result(mode=mode, status=STATUS_FAIL, reason_code="registry_exists", message="registry already exists with different content", approval=approval, lock_required=True, summary=summary)
+                    return _result(
+                        mode=mode,
+                        status=STATUS_PASS,
+                        reason_code="ok",
+                        message="bootstrap registry already up to date",
+                        approval=approval,
+                        lock_required=True,
+                        items=(*registry["items"], *excluded),
+                        summary=summary,
+                    )
+                return _result(
+                    mode=mode,
+                    status=STATUS_FAIL,
+                    reason_code="registry_exists",
+                    message="registry already exists with different content",
+                    approval=approval,
+                    lock_required=True,
+                    summary=summary,
+                )
             write_utils.atomic_replace_governed_artifact(root, REGISTRY_PATH, content)
     except write_utils.LockUnavailableError as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code="lock_unavailable", message=str(exc), approval=approval, lock_required=True, summary=summary)
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code="lock_unavailable",
+            message=str(exc),
+            approval=approval,
+            lock_required=True,
+            summary=summary,
+        )
     except OSError as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code="write_failed", message=str(exc), approval=approval, lock_required=True, summary=summary)
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code="write_failed",
+            message=str(exc),
+            approval=approval,
+            lock_required=True,
+            summary=summary,
+        )
     summary["changed"] = True
-    return _result(mode=mode, status=STATUS_PASS, reason_code="ok", message="bootstrap registry written", approval=approval, lock_required=True, items=(*registry["items"], *excluded), summary=summary)
+    return _result(
+        mode=mode,
+        status=STATUS_PASS,
+        reason_code="ok",
+        message="bootstrap registry written",
+        approval=approval,
+        lock_required=True,
+        items=(*registry["items"], *excluded),
+        summary=summary,
+    )
 
 
 def _bootstrap_summary(
@@ -717,11 +860,17 @@ def _load_mutation_input(repo_root: Path, input_path: str) -> dict[str, Any]:
     if input_path == "-":
         raw = sys.stdin.read(MAX_INPUT_BYTES + 1)
         if len(raw.encode("utf-8")) > MAX_INPUT_BYTES:
-            raise ValueError(f"stdin mutation input exceeds {MAX_INPUT_BYTES} byte limit")
+            raise ValueError(
+                f"stdin mutation input exceeds {MAX_INPUT_BYTES} byte limit"
+            )
     else:
         normalized = path_utils.normalize_repo_relative_path(input_path)
-        if not normalized.startswith("docs/staged/") or not normalized.endswith(".json"):
-            raise ValueError("--input must be '-' or a repo-relative JSON file under docs/staged/**")
+        if not normalized.startswith("docs/staged/") or not normalized.endswith(
+            ".json"
+        ):
+            raise ValueError(
+                "--input must be '-' or a repo-relative JSON file under docs/staged/**"
+            )
         resolved = path_utils.resolve_within_repo(repo_root, normalized)
         write_utils.check_no_symlink_path(repo_root / normalized)
         if not resolved.is_file() or not resolved.resolve().is_relative_to(repo_root):
@@ -757,47 +906,129 @@ def mutate_registry(
     mode = "mutate"
     root = Path(repo_root).resolve()
     if approval != APPROVAL_APPROVED:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code=REASON_CODE_APPROVAL_REQUIRED, message="mutate requires --approval approved", approval=approval, lock_required=True)
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code=REASON_CODE_APPROVAL_REQUIRED,
+            message="mutate requires --approval approved",
+            approval=approval,
+            lock_required=True,
+        )
     try:
         target = _resolve_registry_path(root, registry_path)
         payload = _load_mutation_input(root, input_path)
         if trigger is not None:
             if not isinstance(payload.get("batch"), dict):
-                raise ValueError("--trigger requires mutation input with a batch object")
+                raise ValueError(
+                    "--trigger requires mutation input with a batch object"
+                )
             payload["batch"]["trigger"] = trigger
         now_iso = now or payload.get("now") or _now_iso()
         now_dt = _parse_timestamp(now_iso)
         if now_dt is None:
             raise ValueError("now must be non-null")
     except json.JSONDecodeError as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code="json_parse_failed", message=str(exc), approval=approval, lock_required=True)
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code="json_parse_failed",
+            message=str(exc),
+            approval=approval,
+            lock_required=True,
+        )
     except (OSError, ValueError) as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code=REASON_CODE_INVALID_INPUT, message=str(exc), approval=approval, lock_required=True)
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code=REASON_CODE_INVALID_INPUT,
+            message=str(exc),
+            approval=approval,
+            lock_required=True,
+        )
     try:
-        with write_utils.exclusive_write_lock(root, lock_path=contracts.CHECKPOINT_REGISTRY_LOCK_PATH):
+        with write_utils.exclusive_write_lock(
+            root, lock_path=contracts.CHECKPOINT_REGISTRY_LOCK_PATH
+        ):
             registry = _load_registry(target)
             errors = _validate_registry(registry, root)
             if errors:
-                return _result(mode=mode, status=STATUS_FAIL, reason_code="schema_validation_failed", message="registry failed schema validation", approval=approval, lock_required=True, items=_error_items(errors))
-            mutated, transition_items = _apply_mutation(registry, payload, root, now_iso, now_dt)
+                return _result(
+                    mode=mode,
+                    status=STATUS_FAIL,
+                    reason_code="schema_validation_failed",
+                    message="registry failed schema validation",
+                    approval=approval,
+                    lock_required=True,
+                    items=_error_items(errors),
+                )
+            mutated, transition_items = _apply_mutation(
+                registry, payload, root, now_iso, now_dt
+            )
             post_errors = _validate_registry(mutated, root)
             if post_errors:
-                return _result(mode=mode, status=STATUS_FAIL, reason_code="schema_validation_failed", message="mutated registry failed schema validation", approval=approval, lock_required=True, items=_error_items(post_errors))
-            write_utils.atomic_replace_governed_artifact(root, REGISTRY_PATH, _canonical_json(mutated))
+                return _result(
+                    mode=mode,
+                    status=STATUS_FAIL,
+                    reason_code="schema_validation_failed",
+                    message="mutated registry failed schema validation",
+                    approval=approval,
+                    lock_required=True,
+                    items=_error_items(post_errors),
+                )
+            write_utils.atomic_replace_governed_artifact(
+                root, REGISTRY_PATH, _canonical_json(mutated)
+            )
     except write_utils.LockUnavailableError as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code="lock_unavailable", message=str(exc), approval=approval, lock_required=True)
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code="lock_unavailable",
+            message=str(exc),
+            approval=approval,
+            lock_required=True,
+        )
     except OSError as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code="write_failed", message=str(exc), approval=approval, lock_required=True)
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code="write_failed",
+            message=str(exc),
+            approval=approval,
+            lock_required=True,
+        )
     except json.JSONDecodeError as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code="json_parse_failed", message=str(exc), approval=approval, lock_required=True)
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code="json_parse_failed",
+            message=str(exc),
+            approval=approval,
+            lock_required=True,
+        )
     except ValueError as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code=getattr(exc, "reason_code", "invalid_transition"), message=str(exc), approval=approval, lock_required=True)
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code=getattr(exc, "reason_code", "invalid_transition"),
+            message=str(exc),
+            approval=approval,
+            lock_required=True,
+        )
     summary = {
         "registry_path": REGISTRY_PATH,
         "batch_id": payload.get("batch", {}).get("batch_id"),
         "transition_count": len(transition_items),
     }
-    return _result(mode=mode, status=STATUS_PASS, reason_code="ok", message="registry mutation applied", approval=approval, lock_required=True, items=transition_items, summary=summary)
+    return _result(
+        mode=mode,
+        status=STATUS_PASS,
+        reason_code="ok",
+        message="registry mutation applied",
+        approval=approval,
+        lock_required=True,
+        items=transition_items,
+        summary=summary,
+    )
 
 
 class TransitionError(ValueError):
@@ -823,20 +1054,28 @@ def _apply_mutation(
     trigger = batch["trigger"]
     operations = payload.get("items")
     if not isinstance(operations, list) or not operations:
-        raise TransitionError("invalid_input", "mutation input requires a non-empty items array")
+        raise TransitionError(
+            "invalid_input", "mutation input requires a non-empty items array"
+        )
     seen_ops: set[str] = set()
     items_by_key = {item["item_key"]: item for item in mutated["items"]}
     transition_items: list[dict[str, Any]] = []
     for operation in operations:
         if not isinstance(operation, dict):
-            raise TransitionError("invalid_input", "each mutation item must be an object")
+            raise TransitionError(
+                "invalid_input", "each mutation item must be an object"
+            )
         key = _required_string(operation, "item_key")
         if key in seen_ops:
-            raise TransitionError("invalid_input", f"duplicate mutation item_key: {key}")
+            raise TransitionError(
+                "invalid_input", f"duplicate mutation item_key: {key}"
+            )
         seen_ops.add(key)
         target_status = _required_string(operation, "target_status")
         if target_status not in ITEM_STATUSES:
-            raise TransitionError("illegal_transition", f"unsupported target_status: {target_status}")
+            raise TransitionError(
+                "illegal_transition", f"unsupported target_status: {target_status}"
+            )
         item = items_by_key.get(key)
         if item is None:
             item = _new_pending_item(operation, repo_root)
@@ -844,7 +1083,9 @@ def _apply_mutation(
             items_by_key[key] = item
         before_status = item["status"]
         operation_with_batch = {**operation, "batch_id": batch["batch_id"]}
-        _transition_item(item, operation_with_batch, trigger, repo_root, now_iso, now_dt)
+        _transition_item(
+            item, operation_with_batch, trigger, repo_root, now_iso, now_dt
+        )
         transition_items.append(
             {
                 "path": item["output_path"],
@@ -889,7 +1130,9 @@ def _enforce_batch_item_outcomes(
                 "partial batch requires at least one successful item and at least one unfinished or failed item",
             )
         return
-    if batch["status"] == "failed" and not any(status not in successful for status in statuses):
+    if batch["status"] == "failed" and not any(
+        status not in successful for status in statuses
+    ):
         raise TransitionError(
             "illegal_transition",
             "failed batch requires a failed or unfinished planned item",
@@ -907,23 +1150,33 @@ def _normalized_batch(raw_batch: Any, now_iso: str) -> dict[str, Any]:
         raise TransitionError("invalid_input", f"unsupported batch status: {status}")
     error_summary = raw_batch.get("error_summary")
     if error_summary is not None and not _is_single_line_text(error_summary):
-        raise TransitionError("invalid_input", "error_summary must be a single-line string or null")
+        raise TransitionError(
+            "invalid_input", "error_summary must be a single-line string or null"
+        )
     if status in {"failed", "partial"} and not error_summary:
-        raise TransitionError("invalid_input", "failed/partial batch requires error_summary")
+        raise TransitionError(
+            "invalid_input", "failed/partial batch requires error_summary"
+        )
     if status in {"running", "completed"} and error_summary is not None:
-        raise TransitionError("invalid_input", "running/completed batch requires null error_summary")
+        raise TransitionError(
+            "invalid_input", "running/completed batch requires null error_summary"
+        )
     finished_at = raw_batch.get(
         "finished_at",
         now_iso if status in TERMINAL_BATCH_STATUSES else None,
     )
     if status == "running" and finished_at is not None:
-        raise TransitionError("invalid_input", "running batch requires null finished_at")
+        raise TransitionError(
+            "invalid_input", "running batch requires null finished_at"
+        )
     if status in TERMINAL_BATCH_STATUSES and finished_at is None:
         raise TransitionError("invalid_input", "terminal batch requires finished_at")
     batch = {
         "batch_id": _required_string(raw_batch, "batch_id"),
         "trigger": trigger,
-        "triggered_by": _single_line_or_default(raw_batch.get("triggered_by"), "unknown"),
+        "triggered_by": _single_line_or_default(
+            raw_batch.get("triggered_by"), "unknown"
+        ),
         "started_at": str(raw_batch.get("started_at") or now_iso),
         "finished_at": finished_at,
         "status": status,
@@ -940,10 +1193,15 @@ def _upsert_batch(registry: dict[str, Any], batch: dict[str, Any]) -> dict[str, 
         if existing["batch_id"] != batch["batch_id"]:
             continue
         if existing["status"] in TERMINAL_BATCH_STATUSES:
-            raise TransitionError("illegal_transition", f"terminal batch cannot be rewritten: {batch['batch_id']}")
+            raise TransitionError(
+                "illegal_transition",
+                f"terminal batch cannot be rewritten: {batch['batch_id']}",
+            )
         for field in ("trigger", "triggered_by", "started_at", "input_fingerprint"):
             if existing.get(field) != batch.get(field):
-                raise TransitionError("invalid_input", f"running batch metadata mismatch: {field}")
+                raise TransitionError(
+                    "invalid_input", f"running batch metadata mismatch: {field}"
+                )
         if batch["status"] == "running":
             return existing
         existing.update(batch)
@@ -963,7 +1221,9 @@ def _single_line_or_default(value: Any, default: str) -> str:
     if value is None or value == "":
         return default
     if not _is_single_line_text(value):
-        raise TransitionError("invalid_input", "string fields must be single-line strings")
+        raise TransitionError(
+            "invalid_input", "string fields must be single-line strings"
+        )
     return str(value)
 
 
@@ -977,18 +1237,29 @@ def _required_hash(data: dict[str, Any], field: str) -> str:
 def _new_pending_item(operation: dict[str, Any], repo_root: Path) -> dict[str, Any]:
     artifact_type = _required_string(operation, "artifact_type")
     try:
-        output_path = _validate_output_path(repo_root, _required_string(operation, "output_path"), artifact_type)
+        output_path = _validate_output_path(
+            repo_root, _required_string(operation, "output_path"), artifact_type
+        )
     except (OSError, ValueError) as exc:
         raise TransitionError("invalid_input", str(exc)) from exc
     try:
-        item_key = _validate_item_key_for_artifact(_required_string(operation, "item_key"), artifact_type)
+        item_key = _validate_item_key_for_artifact(
+            _required_string(operation, "item_key"), artifact_type
+        )
     except (OSError, ValueError) as exc:
         raise TransitionError("invalid_input", str(exc)) from exc
     raw_aliases = operation.get("path_aliases") or []
-    if not isinstance(raw_aliases, list) or not all(isinstance(path, str) for path in raw_aliases):
-        raise TransitionError("invalid_input", "path_aliases must be an array of strings")
+    if not isinstance(raw_aliases, list) or not all(
+        isinstance(path, str) for path in raw_aliases
+    ):
+        raise TransitionError(
+            "invalid_input", "path_aliases must be an array of strings"
+        )
     try:
-        path_aliases = [_validate_output_path(repo_root, alias, artifact_type) for alias in raw_aliases]
+        path_aliases = [
+            _validate_output_path(repo_root, alias, artifact_type)
+            for alias in raw_aliases
+        ]
     except (OSError, ValueError) as exc:
         raise TransitionError("invalid_input", str(exc)) from exc
     return {
@@ -1026,7 +1297,11 @@ def _transition_item(
         item["last_attempted_at"] = now_iso
     if target_status == "completed":
         item["last_succeeded_at"] = now_iso
-        item["last_successful_batch_id"] = operation.get("batch_id") or operation.get("last_successful_batch_id") or None
+        item["last_successful_batch_id"] = (
+            operation.get("batch_id")
+            or operation.get("last_successful_batch_id")
+            or None
+        )
         item["last_error"] = None
     elif target_status == "failed":
         item["last_error"] = _required_string(operation, "last_error")
@@ -1046,48 +1321,91 @@ def _transition_item(
             item[field] = _required_hash(operation, field)
 
 
-def _enforce_stale_timeout(item: dict[str, Any], target_status: str, now_dt: datetime) -> None:
+def _enforce_stale_timeout(
+    item: dict[str, Any], target_status: str, now_dt: datetime
+) -> None:
     if item["status"] != "in_progress" or target_status == "stale":
         return
     attempted_at = _parse_timestamp(item.get("last_attempted_at"))
     if attempted_at is not None and now_dt - attempted_at >= STALE_TIMEOUT:
-        raise TransitionError("stale_timeout", "in_progress item exceeded the 1-hour stale timeout; transition to stale before advancing")
+        raise TransitionError(
+            "stale_timeout",
+            "in_progress item exceeded the 1-hour stale timeout; transition to stale before advancing",
+        )
 
 
-def _enforce_transition_matrix(item: dict[str, Any], operation: dict[str, Any], trigger: str) -> None:
+def _enforce_transition_matrix(
+    item: dict[str, Any], operation: dict[str, Any], trigger: str
+) -> None:
     current = item["status"]
     target = operation["target_status"]
     if current == target:
         return
     if (current, target) not in ALLOWED_TRANSITIONS:
-        raise TransitionError("illegal_transition", f"illegal item transition: {current} -> {target}")
+        raise TransitionError(
+            "illegal_transition", f"illegal item transition: {current} -> {target}"
+        )
     if target == "skipped" and trigger != contracts.TriggerType.MANUAL_RESCAN.value:
-        raise TransitionError("illegal_transition", "only manual_rescan may retire items to skipped")
-    if current == "skipped" and target == "pending" and trigger != contracts.TriggerType.MANUAL_RESCAN.value:
-        raise TransitionError("illegal_transition", "only manual_rescan may move skipped -> pending")
+        raise TransitionError(
+            "illegal_transition", "only manual_rescan may retire items to skipped"
+        )
+    if (
+        current == "skipped"
+        and target == "pending"
+        and trigger != contracts.TriggerType.MANUAL_RESCAN.value
+    ):
+        raise TransitionError(
+            "illegal_transition", "only manual_rescan may move skipped -> pending"
+        )
     if current == "completed" and target == "stale":
-        source_changed = operation.get("source_fingerprint") not in {None, item["source_fingerprint"]}
-        dependency_changed = operation.get("dependency_fingerprint") not in {None, item["dependency_fingerprint"]}
+        source_changed = operation.get("source_fingerprint") not in {
+            None,
+            item["source_fingerprint"],
+        }
+        dependency_changed = operation.get("dependency_fingerprint") not in {
+            None,
+            item["dependency_fingerprint"],
+        }
         if trigger == contracts.TriggerType.INTAKE_DRIVEN.value and not source_changed:
-            raise TransitionError("fingerprint_mismatch", "intake_driven completed -> stale requires source_fingerprint change")
-        if trigger == contracts.TriggerType.INFRASTRUCTURE_REVALIDATION.value and (source_changed or not dependency_changed):
-            raise TransitionError("fingerprint_mismatch", "infrastructure_revalidation completed -> stale requires dependency-only change")
-        if trigger == contracts.TriggerType.MANUAL_RESCAN.value and not (source_changed or dependency_changed):
-            raise TransitionError("fingerprint_mismatch", "manual_rescan completed -> stale requires a fingerprint change")
+            raise TransitionError(
+                "fingerprint_mismatch",
+                "intake_driven completed -> stale requires source_fingerprint change",
+            )
+        if trigger == contracts.TriggerType.INFRASTRUCTURE_REVALIDATION.value and (
+            source_changed or not dependency_changed
+        ):
+            raise TransitionError(
+                "fingerprint_mismatch",
+                "infrastructure_revalidation completed -> stale requires dependency-only change",
+            )
+        if trigger == contracts.TriggerType.MANUAL_RESCAN.value and not (
+            source_changed or dependency_changed
+        ):
+            raise TransitionError(
+                "fingerprint_mismatch",
+                "manual_rescan completed -> stale requires a fingerprint change",
+            )
 
 
-def _apply_path_continuity(item: dict[str, Any], operation: dict[str, Any], repo_root: Path) -> None:
+def _apply_path_continuity(
+    item: dict[str, Any], operation: dict[str, Any], repo_root: Path
+) -> None:
     if "output_path" not in operation:
         return
     try:
-        new_output = _validate_output_path(repo_root, _required_string(operation, "output_path"), item["artifact_type"])
+        new_output = _validate_output_path(
+            repo_root, _required_string(operation, "output_path"), item["artifact_type"]
+        )
     except (OSError, ValueError) as exc:
         raise TransitionError("invalid_input", str(exc)) from exc
     old_output = item["output_path"]
     if new_output == old_output:
         return
     if item["artifact_type"] == contracts.ArtifactType.WIKI_ANALYSIS_PAGE.value:
-        raise TransitionError("illegal_transition", "analysis output_path changes alter identity and are not allowed")
+        raise TransitionError(
+            "illegal_transition",
+            "analysis output_path changes alter identity and are not allowed",
+        )
     aliases = list(item.get("path_aliases") or [])
     if old_output not in aliases:
         aliases.append(old_output)
@@ -1095,10 +1413,15 @@ def _apply_path_continuity(item: dict[str, Any], operation: dict[str, Any], repo
     item["path_aliases"] = aliases
 
 
-def _validate_completion(item: dict[str, Any], operation: dict[str, Any], repo_root: Path) -> None:
+def _validate_completion(
+    item: dict[str, Any], operation: dict[str, Any], repo_root: Path
+) -> None:
     output_path = repo_root / item["output_path"]
     if not output_path.is_file():
-        raise TransitionError("output_missing", f"completed transition requires existing output: {item['output_path']}")
+        raise TransitionError(
+            "output_missing",
+            f"completed transition requires existing output: {item['output_path']}",
+        )
     relative = item["output_path"]
     _, violations = page_template_utils.validate_page_template_path(
         relative,
@@ -1106,12 +1429,20 @@ def _validate_completion(item: dict[str, Any], operation: dict[str, Any], repo_r
         required_frontmatter_keys=page_template_utils.REQUIRED_FRONTMATTER_KEYS,
     )
     if violations:
-        raise TransitionError("schema_validation_failed", f"completed output failed page validation: {violations[0][0]}")
+        raise TransitionError(
+            "schema_validation_failed",
+            f"completed output failed page validation: {violations[0][0]}",
+        )
     for field in ("source_fingerprint", "dependency_fingerprint"):
         if field not in operation:
-            raise TransitionError("fingerprint_mismatch", f"completed transition requires {field}")
+            raise TransitionError(
+                "fingerprint_mismatch", f"completed transition requires {field}"
+            )
         if operation[field] != item[field]:
-            raise TransitionError("fingerprint_mismatch", f"{field} does not match the claimed in-progress item")
+            raise TransitionError(
+                "fingerprint_mismatch",
+                f"{field} does not match the claimed in-progress item",
+            )
 
 
 def _build_verify_summary(root: Path, target: Path) -> dict[str, Any]:
@@ -1140,16 +1471,22 @@ def _build_verify_summary(root: Path, target: Path) -> dict[str, Any]:
         except ValueError as exc:
             summary["errors"].append(str(exc))
     if data is not None:
-        summary["item_count"] = len(data.get("items", [])) if isinstance(data.get("items"), list) else None
+        summary["item_count"] = (
+            len(data.get("items", [])) if isinstance(data.get("items"), list) else None
+        )
         validation_errors = _validate_registry(data, root)
         summary["schema_check_pass"] = not validation_errors
         summary["errors"].extend(validation_errors)
         if (summary["item_count"] or 0) > ITEM_COUNT_WARN_THRESHOLD:
             summary["warnings"].append("item_count exceeds 5000")
     if summary["file_size_bytes"] > contracts.CHECKPOINT_REGISTRY_SIZE_WARN_BYTES:
-        summary["warnings"].append("file_size_bytes exceeds CHECKPOINT_REGISTRY_SIZE_WARN_BYTES")
+        summary["warnings"].append(
+            "file_size_bytes exceeds CHECKPOINT_REGISTRY_SIZE_WARN_BYTES"
+        )
     if summary["file_size_bytes"] > contracts.CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES:
-        summary["errors"].append("file_size_bytes exceeds CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES")
+        summary["errors"].append(
+            "file_size_bytes exceeds CHECKPOINT_REGISTRY_SIZE_FAIL_BYTES"
+        )
     return summary
 
 
@@ -1179,7 +1516,12 @@ def verify_registry(
     try:
         target = _resolve_registry_path(root, registry_path)
     except (OSError, ValueError) as exc:
-        return _result(mode=mode, status=STATUS_FAIL, reason_code=REASON_CODE_INVALID_INPUT, message=str(exc))
+        return _result(
+            mode=mode,
+            status=STATUS_FAIL,
+            reason_code=REASON_CODE_INVALID_INPUT,
+            message=str(exc),
+        )
     summary = _build_verify_summary(root, target)
     if log_warnings and (summary["warnings"] or summary["errors"]):
         if approval != APPROVAL_APPROVED:
@@ -1219,7 +1561,11 @@ def verify_registry(
             )
     has_errors = bool(summary["errors"])
     if has_errors and not warn_only:
-        reason = "json_parse_failed" if not summary["json_parse_pass"] and target.exists() else "schema_validation_failed"
+        reason = (
+            "json_parse_failed"
+            if not summary["json_parse_pass"] and target.exists()
+            else "schema_validation_failed"
+        )
         return _result(
             mode=mode,
             status=STATUS_FAIL,
@@ -1231,7 +1577,11 @@ def verify_registry(
             summary=summary,
         )
     reason = "verify_warning" if summary["warnings"] or summary["errors"] else "ok"
-    message = "checkpoint registry verification emitted warnings" if reason != "ok" else "checkpoint registry verification passed"
+    message = (
+        "checkpoint registry verification emitted warnings"
+        if reason != "ok"
+        else "checkpoint registry verification passed"
+    )
     return _result(
         mode=mode,
         status=STATUS_PASS,
@@ -1252,7 +1602,9 @@ def _append_verify_warning(repo_root: Path, summary: dict[str, Any]) -> bool:
     )
     normalized = write_utils.validate_log_entry(entry)
     with write_utils.exclusive_write_lock(repo_root):
-        return write_utils.append_log_only_state_changes(repo_root, normalized, state_changed=True)
+        return write_utils.append_log_only_state_changes(
+            repo_root, normalized, state_changed=True
+        )
 
 
 def render_checkpoint_status(repo_root: str | Path = ".") -> str:
@@ -1285,13 +1637,17 @@ def render_checkpoint_status(repo_root: str | Path = ".") -> str:
         lines.append("- Latest batch: none")
     lines.append(
         "- Item statuses: "
-        + ", ".join(f"{status}={counts.get(status, 0)}" for status in sorted(ITEM_STATUSES))
+        + ", ".join(
+            f"{status}={counts.get(status, 0)}" for status in sorted(ITEM_STATUSES)
+        )
     )
     return "\n".join(lines) + "\n"
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = JsonArgumentParser(description="Manage the wiki-processing checkpoint registry.")
+    parser = JsonArgumentParser(
+        description="Manage the wiki-processing checkpoint registry."
+    )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(
         "--bootstrap",
@@ -1308,17 +1664,55 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Read-only schema validation of the registry; --warn-only returns exit 0 even on warnings.",
     )
-    parser.add_argument("--repo-root", default=".", help="Repository root path (must satisfy looks_like_repo_root).")
-    parser.add_argument("--registry", default=REGISTRY_PATH, choices=(REGISTRY_PATH,), help="Registry JSON path (fixed to raw/wiki-processing/wiki-processing-checkpoint-registry.json).")
-    parser.add_argument("--apply", action="store_true", help="Write bootstrap output after approval.")
-    parser.add_argument("--dry-run", action="store_true", help="Compatibility flag; bootstrap defaults to dry-run unless --apply is set.")
-    parser.add_argument("--input", help="Repo-local mutation input JSON path, or '-' for stdin.")
-    parser.add_argument("--trigger", choices=tuple(trigger.value for trigger in contracts.TriggerType), help="Override the mutation input batch trigger.")
-    parser.add_argument("--approval", choices=(APPROVAL_NONE, APPROVAL_APPROVED), default=APPROVAL_NONE, help="Approval gate: 'approved' required for any write-capable mode.")
-    parser.add_argument("--warn-only", action="store_true", help="Return exit 0 for verify warnings/failures.")
-    parser.add_argument("--log-warnings", action="store_true", help="Append verify warning telemetry to wiki/log.md; requires --approval approved.")
+    parser.add_argument(
+        "--repo-root",
+        default=".",
+        help="Repository root path (must satisfy looks_like_repo_root).",
+    )
+    parser.add_argument(
+        "--registry",
+        default=REGISTRY_PATH,
+        choices=(REGISTRY_PATH,),
+        help="Registry JSON path (fixed to raw/wiki-processing/wiki-processing-checkpoint-registry.json).",
+    )
+    parser.add_argument(
+        "--apply", action="store_true", help="Write bootstrap output after approval."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Compatibility flag; bootstrap defaults to dry-run unless --apply is set.",
+    )
+    parser.add_argument(
+        "--input", help="Repo-local mutation input JSON path, or '-' for stdin."
+    )
+    parser.add_argument(
+        "--trigger",
+        choices=tuple(trigger.value for trigger in contracts.TriggerType),
+        help="Override the mutation input batch trigger.",
+    )
+    parser.add_argument(
+        "--approval",
+        choices=(APPROVAL_NONE, APPROVAL_APPROVED),
+        default=APPROVAL_NONE,
+        help="Approval gate: 'approved' required for any write-capable mode.",
+    )
+    parser.add_argument(
+        "--warn-only",
+        action="store_true",
+        help="Return exit 0 for verify warnings/failures.",
+    )
+    parser.add_argument(
+        "--log-warnings",
+        action="store_true",
+        help="Append verify warning telemetry to wiki/log.md; requires --approval approved.",
+    )
     parser.add_argument("--now", help="Deterministic ISO timestamp for mutation tests.")
-    parser.add_argument("--result-json", action="store_true", help="Compatibility flag; JSON is always emitted.")
+    parser.add_argument(
+        "--result-json",
+        action="store_true",
+        help="Compatibility flag; JSON is always emitted.",
+    )
     return parser
 
 
@@ -1344,7 +1738,14 @@ def run_checkpoint_registry(args: argparse.Namespace) -> SurfaceResult:
         )
     if args.mutate:
         if not args.input:
-            return _result(mode="mutate", status=STATUS_FAIL, reason_code=REASON_CODE_INVALID_INPUT, message="--mutate requires --input", approval=args.approval, lock_required=True)
+            return _result(
+                mode="mutate",
+                status=STATUS_FAIL,
+                reason_code=REASON_CODE_INVALID_INPUT,
+                message="--mutate requires --input",
+                approval=args.approval,
+                lock_required=True,
+            )
         return mutate_registry(
             repo_root=args.repo_root,
             registry_path=args.registry,
@@ -1411,20 +1812,29 @@ def _validate_cli_mode_arguments(args: argparse.Namespace) -> SurfaceResult | No
     )
 
 
-def _first_present_argument(args: argparse.Namespace, messages_by_attr: dict[str, str]) -> str | None:
+def _first_present_argument(
+    args: argparse.Namespace, messages_by_attr: dict[str, str]
+) -> str | None:
     for attr, message in messages_by_attr.items():
         if bool(getattr(args, attr)):
             return message
     return None
 
 
-def main(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+def main(
+    argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout
+) -> int:
     """Parse CLI arguments, emit one ``SurfaceResult`` JSON line, and return an exit code."""
 
     try:
         args = _build_parser().parse_args(list(argv) if argv is not None else None)
     except ValueError as exc:
-        result = _result(mode="unknown", status=STATUS_FAIL, reason_code=REASON_CODE_INVALID_INPUT, message=str(exc))
+        result = _result(
+            mode="unknown",
+            status=STATUS_FAIL,
+            reason_code=REASON_CODE_INVALID_INPUT,
+            message=str(exc),
+        )
         output_stream.write(result.to_json() + "\n")
         return 1
     result = run_checkpoint_registry(args)

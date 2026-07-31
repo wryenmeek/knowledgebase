@@ -8,7 +8,10 @@ import subprocess
 import sys
 from typing import Sequence, TextIO
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (
+    None,
+    "",
+):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
@@ -37,13 +40,17 @@ LOCK_REQUIRED_MODES: tuple[str, ...] = ("publish-status",)
 ALLOWED_CONTEXT_ROOTS: tuple[str, ...] = (".github/skills", "docs", "schema")
 ALLOWED_CONTEXT_SUFFIXES: tuple[str, ...] = (".md",)
 DEFAULT_LIMIT = 50
-SYNC_WRAPPER = ".github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py"
+SYNC_WRAPPER = (
+    ".github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py"
+)
 STAGED_STATUS_ROOTS: tuple[str, ...] = ("docs/staged",)
 STAGED_STATUS_SUFFIXES: tuple[str, ...] = (".md",)
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = JsonArgumentParser(description="Manage repo-local context page inventories and plans.")
+    parser = JsonArgumentParser(
+        description="Manage repo-local context page inventories and plans."
+    )
     add_common_surface_args(parser, modes=SUPPORTED_MODES, default_mode="inventory")
     parser.add_argument(
         "--changed-path",
@@ -52,7 +59,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional changed paths used to narrow plan-fill output.",
     )
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
-    parser.add_argument("--staged-status-path", help="Repo-relative staged status file used by publish-status.")
+    parser.add_argument(
+        "--staged-status-path",
+        help="Repo-relative staged status file used by publish-status.",
+    )
     return parser
 
 
@@ -66,7 +76,9 @@ def _path_rules() -> dict[str, object]:
     return rules
 
 
-def _collect_items(repo_root: Path, paths: Sequence[str], *, limit: int) -> tuple[dict[str, object], ...]:
+def _collect_items(
+    repo_root: Path, paths: Sequence[str], *, limit: int
+) -> tuple[dict[str, object], ...]:
     items = []
     for path in expand_repo_paths(
         repo_root,
@@ -117,7 +129,9 @@ def run_context_management(
     path_rules = _path_rules()
     normalized_repo_root = Path(repo_root).resolve()
     if not looks_like_repo_root(normalized_repo_root):
-        return repo_root_failure(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules)
+        return repo_root_failure(
+            surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules
+        )
     if limit < 0:
         return invalid_input_result(
             surface=SURFACE,
@@ -146,14 +160,18 @@ def run_context_management(
             approval=approval,
             path_rules=path_rules,
             items=items,
-            summary={"selected_count": len(items), "lock_required_modes": list(LOCK_REQUIRED_MODES)},
+            summary={
+                "selected_count": len(items),
+                "lock_required_modes": list(LOCK_REQUIRED_MODES),
+            },
         )
     if mode == "plan-fill":
         changed = {path.strip() for path in (changed_paths or ()) if path.strip()}
         planned = tuple(
             item
             for item in items
-            if item["placeholder_count"] > 0 and (not changed or item["path"] in changed)
+            if item["placeholder_count"] > 0
+            and (not changed or item["path"] in changed)
         )
         return SurfaceResult(
             surface=SURFACE,
@@ -187,7 +205,9 @@ def run_context_management(
             path_rules=path_rules,
         )
     try:
-        staged_status_rel = _resolve_staged_status_path(normalized_repo_root, staged_status_path)
+        staged_status_rel = _resolve_staged_status_path(
+            normalized_repo_root, staged_status_path
+        )
     except ValueError as exc:
         return invalid_input_result(
             surface=SURFACE,
@@ -232,7 +252,9 @@ def run_context_management(
     )
 
 
-def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+def run_cli(
+    argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout
+) -> int:
     return run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,

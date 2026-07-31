@@ -70,8 +70,8 @@ import json
 import sys
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Sequence, TextIO
 
@@ -658,9 +658,7 @@ def _iter_session_event_lists(
 
 def collect_cli(
     home: Path, days: int, *, strict_window: bool = False
-) -> tuple[
-    tuple[AgentBucket, ...], int, float, dict[str, int], tuple[str, ...]
-]:
+) -> tuple[tuple[AgentBucket, ...], int, float, dict[str, int], tuple[str, ...]]:
     """Aggregate per-(agent, model, effort) cost from CLI session events.
 
     Per-session two-pass:
@@ -691,21 +689,23 @@ def collect_cli(
         unknown_agents (agent names not in :data:`AGENT_CLASS`).
     """
     cutoff = _epoch_cutoff(days)
-    raw_buckets: dict[
-        tuple[str, str, str], dict[str, int | set[str]]
-    ] = defaultdict(lambda: {
-        "invocations": 0,
-        "total_tokens": 0,
-        "total_duration_ms": 0,
-        "failures": 0,
-        "sessions": set(),
-    })
+    raw_buckets: dict[tuple[str, str, str], dict[str, int | set[str]]] = defaultdict(
+        lambda: {
+            "invocations": 0,
+            "total_tokens": 0,
+            "total_duration_ms": 0,
+            "failures": 0,
+            "sessions": set(),
+        }
+    )
     sessions_seen: set[str] = set()
     unknown_agents: set[str] = set()
     actual_nano_aiu = 0.0
     skipped = {"files": 0, "lines": 0}
 
-    for session_id, events in _iter_session_event_lists(home, cutoff, skipped, strict_window=strict_window):
+    for session_id, events in _iter_session_event_lists(
+        home, cutoff, skipped, strict_window=strict_window
+    ):
         session_default_effort = "default"
         per_call_effort: dict[str, str] = {}
         # First pass over THIS session only: resolve effort context.
@@ -748,7 +748,9 @@ def collect_cli(
                 tool_calls = _coerce_int(data.get("totalToolCalls"))
                 tool_call_id = data.get("toolCallId")
                 effort = per_call_effort.get(
-                    tool_call_id if isinstance(tool_call_id, str) and tool_call_id else "\x00",
+                    tool_call_id
+                    if isinstance(tool_call_id, str) and tool_call_id
+                    else "\x00",
                     session_default_effort,
                 )
                 key = (agent, model, effort)
@@ -826,7 +828,9 @@ def collect_chat(
         }
     )
     skipped = {"files": 0, "lines": 0}
-    for attrs in _iter_otel_inferences(home, cutoff, skipped, strict_window=strict_window):
+    for attrs in _iter_otel_inferences(
+        home, cutoff, skipped, strict_window=strict_window
+    ):
         model = attrs.get("gen_ai.request.model") or "?"
         if model == "?":
             continue
@@ -839,9 +843,7 @@ def collect_chat(
         # Option B: pick up exact cached-token count when OTEL provides it.
         cached = _coerce_int(
             attrs.get("gen_ai.usage.cache_read_input_tokens")
-        ) or _coerce_int(
-            attrs.get("gen_ai.usage.cached_input_tokens")
-        )
+        ) or _coerce_int(attrs.get("gen_ai.usage.cached_input_tokens"))
         bucket["cached_input_tokens"] += cached
         price = PRICING.get(model)
         if (
@@ -946,9 +948,7 @@ def _build_priority(
         by_cost[b.agent] += b.est_cost_usd
         by_inv[b.agent] += b.invocations
         by_models[b.agent].add(b.model)
-    ranked = sorted(by_cost.items(), key=lambda kv: kv[1], reverse=True)[
-        :top_n
-    ]
+    ranked = sorted(by_cost.items(), key=lambda kv: kv[1], reverse=True)[:top_n]
     return tuple(
         PriorityRow(
             rank=i,
@@ -999,14 +999,13 @@ def build_report(
             status=STATUS_FAIL,
             reason_code=REASON_CODE_MISSING_COPILOT_HOME,
             message=(
-                f"Copilot home directory does not exist or is not a "
-                f"directory: {home}"
+                f"Copilot home directory does not exist or is not a directory: {home}"
             ),
             days=days,
         )
 
-    cli_buckets, sessions_analyzed, actual_nano_aiu, cli_skipped, unknown = (
-        collect_cli(home, days, strict_window=strict_window)
+    cli_buckets, sessions_analyzed, actual_nano_aiu, cli_skipped, unknown = collect_cli(
+        home, days, strict_window=strict_window
     )
     if include_chat:
         chat_buckets, chat_skipped = collect_chat(
@@ -1035,8 +1034,7 @@ def build_report(
         status=STATUS_PASS,
         reason_code=REASON_CODE_OK,
         message=(
-            f"analysis complete: {sessions_analyzed} sessions across last "
-            f"{days}d"
+            f"analysis complete: {sessions_analyzed} sessions across last {days}d"
         ),
         data_window_days=days,
         pricing_table_retrieved=PRICING_RETRIEVED.isoformat(),
@@ -1117,9 +1115,7 @@ def _render_savings_table(rows: Sequence[SavingsRow]) -> str:
 
 
 def _render_chat_table(buckets: Sequence[ChatBucket]) -> str:
-    out = [
-        f"{'model':<32} {'inf':>6} {'in(M)':>8} {'out(M)':>8} {'est_$':>8}"
-    ]
+    out = [f"{'model':<32} {'inf':>6} {'in(M)':>8} {'out(M)':>8} {'est_$':>8}"]
     out.append("-" * 68)
     for r in buckets:
         out.append(
@@ -1161,8 +1157,7 @@ def render_text(
     window_label = "[strict-window]" if strict_window else "[mtime-window]"
     lines: list[str] = []
     lines.append(
-        f"# Copilot agent cost baseline "
-        f"(last {days}d {window_label}, home={home})"
+        f"# Copilot agent cost baseline (last {days}d {window_label}, home={home})"
     )
     if report.pricing_stale:
         age = (datetime.now(timezone.utc).date() - PRICING_RETRIEVED).days
@@ -1194,20 +1189,18 @@ def render_text(
         lines.append("(no sub-agent invocations recorded in window)")
     lines.append("")
 
-    lines.append(
-        "## Savings projection (per-agent cheapest viable replacement)"
-    )
+    lines.append("## Savings projection (per-agent cheapest viable replacement)")
     lines.append("")
     if report.savings:
         lines.append(_render_savings_table(report.savings))
     else:
-        lines.append("(no savings opportunities — all agents already on "
-                     "cheapest viable model)")
+        lines.append(
+            "(no savings opportunities — all agents already on cheapest viable model)"
+        )
     lines.append("")
 
     lines.append(
-        f"## Experimentation priority (top {len(report.priority)} by "
-        "absolute cost)"
+        f"## Experimentation priority (top {len(report.priority)} by absolute cost)"
     )
     lines.append("")
     if report.priority:
@@ -1218,8 +1211,7 @@ def render_text(
 
     if report.chat_buckets:
         lines.append(
-            "## VS Code Copilot Chat per-model usage "
-            "(from gen_ai OTEL traces)"
+            "## VS Code Copilot Chat per-model usage (from gen_ai OTEL traces)"
         )
         lines.append("")
         lines.append(_render_chat_table(report.chat_buckets))
@@ -1267,9 +1259,7 @@ def _float_zero_one(s: str) -> float:
     except ValueError:
         raise argparse.ArgumentTypeError(f"expected a float, got {s!r}")
     if not (0.0 <= v <= 1.0):
-        raise argparse.ArgumentTypeError(
-            f"must be in [0.0, 1.0], got {v!r}"
-        )
+        raise argparse.ArgumentTypeError(f"must be in [0.0, 1.0], got {v!r}")
     return v
 
 
@@ -1363,9 +1353,7 @@ def run_cli(
     Returns 0 on ``STATUS_PASS``, 1 on ``STATUS_FAIL``.
     """
     try:
-        args = _build_parser().parse_args(
-            list(argv) if argv is not None else None
-        )
+        args = _build_parser().parse_args(list(argv) if argv is not None else None)
     except ValueError as exc:
         report = _empty_report(
             status=STATUS_FAIL,

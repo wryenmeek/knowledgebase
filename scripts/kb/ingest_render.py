@@ -128,7 +128,9 @@ def render_source_page(
 ) -> str:
     """Render the wiki/sources markdown page for an ingested source."""
     title_token = Path(source_relative).stem.replace("_", " ").replace("-", " ").strip()
-    normalized_title = " ".join(title_token.split()).title() or Path(source_relative).name
+    normalized_title = (
+        " ".join(title_token.split()).title() or Path(source_relative).name
+    )
     page_title = f"Source: {normalized_title}"
 
     lines = [

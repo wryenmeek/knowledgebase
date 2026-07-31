@@ -25,7 +25,9 @@ def main(argv: list[str] | None = None) -> int:
             failures.append(f)
     if failures:
         for f in failures:
-            print(f"ERROR: Governance lock file must not be staged: {f}", file=sys.stderr)
+            print(
+                f"ERROR: Governance lock file must not be staged: {f}", file=sys.stderr
+            )
         print(
             "Hint: lock files should never be committed. Add them to .gitignore.",
             file=sys.stderr,

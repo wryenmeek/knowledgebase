@@ -8,7 +8,10 @@ from pathlib import Path
 import sys
 from typing import Sequence, TextIO
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (
+    None,
+    "",
+):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts._optional_surface_common import (
     APPROVAL_NONE,
@@ -35,14 +38,18 @@ ALLOWED_SNAPSHOT_ROOTS: tuple[str, ...] = ("raw/processed", "schema", "wiki")
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = JsonArgumentParser(description="Capture or compare deterministic knowledgebase snapshots.")
+    parser = JsonArgumentParser(
+        description="Capture or compare deterministic knowledgebase snapshots."
+    )
     add_common_surface_args(
         parser,
         modes=SUPPORTED_MODES,
         default_mode="capture",
         include_approval=False,
     )
-    parser.add_argument("--snapshot", help="Repo-relative JSON snapshot captured earlier.")
+    parser.add_argument(
+        "--snapshot", help="Repo-relative JSON snapshot captured earlier."
+    )
     return parser
 
 
@@ -52,7 +59,9 @@ def _path_rules() -> dict[str, object]:
     return rules
 
 
-def _capture_snapshot(repo_root: Path, paths: Sequence[str]) -> tuple[dict[str, object], ...]:
+def _capture_snapshot(
+    repo_root: Path, paths: Sequence[str]
+) -> tuple[dict[str, object], ...]:
     return tuple(
         {
             "path": repo_relative(repo_root, path),
@@ -79,7 +88,9 @@ def _resolve_repo_file(repo_root: Path, raw_path: str) -> Path:
     if not resolved.is_relative_to(repo_root):
         raise ValueError(f"snapshot path escapes repository root: {raw_path}")
     if not resolved.is_file() or resolved.suffix.lower() != ".json":
-        raise ValueError("snapshot path must reference an existing JSON file within the repository")
+        raise ValueError(
+            "snapshot path must reference an existing JSON file within the repository"
+        )
     return resolved
 
 
@@ -93,8 +104,12 @@ def _load_snapshot_items(snapshot_file: Path) -> list[dict[str, object]]:
     for item in items:
         if not isinstance(item, dict):
             raise ValueError("snapshot items must be objects")
-        if not isinstance(item.get("path"), str) or not isinstance(item.get("sha256"), str):
-            raise ValueError("snapshot items must include string 'path' and 'sha256' fields")
+        if not isinstance(item.get("path"), str) or not isinstance(
+            item.get("sha256"), str
+        ):
+            raise ValueError(
+                "snapshot items must include string 'path' and 'sha256' fields"
+            )
     return items
 
 
@@ -108,7 +123,9 @@ def run_snapshot(
     path_rules = _path_rules()
     normalized_repo_root = Path(repo_root).resolve()
     if not looks_like_repo_root(normalized_repo_root):
-        return repo_root_failure(surface=SURFACE, mode=mode, approval=APPROVAL_NONE, path_rules=path_rules)
+        return repo_root_failure(
+            surface=SURFACE, mode=mode, approval=APPROVAL_NONE, path_rules=path_rules
+        )
     try:
         captured = _capture_snapshot(normalized_repo_root, list(paths or ()))
     except ValueError as exc:
@@ -154,7 +171,11 @@ def run_snapshot(
     current_map = {item["path"]: item["sha256"] for item in captured}
     added = sorted(path for path in current_map if path not in previous_map)
     removed = sorted(path for path in previous_map if path not in current_map)
-    changed = sorted(path for path in current_map if previous_map.get(path) not in {None, current_map[path]})
+    changed = sorted(
+        path
+        for path in current_map
+        if previous_map.get(path) not in {None, current_map[path]}
+    )
     return SurfaceResult(
         surface=SURFACE,
         mode=mode,
@@ -172,7 +193,9 @@ def run_snapshot(
     )
 
 
-def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+def run_cli(
+    argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout
+) -> int:
     return run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,

@@ -10,7 +10,10 @@ from pathlib import Path
 import sys
 from typing import Sequence, TextIO
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (
+    None,
+    "",
+):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts._optional_surface_common import (
     APPROVAL_APPROVED,
@@ -83,7 +86,10 @@ def _preview_markdown(path: Path) -> tuple[str | None, str | None]:
         text = re.sub(r"<[^>]+>", " ", raw)
         normalized = " ".join(text.split())
         return f"# {_stem_to_title(path)}\n\n{normalized}\n", None
-    return None, "source type requires an external converter that is not enabled in this deterministic repo-local surface"
+    return (
+        None,
+        "source type requires an external converter that is not enabled in this deterministic repo-local surface",
+    )
 
 
 def run_convert_sources(
@@ -96,7 +102,9 @@ def run_convert_sources(
     path_rules = _path_rules()
     normalized_repo_root = Path(repo_root).resolve()
     if not looks_like_repo_root(normalized_repo_root):
-        return repo_root_failure(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules)
+        return repo_root_failure(
+            surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules
+        )
     try:
         resolved_paths = expand_repo_paths(
             normalized_repo_root,
@@ -159,8 +167,12 @@ def run_convert_sources(
             surface=SURFACE,
             mode=mode,
             status=STATUS_FAIL if unsupported else STATUS_PASS,
-            reason_code=REASON_CODE_UNSUPPORTED_SOURCE_TYPE if unsupported else REASON_CODE_OK,
-            message="source conversion preview computed" if unsupported == 0 else "one or more sources require unsupported conversion tooling",
+            reason_code=REASON_CODE_UNSUPPORTED_SOURCE_TYPE
+            if unsupported
+            else REASON_CODE_OK,
+            message="source conversion preview computed"
+            if unsupported == 0
+            else "one or more sources require unsupported conversion tooling",
             approval=approval,
             path_rules=path_rules,
             items=tuple(items),
@@ -176,7 +188,8 @@ def run_convert_sources(
         )
     # Restrict apply-mode input to raw/inbox/** only (ADR-010)
     inbox_violations = [
-        p for p in resolved_paths
+        p
+        for p in resolved_paths
         if not repo_relative(normalized_repo_root, p).startswith("raw/inbox/")
     ]
     if inbox_violations:
@@ -187,7 +200,9 @@ def run_convert_sources(
             message=(
                 "apply mode only accepts sources from raw/inbox/**; "
                 "one or more paths resolve outside that boundary: "
-                + ", ".join(repo_relative(normalized_repo_root, p) for p in inbox_violations)
+                + ", ".join(
+                    repo_relative(normalized_repo_root, p) for p in inbox_violations
+                )
             ),
             path_rules=path_rules,
         )
@@ -195,7 +210,9 @@ def run_convert_sources(
     slug_to_sources: dict[str, list[Path]] = {}
     for p in resolved_paths:
         slug_to_sources.setdefault(p.stem, []).append(p)
-    collisions = {slug: paths for slug, paths in slug_to_sources.items() if len(paths) > 1}
+    collisions = {
+        slug: paths for slug, paths in slug_to_sources.items() if len(paths) > 1
+    }
     if collisions:
         collision_detail = "; ".join(
             f"{slug}: {', '.join(repo_relative(normalized_repo_root, p) for p in paths)}"
@@ -253,7 +270,9 @@ def run_convert_sources(
                         "converted_at": datetime.now(timezone.utc).isoformat(),
                         "surface": SURFACE,
                     }
-                    meta_out.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+                    meta_out.write_text(
+                        json.dumps(meta, indent=2) + "\n", encoding="utf-8"
+                    )
                 except OSError as exc:
                     # Roll back the partial pair so the source remains retryable.
                     md_out.unlink(missing_ok=True)
@@ -277,7 +296,13 @@ def run_convert_sources(
                     }
                 )
     except LockUnavailableError as exc:
-        return lock_unavailable_result(surface=SURFACE, mode=mode, approval=approval, path_rules=path_rules, exc=exc)
+        return lock_unavailable_result(
+            surface=SURFACE,
+            mode=mode,
+            approval=approval,
+            path_rules=path_rules,
+            exc=exc,
+        )
     converted = sum(1 for i in items if i.get("status") == STATUS_PASS)
     return SurfaceResult(
         surface=SURFACE,
@@ -294,7 +319,9 @@ def run_convert_sources(
     )
 
 
-def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+def run_cli(
+    argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout
+) -> int:
     return run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,

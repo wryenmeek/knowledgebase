@@ -58,9 +58,7 @@ def _get_instruction_paths(paths: list[str]) -> tuple[list[str], list[str]]:
 
 def _get_staged_content(path: str) -> str | None:
     """Read the staged (index) version of a file."""
-    result = subprocess.run(
-        ["git", "show", f":{path}"], capture_output=True, text=True
-    )
+    result = subprocess.run(["git", "show", f":{path}"], capture_output=True, text=True)
     return result.stdout if result.returncode == 0 else None
 
 
@@ -169,10 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         for failure in failures:
             print(f"  {failure}", file=sys.stderr)
         print(
-            "\nFix: add YAML frontmatter such as:\n"
-            "---\n"
-            'applyTo: "path/glob/**"\n'
-            "---",
+            '\nFix: add YAML frontmatter such as:\n---\napplyTo: "path/glob/**"\n---',
             file=sys.stderr,
         )
         return 1

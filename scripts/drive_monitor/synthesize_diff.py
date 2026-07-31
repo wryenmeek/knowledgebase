@@ -47,14 +47,11 @@ from scripts.kb.contracts import DriveMonitorReasonCode
 from scripts.kb import write_utils
 from scripts.drive_monitor._types import (
     MIME_EXPORT_MAP,
-    OVERSIZE_LIMIT_BYTES,
-    validate_drive_drift_report,
 )
 from scripts.drive_monitor._validators import (
     build_drive_asset_path,
     build_wiki_page_path,
     safe_filename,
-    validate_file_id,
 )
 from scripts.drive_monitor._registry import (
     find_registry_by_alias,
@@ -207,19 +204,16 @@ def _build_change_note(
     elif new_bytes is None:
         lines.append("\n*New version asset not yet fetched.*\n")
     elif _is_binary(new_bytes):
-        lines.append(
-            f"\n*Binary file ({len(new_bytes)} bytes) — diff not shown.*\n"
-        )
+        lines.append(f"\n*Binary file ({len(new_bytes)} bytes) — diff not shown.*\n")
     elif len(new_bytes) > _DIFF_SIZE_LIMIT:
-        lines.append(
-            f"\n*File too large ({len(new_bytes)} bytes) for inline diff.*\n"
-        )
+        lines.append(f"\n*File too large ({len(new_bytes)} bytes) for inline diff.*\n")
     else:
         try:
             old_text = old_bytes.decode("utf-8", errors="replace")
             new_text = new_bytes.decode("utf-8", errors="replace")
             diff = _render_diff(
-                old_text, new_text,
+                old_text,
+                new_text,
                 old_label=f"{display_name} (prev)",
                 new_label=f"{display_name} (new)",
             )
@@ -256,16 +250,22 @@ def synthesize_diff(
         STATUS_FAIL if any entry fails to write or update the registry.
     """
     if approval != APPROVAL_APPROVED:
-        return approval_required_result(surface=SURFACE, mode=MODE, path_rules=_path_rules(), lock_required=True)
+        return approval_required_result(
+            surface=SURFACE, mode=MODE, path_rules=_path_rules(), lock_required=True
+        )
 
     if not looks_like_repo_root(repo_root):
-        return repo_root_failure(surface=SURFACE, mode=MODE, approval=approval, path_rules=_path_rules())
+        return repo_root_failure(
+            surface=SURFACE, mode=MODE, approval=approval, path_rules=_path_rules()
+        )
 
     try:
         raw = drift_report_path.read_text(encoding="utf-8")
     except OSError as exc:
         return invalid_input_result(
-            surface=SURFACE, mode=MODE, approval=approval,
+            surface=SURFACE,
+            mode=MODE,
+            approval=approval,
             path_rules=_path_rules(),
             message=f"Cannot read drift report: {exc}",
         )
@@ -274,7 +274,9 @@ def synthesize_diff(
         report = json.loads(raw)
     except json.JSONDecodeError as exc:
         return invalid_input_result(
-            surface=SURFACE, mode=MODE, approval=approval,
+            surface=SURFACE,
+            mode=MODE,
+            approval=approval,
             path_rules=_path_rules(),
             message=f"Malformed JSON: {exc}",
         )
@@ -288,8 +290,7 @@ def synthesize_diff(
         entries = []
 
     entries = [
-        e for e in entries
-        if e.get("event_type") in ("content_changed", "new_file")
+        e for e in entries if e.get("event_type") in ("content_changed", "new_file")
     ]
 
     if not entries:
@@ -315,10 +316,12 @@ def synthesize_diff(
         is_native = mime_type in MIME_EXPORT_MAP
 
         if not wiki_page:
-            errors.append({
-                "file_id": file_id,
-                "reason": "wiki_page is null; cannot synthesize without target page",
-            })
+            errors.append(
+                {
+                    "file_id": file_id,
+                    "reason": "wiki_page is null; cannot synthesize without target page",
+                }
+            )
             error_count += 1
             continue
 
@@ -331,32 +334,42 @@ def synthesize_diff(
 
         registry_path = find_registry_by_alias(repo_root, alias)
         if not registry_path:
-            errors.append({
-                "file_id": file_id,
-                "reason": f"No registry found for alias {alias!r}",
-            })
+            errors.append(
+                {
+                    "file_id": file_id,
+                    "reason": f"No registry found for alias {alias!r}",
+                }
+            )
             error_count += 1
             continue
 
         # Locate old and new assets
         old_bytes = _find_old_asset(
-            repo_root, alias, file_id,
+            repo_root,
+            alias,
+            file_id,
             entry.get("last_applied_drive_version"),
             entry.get("md5_checksum_at_last_applied"),
-            display_name, mime_type,
+            display_name,
+            mime_type,
         )
         new_bytes = _find_new_asset(
-            repo_root, alias, file_id,
+            repo_root,
+            alias,
+            file_id,
             entry.get("current_drive_version"),
             entry.get("current_md5_checksum"),
-            display_name, mime_type,
+            display_name,
+            mime_type,
         )
 
         if new_bytes is None:
-            errors.append({
-                "file_id": file_id,
-                "reason": "New asset not found in raw/assets/gdrive/ — run fetch_content first",
-            })
+            errors.append(
+                {
+                    "file_id": file_id,
+                    "reason": "New asset not found in raw/assets/gdrive/ — run fetch_content first",
+                }
+            )
             error_count += 1
             continue
 
@@ -369,9 +382,7 @@ def synthesize_diff(
                 wiki_path.parent.mkdir(parents=True, exist_ok=True)
                 original_existed = wiki_path.exists()
                 original_content = (
-                    wiki_path.read_text(encoding="utf-8")
-                    if original_existed
-                    else None
+                    wiki_path.read_text(encoding="utf-8") if original_existed else None
                 )
 
                 # Append change note to wiki page
@@ -384,8 +395,7 @@ def synthesize_diff(
                         f"---\ntitle: {safe_title}\nsource_type: google_drive\n"
                         f"alias: {alias}\nfile_id: {file_id}\n---\n"
                         f"# {_sanitize_for_md(display_name)}\n\n"
-                        f"*Auto-created by CI-6 Drive monitor.*\n"
-                        + change_note
+                        f"*Auto-created by CI-6 Drive monitor.*\n" + change_note
                     )
                 _write_wiki_page(wiki_path, new_content)
 
@@ -399,7 +409,9 @@ def synthesize_diff(
                         repo_root,
                         registry_path,
                         file_id,
-                        drive_version=int(current_version) if current_version is not None else None,
+                        drive_version=int(current_version)
+                        if current_version is not None
+                        else None,
                         md5_checksum=current_md5,
                         sha256=sha256_hex,
                     )
@@ -411,21 +423,25 @@ def synthesize_diff(
                         elif wiki_path.exists():
                             wiki_path.unlink()
                     except OSError as rollback_exc:
-                        errors.append({
-                            "file_id": file_id,
-                            "reason": (
-                                f"Registry update failed: {reg_exc}; "
-                                f"rollback also failed: {rollback_exc}"
-                            ),
-                        })
+                        errors.append(
+                            {
+                                "file_id": file_id,
+                                "reason": (
+                                    f"Registry update failed: {reg_exc}; "
+                                    f"rollback also failed: {rollback_exc}"
+                                ),
+                            }
+                        )
                         error_count += 1
                         continue
-                    errors.append({
-                        "file_id": file_id,
-                        "reason": (
-                            f"Registry update failed (wiki rolled back): {reg_exc}"
-                        ),
-                    })
+                    errors.append(
+                        {
+                            "file_id": file_id,
+                            "reason": (
+                                f"Registry update failed (wiki rolled back): {reg_exc}"
+                            ),
+                        }
+                    )
                     error_count += 1
                     continue
 
@@ -442,7 +458,10 @@ def synthesize_diff(
     print(message, file=sys.stderr)
     if errors:
         for e in errors:
-            print(f"  ERROR [{e.get('file_id','?')}]: {e.get('reason','?')}", file=sys.stderr)
+            print(
+                f"  ERROR [{e.get('file_id', '?')}]: {e.get('reason', '?')}",
+                file=sys.stderr,
+            )
 
     status = STATUS_PASS if error_count == 0 else STATUS_FAIL
     return SurfaceResult(
@@ -450,7 +469,8 @@ def synthesize_diff(
         mode=MODE,
         status=status,
         reason_code=str(
-            DriveMonitorReasonCode.DRIFT_DETECTED if success_count > 0
+            DriveMonitorReasonCode.DRIFT_DETECTED
+            if success_count > 0
             else DriveMonitorReasonCode.FETCH_FAILED
         ),
         message=message,

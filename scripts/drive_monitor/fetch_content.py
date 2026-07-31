@@ -67,7 +67,6 @@ from scripts.drive_monitor._validators import (
     build_drive_asset_path,
     safe_filename,
     validate_file_id,
-    validate_display_name,
 )
 from scripts.drive_monitor._registry import (
     find_registry_by_alias,
@@ -136,7 +135,9 @@ def _fetch_and_store_asset(
             md5_checksum = entry.get("current_md5_checksum")
             if not md5_checksum:
                 # Compute MD5 from downloaded bytes as fallback
-                md5_checksum = hashlib.md5(asset_bytes, usedforsecurity=False).hexdigest()
+                md5_checksum = hashlib.md5(
+                    asset_bytes, usedforsecurity=False
+                ).hexdigest()
             version_segment = md5_checksum
             drive_version = None
 
@@ -160,7 +161,10 @@ def _fetch_and_store_asset(
             repo_root, alias, file_id, version_segment, safe_name
         )
     except ValueError as exc:
-        print(f"ERROR: asset path validation failed for {file_id!r}: {exc}", file=sys.stderr)
+        print(
+            f"ERROR: asset path validation failed for {file_id!r}: {exc}",
+            file=sys.stderr,
+        )
         return False, None, None, None
 
     try:
@@ -197,16 +201,22 @@ def fetch_content(
     SurfaceResult
     """
     if approval != APPROVAL_APPROVED:
-        return approval_required_result(surface=SURFACE, mode=MODE, path_rules=_path_rules(), lock_required=True)
+        return approval_required_result(
+            surface=SURFACE, mode=MODE, path_rules=_path_rules(), lock_required=True
+        )
 
     if not looks_like_repo_root(repo_root):
-        return repo_root_failure(surface=SURFACE, mode=MODE, approval=approval, path_rules=_path_rules())
+        return repo_root_failure(
+            surface=SURFACE, mode=MODE, approval=approval, path_rules=_path_rules()
+        )
 
     try:
         raw = drift_report_path.read_text(encoding="utf-8")
     except OSError as exc:
         return invalid_input_result(
-            surface=SURFACE, mode=MODE, approval=approval,
+            surface=SURFACE,
+            mode=MODE,
+            approval=approval,
             path_rules=_path_rules(),
             message=f"Cannot read drift report: {exc}",
         )
@@ -216,7 +226,9 @@ def fetch_content(
         validate_drive_drift_report(report)
     except (json.JSONDecodeError, ValueError) as exc:
         return invalid_input_result(
-            surface=SURFACE, mode=MODE, approval=approval,
+            surface=SURFACE,
+            mode=MODE,
+            approval=approval,
             path_rules=_path_rules(),
             message=f"Malformed drift report: {exc}",
         )
@@ -253,10 +265,15 @@ def fetch_content(
 
         try:
             registry_raw = json.loads(registry_path.read_text(encoding="utf-8"))
-            credential_secret = registry_raw.get("credential_secret_name") or "GDRIVE_SA_KEY"
+            credential_secret = (
+                registry_raw.get("credential_secret_name") or "GDRIVE_SA_KEY"
+            )
             drive = build_drive_client(credential_secret)
         except (OSError, DriveAPIRequestError) as exc:
-            print(f"ERROR: cannot build Drive client for {alias!r}: {exc}", file=sys.stderr)
+            print(
+                f"ERROR: cannot build Drive client for {alias!r}: {exc}",
+                file=sys.stderr,
+            )
             error_count += len(entries)
             continue
 
@@ -317,7 +334,8 @@ def fetch_content(
 
     status = STATUS_PASS if error_count == 0 else STATUS_FAIL
     reason = (
-        DriveMonitorReasonCode.DRIFT_DETECTED if success_count > 0
+        DriveMonitorReasonCode.DRIFT_DETECTED
+        if success_count > 0
         else DriveMonitorReasonCode.FETCH_FAILED
     )
 

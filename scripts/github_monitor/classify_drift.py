@@ -28,7 +28,6 @@ from scripts._optional_surface_common import (
     JsonArgumentParser,
     SurfaceResult,
     base_path_rules,
-    invalid_input_result,
     run_surface_cli,
 )
 
@@ -129,8 +128,12 @@ def classify_drift(
     output_dir.mkdir(parents=True, exist_ok=True)
     afk_path = output_dir / "afk-entries.json"
     hitl_path = output_dir / "hitl-entries.json"
-    afk_path.write_text(json.dumps({"entries": afk_entries}, indent=2), encoding="utf-8")
-    hitl_path.write_text(json.dumps({"entries": hitl_entries}, indent=2), encoding="utf-8")
+    afk_path.write_text(
+        json.dumps({"entries": afk_entries}, indent=2), encoding="utf-8"
+    )
+    hitl_path.write_text(
+        json.dumps({"entries": hitl_entries}, indent=2), encoding="utf-8"
+    )
 
     message = f"Classification: {len(afk_entries)} AFK, {len(hitl_entries)} HITL"
     print(message, file=sys.stderr)
@@ -157,9 +160,7 @@ def classify_drift(
 
 
 def _build_parser() -> JsonArgumentParser:
-    parser = JsonArgumentParser(
-        description="Classify drifted entries as HITL or AFK."
-    )
+    parser = JsonArgumentParser(description="Classify drifted entries as HITL or AFK.")
     parser.add_argument(
         "--drift-report",
         metavar="PATH",
