@@ -52,3 +52,6 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
+## 2024-05-20 - [Performance] Fast-path literal check before splitlines
+**Learning:** When parsing multiline text for specific keys or prefixes, always include a fast-path literal check (e.g., `if key not in text: return`) before calling `splitlines()`. This avoids the O(N) string tokenization overhead entirely when the target pattern is absent.
+**Action:** Always check if the target substring exists in the multiline text before unconditionally splitting it into an array of lines.
