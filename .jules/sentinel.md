@@ -24,3 +24,7 @@
 **Vulnerability:** Token exposure via stderr logs and expression injection (`${{ ... }}`) via GitHub-flavoured markdown rendering.
 **Learning:** API error messages can contain sensitive credentials (e.g., `ghp_`, `github_pat_`, base64 strings) which can be exposed if stderr is not properly redacted. GitHub markdown might trigger side effects if `${{ ... }}` expressions are not neutralized.
 **Prevention:** Centralize and ensure consistent markdown sanitization and error log redaction across all scripts interfacing with external platforms (like GitHub and Google Drive).
+## 2026-06-26 - [Insecure Network Binding]
+**Vulnerability:** HTTP relay scripts bound to "0.0.0.0" by default, potentially exposing sensitive local services to unintended networks if deployed without containerization.
+**Learning:** Defaulting to "0.0.0.0" is flagged by Bandit as a medium severity risk because it binds to all interfaces, which can lead to unintended exposure. Using a safe default like "127.0.0.1" while allowing environment variable override ensures secure defaults and deployment flexibility.
+**Prevention:** Always default network binding configurations to local loopback ("127.0.0.1") and use environment variables for overrides in production environments.
