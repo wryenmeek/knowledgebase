@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+import re
+import re
 import hashlib
 import importlib.util
 import inspect
@@ -10,7 +13,7 @@ from pathlib import Path
 import re
 import sqlite3
 from typing import Any
-import unittest
+import pytest
 
 from tests.kb.harnesses import load_module
 
@@ -35,7 +38,7 @@ FINDING_SCHEMA_PATH = (
 REPO = "wryenmeek/knowledgebase"
 
 
-class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
+class TestAuditWorkspaceFrictionQuery:
     def _module(self):
         return load_module("audit_workspace_friction_queries", FRICTION_QUERIES_PATH)
 
@@ -46,23 +49,20 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         module = self._module()
         templates = self._templates(module)
 
-        self.assertEqual(
-            set(templates),
-            {
+        assert set(templates) == {
                 "chronicle_commits",
                 "repeated_user_prompts",
                 "repeated_context_loads",
                 "hook_bypasses",
                 "retry_loops",
-            },
-        )
+            }
         for friction_class, template in templates.items():
-            with self.subTest(friction_class=friction_class):
-                self.assertEqual(template["friction_class"], friction_class)
-                self.assertIn("primary", template)
-                self.assertIn("broader", template)
-                self.assertEqual(template["fallback"], module.LIMITED_EVIDENCE_SENTINEL)
-                self.assertIn("finding", template)
+            if True:
+                assert template["friction_class"] == friction_class
+                assert "primary" in template
+                assert "broader" in template
+                assert template["fallback"] == module.LIMITED_EVIDENCE_SENTINEL
+                assert "finding" in template
 
     def test_sql_templates_follow_session_store_safety_rules(self) -> None:
         module = self._module()
@@ -77,50 +77,48 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
         for friction_class, template in self._templates(module).items():
             for pass_name in ("primary", "broader"):
-                with self.subTest(friction_class=friction_class, pass_name=pass_name):
+                if True:
                     sql = template[pass_name]
                     lowered = sql.lower()
 
-                    self.assertNotIn("select *", lowered)
-                    self.assertTrue(lowered.startswith(("select", "with")))
-                    self.assertNotIn(";", sql)
-                    self.assertIsNone(
-                        re.search(r"\b(insert|update|delete|drop|alter|create)\b", lowered)
-                    )
-                    self.assertIn("now() - interval '7 days'", lowered)
-                    self.assertIn("limit 50", lowered)
+                    assert "select *" not in lowered
+                    assert lowered.startswith(("select", "with"))
+                    assert ";" not in sql
+                    assert re.search(r"\b(insert|update|delete|drop|alter|create)\b", lowered) is None
+                    assert "now() - interval '7 days'" in lowered
+                    assert "limit 50" in lowered
                     if pass_name == "primary":
-                        self.assertIn("s.repository = 'wryenmeek/knowledgebase'", sql)
+                        assert "s.repository = 'wryenmeek/knowledgebase'" in sql
                     else:
-                        self.assertNotIn("s.repository =", sql)
+                        assert "s.repository =" not in sql
                     if " ilike " in lowered:
                         for anchor in ilike_exact_match_anchors[friction_class]:
-                            self.assertIn(anchor, lowered)
+                            assert anchor in lowered
 
         days_30_template = module.retry_loops_query(repo=REPO, days=30)
-        with self.subTest(friction_class="retry_loops", days=30):
-            self.assertIn("now() - INTERVAL '30 days'", days_30_template["primary"])
-            self.assertIn("now() - INTERVAL '30 days'", days_30_template["broader"])
+        if True:
+            assert "now() - INTERVAL '30 days'" in days_30_template["primary"]
+            assert "now() - INTERVAL '30 days'" in days_30_template["broader"]
 
     def test_sql_templates_include_friction_specific_predicates(self) -> None:
         module = self._module()
         templates = self._templates(module)
 
-        self.assertIn("sr.ref_type = 'commit'", templates["chronicle_commits"]["primary"])
-        self.assertIn("ILIKE '%/chronicle improve%'", templates["chronicle_commits"]["primary"])
-        self.assertIn("HAVING COUNT(*) > 1", templates["repeated_user_prompts"]["primary"])
-        self.assertIn("md5(COALESCE(t.user_message, '')) AS prompt_fingerprint", templates["repeated_user_prompts"]["primary"])
-        self.assertIn("length(COALESCE(t.user_message, '')) AS prompt_length", templates["repeated_user_prompts"]["primary"])
-        self.assertNotIn("AS repeated_prompt", templates["repeated_user_prompts"]["primary"])
-        self.assertNotIn("AS repeated_prompt", templates["repeated_user_prompts"]["broader"])
-        self.assertIn("e.type = 'tool.execution_complete'", templates["repeated_context_loads"]["primary"])
-        self.assertIn("e.tool_start_name = 'skill'", templates["repeated_context_loads"]["primary"])
+        assert "sr.ref_type = 'commit'" in templates["chronicle_commits"]["primary"]
+        assert "ILIKE '%/chronicle improve%'" in templates["chronicle_commits"]["primary"]
+        assert "HAVING COUNT(*) > 1" in templates["repeated_user_prompts"]["primary"]
+        assert "md5(COALESCE(t.user_message, '')) AS prompt_fingerprint" in templates["repeated_user_prompts"]["primary"]
+        assert "length(COALESCE(t.user_message, '')) AS prompt_length" in templates["repeated_user_prompts"]["primary"]
+        assert "AS repeated_prompt" not in templates["repeated_user_prompts"]["primary"]
+        assert "AS repeated_prompt" not in templates["repeated_user_prompts"]["broader"]
+        assert "e.type = 'tool.execution_complete'" in templates["repeated_context_loads"]["primary"]
+        assert "e.tool_start_name = 'skill'" in templates["repeated_context_loads"]["primary"]
         hook_primary = templates["hook_bypasses"]["primary"]
-        self.assertIn("ILIKE '%no-verify%'", hook_primary)
-        self.assertLess(hook_primary.index("WITH candidate_commits"), hook_primary.index("ILIKE '%no-verify%'"))
-        self.assertLess(hook_primary.index("WHERE sr.ref_type = 'commit'"), hook_primary.index("ILIKE '%no-verify%'"))
-        self.assertIn("tool_complete_success = false", templates["retry_loops"]["primary"])
-        self.assertIn("INTERVAL '15 minutes'", templates["retry_loops"]["primary"])
+        assert "ILIKE '%no-verify%'" in hook_primary
+        assert hook_primary.index("WITH candidate_commits") < hook_primary.index("ILIKE '%no-verify%'")
+        assert hook_primary.index("WHERE sr.ref_type = 'commit'") < hook_primary.index("ILIKE '%no-verify%'")
+        assert "tool_complete_success = false" in templates["retry_loops"]["primary"]
+        assert "INTERVAL '15 minutes'" in templates["retry_loops"]["primary"]
 
     def test_sql_factories_use_uniform_private_helper_shape(self) -> None:
         module = self._module()
@@ -132,15 +130,15 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             "_hook_bypasses_sql",
             "_retry_loops_sql",
         ):
-            with self.subTest(helper_name=helper_name):
+            if True:
                 signature = inspect.signature(getattr(module, helper_name))
-                self.assertEqual(tuple(signature.parameters), ("repo_filter", "interval"))
+                assert tuple(signature.parameters) == ("repo_filter", "interval")
                 for parameter in signature.parameters.values():
-                    self.assertEqual(parameter.kind, inspect.Parameter.KEYWORD_ONLY)
+                    assert parameter.kind == inspect.Parameter.KEYWORD_ONLY
 
     def test_sql_templates_parse_under_duckdb_session_store_dialect(self) -> None:
         if importlib.util.find_spec("duckdb") is None:
-            self.skipTest(
+            pytest.skip(
                 "duckdb package unavailable; SQLite fixture covers semantics, "
                 "this smoke test only checks session_store_sql dialect compatibility"
             )
@@ -153,7 +151,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             self._create_duckdb_session_store_schema(db)
             for friction_class, template in self._templates(module).items():
                 for pass_name in ("primary", "broader"):
-                    with self.subTest(friction_class=friction_class, pass_name=pass_name):
+                    if True:
                         db.execute(template[pass_name]).fetchall()
         finally:
             db.close()
@@ -170,7 +168,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         }
 
         for friction_class, template in templates.items():
-            with self.subTest(friction_class=friction_class):
+            if True:
                 query_log: list[str] = []
                 db = self._build_session_store_fixture(repository=REPO)
                 query_runner = self._sqlite_query_runner(
@@ -181,25 +179,22 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
                 result = module.run_two_pass(template, query_runner)
 
-                self.assertEqual(result["mode"], "primary")
-                self.assertFalse(result["limited_evidence"])
-                self.assertEqual(result["row_count"], expected_counts[friction_class])
-                self.assertEqual(query_log, [template["primary"]])
+                assert result["mode"] == "primary"
+                assert not result["limited_evidence"]
+                assert result["row_count"] == expected_counts[friction_class]
+                assert query_log == [template["primary"]]
                 for row in result["rows"]:
-                    self.assertEqual(row["repository"], REPO)
-                    self.assertEqual(row["friction_class"], friction_class)
+                    assert row["repository"] == REPO
+                    assert row["friction_class"] == friction_class
                     if friction_class == "chronicle_commits":
-                        self.assertLessEqual(row["chronicle_prompt_at"], row["commit_recorded_at"])
+                        assert row["chronicle_prompt_at"] <= row["commit_recorded_at"]
                 if friction_class == "chronicle_commits":
                     rows_by_commit = {row["commit_sha"]: row for row in result["rows"]}
-                    self.assertEqual(
-                        rows_by_commit["sha-chronicle-1"]["chronicle_prompt_at"],
-                        "2026-06-12 09:10:00",
-                    )
+                    assert rows_by_commit["sha-chronicle-1"]["chronicle_prompt_at"] == "2026-06-12 09:10:00"
                 if friction_class == "retry_loops":
                     rows_by_tool = {row["tool_name"]: row for row in result["rows"]}
-                    self.assertEqual(rows_by_tool["bash"]["retry_count"], 1)
-                    self.assertEqual(rows_by_tool["view"]["retry_count"], 1)
+                    assert rows_by_tool["bash"]["retry_count"] == 1
+                    assert rows_by_tool["view"]["retry_count"] == 1
 
     def test_broader_query_runs_when_primary_returns_zero_rows(self) -> None:
         module = self._module()
@@ -213,7 +208,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         }
 
         for friction_class, template in templates.items():
-            with self.subTest(friction_class=friction_class):
+            if True:
                 query_log: list[str] = []
                 db = self._build_session_store_fixture(repository="other/repo")
                 query_runner = self._sqlite_query_runner(
@@ -224,21 +219,18 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
                 result = module.run_two_pass(template, query_runner)
 
-                self.assertEqual(result["mode"], "broader")
-                self.assertFalse(result["limited_evidence"])
-                self.assertEqual(result["row_count"], expected_counts[friction_class])
-                self.assertEqual(query_log, [template["primary"], template["broader"]])
+                assert result["mode"] == "broader"
+                assert not result["limited_evidence"]
+                assert result["row_count"] == expected_counts[friction_class]
+                assert query_log == [template["primary"], template["broader"]]
                 for row in result["rows"]:
-                    self.assertEqual(row["repository"], "other/repo")
-                    self.assertEqual(row["friction_class"], friction_class)
+                    assert row["repository"] == "other/repo"
+                    assert row["friction_class"] == friction_class
                     if friction_class == "chronicle_commits":
-                        self.assertLessEqual(row["chronicle_prompt_at"], row["commit_recorded_at"])
+                        assert row["chronicle_prompt_at"] <= row["commit_recorded_at"]
                 if friction_class == "chronicle_commits":
                     rows_by_commit = {row["commit_sha"]: row for row in result["rows"]}
-                    self.assertEqual(
-                        rows_by_commit["sha-chronicle-1"]["chronicle_prompt_at"],
-                        "2026-06-12 09:10:00",
-                    )
+                    assert rows_by_commit["sha-chronicle-1"]["chronicle_prompt_at"] == "2026-06-12 09:10:00"
 
     def test_repeated_prompt_rows_do_not_project_raw_user_message(self) -> None:
         module = self._module()
@@ -255,14 +247,11 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(result["row_count"], 1)
+        assert result["row_count"] == 1
         row = result["rows"][0]
-        self.assertNotIn("repeated_prompt", row)
-        self.assertEqual(row["prompt_length"], len("Repeat this instruction"))
-        self.assertEqual(
-            row["prompt_fingerprint"],
-            hashlib.md5(b"Repeat this instruction", usedforsecurity=False).hexdigest(),
-        )
+        assert "repeated_prompt" not in row
+        assert row["prompt_length"] == len("Repeat this instruction")
+        assert row["prompt_fingerprint"] == hashlib.md5(b"Repeat this instruction", usedforsecurity=False).hexdigest()
 
     def test_retry_loop_rows_match_same_tool_request_payload_without_raw_args(self) -> None:
         module = self._module()
@@ -280,13 +269,10 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         )
 
         row = next(row for row in result["rows"] if row["tool_name"] == "bash")
-        self.assertEqual(row["retry_count"], 1)
-        self.assertNotIn("arguments_json", row)
-        self.assertEqual(row["request_length"], len('{"command": "python3 -m pytest tests/kb/test_x.py"}'))
-        self.assertEqual(
-            row["request_fingerprint"],
-            hashlib.md5(b'{"command": "python3 -m pytest tests/kb/test_x.py"}', usedforsecurity=False).hexdigest(),
-        )
+        assert row["retry_count"] == 1
+        assert "arguments_json" not in row
+        assert row["request_length"] == len('{"command": "python3 -m pytest tests/kb/test_x.py"}')
+        assert row["request_fingerprint"] == hashlib.md5(b'{"command": "python3 -m pytest tests/kb/test_x.py"}', usedforsecurity=False).hexdigest()
 
     def test_retry_loop_window_includes_exact_boundary_and_excludes_after_boundary(self) -> None:
         module = self._module()
@@ -304,15 +290,15 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         )
 
         edge_row = next(row for row in result["rows"] if row["tool_name"] == "view")
-        self.assertEqual(edge_row["failed_at"], "2026-06-12 14:00:00")
-        self.assertEqual(edge_row["retried_at"], "2026-06-12 14:15:00")
-        self.assertEqual(edge_row["retry_count"], 1)
+        assert edge_row["failed_at"] == "2026-06-12 14:00:00"
+        assert edge_row["retried_at"] == "2026-06-12 14:15:00"
+        assert edge_row["retry_count"] == 1
 
     def test_limited_evidence_fallback_adds_telemetry_gap_acknowledgment(self) -> None:
         module = self._module()
 
         for friction_class, template in self._templates(module).items():
-            with self.subTest(friction_class=friction_class):
+            if True:
                 query_log: list[str] = []
 
                 def query_runner(sql: str):
@@ -321,26 +307,23 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
                 result = module.run_two_pass(template, query_runner)
 
-                self.assertEqual(result["mode"], "limited-evidence")
-                self.assertTrue(result["limited_evidence"])
-                self.assertEqual(result["fallback"], module.LIMITED_EVIDENCE_SENTINEL)
-                self.assertEqual(result["row_count"], 0)
-                self.assertEqual(result["rows"], ())
-                self.assertEqual(
-                    result["telemetry_gap_acknowledgment"],
-                    module.TELEMETRY_GAP_ACKNOWLEDGMENT,
-                )
-                self.assertEqual(query_log, [template["primary"], template["broader"]])
+                assert result["mode"] == "limited-evidence"
+                assert result["limited_evidence"]
+                assert result["fallback"] == module.LIMITED_EVIDENCE_SENTINEL
+                assert result["row_count"] == 0
+                assert result["rows"] == ()
+                assert result["telemetry_gap_acknowledgment"] == module.TELEMETRY_GAP_ACKNOWLEDGMENT
+                assert query_log == [template["primary"], template["broader"]]
 
     def test_run_two_pass_rejects_malformed_templates(self) -> None:
         module = self._module()
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             module.run_two_pass(
                 {"primary": "SELECT 1", "broader": "SELECT 1", "fallback": "bogus"},
                 lambda sql: (),
             )
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             module.run_two_pass(
                 {"primary": "", "broader": "", "fallback": module.LIMITED_EVIDENCE_SENTINEL},
                 lambda sql: (),
@@ -350,8 +333,8 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         module = self._module()
 
         for valid_days in (1, 365):
-            with self.subTest(valid_days=valid_days):
-                self.assertEqual(module._validate_days(valid_days), valid_days)
+            if True:
+                assert module._validate_days(valid_days) == valid_days
 
         for factory in (
             module.chronicle_commits_query,
@@ -360,8 +343,8 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             module.hook_bypasses_query,
             module.retry_loops_query,
         ):
-            with self.subTest(factory=factory.__name__, invalid="repo"):
-                with self.assertRaises(ValueError):
+            if True:
+                with pytest.raises(ValueError):
                     factory(repo="wryenmeek/knowledgebase'; DROP TABLE turns; --")
             for invalid_repo in (
                 "./knowledgebase",
@@ -371,12 +354,12 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                 "wryenmeek/..",
                 "wryenmeek/...",
             ):
-                with self.subTest(factory=factory.__name__, invalid_repo=invalid_repo):
-                    with self.assertRaises(ValueError):
+                if True:
+                    with pytest.raises(ValueError):
                         factory(repo=invalid_repo)
             for invalid_days in (0, 366, True, 7.5):
-                with self.subTest(factory=factory.__name__, invalid_days=invalid_days):
-                    with self.assertRaises((TypeError, ValueError)):
+                if True:
+                    with pytest.raises((TypeError, ValueError)):
                         factory(repo=REPO, days=invalid_days)
 
     def test_finding_defaults_match_classifier_schema_required_shape(self) -> None:
@@ -390,24 +373,24 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         repo_path_pattern = re.compile(schema["properties"]["source_file"]["pattern"])
 
         for friction_class, template in self._templates(module).items():
-            with self.subTest(friction_class=friction_class):
+            if True:
                 finding = template["finding"]
-                self.assertTrue(required_keys.issubset(finding))
-                self.assertTrue(set(finding).issubset(allowed_keys))
-                self.assertIn(finding["proposed_destination"], allowed_destinations)
-                self.assertIn(finding["compliance_risk"], allowed_risks)
-                self.assertIn(finding["cache_strategy"], allowed_cache_strategies)
-                self.assertIsInstance(finding["expected_token_efficiency_rank"], int)
-                self.assertGreaterEqual(finding["expected_token_efficiency_rank"], 0)
-                self.assertRegex(finding["source_file"], repo_path_pattern)
-                self.assertRegex(finding["suggested_artifact_path"], repo_path_pattern)
+                assert required_keys.issubset(finding)
+                assert set(finding).issubset(allowed_keys)
+                assert finding["proposed_destination"] in allowed_destinations
+                assert finding["compliance_risk"] in allowed_risks
+                assert finding["cache_strategy"] in allowed_cache_strategies
+                assert isinstance(finding["expected_token_efficiency_rank"], int)
+                assert finding["expected_token_efficiency_rank"] >= 0
+                assert re.search(repo_path_pattern, finding["source_file"])
+                assert re.search(repo_path_pattern, finding["suggested_artifact_path"])
                 for required_key in required_keys:
                     value = finding[required_key]
                     if isinstance(value, str):
-                        self.assertNotEqual(value, "")
+                        assert value != ""
 
     def test_sqlite_regexp_extract_rejects_python_only_regex_features(self) -> None:
-        with self.assertRaises(AssertionError):
+        with pytest.raises(AssertionError):
             self._sqlite_regexp_extract("aa", r"(?<=a)a", 0)
 
     def _sqlite_query_runner(
@@ -614,5 +597,3 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         return match.group(group_index)
 
 
-if __name__ == "__main__":
-    unittest.main()
