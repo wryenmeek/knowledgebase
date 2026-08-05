@@ -24,12 +24,7 @@ UPDATE_INDEX_SCRIPT = REPO_ROOT / "scripts" / "kb" / "update_index.py"
 
 
 class UpdateIndexCommandTests(KnowledgebaseWorkspaceTestCase):
-    WIKI_SECTIONS = (
-        "sources",
-        "entities",
-        "concepts",
-        "analyses",
-    )  # keep in sync with page_template_utils.TOPICAL_NAMESPACES
+    WIKI_SECTIONS = ("sources", "entities", "concepts", "analyses")  # keep in sync with page_template_utils.TOPICAL_NAMESPACES
 
     def setUp(self) -> None:
         super().setUp()
@@ -47,22 +42,14 @@ class UpdateIndexCommandTests(KnowledgebaseWorkspaceTestCase):
             "log-should-not-change\n", encoding="utf-8"
         )
 
+        self.write_wiki_page("sources/zeta-source.md", self._build_page("Zeta Source", "source", "2"))
+        self.write_wiki_page("sources/alpha-source.md", self._build_page("Alpha Source", "source", "4"))
+        self.write_wiki_page("entities/beneficiary.md", self._build_page("Beneficiary", "entity", "5"))
         self.write_wiki_page(
-            "sources/zeta-source.md", self._build_page("Zeta Source", "source", "2")
+            "concepts/network-adequacy.md", self._build_page("Network Adequacy", "concept", "3")
         )
         self.write_wiki_page(
-            "sources/alpha-source.md", self._build_page("Alpha Source", "source", "4")
-        )
-        self.write_wiki_page(
-            "entities/beneficiary.md", self._build_page("Beneficiary", "entity", "5")
-        )
-        self.write_wiki_page(
-            "concepts/network-adequacy.md",
-            self._build_page("Network Adequacy", "concept", "3"),
-        )
-        self.write_wiki_page(
-            "analyses/prior-auth-review.md",
-            self._build_page("Prior Auth Review", "analysis", "4"),
+            "analyses/prior-auth-review.md", self._build_page("Prior Auth Review", "analysis", "4")
         )
 
     def _build_page(self, title: str, page_type: str, confidence: str) -> str:
@@ -119,9 +106,7 @@ Fixture page.
                 # user-visible workspace content drift.
                 digest_map[relative_path] = hashlib.sha256(b"").hexdigest()
                 continue
-            digest_map[relative_path] = hashlib.sha256(
-                file_path.read_bytes()
-            ).hexdigest()
+            digest_map[relative_path] = hashlib.sha256(file_path.read_bytes()).hexdigest()
         return digest_map
 
     def test_preview_is_deterministic_and_read_only(self) -> None:
@@ -162,8 +147,7 @@ Fixture page.
         after = self._snapshot_hashes()
         changed_paths = {
             path
-            # OPTIMIZATION: Avoid intermediate set allocations by using dict keys view operations
-            for path in before.keys() | after.keys()
+            for path in set(before) | set(after)
             if before.get(path) != after.get(path)
         }
         self.assertEqual(changed_paths, {"wiki/index.md"})
@@ -274,12 +258,8 @@ Fixture page.
         self.assertEqual(exit_code, 1)
         self.assertEqual(stdout, "")
         self.assertIn("unable to write index", stderr)
-        self.assertEqual(
-            external_target.read_text(encoding="utf-8"), "external-target\n"
-        )
-        self.assertEqual(
-            (self.wiki_root / "index.md").read_text(encoding="utf-8"), stale_index
-        )
+        self.assertEqual(external_target.read_text(encoding="utf-8"), "external-target\n")
+        self.assertEqual((self.wiki_root / "index.md").read_text(encoding="utf-8"), stale_index)
         self.assertTrue(temp_index_path.is_symlink())
 
     def test_write_fails_closed_when_write_lock_is_held(self) -> None:
@@ -335,9 +315,7 @@ Fixture page.
         with self.assertRaises(update_index.IndexGenerationError) as ctx:
             update_index.generate_index_content(self.wiki_root)
 
-        self.assertIn(
-            "nested topical markdown pages are not allowed", str(ctx.exception)
-        )
+        self.assertIn("nested topical markdown pages are not allowed", str(ctx.exception))
 
     def test_cli_check_fails_closed_for_nested_topical_page(self) -> None:
         self.write_wiki_page(
@@ -415,9 +393,7 @@ tags:
         """write mode must fail closed when the wiki/ dir itself is a symlink."""
         external_wiki = self.workspace / "external-wiki"
         external_wiki.mkdir()
-        (external_wiki / "index.md").write_text(
-            "external-wiki-index\n", encoding="utf-8"
-        )
+        (external_wiki / "index.md").write_text("external-wiki-index\n", encoding="utf-8")
         symlinked_wiki = self.workspace / "wiki-link"
         symlinked_wiki.symlink_to(external_wiki)
 
@@ -448,7 +424,7 @@ class UpdateIndexOptimizationRegressionTests(KnowledgebaseWorkspaceTestCase):
     def _build_page(self, title: str, ptype: str, confidence: str = "3") -> str:
         return (
             f'---\ntype: {ptype}\ntitle: "{title}"\nstatus: active\n'
-            f"sources: []\nopen_questions: []\nconfidence: {confidence}\n"
+            f'sources: []\nopen_questions: []\nconfidence: {confidence}\n'
             'sensitivity: internal\nupdated_at: "2024-01-01T00:00:00Z"\n'
             "tags:\n  - test\n---\n\n"
             f"# {title}\n"
@@ -466,12 +442,8 @@ class UpdateIndexOptimizationRegressionTests(KnowledgebaseWorkspaceTestCase):
 
     def test_sort_order_is_alphabetical_by_title(self) -> None:
         """Sources section must sort entries alphabetically by title."""
-        self.write_wiki_page(
-            "sources/z-source.md", self._build_page("Z Source", "source")
-        )
-        self.write_wiki_page(
-            "sources/a-source.md", self._build_page("A Source", "source")
-        )
+        self.write_wiki_page("sources/z-source.md", self._build_page("Z Source", "source"))
+        self.write_wiki_page("sources/a-source.md", self._build_page("A Source", "source"))
         content = update_index.generate_index_content(self.wiki_root)
         pos_a = content.find("A Source")
         pos_z = content.find("Z Source")
@@ -497,7 +469,6 @@ class UpdateIndexOptimizationRegressionTests(KnowledgebaseWorkspaceTestCase):
         import tempfile
         import stat
         from unittest.mock import patch
-
         with tempfile.TemporaryDirectory() as td:
             wiki = Path(td).resolve()
             sources = wiki / "sources"
@@ -513,7 +484,6 @@ class UpdateIndexOptimizationRegressionTests(KnowledgebaseWorkspaceTestCase):
         """_validate_section_page_path must return None and not raise when os.lstat raises OSError."""
         import tempfile
         from unittest.mock import patch
-
         with tempfile.TemporaryDirectory() as td:
             wiki = Path(td).resolve()
             sources = wiki / "sources"
