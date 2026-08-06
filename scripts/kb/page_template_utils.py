@@ -19,10 +19,12 @@ _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 _FRONTMATTER_BLOCK_RE = re.compile(
     r"^[ \t]*---[ \t]*\r?\n(.*?(?:\r?\n|(?<=\n)))^[ \t]*---[ \t]*(?:\r?\n|$)",
-    re.MULTILINE | re.DOTALL
+    re.MULTILINE | re.DOTALL,
 )
 
-TOPICAL_NAMESPACES: frozenset[str] = frozenset({"sources", "entities", "concepts", "analyses"})
+TOPICAL_NAMESPACES: frozenset[str] = frozenset(
+    {"sources", "entities", "concepts", "analyses"}
+)
 
 REQUIRED_FRONTMATTER_KEYS: tuple[str, ...] = (
     "type",
@@ -78,13 +80,18 @@ def validate_page_template_path(
     *,
     repo_root: str | Path,
     required_frontmatter_keys: tuple[str, ...],
-    template_section_requirements: dict[str, tuple[str, ...]] = TEMPLATE_SECTION_REQUIREMENTS,
+    template_section_requirements: dict[
+        str, tuple[str, ...]
+    ] = TEMPLATE_SECTION_REQUIREMENTS,
 ) -> tuple[str, tuple[tuple[str, str], ...]]:
     normalized_page = normalize_page_path(page)
     violations: list[tuple[str, str]] = []
     if not normalized_page.startswith("wiki/") or not normalized_page.endswith(".md"):
         violations.append(
-            ("invalid-page-path", "page must be a repo-relative markdown path under wiki/**")
+            (
+                "invalid-page-path",
+                "page must be a repo-relative markdown path under wiki/**",
+            )
         )
         return normalized_page, tuple(violations)
 
@@ -96,28 +103,42 @@ def validate_page_template_path(
     text = page_path.read_text(encoding="utf-8")
     frontmatter, body = extract_frontmatter(text)
     if frontmatter is None:
-        violations.append(("missing-frontmatter", "page must start with a YAML frontmatter block"))
+        violations.append(
+            ("missing-frontmatter", "page must start with a YAML frontmatter block")
+        )
         return normalized_page, tuple(violations)
 
     metadata = parse_frontmatter(frontmatter)
     for key in required_frontmatter_keys:
         if key not in metadata:
-            violations.append(("missing-frontmatter-key", f"required key '{key}' is missing"))
+            violations.append(
+                ("missing-frontmatter-key", f"required key '{key}' is missing")
+            )
 
     title = strip_quotes(metadata.get("title", ""))
     headings = extract_headings(body)
     if not title:
-        violations.append(("missing-frontmatter-key", "required key 'title' is missing"))
+        violations.append(
+            ("missing-frontmatter-key", "required key 'title' is missing")
+        )
     else:
         expected_heading = f"# {title}"
         if expected_heading not in headings:
-            violations.append(("title-heading-mismatch", "H1 heading must match frontmatter title exactly"))
+            violations.append(
+                (
+                    "title-heading-mismatch",
+                    "H1 heading must match frontmatter title exactly",
+                )
+            )
 
     page_type = strip_quotes(metadata.get("type", ""))
     for required_section in template_section_requirements.get(page_type, ()):
         if required_section not in headings:
             violations.append(
-                ("missing-body-section", f"required section '{required_section}' is missing")
+                (
+                    "missing-body-section",
+                    f"required section '{required_section}' is missing",
+                )
             )
 
     return normalized_page, tuple(violations)
@@ -150,7 +171,7 @@ def extract_frontmatter(text: str) -> tuple[str | None, str]:
 
     # OPTIMIZATION: Isolate the first line using .find() before calling .lstrip()
     # to avoid allocating a massive new string copy if `text` is large.
-    newline_pos = text.find('\n')
+    newline_pos = text.find("\n")
     first_line = text if newline_pos == -1 else text[:newline_pos]
     if not first_line.lstrip(" \t\r").startswith("---"):
         return None, text
@@ -164,7 +185,7 @@ def extract_frontmatter(text: str) -> tuple[str | None, str]:
         elif fm.endswith("\n"):
             fm = fm[:-1]
 
-        body = text[match.end():]
+        body = text[match.end() :]
         return fm, body
     return None, text
 
@@ -202,19 +223,24 @@ def extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
     Handles inline ``key: []``, inline single value ``key: val``,
     and multi-line list form (``key:\n  - item``).
     """
-    lines = frontmatter_str.splitlines()
     key_prefix = f"{key}:"
+    # OPTIMIZATION: fast path literal check to avoid O(N) string tokenization
+    # overhead via splitlines() when the key is absent.
+    if key_prefix not in frontmatter_str:
+        return []
+
+    lines = frontmatter_str.splitlines()
     for index, line in enumerate(lines):
         stripped = line.strip()
         if not stripped.startswith(key_prefix):
             continue
-        inline = stripped[len(key_prefix):].strip()
+        inline = stripped[len(key_prefix) :].strip()
         if inline == "[]":
             return []
         if inline:
             return [inline.strip('"').strip("'")]
         items: list[str] = []
-        for raw in lines[index + 1:]:
+        for raw in lines[index + 1 :]:
             if not raw.startswith("  "):
                 break
             item = raw.strip()
@@ -240,18 +266,23 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
     Returns an empty list when the ``sources:`` key is absent.
     Quotes are stripped from each value using :func:`strip_quotes`.
     """
+    # OPTIMIZATION: fast path literal check to avoid O(N) string tokenization
+    # overhead via splitlines() when the key is absent.
+    if "sources:" not in frontmatter:
+        return []
+
     lines = frontmatter.splitlines()
     for index, line in enumerate(lines):
         stripped = line.strip()
         if not stripped.startswith("sources:"):
             continue
-        inline_value = stripped[len("sources:"):].strip()
+        inline_value = stripped[len("sources:") :].strip()
         if inline_value == "[]":
             return []
         if inline_value:
             return [strip_quotes(inline_value)]
         sources: list[str] = []
-        for raw_line in lines[index + 1:]:
+        for raw_line in lines[index + 1 :]:
             if not raw_line.startswith("  "):
                 break
             item = raw_line.strip()
@@ -307,11 +338,11 @@ def extract_headings(body: str) -> set[str]:
                 headings.add(f"{match.group(1)} {match.group(2)}")
 
     start = 0
-    end = body.find('\n')
+    end = body.find("\n")
     while end != -1:
         _maybe_add(body[start:end])
         start = end + 1
-        end = body.find('\n', start)
+        end = body.find("\n", start)
     if start < len(body):
         _maybe_add(body[start:])
 
