@@ -3,13 +3,6 @@
 Per ADR-029 this is a new pytest-style file; the existing
 ``test_page_template_utils.py`` is legacy ``unittest.TestCase`` and is
 not eligible for non-docstring edits without a same-commit migration.
-
-The function was rewritten in PR #387 from ``body.splitlines()`` to
-``find('\\n')``-streaming for memory efficiency on large bodies. The
-algorithm has several edge cases (trailing line without newline,
-unclosed fenced block, empty body, CRLF) that the indirect coverage via
-``check_page_template`` does not assert by name. This file pins the
-behavior so a future refactor can't silently regress it.
 """
 
 from __future__ import annotations
@@ -24,10 +17,7 @@ def test_empty_body_returns_empty_set() -> None:
 
 
 def test_single_heading_no_trailing_newline() -> None:
-    """The streaming branch falls through to the trailing-line handler when
-    the body lacks a final ``\\n``. Pre-refactor splitlines() handled this
-    transparently; the new code's trailing branch must too.
-    """
+    """The body lacks a final ``\\n``."""
     assert extract_headings("# Hello") == {"# Hello"}
 
 
@@ -57,8 +47,7 @@ def test_tilde_fence_also_skipped() -> None:
 
 def test_unclosed_fence_to_eof_swallows_following_content() -> None:
     """An unclosed ``` to EOF means everything after it is inside the
-    fence — including the would-be trailing heading. This matches the
-    pre-refactor splitlines() behavior.
+    fence — including the would-be trailing heading.
     """
     body = "# Before\n```\n# Inside fence to EOF"
     assert extract_headings(body) == {"# Before"}
@@ -102,10 +91,8 @@ def test_seven_hashes_not_a_heading() -> None:
 
 def test_indented_heading_is_skipped() -> None:
     """Leading whitespace is stripped, so an indented `#` IS treated as a
-    heading by this extractor — matches the original splitlines()-based
-    implementation.
+    heading by this extractor.
     """
-    # Pre-refactor behavior: stripped().startswith('#') so indentation removed
     assert extract_headings("    # Indented\n") == {"# Indented"}
 
 
@@ -129,9 +116,9 @@ def test_whitespace_only_bodies_yield_empty_set(body: str) -> None:
     assert extract_headings(body) == set()
 
 
-def test_large_body_streaming_does_not_crash() -> None:
-    """Sanity check that the streaming branch handles large bodies without
-    exploding (the whole point of the splitlines()→find('\\n') refactor).
+def test_large_body_splitlines_does_not_crash() -> None:
+    """Sanity check that the splitlines() method handles large bodies without
+    exploding.
     """
     body = ("\n".join(f"# H{i}" for i in range(1000))) + "\n"
     result = extract_headings(body)
