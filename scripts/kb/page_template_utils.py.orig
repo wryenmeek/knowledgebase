@@ -224,8 +224,6 @@ def extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
     and multi-line list form (``key:\n  - item``).
     """
     key_prefix = f"{key}:"
-    # OPTIMIZATION: Avoid allocating an O(N) array via splitlines() when the key
-    # is absent. This fast-path provides a ~10x speedup for missing keys.
     if key_prefix not in frontmatter_str:
         return []
 
@@ -266,8 +264,6 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
     Returns an empty list when the ``sources:`` key is absent.
     Quotes are stripped from each value using :func:`strip_quotes`.
     """
-    # OPTIMIZATION: Avoid allocating an O(N) array via splitlines() when the key
-    # is absent. This fast-path provides a ~10x speedup for missing keys.
     if "sources:" not in frontmatter:
         return []
 
