@@ -202,8 +202,12 @@ def extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
     Handles inline ``key: []``, inline single value ``key: val``,
     and multi-line list form (``key:\n  - item``).
     """
-    lines = frontmatter_str.splitlines()
     key_prefix = f"{key}:"
+    # OPTIMIZATION: Fast-path literal check to avoid O(N) string tokenization
+    # when the target key is not present in the frontmatter.
+    if key_prefix not in frontmatter_str:
+        return []
+    lines = frontmatter_str.splitlines()
     for index, line in enumerate(lines):
         stripped = line.strip()
         if not stripped.startswith(key_prefix):
@@ -240,6 +244,10 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
     Returns an empty list when the ``sources:`` key is absent.
     Quotes are stripped from each value using :func:`strip_quotes`.
     """
+    # OPTIMIZATION: Fast-path literal check to avoid O(N) string tokenization
+    # when the sources key is not present in the frontmatter.
+    if "sources:" not in frontmatter:
+        return []
     lines = frontmatter.splitlines()
     for index, line in enumerate(lines):
         stripped = line.strip()
