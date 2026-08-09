@@ -11,23 +11,19 @@ from pathlib import Path
 import re
 import sys
 
-if __package__ in (
-    None,
-    "",
-):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts.kb import page_template_utils, sourceref
 from scripts.kb.page_template_utils import (
     REQUIRED_FRONTMATTER_KEYS,
     extract_frontmatter_keys as _extract_frontmatter_keys,
     extract_sources_from_frontmatter as _extract_frontmatter_source_refs,
+    strip_quotes as _normalize_frontmatter_scalar,
 )
 
 
 _MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
-_MARKDOWN_LINK_TITLE_RE = re.compile(
-    r"^(?P<url>\S+)\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\))$"
-)
+_MARKDOWN_LINK_TITLE_RE = re.compile(r"^(?P<url>\S+)\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\))$")
 _CONTRADICTION_MARKER_RE = re.compile(
     r"(\[\s*CONTRADICTION\s*]|\{\{\s*contradiction\s*}}|UNRESOLVED_CONTRADICTION|<!--\s*CONTRADICTION\b[^>]*-->)",
     re.IGNORECASE,
@@ -56,7 +52,6 @@ class Violation:
     page: Path
     code: str
     message: str
-
 
 def _is_within(path: Path, root: Path) -> bool:
     # ⚡ Bolt: `is_relative_to` is a natively implemented method string comparison under the hood.
@@ -108,11 +103,11 @@ def _resolve_internal_markdown_target(
     # Instead, we just build the raw path and let the caller `lint_wiki` resolve it exactly once.
     # This reduces execution time significantly when linting thousands of links.
     if target.startswith("wiki/"):
-        candidate = wiki_root.parent / target
+        candidate = (wiki_root.parent / target)
     elif target.startswith("/"):
-        candidate = wiki_root / target.lstrip("/")
+        candidate = (wiki_root / target.lstrip("/"))
     else:
-        candidate = source_page.parent / target
+        candidate = (source_page.parent / target)
 
     if candidate.suffix:
         return candidate
@@ -124,11 +119,10 @@ def _resolve_internal_markdown_target(
 
 
 def _display_path(path: Path, wiki_root: Path) -> str:
-    # ⚡ Bolt Optimization: Use EAFP try/except block to avoid evaluating path resolution twice on the happy path
-    try:
+    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
+    if path.is_relative_to(wiki_root):
         return str(path.relative_to(wiki_root))
-    except ValueError:
-        return str(path)
+    return str(path)
 
 
 def _read_page(p: Path) -> str:
@@ -212,9 +206,7 @@ def _validate_page_content(
         )
     else:
         present_keys = _extract_frontmatter_keys(frontmatter)
-        for key in sorted(
-            key for key in REQUIRED_FRONTMATTER_KEYS if key not in present_keys
-        ):
+        for key in sorted(key for key in REQUIRED_FRONTMATTER_KEYS if key not in present_keys):
             violations.append(
                 Violation(
                     page=page,
@@ -317,10 +309,7 @@ def lint_wiki(
         for page, text in zip(pages, executor.map(_read_page, pages)):
             violations.extend(
                 _validate_page_content(
-                    page,
-                    text,
-                    wiki_root,
-                    referenced_by,
+                    page, text, wiki_root, referenced_by,
                     authoritative_sourcerefs=authoritative_sourcerefs,
                     repo_owner=repo_owner,
                     repo_name=repo_name,
@@ -352,9 +341,7 @@ def lint_wiki(
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Lint wiki frontmatter and cross-links"
-    )
+    parser = argparse.ArgumentParser(description="Lint wiki frontmatter and cross-links")
     parser.add_argument(
         "--wiki-root",
         default="wiki",
@@ -391,10 +378,7 @@ def main(argv: list[str] | None = None) -> int:
     wiki_root = Path(args.wiki_root)
 
     if not wiki_root.exists() or not wiki_root.is_dir():
-        print(
-            f"ERROR: wiki root does not exist or is not a directory: {wiki_root}",
-            file=sys.stderr,
-        )
+        print(f"ERROR: wiki root does not exist or is not a directory: {wiki_root}", file=sys.stderr)
         return 2
     if args.authoritative_sourcerefs and (not args.repo_owner or not args.repo_name):
         print(
