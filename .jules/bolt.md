@@ -55,3 +55,6 @@
 ## 2024-07-22 - Replaced try/except with is_relative_to in .github/skills scripts
 **Learning:** `Path.is_relative_to()` is much faster for bounds checking than wrapping `Path.relative_to()` in a `try/except ValueError` block.
 **Action:** Always prefer `is_relative_to()` for bounds checking across the codebase to ensure optimal performance.
+## 2024-07-22 - Rejected PR due to manual edits to governed checkpoint registry
+**Learning:** Editing governed files manually, like a checkpoint registry, alongside other logic changes is highly discouraged. Specifically, checkpoint registries should not be hand-edited.
+**Action:** In the future, never manually edit governed files like checkpoint registries. Additionally, keep PRs focused and do not bundle multiple unrelated skill changes together with governed file modifications.
