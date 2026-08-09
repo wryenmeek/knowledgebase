@@ -195,8 +195,7 @@ def test_effort_capable_models_subset_of_pricing() -> None:
     causing recommendations against a $0 baseline. Pin the invariant.
     """
     from scripts.analysis.pricing import PRICING
-    # ⚡ Bolt Optimization: Avoid intermediate set allocation in missing keys check
-    missing = EFFORT_CAPABLE_MODELS.difference(PRICING)
+    missing = EFFORT_CAPABLE_MODELS - set(PRICING.keys())
     assert missing == set(), f"effort-capable models missing from PRICING: {missing}"
 
 
