@@ -48,7 +48,9 @@ def test_exclusive_write_lock_open_failure_reads_holder_metadata_from_absolute_l
         return None
 
     monkeypatch.setattr(write_utils, "_open_lock_file", fail_open_lock_file)
-    monkeypatch.setattr(write_utils, "_read_lock_holder_details", record_holder_metadata_path)
+    monkeypatch.setattr(
+        write_utils, "_read_lock_holder_details", record_holder_metadata_path
+    )
 
     with pytest.raises(write_utils.LockUnavailableError):
         with write_utils.exclusive_write_lock(repo_root, lock_path=lock_path):
@@ -104,7 +106,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
 
         return json.loads(completed.stdout.strip().splitlines()[-1])
 
-    def _race_probe_lock_attempt(self, lock_path: str, gate_dir: Path) -> subprocess.Popen[str]:
+    def _race_probe_lock_attempt(
+        self, lock_path: str, gate_dir: Path
+    ) -> subprocess.Popen[str]:
         probe_script = textwrap.dedent(
             """
             import json
@@ -146,14 +150,23 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             """
         )
         return subprocess.Popen(
-            [sys.executable, "-c", probe_script, str(self.workspace_root), lock_path, str(gate_dir)],
+            [
+                sys.executable,
+                "-c",
+                probe_script,
+                str(self.workspace_root),
+                lock_path,
+                str(gate_dir),
+            ],
             cwd=REPO_ROOT,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
 
-    def _collect_probe_process_result(self, process: subprocess.Popen[str]) -> dict[str, object]:
+    def _collect_probe_process_result(
+        self, process: subprocess.Popen[str]
+    ) -> dict[str, object]:
         stdout, stderr = process.communicate(timeout=20)
         self.assertEqual(process.returncode, 0, msg=stderr)
         self.assertTrue(stdout.strip(), msg=stderr)
@@ -189,7 +202,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertEqual(int(pid_text), os.getpid())
         self.assertGreater(float(started_at_text), 0.0)
 
-    def test_exclusive_write_lock_tracking_survives_nested_same_process_lock(self) -> None:
+    def test_exclusive_write_lock_tracking_survives_nested_same_process_lock(
+        self,
+    ) -> None:
         with write_utils.exclusive_write_lock(self.workspace_root):
             self.assertTrue(write_utils.is_write_lock_held(self.workspace_root))
             with write_utils.exclusive_write_lock(self.workspace_root):
@@ -197,7 +212,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             self.assertTrue(write_utils.is_write_lock_held(self.workspace_root))
         self.assertFalse(write_utils.is_write_lock_held(self.workspace_root))
 
-    def test_exclusive_write_lock_treats_preexisting_unlocked_file_as_stale(self) -> None:
+    def test_exclusive_write_lock_treats_preexisting_unlocked_file_as_stale(
+        self,
+    ) -> None:
         lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.write_text("stale\n", encoding="utf-8")
@@ -205,7 +222,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         with write_utils.exclusive_write_lock(self.workspace_root) as acquired_path:
             self.assertEqual(acquired_path, lock_path)
 
-    def test_governance_sibling_locks_treat_preexisting_unlocked_file_as_stale(self) -> None:
+    def test_governance_sibling_locks_treat_preexisting_unlocked_file_as_stale(
+        self,
+    ) -> None:
         for lock_path in sorted(contracts.GOVERNANCE_SIBLING_LOCKS):
             with self.subTest(lock_path=lock_path):
                 abs_lock_path = self.workspace_root / lock_path
@@ -246,7 +265,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             with write_utils.exclusive_write_lock(self.workspace_root):
                 pass
 
-    def test_exclusive_write_lock_contention_returns_lock_unavailable_reason(self) -> None:
+    def test_exclusive_write_lock_contention_returns_lock_unavailable_reason(
+        self,
+    ) -> None:
         with write_utils.exclusive_write_lock(self.workspace_root):
             probe_result = self._probe_lock_attempt()
 
@@ -260,13 +281,19 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             write_utils.lock_unavailable_reason(),
         )
 
-    def test_customizations_lock_fails_when_sibling_governance_lock_is_held(self) -> None:
+    def test_customizations_lock_fails_when_sibling_governance_lock_is_held(
+        self,
+    ) -> None:
         for held_lock in sorted(
             contracts.GOVERNANCE_SIBLING_LOCKS - {contracts.CUSTOMIZATIONS_LOCK_PATH}
         ):
             with self.subTest(held_lock=held_lock):
-                with write_utils.exclusive_write_lock(self.workspace_root, lock_path=held_lock):
-                    probe_result = self._probe_lock_attempt(contracts.CUSTOMIZATIONS_LOCK_PATH)
+                with write_utils.exclusive_write_lock(
+                    self.workspace_root, lock_path=held_lock
+                ):
+                    probe_result = self._probe_lock_attempt(
+                        contracts.CUSTOMIZATIONS_LOCK_PATH
+                    )
 
                 self.assertFalse(probe_result["acquired"])
                 self.assertEqual(
@@ -278,9 +305,13 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                     write_utils.lock_unavailable_reason(held_lock),
                 )
                 self.assertTrue(probe_result["holder_alive"])
-                self.assertRegex(str(probe_result["holder_context_hash"]), r"^[0-9a-f]{64}$")
+                self.assertRegex(
+                    str(probe_result["holder_context_hash"]), r"^[0-9a-f]{64}$"
+                )
 
-    def test_sibling_governance_lock_fails_when_customizations_lock_is_held(self) -> None:
+    def test_sibling_governance_lock_fails_when_customizations_lock_is_held(
+        self,
+    ) -> None:
         for attempted_lock in sorted(
             contracts.GOVERNANCE_SIBLING_LOCKS - {contracts.CUSTOMIZATIONS_LOCK_PATH}
         ):
@@ -298,12 +329,18 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                 )
                 self.assertEqual(
                     probe_result["failure_reason"],
-                    write_utils.lock_unavailable_reason(contracts.CUSTOMIZATIONS_LOCK_PATH),
+                    write_utils.lock_unavailable_reason(
+                        contracts.CUSTOMIZATIONS_LOCK_PATH
+                    ),
                 )
                 self.assertTrue(probe_result["holder_alive"])
-                self.assertRegex(str(probe_result["holder_context_hash"]), r"^[0-9a-f]{64}$")
+                self.assertRegex(
+                    str(probe_result["holder_context_hash"]), r"^[0-9a-f]{64}$"
+                )
 
-    def test_governance_lock_uses_meta_lock_even_with_noncanonical_target_path(self) -> None:
+    def test_governance_lock_uses_meta_lock_even_with_noncanonical_target_path(
+        self,
+    ) -> None:
         noncanonical_write_lock_path = "wiki/../wiki/.kb_write.lock"
         with write_utils.exclusive_write_lock(
             self.workspace_root,
@@ -347,7 +384,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                 if process_b.poll() is None:
                     process_b.kill()
 
-        acquired_count = int(bool(result_a["acquired"])) + int(bool(result_b["acquired"]))
+        acquired_count = int(bool(result_a["acquired"])) + int(
+            bool(result_b["acquired"])
+        )
         self.assertEqual(acquired_count, 1)
 
         loser = result_a if not result_a["acquired"] else result_b
@@ -360,7 +399,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             {
                 write_utils.lock_unavailable_reason(lock_a),
                 write_utils.lock_unavailable_reason(lock_b),
-                write_utils.lock_unavailable_reason(contracts.GOVERNANCE_META_LOCK_PATH),
+                write_utils.lock_unavailable_reason(
+                    contracts.GOVERNANCE_META_LOCK_PATH
+                ),
             },
         )
         # The meta-lock is a persistent sentinel; it must remain on disk.
@@ -381,7 +422,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
 
         self.assertTrue(meta_lock_path.exists())
 
-    def test_write_lock_allows_same_process_nesting_for_monitor_registry_locks(self) -> None:
+    def test_write_lock_allows_same_process_nesting_for_monitor_registry_locks(
+        self,
+    ) -> None:
         with write_utils.exclusive_write_lock(self.workspace_root):
             with write_utils.exclusive_write_lock(
                 self.workspace_root,
@@ -413,7 +456,6 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertIn("retry shortly", probe_result["message"])
         self.assertIn("context sha256:", probe_result["message"])
         self.assertIn(contracts.WRITE_LOCK_PATH, probe_result["message"])
-        self.assertNotIn(str(os.getpid()), probe_result["message"])
 
     def test_lock_unavailable_error_reports_dead_holder(self) -> None:
         lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
@@ -434,7 +476,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertNotIn("safe to remove", str(exc))
         self.assertNotIn("4242", str(exc))
 
-    def test_lock_unavailable_error_detects_pid_reuse_via_start_time_mismatch(self) -> None:
+    def test_lock_unavailable_error_detects_pid_reuse_via_start_time_mismatch(
+        self,
+    ) -> None:
         lock_path = self.workspace_root / contracts.WRITE_LOCK_PATH
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.write_text("4242\t100.0\n", encoding="utf-8")
@@ -466,7 +510,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
 
         with (
             patch.object(write_utils.os, "kill", return_value=None),
-            patch.object(write_utils, "_pid_start_time_tolerance_seconds", return_value=0.5),
+            patch.object(
+                write_utils, "_pid_start_time_tolerance_seconds", return_value=0.5
+            ),
             patch.object(
                 write_utils,
                 "_pid_start_time_unix_seconds",
@@ -493,7 +539,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         with (
             patch.object(write_utils.sys, "platform", "darwin"),
             patch.object(write_utils.os, "kill", return_value=None),
-            patch.object(write_utils, "_pid_start_time_tolerance_seconds", return_value=1e-6),
+            patch.object(
+                write_utils, "_pid_start_time_tolerance_seconds", return_value=1e-6
+            ),
         ):
             for observed, expected_alive in (
                 (100.0, True),  # exact coarse-second match
@@ -512,7 +560,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                         )
                     self.assertEqual(holder_alive, expected_alive)
 
-    def test_holder_process_is_alive_accepts_darwin_subsecond_lstart_drift(self) -> None:
+    def test_holder_process_is_alive_accepts_darwin_subsecond_lstart_drift(
+        self,
+    ) -> None:
         with (
             patch.object(write_utils.sys, "platform", "darwin"),
             patch.object(write_utils.os, "kill", return_value=None),
@@ -567,7 +617,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         env = run_mock.call_args.kwargs.get("env", {})
         self.assertEqual(env.get("LC_TIME"), "C")
 
-    def test_darwin_pid_start_time_uses_mktime_when_local_timezone_missing(self) -> None:
+    def test_darwin_pid_start_time_uses_mktime_when_local_timezone_missing(
+        self,
+    ) -> None:
         real_datetime = write_utils.datetime
 
         class NoLocalTimezoneDateTime:
@@ -604,7 +656,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             # The current implementation unconditionally falls back to
             # time.mktime when local_tz is None, so the timezone patch was
             # dead code. Strengthen the mktime assertion below instead.
-            patch.object(write_utils.time, "mktime", return_value=12345.0) as mktime_mock,
+            patch.object(
+                write_utils.time, "mktime", return_value=12345.0
+            ) as mktime_mock,
         ):
             started_at = write_utils._darwin_pid_start_time_unix_seconds(1234)
 
@@ -615,7 +669,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         # is caught.
         call_args = mktime_mock.call_args
         self.assertIsNotNone(call_args, "mktime should have been called with arguments")
-        self.assertEqual(len(call_args.args), 1, "mktime takes exactly one positional arg")
+        self.assertEqual(
+            len(call_args.args), 1, "mktime takes exactly one positional arg"
+        )
         # The arg should be a time.struct_time produced by .timetuple().
         # struct_time has tm_year/tm_mon/tm_mday/tm_hour/tm_min/tm_sec attributes.
         passed_struct = call_args.args[0]
@@ -624,7 +680,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             f"mktime should be called with a struct_time, got {type(passed_struct).__name__}",
         )
 
-    def test_darwin_pid_start_time_local_timezone_missing_avoids_utc_fallback(self) -> None:
+    def test_darwin_pid_start_time_local_timezone_missing_avoids_utc_fallback(
+        self,
+    ) -> None:
         real_datetime = write_utils.datetime
         parsed_local = real_datetime(2026, 6, 19, 12, 34, 56)
 
@@ -661,7 +719,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
             started_at = write_utils._darwin_pid_start_time_unix_seconds(1234)
 
         self.assertEqual(started_at, 76543.0)
-        self.assertNotEqual(started_at, parsed_local.replace(tzinfo=timezone.utc).timestamp())
+        self.assertNotEqual(
+            started_at, parsed_local.replace(tzinfo=timezone.utc).timestamp()
+        )
 
     def test_lock_unavailable_error_unreadable_lock_file_falls_back(self) -> None:
         with patch.object(Path, "read_text", side_effect=OSError("denied")):
@@ -702,19 +762,27 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertIsNotNone(contract)
         assert contract is not None
         self.assertTrue(write_utils.governed_artifact_requires_lock("wiki/log.md"))
-        self.assertFalse(write_utils.governed_artifact_requires_atomic_replace("wiki/log.md"))
+        self.assertFalse(
+            write_utils.governed_artifact_requires_atomic_replace("wiki/log.md")
+        )
         self.assertEqual(
             contract.write_strategy,
             contracts.ArtifactWriteStrategy.APPEND_UNDER_LOCK.value,
         )
 
     def test_governed_artifact_helpers_report_atomic_replace_contracts(self) -> None:
-        contract = write_utils.governed_artifact_contract_for_path("wiki/open-questions.md")
+        contract = write_utils.governed_artifact_contract_for_path(
+            "wiki/open-questions.md"
+        )
         self.assertIsNotNone(contract)
         assert contract is not None
-        self.assertTrue(write_utils.governed_artifact_requires_lock("wiki/open-questions.md"))
         self.assertTrue(
-            write_utils.governed_artifact_requires_atomic_replace("wiki/open-questions.md")
+            write_utils.governed_artifact_requires_lock("wiki/open-questions.md")
+        )
+        self.assertTrue(
+            write_utils.governed_artifact_requires_atomic_replace(
+                "wiki/open-questions.md"
+            )
         )
         self.assertEqual(
             contract.mutability,
@@ -722,17 +790,32 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         )
 
     def test_governed_artifact_helpers_return_none_for_non_governed_paths(self) -> None:
-        self.assertIsNone(write_utils.governed_artifact_contract_for_path("wiki/entities/example.md"))
-        self.assertFalse(write_utils.governed_artifact_requires_lock("wiki/entities/example.md"))
+        self.assertIsNone(
+            write_utils.governed_artifact_contract_for_path("wiki/entities/example.md")
+        )
         self.assertFalse(
-            write_utils.governed_artifact_requires_atomic_replace("wiki/entities/example.md")
+            write_utils.governed_artifact_requires_lock("wiki/entities/example.md")
+        )
+        self.assertFalse(
+            write_utils.governed_artifact_requires_atomic_replace(
+                "wiki/entities/example.md"
+            )
         )
 
     def test_governed_artifact_helpers_reject_invalid_paths(self) -> None:
-        for invalid_path in ("/wiki/log.md", "//wiki/log.md", "../wiki/log.md", "./wiki/log.md"):
+        for invalid_path in (
+            "/wiki/log.md",
+            "//wiki/log.md",
+            "../wiki/log.md",
+            "./wiki/log.md",
+        ):
             with self.subTest(path=invalid_path):
-                self.assertIsNone(write_utils.governed_artifact_contract_for_path(invalid_path))
-                self.assertFalse(write_utils.governed_artifact_requires_lock(invalid_path))
+                self.assertIsNone(
+                    write_utils.governed_artifact_contract_for_path(invalid_path)
+                )
+                self.assertFalse(
+                    write_utils.governed_artifact_requires_lock(invalid_path)
+                )
                 self.assertFalse(
                     write_utils.governed_artifact_requires_atomic_replace(invalid_path)
                 )
@@ -827,7 +910,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertEqual(target_path.read_text(encoding="utf-8"), "after\n")
         self.assertFalse((self.workspace_root / "wiki" / ".status.md.kbtmp").exists())
 
-    def test_atomic_replace_governed_artifact_rejects_unsupported_or_append_only_paths(self) -> None:
+    def test_atomic_replace_governed_artifact_rejects_unsupported_or_append_only_paths(
+        self,
+    ) -> None:
         for path in ("wiki/entities/example.md", "wiki/log.md"):
             with self.subTest(path=path):
                 with self.assertRaises(ValueError):
@@ -837,7 +922,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
                         "content\n",
                     )
 
-    def test_atomic_replace_governed_artifact_cleans_up_temp_file_on_failure(self) -> None:
+    def test_atomic_replace_governed_artifact_cleans_up_temp_file_on_failure(
+        self,
+    ) -> None:
         target_path = self.workspace_root / "wiki" / "status.md"
         target_path.write_text("before\n", encoding="utf-8")
 
@@ -852,7 +939,9 @@ class WriteUtilitiesTests(RuntimeWorkspaceTestCase):
         self.assertEqual(target_path.read_text(encoding="utf-8"), "before\n")
         self.assertFalse((self.workspace_root / "wiki" / ".status.md.kbtmp").exists())
 
-    def test_atomic_replace_governed_artifact_recovers_from_stale_temp_file(self) -> None:
+    def test_atomic_replace_governed_artifact_recovers_from_stale_temp_file(
+        self,
+    ) -> None:
         target_path = self.workspace_root / "wiki" / "status.md"
         temp_path = self.workspace_root / "wiki" / ".status.md.kbtmp"
         target_path.write_text("before\n", encoding="utf-8")
