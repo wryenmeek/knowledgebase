@@ -202,56 +202,26 @@ def extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
     Handles inline ``key: []``, inline single value ``key: val``,
     and multi-line list form (``key:\n  - item``).
     """
-    if "\r" in frontmatter_str:
-        frontmatter_str = frontmatter_str.replace("\r\n", "\n").replace("\r", "\n")
-
+    lines = frontmatter_str.splitlines()
     key_prefix = f"{key}:"
-
-    start = 0
-    key_found = False
-
-    while True:
-        end = frontmatter_str.find('\n', start)
-        line = frontmatter_str[start:end] if end != -1 else frontmatter_str[start:]
-
+    for index, line in enumerate(lines):
         stripped = line.strip()
-        if stripped.startswith(key_prefix):
-            key_found = True
-            break
-
-        if end == -1:
-            break
-        start = end + 1
-
-    if not key_found:
-        return []
-
-    inline = stripped[len(key_prefix):].strip()
-    if inline == "[]":
-        return []
-    if inline:
-        return [inline.strip('"').strip("'")]
-
-    items: list[str] = []
-
-    if end != -1:
-        start = end + 1
-        while True:
-            end = frontmatter_str.find('\n', start)
-            raw = frontmatter_str[start:end] if end != -1 else frontmatter_str[start:]
-
+        if not stripped.startswith(key_prefix):
+            continue
+        inline = stripped[len(key_prefix):].strip()
+        if inline == "[]":
+            return []
+        if inline:
+            return [inline.strip('"').strip("'")]
+        items: list[str] = []
+        for raw in lines[index + 1:]:
             if not raw.startswith("  "):
                 break
-
             item = raw.strip()
             if item.startswith("- "):
                 items.append(item[2:].strip().strip('"').strip("'"))
-
-            if end == -1:
-                break
-            start = end + 1
-
-    return items
+        return items
+    return []
 
 
 def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
@@ -270,54 +240,25 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
     Returns an empty list when the ``sources:`` key is absent.
     Quotes are stripped from each value using :func:`strip_quotes`.
     """
-    if "\r" in frontmatter:
-        frontmatter = frontmatter.replace("\r\n", "\n").replace("\r", "\n")
-
-    start = 0
-    key_found = False
-
-    while True:
-        end = frontmatter.find('\n', start)
-        line = frontmatter[start:end] if end != -1 else frontmatter[start:]
-
+    lines = frontmatter.splitlines()
+    for index, line in enumerate(lines):
         stripped = line.strip()
-        if stripped.startswith("sources:"):
-            key_found = True
-            break
-
-        if end == -1:
-            break
-        start = end + 1
-
-    if not key_found:
-        return []
-
-    inline_value = stripped[len("sources:"):].strip()
-    if inline_value == "[]":
-        return []
-    if inline_value:
-        return [strip_quotes(inline_value)]
-
-    sources: list[str] = []
-
-    if end != -1:
-        start = end + 1
-        while True:
-            end = frontmatter.find('\n', start)
-            raw = frontmatter[start:end] if end != -1 else frontmatter[start:]
-
-            if not raw.startswith("  "):
+        if not stripped.startswith("sources:"):
+            continue
+        inline_value = stripped[len("sources:"):].strip()
+        if inline_value == "[]":
+            return []
+        if inline_value:
+            return [strip_quotes(inline_value)]
+        sources: list[str] = []
+        for raw_line in lines[index + 1:]:
+            if not raw_line.startswith("  "):
                 break
-
-            item = raw.strip()
+            item = raw_line.strip()
             if item.startswith("- "):
                 sources.append(strip_quotes(item[2:].strip()))
-
-            if end == -1:
-                break
-            start = end + 1
-
-    return sources
+        return sources
+    return []
 
 
 def extract_frontmatter_keys(frontmatter: str) -> set[str]:
