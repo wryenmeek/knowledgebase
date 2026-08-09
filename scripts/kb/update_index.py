@@ -8,6 +8,7 @@ import concurrent.futures
 from dataclasses import dataclass
 import os
 import stat as _stat
+from typing import Iterator
 from pathlib import Path
 import re
 import sys
@@ -126,25 +127,25 @@ def _collect_section_entries(
     if not section_root.exists():
         return []
 
-    page_paths = []
-    for page_path in section_root.rglob("*.md"):
-        validated = _validate_section_page_path(page_path, wiki_root)
-        if validated is not None:
-            page_paths.append(validated)
+    def _iter_validated_paths() -> Iterator[Path]:
+        for page_path in section_root.rglob("*.md"):
+            validated = _validate_section_page_path(page_path, wiki_root)
+            if validated is not None:
+                yield validated
 
     if executor:
         # We process files efficiently by passing chunksize
         entries = list(
             executor.map(
                 _parse_page_summary,
-                page_paths,
+                _iter_validated_paths(),
                 itertools.repeat(wiki_root),
                 chunksize=100,
             )
         )
     else:
         entries = [
-            _parse_page_summary(page_path, wiki_root) for page_path in page_paths
+            _parse_page_summary(page_path, wiki_root) for page_path in _iter_validated_paths()
         ]
 
     entries.sort(key=lambda entry: (entry.title.casefold(), entry.relative_path))

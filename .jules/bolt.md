@@ -52,3 +52,6 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
+## 2024-05-24 - [Performance] Removing sequential array allocation in update_index
+**Learning:** Even if `sorted(rglob("*.md"))` was removed, populating a list `page_paths = []` sequentially using `rglob()` still blocks parallel execution from starting until the OS stat operations and file tree traversals complete entirely. The memory spike and latency persists.
+**Action:** Instead of populating an array prior to mapping, use a generator to yield values directly into `executor.map(chunksize)`. This allows worker processes to immediately start parallel execution on chunks as `rglob()` encounters them.
