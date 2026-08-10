@@ -31,6 +31,10 @@ def _check_file(path_str: str) -> list[str]:
     except OSError as exc:
         return [f"{path_str}: cannot read file: {exc}"]
 
+    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
+    if "repo://" not in text:
+        return errors
+
     lines = text.splitlines()
     in_frontmatter = False
     frontmatter_done = False
