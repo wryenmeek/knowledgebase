@@ -87,6 +87,13 @@ export const NullSessionVerifier: JulesSessionVerifier = Object.freeze({
   verify: () => null,
 });
 
+/** Accepted historical Jules author identities used by both collection paths. */
+export const JULES_AUTHOR_LOGINS = Object.freeze([
+  "google-labs-jules",
+  "google-labs-jules[bot]",
+  "jules-bot",
+] as const);
+
 /** Structured, non-text fields collected for a single candidate PR. */
 export interface RawPullRecord {
   number: number;

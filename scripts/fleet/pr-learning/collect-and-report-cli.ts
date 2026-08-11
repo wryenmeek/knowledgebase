@@ -38,7 +38,7 @@
 
 import { appendFileSync } from "node:fs";
 
-import { collectPersonaPullRequests, NullSessionVerifier } from "./collect.ts";
+import { collectPersonaPullRequests, JULES_AUTHOR_LOGINS, NullSessionVerifier } from "./collect.ts";
 import { classifyPullRequests } from "./classify.ts";
 import { buildCollectionReport } from "./report.ts";
 import type { EvidenceEnvelope, Persona } from "./types.ts";
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
   // owner (current PAT-based posting model). This is a scope-narrowing
   // list only — `collectPersonaPullRequests` still requires independently
   // verified session linkage before any record can leave `ambiguous`.
-  const authorLogins = ["google-labs-jules", repositoryOwner];
+  const authorLogins = [...JULES_AUTHOR_LOGINS, repositoryOwner];
 
   const collectionErrors: string[] = [];
   let complete = true;

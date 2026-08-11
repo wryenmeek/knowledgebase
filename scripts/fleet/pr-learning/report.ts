@@ -57,6 +57,8 @@ export interface CollectionReport {
   complete: boolean;
   collection_errors: string[];
   personas: PersonaSummary[];
+  /** Canonical envelopes retained for proposal-job session-link revalidation. */
+  envelopes: EvidenceEnvelope[];
   total_envelope_count: number;
   /** Deterministic content digest over the full envelope set (sha256 hex). */
   digest: string;
@@ -184,6 +186,7 @@ export function buildCollectionReport(
     complete: options.complete,
     collection_errors: [...options.collectionErrors],
     personas,
+    envelopes: sortedEnvelopes,
     total_envelope_count: envelopes.length,
     digest: sha256Hex(digestInput),
   };

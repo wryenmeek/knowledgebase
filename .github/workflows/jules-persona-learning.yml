@@ -119,7 +119,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: jules-persona-learning-${{ inputs.mode }}
+  group: jules-persona-learning-${{ inputs.mode }}-${{ inputs.persona }}-${{ inputs.mechanism }}-${{ inputs.normalized_rule }}
   cancel-in-progress: false
 
 jobs:

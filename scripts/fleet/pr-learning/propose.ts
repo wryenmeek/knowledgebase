@@ -36,7 +36,8 @@
  * lookup-before-create check, an immediate second lookup right before the
  * branch is created, and a non-canceling GitHub Actions concurrency group
  * (see `PROPOSAL_CONCURRENCY_CANCEL_IN_PROGRESS` /
- * `proposalConcurrencyGroupName`, consumed by the U6 workflow). Local
+ * `proposalConcurrencyGroupName`, mirrored by the U6 workflow's
+ * human-readable input tuple). Local
  * filesystem locks (ADR-005) do not coordinate separate Actions runners —
  * GitHub-visible markers and live base-tree revalidation are the actual
  * cross-runner concurrency contract, per the plan's Key Technical
@@ -55,6 +56,7 @@ import {
   validateMemoryEntry,
 } from "./memory-validator.js";
 import { isValidSha256Hex } from "./fingerprints.js";
+import { memoryPathForPersona } from "./types.js";
 import type { Candidate, MemoryEntry, ProposalMarker } from "./types.js";
 
 /** Branch prefix for every proposal branch (R8/R11 deterministic naming). */
@@ -417,6 +419,9 @@ export async function createMemoryProposal(
   }
   if (input.entry.persona !== input.candidate.persona) {
     return rejected(branchName, "entry.persona does not match candidate.persona");
+  }
+  if (input.candidate.target_memory_path !== memoryPathForPersona(input.candidate.persona)) {
+    return rejected(branchName, "candidate.target_memory_path does not match candidate.persona");
   }
 
   // Step 1: lookup-before-create.

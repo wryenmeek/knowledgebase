@@ -52,7 +52,11 @@
 
 import { determineEligibility } from "./cluster.ts";
 import { classifyPullRequests } from "./classify.ts";
-import { collectPersonaPullRequests, type JulesSessionVerifier } from "./collect.ts";
+import {
+  collectPersonaPullRequests,
+  JULES_AUTHOR_LOGINS,
+  type JulesSessionVerifier,
+} from "./collect.ts";
 import {
   deduplicateCandidate,
   parseMemoryEntryMarkers,
@@ -349,6 +353,14 @@ async function main(): Promise<void> {
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
   const normalizedRule = requireEnv("PR_LEARNING_NORMALIZED_RULE");
+  for (const [name, value] of [
+    ["PR_LEARNING_MECHANISM", mechanism],
+    ["PR_LEARNING_NORMALIZED_RULE", normalizedRule],
+  ] as const) {
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(value)) {
+      throw new Error(`${name} must be lowercase kebab-case, at most 64 characters`);
+    }
+  }
   const evidencePrNumbers = requireEnv("PR_LEARNING_EVIDENCE_PR_NUMBERS")
     .split(",")
     .map((value) => value.trim())
@@ -385,6 +397,11 @@ async function main(): Promise<void> {
   }
   const artifact = (await artifactFile.json()) as ArtifactBindings;
   validateArtifactBindings(artifact, currentSha, currentRunId);
+  if (!Array.isArray(artifact.report.envelopes)) {
+    throw new Error(
+      "collector artifact does not contain evidence envelopes; regenerate the report with the current collector"
+    );
+  }
   const sessionVerifier = sessionVerifierFromArtifact(artifact.report.envelopes);
 
   const apiBase = `https://api.github.com/repos/${repoFullName}`;
@@ -407,7 +424,7 @@ async function main(): Promise<void> {
     headers,
     repoFullName,
     persona,
-    authorLogins: ["google-labs-jules", repositoryOwner],
+    authorLogins: [...JULES_AUTHOR_LOGINS, repositoryOwner],
     asOf,
     lookbackWatermark,
     // Only session linkage already verified by the collector artifact is
