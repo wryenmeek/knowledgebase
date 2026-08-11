@@ -31,6 +31,10 @@ def _check_file(path_str: str) -> list[str]:
     except OSError as exc:
         return [f"{path_str}: cannot read file: {exc}"]
 
+    # OPTIMIZATION: Avoid splitlines() and iteration overhead if no citations exist.
+    if _REPO_PREFIX not in text:
+        return []
+
     lines = text.splitlines()
     in_frontmatter = False
     frontmatter_done = False
