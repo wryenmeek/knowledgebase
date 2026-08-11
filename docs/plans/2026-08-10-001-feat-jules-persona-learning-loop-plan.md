@@ -11,6 +11,8 @@ deepened: 2026-08-10
 
 Build a repository-scoped, evidence-bound analyzer for Bolt and Sentinel Jules PR outcomes. The analyzer reports merge-rate and problem-family signals, then may open a human-reviewed PR that changes exactly one allowlisted `.jules` memory file. It never edits memory directly, executes PR code, or merges its own proposal.
 
+Until an authoritative Jules session/source verifier and non-forgeable collector-artifact attestation are available, the MVP is report-only: proposal mode must fail closed before any write.
+
 ## Problem Frame
 
 `.jules/bolt.md` and `.jules/sentinel.md` are useful but passive journals. Existing fleet automation tracks sessions, checks, retries, and merges, but it does not distinguish technical lessons from duplicate, stale, unsafe, or policy-failed PRs. Completed persona PRs currently merge at roughly 11.3% for Bolt and 11.9% for Sentinel, measured as `merged / (merged + closed-unmerged)`. The loop should reduce repeated failure families without rewarding PR volume or treating every closed PR as a technical failure.
@@ -19,15 +21,15 @@ Build a repository-scoped, evidence-bound analyzer for Bolt and Sentinel Jules P
 
 ### Evidence and classification
 
-- R1. Collect only repository-scoped Jules PRs with a mandatory positive identity predicate: stable author identity plus independently verified Jules session/source linkage, exact base/head repository boundaries, and an immutable evaluated head SHA. Missing linkage is `ambiguous`, never an accepted fallback.
+- R1. Collect only repository-scoped Jules PRs with a mandatory positive identity predicate: stable author identity plus independently verified Jules session/source linkage, exact base/head repository boundaries, and an immutable evaluated head SHA. Missing linkage is `ambiguous`, never an accepted fallback. Proposal mode remains disabled until the verifier is wired and its source is documented.
 - R2. Classify PRs as `merged`, `closed_unmerged`, `open`, or `ambiguous`, using `merged_at` as the merge authority and excluding open, draft, pending, reopened, or incomplete records from terminal counts until their final stable state.
 - R3. Assign only the fixed closure taxonomy: `duplicate_or_superseded`, `scope_creep`, `unsupported_claim`, `test_or_policy_failure`, `unsafe_change`, `stale_artifact`, `conflict_or_rebase`, or `unknown`; conflicting or insufficient evidence remains `unknown` and cannot trigger learning.
 - R4. Preserve commit-bound provenance for each finding: repository, PR number, base SHA, evaluated head SHA, merge SHA when present, author identity, relevant event/check identifiers, collection timestamp, taxonomy version, and evidence/artifact digests.
 
 ### Learning and measurement
 
-- R5. Compute proposal-level merge rate as `merged / (merged + closed_unmerged)` and report separate unique-lesson, aged-open, ambiguous, incomplete, and terminalization views so censoring cannot hide backlog growth.
-- R6. Permit one independently verified merged PR to establish a technical lesson and require two distinct PRs in the same semantic cluster for a closed-cause prevention rule.
+- R5. Report repeat-family recurrence reduction as the primary outcome, using a fixed post-publication window and absolute counts. Compute proposal-level merge rate as `merged / (merged + closed_unmerged)` as a guardrail, and report separate unique-lesson, aged-open, ambiguous, incomplete, and terminalization views so censoring cannot hide backlog growth.
+- R6. Permit one independently verified merged PR to establish a clearly marked tentative technical lesson; require later corroboration before treating it as a durable prevention rule. Require two distinct PRs in the same semantic cluster for a closed-cause prevention rule.
 - R7. Cluster by `persona | mechanism | affected-scope | normalized-rule`, with versioned canonicalization and a stable candidate fingerprint that includes evidence identity and target memory.
 - R8. Deduplicate against existing memory, recent memory history, and open or previously closed learning PRs; stale or contradicted evidence is quarantined and reported rather than silently deleted or automatically retracted in the MVP.
 
@@ -35,16 +37,16 @@ Build a repository-scoped, evidence-bound analyzer for Bolt and Sentinel Jules P
 
 - R9. Generate bounded, scoped memory entries containing a rule, evidence, verification, scope, and retraction condition; do not copy raw PR text, secrets, private session content, exploit payloads, or unsupported quantitative claims.
 - R10. Allow proposals to change exactly one ordinary regular file: `.jules/bolt.md` or `.jules/sentinel.md`. Reject additions, deletions, renames, copies, mode changes, symlinks, submodules, path traversal, and all unrelated paths.
-- R11. Split read-only collection/classification from proposal creation, use least-privilege credentials, require concurrency and lookup-before-create idempotency, and grant no merge, issue, workflow, or session-mutation permission.
+- R11. Split read-only collection/classification from proposal creation, use least-privilege credentials, require concurrency and lookup-before-create idempotency, and grant no merge, issue, workflow, or session-mutation permission. Proposal creation accepts only a machine-generated, attested candidate artifact; free-form workflow inputs cannot create or replace evidence.
 - R12. Require normal trusted CI and human review/merge. Existing fleet auto-merge workflows must not process learning proposals.
-- R13. Fail closed on ambiguous identity, missing pages, partial pagination, stale artifacts, API inconsistencies, failed validation, lock/concurrency conflicts, secret-scan findings, and mutation uncertainty.
+- R13. Fail closed on ambiguous identity, missing pages, partial pagination, stale artifacts, API inconsistencies, failed validation, lock/concurrency conflicts, secret-scan findings, mutation uncertainty, missing artifact attestation, or unavailable Jules session verification.
 
 ## Key Technical Decisions
 
 - **Extend the Bun fleet runtime, but isolate the domain:** place GitHub/Jules collection and proposal orchestration with existing `scripts/fleet/**` patterns, while keeping evidence contracts, classification, deduplication, and proposal validation as separate modules. This reuses Octokit, check-state, changed-file, retry, and sanitized-diagnostic patterns without creating a second orchestration runtime.
 - **Use a two-job trust boundary:** a read-only collector emits a versioned, digest-bound report artifact; a proposal job accepts only a validated artifact and performs narrowly scoped branch/PR creation. The collector never receives write credentials, checks out PR code, or calls mutation APIs.
 - **Treat all GitHub content as hostile data:** titles, bodies, comments, reviews, check names, annotations, and logs are bounded, structured, redacted, and never interpreted as instructions or allowed to select paths, permissions, taxonomy, or approval state.
-- **Require verified Jules provenance:** author login alone is insufficient. Eligibility requires immutable author identity, exact base repository, same-repository head, an independently verified Jules session/source record, and matching base/head SHAs. Forks, copied markers, and conflicting identity fields are rejected; historical records without authoritative linkage remain quarantined.
+- **Require verified Jules provenance:** author login alone is insufficient. Eligibility requires immutable author identity, exact base repository, same-repository head, an independently verified Jules session/source record, and matching base/head SHAs. Forks, copied markers, and conflicting identity fields are rejected; historical records without authoritative linkage remain quarantined. Branch names and PR-body markers are lookup aids only, never provenance. Proposal mode also requires a non-forgeable attestation binding the collector artifact to the trusted workflow run and collector revision; absent either verifier or attestation, the writer is disabled.
 - **Make memory publication append-oriented and content-preserving:** existing entries remain byte-preserved; new entries use stable IDs and bounded structured Markdown. Deduplication updates are proposal decisions, not arbitrary rewrites.
 - **Use content-addressed stale-memory protection:** record the target memory blob SHA and base revision used for generation. Regenerate when the target file changes; never auto-resolve a conflict by overwriting newer memory.
 - **Make proposal creation idempotent and human-only:** use a versioned candidate fingerprint in the branch/PR marker, workflow concurrency with `cancel-in-progress: false`, and lookup-before-create plus an immediate second check. GitHub-visible markers and base-tree revalidation are the cross-runner concurrency contract; local filesystem locks do not coordinate separate Actions runners. No learning PR may be auto-merged or sent through fleet redispatch.
@@ -71,7 +73,7 @@ flowchart TD
   L --> M["Future memory snapshot"]
 ```
 
-The proposal artifact should carry: `repo`, `pr_number`, `persona`, `outcome`, `base_sha`, `head_sha`, `merge_sha`, `author_id`, `session_id`, `collector_workflow_run_id`, `collector_commit`, `as_of`, `affected_paths`, `classification`, `taxonomy_version`, `memory_blob_sha`, `candidate_fingerprint`, `classifier_version`, `evidence_digest`, expiry, and the bounded proposed entry. The proposal job must verify the producer workflow, collector revision, repository, base SHA, digest, and expiry before mutation. A missing or contradictory field prevents proposal creation.
+The proposal artifact should carry: `repo`, `pr_number`, `persona`, `outcome`, `base_sha`, `head_sha`, `merge_sha`, `author_id`, `session_id`, `collector_workflow_run_id`, `collector_commit`, `as_of`, `affected_paths`, `classification`, `taxonomy_version`, `memory_blob_sha`, `candidate_fingerprint`, `classifier_version`, `evidence_digest`, expiry, and the bounded proposed entry. The collector must persist only an allowlisted, redacted schema containing IDs, hashes, classifications, and bounded sanitized evidence references; raw PR/comment/review/log text is not an artifact field. The proposal job must verify the producer workflow, collector revision, repository, base SHA, digest, attestation, and expiry before mutation. A missing or contradictory field prevents proposal creation.
 
 Terminal state handling is:
 
@@ -88,7 +90,7 @@ stateDiagram-v2
   ClosedUnmerged --> Ambiguous: identity or event conflict
 ```
 
-`Ambiguous` is a quarantine state, not a negative outcome. A reopened PR is counted only after its final terminal state passes the configured stabilization cutoff. Reverts remain merged outcomes for the primary metric and are reported separately. A growing aged-open or ambiguous backlog is an operational warning against metric gaming.
+`Ambiguous` is a quarantine state, not a negative outcome. A reopened PR is counted only after its final terminal state passes the configured stabilization cutoff. Reverts remain merged outcomes for the primary metric and are reported separately. A growing aged-open, ambiguous, or incomplete backlog blocks publication of new lessons until an operator resolves the configured threshold breach; this is an operational guard against metric gaming.
 
 ## Scope Boundaries
 
@@ -102,7 +104,7 @@ stateDiagram-v2
 ### Deferred to Follow-Up Work
 
 - Learning for non-Jules authors, other repositories, or other providers.
-- Automatic modification of prompts, `.github/agents/**`, workflows, skills, hooks, `AGENTS.md`, or ADRs based on a memory lesson.
+- Automatic modification of prompts, `.github/agents/**`, workflows, skills, hooks, `AGENTS.md`, or ADRs based on a memory lesson. Repeated recurrence after a published lesson instead produces a human-reviewed upstream change candidate or issue; the memory file is not treated as the only remediation surface.
 - Automatic merge, automatic conflict resolution, or direct edits from scheduled jobs.
 - A durable analytics database; the initial report and GitHub PR history remain the source of record.
 - Fully automated semantic LLM classification; deterministic structured evidence and bounded human review remain the MVP boundary.
@@ -135,7 +137,7 @@ The feature adds a new path from external GitHub data to repository behavior. `.
 - **Requirements:** R1, R2, R3, R4, R5, R13.
 - **Dependencies:** U1.
 - **Files:** Create `scripts/fleet/pr-learning/collect.ts`, `scripts/fleet/pr-learning/classify.ts`, `scripts/fleet/pr-learning/report.ts`, `scripts/fleet/pr-learning/collect.test.ts`, `scripts/fleet/pr-learning/classify.test.ts`.
-- **Approach:** Paginate to exhaustion under a fixed `as_of` timestamp and lookback watermark, record endpoint timestamps/ETags where available, and reconcile mutable fields with a final re-fetch. Validate base/head repository, mandatory author identity and Jules session/source linkage, exact commit SHAs, and trusted checks before classification. Never checkout or execute PR code. On pagination/API failure or cross-endpoint inconsistency, emit an incomplete report and do not advance any watermark.
+- **Approach:** Paginate to exhaustion under a fixed `as_of` timestamp and lookback watermark, record endpoint timestamps/ETags where available, and reconcile mutable fields with a final re-fetch. Validate base/head repository, mandatory author identity and Jules session/source linkage from the named authoritative verifier, exact commit SHAs, and trusted checks before classification. Never checkout or execute PR code. On pagination/API failure or cross-endpoint inconsistency, emit an incomplete report and do not advance any watermark. If the verifier is unavailable, emit report-only ambiguous records and expose a disabled-proposal reason.
 - **Patterns to follow:** `scripts/fleet/github/session-matching.ts`, `scripts/fleet/github/merge-ci.ts`, `scripts/fleet/github/mutation-diagnostics.ts`, `scripts/maintenance/audit_pr_body_vs_diff.py`, `scripts/validation/check_issue_closure_evidence.py`.
 - **Test scenarios:**
   - Both historical Jules login forms are accepted only with repository and session evidence; copied title/body markers and same-owner non-Jules PRs are rejected.
@@ -143,7 +145,7 @@ The feature adds a new path from external GitHub data to repository behavior. `.
   - Pagination, rate-limit, 5xx, timeout, and partial event failures produce bounded diagnostics and no partial advancement.
   - Check conclusions from another SHA or repository do not satisfy verification.
   - Prompt-injection text in titles, bodies, comments, reviews, annotations, and logs is treated as bounded data and never changes paths, permissions, taxonomy, or actions.
-- **Verification:** A report can be regenerated from the same GitHub snapshot with the same digest, while incomplete collection is visibly quarantined rather than silently counted.
+- **Verification:** A report can be regenerated from the same GitHub snapshot with the same digest, while incomplete collection is visibly quarantined rather than silently counted. A proposal cannot proceed from a report lacking authoritative session linkage.
 
 ### U3. Implement clustering, metrics, and candidate eligibility
 
@@ -151,7 +153,7 @@ The feature adds a new path from external GitHub data to repository behavior. `.
 - **Requirements:** R5, R6, R7, R8, R9.
 - **Dependencies:** U1, U2.
 - **Files:** Create `scripts/fleet/pr-learning/cluster.ts`, `scripts/fleet/pr-learning/metrics.ts`, `scripts/fleet/pr-learning/deduplicate.ts`, `scripts/fleet/pr-learning/cluster.test.ts`, `scripts/fleet/pr-learning/metrics.test.ts`, `scripts/fleet/pr-learning/deduplicate.test.ts`.
-- **Approach:** Group by the semantic key, require one verified merged lesson or two distinct closed causes, and report proposal-level, unique-lesson, aged-open, ambiguous, incomplete, and terminalization metrics. Compare the candidate fingerprint with target memory content, memory history, open learning PR markers, and closed prior proposals. Quarantine later contradictions for human review rather than generating automatic retraction/supersession proposals.
+- **Approach:** Group by the semantic key, require one verified merged observation for a tentative lesson or two distinct closed causes for a durable prevention rule, and report recurrence reduction after publication alongside proposal-level, unique-lesson, aged-open, ambiguous, incomplete, and terminalization metrics. Compare the candidate fingerprint with target memory content, memory history, open learning PR markers, and closed prior proposals. Quarantine later contradictions for human review rather than generating automatic retraction/supersession proposals. Repeated recurrence after publication emits an upstream human-reviewed change candidate/issue rather than another memory-only optimization.
 - **Patterns to follow:** `scripts/replay_cache.py`, `tests/kb/test_replay_cache.py`, `scripts/fleet/github/session-matching.ts`, existing duplicate-Jules hygiene in `.github/copilot-instructions.md`.
 - **Test scenarios:**
   - One merged Bolt or Sentinel PR yields a technical candidate only when the rule is scoped and evidence-backed.
@@ -159,7 +161,7 @@ The feature adds a new path from external GitHub data to repository behavior. `.
   - Duplicate memory content, open proposal markers, and previously rejected equivalent candidates produce no second proposal.
   - Reopened PRs are counted once at final terminal state; superseded and duplicate closures are not treated as technical failures.
   - Proposal-level and unique-lesson metrics remain stable under duplicate evidence records.
-- **Verification:** Reports expose collected, skipped, ambiguous, classified, duplicate, eligible, and proposal-created counts plus the exact denominator used for each metric.
+- **Verification:** Reports expose collected, skipped, ambiguous, classified, duplicate, eligible, proposal-created, and post-publication recurrence counts plus the exact denominator used for each metric. Publication is blocked when configured backlog thresholds are breached.
 
 ### U4. Build the memory validator and stale-snapshot guard
 
@@ -167,7 +169,7 @@ The feature adds a new path from external GitHub data to repository behavior. `.
 - **Requirements:** R9, R10, R13.
 - **Dependencies:** U1, U3.
 - **Files:** Create `scripts/fleet/pr-learning/memory-validator.ts`, `scripts/fleet/pr-learning/proposal-validator.ts`, `tests/fleet/pr-learning/memory-validator.test.ts`, `tests/fleet/pr-learning/proposal-validator.test.ts`.
-- **Approach:** Allow only the two enumerated regular files. Verify the target blob SHA at the recorded base, byte-preserve existing content, enforce bounded structured Markdown entries, reject executable expressions/secrets/raw untrusted payloads, and validate the final diff against the recorded base SHA. Reject renames, deletes, additions, copies, modes, symlinks, submodules, extra files, and stale targets.
+- **Approach:** Keep the pure memory-entry shape validator separate from the live proposal validator because they enforce different contracts: content safety versus Git tree/write-surface safety. Allow only the two enumerated regular files. Verify the target blob SHA at the recorded base, byte-preserve existing content, enforce bounded structured Markdown entries, reject executable expressions/secrets/raw untrusted payloads, and validate the final diff against the recorded base SHA. Reject renames, deletes, additions, copies, modes, symlinks, submodules, extra files, and stale targets.
 - **Patterns to follow:** `scripts/kb/write_utils.py`, `scripts/fleet/github/pr-file-sanity.ts`, `scripts/hooks/check_locality_ratchet.py`, `schema/governed-artifact-contract.md`, `scripts/fleet/github/mutation-diagnostics.ts`.
 - **Test scenarios:**
   - Valid append-only Bolt and Sentinel entries preserve all existing bytes and satisfy the memory contract.
@@ -183,7 +185,7 @@ The feature adds a new path from external GitHub data to repository behavior. `.
 - **Requirements:** R8, R10, R11, R12, R13.
 - **Dependencies:** U4.
 - **Files:** Create `scripts/fleet/pr-learning/propose.ts`, `scripts/fleet/pr-learning/propose.test.ts`, `scripts/fleet/pr-learning/README.md`.
-- **Approach:** Use GitHub Git Data/Contents APIs against the validated base SHA to create one blob/tree/commit, then create the branch and PR without checking out or executing PR code. Use a deterministic branch and PR marker containing repository, target memory, candidate fingerprint, and base branch. Run lookup-before-create and an immediate second check under a non-canceling concurrency group, then revalidate the base tree before commit creation. Query after mutation timeouts before retrying. Give the proposal job only the minimum branch/PR creation permissions; GitHub scopes do not provide a distinct “no merge” permission, so human-only merge is enforced by workflow isolation, branch rules, static tests, and explicit exclusion from auto-merge workflows. No issue/session/workflow mutation and no Jules API key unless a separately justified read is required.
+- **Approach:** Use GitHub Git Data/Contents APIs against the validated base SHA to create one blob/tree/commit, then create the branch and PR without checking out or executing PR code. Consume only an attested machine-generated candidate artifact; operator-supplied text may annotate a review but cannot create, replace, or expand evidence. Use a deterministic branch and PR marker containing repository, target memory, candidate fingerprint, and base branch; these are lookup aids, not provenance. Run lookup-before-create and an immediate second check under a non-canceling concurrency group, then revalidate the base tree before commit creation and immediately before merge through required trusted checks. Query after mutation timeouts before retrying. Give the proposal job only the minimum branch/PR creation permissions; GitHub scopes do not provide a distinct “no merge” permission, so human-only merge is enforced by workflow isolation, branch rules, static tests, and explicit exclusion from auto-merge workflows. No issue, label, session, or workflow mutation and no Jules API key unless a separately justified, step-scoped read is required.
 - **Patterns to follow:** `scripts/fleet/github/mutation-diagnostics.ts`, `scripts/fleet/github/pr-file-sanity.ts`, `scripts/fleet/github/merge-runtime.ts`, `.github/workflows/jules-archive-stale.yml`, `.github/workflows/fleet-merge.yml`.
 - **Test scenarios:**
   - A valid candidate creates one branch and one PR changing only the selected memory file.
@@ -199,15 +201,15 @@ The feature adds a new path from external GitHub data to repository behavior. `.
 - **Requirements:** R11, R12, R13.
 - **Dependencies:** U2, U5.
 - **Files:** Create `.github/workflows/jules-persona-learning.yml`, modify `.github/workflows/fleet-merge.yml`, modify `.github/workflows/fleet-dispatch.yml`, create `tests/kb/test_jules_persona_learning_workflow.py`, modify `tests/kb/test_fleet_merge_workflow.py`, modify `tests/kb/test_fleet_dispatch_after_merge.py`.
-- **Approach:** Use separate read-only collection and write-capable proposal jobs. Declare exact permissions, authorized manual-run actors, expected workflow revision, and base branch at workflow/job scope; bind any credential at step scope. Use a distinct proposal branch prefix and immutable PR marker rather than requiring label mutation. Require trusted checks on the reviewed SHA and exclude the proposal marker/path from fleet merge and redispatch. MVP mode is report-only/manual proposal creation; scheduled proposal triggers are deferred until manual operation is proven safe.
+- **Approach:** Use separate read-only collection and write-capable proposal jobs. Declare exact permissions, restrict proposal dispatch to a named maintainer allowlist or protected environment approval, and bind any credential at step scope. Proposal mode consumes only an attested machine-generated candidate; arbitrary rule/evidence fields are not accepted as a write source. Use a distinct proposal branch prefix and immutable PR marker as lookup aids, not provenance; do not require or mutate labels. Require trusted checks on the reviewed SHA, a pre-merge evidence/base revalidation, and exclude the proposal marker/path from fleet merge and redispatch. MVP mode is report-only until the verifier and attestation dependencies are proven; scheduled proposal triggers remain deferred.
 - **Patterns to follow:** `.github/workflows/ci-2-analyst-diagnostics.yml`, `.github/workflows/jules-account-probe.yml`, `.github/workflows/fleet-dispatch.yml`, `.github/workflows/fleet-merge.yml`, `tests/kb/test_jules_archive_stale_workflow.py`, `tests/kb/test_fleet_dispatch_app_token_diagnostics.py`.
 - **Test scenarios:**
   - Static workflow checks reject collector write permissions, proposal merge permissions, App-token minting, issue/workflow/session mutation, `pull_request_target` code checkout, and unscoped secrets.
-  - Report-only mode produces an artifact and no branch, PR, comment, label, or memory mutation.
-  - Proposal mode requires a validated artifact bound to the collector workflow run, collector commit, exact base SHA, expiry, and human-review path.
+  - Report-only mode produces an allowlisted, redacted artifact and no branch, PR, comment, label, or memory mutation.
+  - Proposal mode is unavailable until the Jules verifier and artifact attestation are configured; once enabled, it requires an attested artifact bound to the collector workflow run, collector commit, exact base SHA, expiry, and human-review path.
   - Fleet merge and dispatch workflows skip learning proposals even when CI passes.
   - New commits invalidate prior approval and stale artifact digests.
-- **Verification:** Workflow permissions and trigger paths make the collector read-only, the proposal writer narrowly scoped, and human merge unavoidable.
+- **Verification:** Workflow permissions and trigger paths make the collector read-only, proposal dispatch maintainer-approved, the proposal writer narrowly scoped, artifact contents allowlisted/redacted, and human merge unavoidable. Until verifier and attestation checks are configured, proposal mode exits before mutation.
 
 ### U7. Complete governance, documentation, and operational rollout
 
@@ -228,12 +230,12 @@ The feature adds a new path from external GitHub data to repository behavior. `.
 
 - AE1. Given an open or draft Jules PR with pending checks, when a report is generated, then it appears as nonterminal and does not affect the merge-rate denominator or produce a memory candidate.
 - AE2. Given a closed PR with a merge SHA but no `merged_at`, when evidence is classified, then it is not counted as merged.
-- AE3. Given one merged performance PR with reproducible behavior-preservation evidence, when clustering runs, then one scoped Bolt technical lesson may be proposed.
+- AE3. Given one merged performance PR with reproducible behavior-preservation evidence, when clustering runs, then one scoped Bolt tentative lesson may be reported for later corroboration.
 - AE4. Given two distinct closed PRs with the same verified actionable scope cause, when clustering runs, then one prevention-rule candidate may be proposed; one such closure alone cannot.
 - AE5. Given a candidate whose target memory blob changed after classification, when proposal validation runs, then it rejects or regenerates without overwriting the newer file.
 - AE6. Given a valid candidate and a malicious second-path diff, when the proposal validator runs, then it rejects the entire proposal.
 - AE7. Given two concurrent runs for the same candidate fingerprint, when proposal creation runs, then at most one learning PR exists.
-- AE8. Given a valid learning PR with passing CI, when fleet merge automation runs, then it does not merge the PR; branch protection and required human approval must still be satisfied before a human merges it.
+- AE8. Given a valid learning PR with passing CI, when fleet merge automation runs, then it does not merge the PR; branch protection, fresh evidence/base validation, and required human approval must still be satisfied before a human merges it.
 
 ## Risks & Dependencies
 
@@ -241,13 +243,13 @@ The feature adds a new path from external GitHub data to repository behavior. `.
 - **Identity ambiguity:** Exact structured identity and session/source checks are prerequisites; title, branch, body, and labels are never sufficient.
 - **Prompt injection and secret leakage:** Treat all external text as hostile data, bound fields, redact before prompts/logs/artifacts, and never execute collected code.
 - **Duplicate or stale proposals:** Versioned fingerprints, non-canceling concurrency, deterministic markers, lookup-before-create, and memory blob checks prevent duplicate or overwriting writes.
-- **Metric gaming:** Report proposal-level and unique-lesson metrics, exclude unknown/incomplete states, and do not optimize for PR volume.
+- **Metric gaming:** Use repeat-family recurrence reduction as the primary outcome, report proposal-level and unique-lesson metrics as guardrails, exclude unknown/incomplete states from terminal denominators, and block new publication when aged-open/ambiguous/incomplete thresholds are breached.
 - **Governance drift:** Contract tests and documentation cascade tests must land with the new writer; no proposal workflow is enabled before they pass.
-- **Runtime dependency:** Bun, Octokit, GitHub Actions permissions, and repository branch protection remain required. Exact Jules session linkage API fields and the final available GitHub App identity are implementation-time validation points.
+- **Runtime dependency:** Bun, Octokit, GitHub Actions permissions, repository branch protection, an authoritative Jules session/source verifier, and a supported artifact-attestation mechanism remain required. Until the final two dependencies are validated, the workflow is report-only and cannot create a branch or PR.
 
 ## Documentation / Operational Notes
 
-Start in report-only/manual mode and retain structured artifacts for operator review. The run summary should expose counts and sanitized rejection reasons, not raw PR content or memory text. Proposal PRs need a distinct label and branch prefix so operators can find them and existing fleet workflows can exclude them. A rejected or closed proposal remains linked to its candidate fingerprint; reconsideration requires fresh evidence or an explicit human correction. A later contradiction is represented by a new supersession/retraction proposal.
+Start in report-only mode and retain only structured, redacted artifacts for operator review. The run summary should expose counts and sanitized rejection reasons, not raw PR content or memory text. Proposal PRs use a distinct branch prefix and immutable marker so operators can find them and existing fleet workflows can exclude them; no label mutation is required. A rejected or closed proposal remains linked to its candidate fingerprint; reconsideration requires fresh evidence or an explicit human correction. A later contradiction is represented by a new supersession/retraction proposal, while repeated recurrence also creates an upstream human-reviewed change candidate/issue.
 
 ## Sources / Research
 
