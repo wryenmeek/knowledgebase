@@ -135,12 +135,15 @@ function computePersonaMetrics(
   const proposalMergeRate = denominator > 0 ? merged / denominator : null;
 
   const personaClusters = clusters.filter((cluster) => cluster.persona === persona && cluster.eligible);
-  const mergedLessonCount = personaClusters.filter(
-    (cluster) => cluster.eligibility_reason === "merged_lesson"
-  ).length;
-  const closedCausePreventionCount = personaClusters.filter(
-    (cluster) => cluster.eligibility_reason === "closed_cause_prevention"
-  ).length;
+  let mergedLessonCount = 0;
+  let closedCausePreventionCount = 0;
+  for (const cluster of personaClusters) {
+    if (cluster.eligibility_reason === "merged_lesson") {
+      mergedLessonCount += 1;
+    } else if (cluster.eligibility_reason === "closed_cause_prevention") {
+      closedCausePreventionCount += 1;
+    }
+  }
 
   const totalCount = envelopes.length;
   const terminalizedCount = merged + closedUnmerged;

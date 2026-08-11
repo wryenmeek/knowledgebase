@@ -26,6 +26,9 @@
  */
 
 import type { EvidenceEnvelope, Persona } from "./types.ts";
+import { DEFAULT_AGED_OPEN_THRESHOLD_MS } from "./metrics.ts";
+
+export { DEFAULT_AGED_OPEN_THRESHOLD_MS } from "./metrics.ts";
 
 /** Report schema version; bump whenever the report shape changes. */
 export const REPORT_SCHEMA_VERSION = 1;
@@ -74,8 +77,6 @@ export interface BuildReportOptions {
   /** Reference instant for "aged open" calculation; defaults to `Date.parse(asOf)`. */
   nowMs?: number;
 }
-
-const DEFAULT_AGED_OPEN_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 
 function sha256Hex(input: string): string {
   const hasher = new Bun.CryptoHasher("sha256");
@@ -191,5 +192,3 @@ export function buildCollectionReport(
     digest: sha256Hex(digestInput),
   };
 }
-
-export { DEFAULT_AGED_OPEN_THRESHOLD_MS };
