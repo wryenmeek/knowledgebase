@@ -297,6 +297,34 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         # Must use an explicit equality check instead
         self.assertIn('"google-labs-jules"', self.workflow_text)
 
+    # ── Jules persona PR learning loop exclusion (U6/R12) ───────────────────
+
+    def test_jules_memory_branch_excluded_from_find_pr(self) -> None:
+        """merge-on-ci-pass's find-pr step must explicitly exclude
+        jules-memory/* branches (the Jules persona PR learning loop's
+        proposal branch prefix) so a learning-proposal PR can never be
+        auto-merged even if its author login incidentally matches.
+        """
+        job = self.workflow["jobs"]["merge-on-ci-pass"]
+        find_pr_step = next(
+            step for step in job["steps"] if step.get("id") == "find-pr"
+        )
+        run_val = find_pr_step.get("run", "")
+        self.assertIn("jules-memory/", run_val)
+        self.assertIn("headRefName", run_val)
+
+    def test_jules_memory_branch_excluded_from_manual_sweep(self) -> None:
+        """manual-sweep's PR-listing step must explicitly exclude
+        jules-memory/* branches for the same reason as find-pr above.
+        """
+        job = self.workflow["jobs"]["manual-sweep"]
+        for step in job["steps"]:
+            run_val = step.get("run", "")
+            if "gh pr list" in run_val and "headRefName" in run_val:
+                self.assertIn("jules-memory/", run_val)
+                return
+        raise AssertionError("manual-sweep has no gh pr list step referencing headRefName")
+
     # ── Re-dispatch ordering ─────────────────────────────────────────────────
 
     def test_pr_close_happens_after_redispatch(self) -> None:
@@ -356,6 +384,24 @@ class TestFleetDispatchInjectionGuard(_AssertMixin):
         self.assertNotIn("startsWith(github.event.pull_request.head.ref, 'fleet/')", self.workflow_text)
         # Must use exact login equality
         self.assertIn("'google-labs-jules'", self.workflow_text)
+
+    def test_jules_memory_branch_explicitly_excluded(self) -> None:
+        """Phase 2a's job-level if: must explicitly exclude jules-memory/*
+        branches (the Jules persona PR learning loop's proposal prefix),
+        as defense-in-depth alongside the downstream session-ID check
+        (U6/R12). This is a narrowing exclusion, not a widening bypass —
+        distinct from the banned startsWith('jules/'/'fleet/') patterns
+        above, which allowed arbitrary collaborator branches IN.
+        """
+        dispatch_job = self.workflow["jobs"]["dispatch"]
+        condition = str(dispatch_job.get("if", ""))
+        self.assertIn("jules-memory/", condition)
+        self.assertIn("startsWith", condition)
+
+        check_step = next(
+            step for step in dispatch_job["steps"] if step.get("id") == "check"
+        )
+        self.assertIn("jules-memory/", check_step.get("run", ""))
 
     def test_phase_2a_does_not_run_fleet_dispatch_ts(self) -> None:
         """Phase 2a must NOT call fleet-dispatch.ts directly.

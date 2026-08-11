@@ -111,6 +111,11 @@ For full operational flow (including qmd and query-persist behavior), see
   and [`ADR-007`](docs/decisions/ADR-007-control-plane-layering-and-packaging.md)
 - Architecture Decision Records (ADRs): [`docs/decisions/README.md`](docs/decisions/README.md)
 - MVP operator runbook: [`docs/mvp-runbook.md`](docs/mvp-runbook.md)
+- Jules persona memory learning: the manual, evidence-bound loop for Bolt and
+  Sentinel PR outcomes is documented in
+  [`scripts/fleet/pr-learning/README.md`](scripts/fleet/pr-learning/README.md)
+  and governed by
+  [`ADR-037`](docs/decisions/ADR-037-jules-persona-memory-learning.md).
 
 ## Included packages
 

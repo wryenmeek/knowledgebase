@@ -43,3 +43,4 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-034](ADR-034-fleet-no-notification-on-quota-saturation.md) | Fleet no-notification policy on quota saturation | Accepted — extends ADR-032 |
 | [ADR-035](ADR-035-tier-3-multi-provider-fallback-deferral.md) | Tier 3 multi-provider implementation-agent fallback — 30-day deferral | Accepted — extends ADR-019 |
 | [ADR-036](ADR-036-fleet-orchestrator-github-app-identity.md) | Fleet orchestrator GitHub App identity | Accepted — amended in-place: extend sensitive-path defense to `.github/actions/**` (see § Amendment); extends ADR-019 and resolves Issue #310 |
+| [ADR-037](ADR-037-jules-persona-memory-learning.md) | Jules persona memory learning loop governance | Accepted — extends ADR-005, ADR-019, ADR-022, ADR-028 |

@@ -124,6 +124,8 @@ SENSITIVE_PATHS: tuple[str, ...] = (
     ".pre-commit-config.yaml",
     ".github/workflows/",
     ".github/actions/",
+    ".jules/bolt.md",
+    ".jules/sentinel.md",
 )
 
 # ADR-029 pytest migration ratchet. Decrement after each unittest-to-pytest

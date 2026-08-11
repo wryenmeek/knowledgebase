@@ -75,13 +75,18 @@ jobs:
         run: |
           set -euo pipefail
           # Cheap API call — exits fast for non-fleet suites (the common case).
+          # Explicitly excludes jules-memory/* branches (U6/R12): the Jules
+          # persona PR learning loop's proposal PRs must never be
+          # auto-merged by fleet automation, even if their author login
+          # incidentally matched. See .github/workflows/jules-persona-learning.yml.
           PR_NUM=$(gh pr list \
             --state open \
             --repo "$REPO" \
-            --json number,headRefOid,author \
+            --json number,headRefOid,headRefName,author \
             --jq "[.[] | select(
                     .headRefOid == \"${HEAD_SHA}\" and
-                    (.author.login == \"google-labs-jules\")
+                    (.author.login == \"google-labs-jules\") and
+                    ((.headRefName | startswith(\"jules-memory/\")) | not)
                   )] | .[0].number // empty")
           if [ -z "$PR_NUM" ]; then
             echo "No open fleet PR for SHA ${HEAD_SHA}. Skipping."
@@ -251,11 +256,16 @@ jobs:
           BASE_BRANCH="${INPUT_BASE_BRANCH:-main}"
           echo "🔍 Finding open Jules-authored PRs targeting ${BASE_BRANCH}..."
 
+          # Explicitly excludes jules-memory/* branches (U6/R12) — see the
+          # find-pr step above.
           PRS=$(gh pr list \
             --state open \
             --base "$BASE_BRANCH" \
             --json number,headRefName,author \
-            --jq '[.[] | select(.author.login == "google-labs-jules")] | sort_by(.number) | .[].number')
+            --jq '[.[] | select(
+                    .author.login == "google-labs-jules" and
+                    ((.headRefName | startswith("jules-memory/")) | not)
+                  )] | sort_by(.number) | .[].number')
 
           if [ -z "$PRS" ]; then
             echo "ℹ️  No Jules-authored PRs found."

@@ -1,0 +1,263 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# .github/workflows/jules-persona-learning.yml
+#
+# Jules persona PR learning loop (U6 of
+# docs/plans/2026-08-10-001-feat-jules-persona-learning-loop-plan.md).
+# Reports Bolt/Sentinel Jules PR merge-rate and closure-cause evidence,
+# and — only when a human operator explicitly selects `mode: propose` and
+# supplies a bounded rule/evidence/verification/scope/retraction
+# description for specific evidence PR numbers — opens exactly one
+# human-reviewed pull request appending a single entry to
+# `.jules/bolt.md` or `.jules/sentinel.md`.
+#
+# MVP scope (R11, R12, R13):
+#   - `workflow_dispatch` only. No `schedule:` trigger exists for either
+#     mode — report collection and proposal creation are both manual
+#     until manual operation is proven safe (deferred: scheduled
+#     proposal triggers).
+#   - Two-job trust boundary: `collect` is read-only (`contents: read`
+#     only, no write scopes anywhere in that job) and always runs;
+#     `propose` is narrowly write-capable (`contents: write`,
+#     `pull-requests: write`, granted only at job level) and runs only
+#     for `mode: propose`, consuming the artifact `collect` just
+#     produced in the *same* run.
+#   - No `pull_request_target` trigger and no untrusted-PR-code checkout
+#     anywhere in this workflow — every checkout is the repository's own
+#     default ref, and the collector/proposal scripts never check out or
+#     execute PR code (they only read structured GitHub REST fields).
+#   - The `propose` job downloads the `collect` job's artifact and
+#     verifies it is bound to *this* run (producer workflow, collector
+#     commit, collector run id, base SHA, non-expired, digest match)
+#     before trusting anything in it — see `propose-cli.ts`.
+#   - Proposal branches use the distinct `jules-memory/<persona>/<fp>`
+#     prefix and an immutable HTML-comment PR-body marker
+#     (`jules-memory-proposal: {...}`) — see `scripts/fleet/pr-learning/
+#     propose.ts`. `fleet-merge.yml` and `fleet-dispatch.yml` explicitly
+#     exclude this branch prefix so existing fleet automation can never
+#     auto-merge or redispatch a learning proposal (R12).
+#   - This workflow never calls `gh pr merge`, `gh pr close`, or any
+#     Jules redispatch API on its own proposal. The created PR requires
+#     normal trusted CI plus a human review/merge — there is no
+#     auto-merge path for the `jules-memory/*` branch prefix anywhere in
+#     this repository's automation.
+#   - Credentials are step-scoped: `GH_TOKEN` is bound only on the
+#     collection/proposal-mutation steps, never at job or workflow level.
+name: Jules Persona Learning
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "report (read-only, default) or propose (opens one human-reviewed PR)"
+        type: choice
+        options:
+          - report
+          - propose
+        default: report
+      persona:
+        description: "propose mode only: bolt or sentinel"
+        type: choice
+        options:
+          - bolt
+          - sentinel
+        default: bolt
+      mechanism:
+        description: "propose mode only: short structured mechanism label (e.g. missing-null-check)"
+        type: string
+        default: ""
+      affected_scope:
+        description: "propose mode only: '|'-separated list of affected scope identifiers"
+        type: string
+        default: ""
+      normalized_rule:
+        description: "propose mode only: short structured rule key used for clustering"
+        type: string
+        default: ""
+      evidence_pr_numbers:
+        description: "propose mode only: comma-separated PR numbers backing this lesson (needs 1 merged, or 2 distinct closed with a known cause)"
+        type: string
+        default: ""
+      rule:
+        description: "propose mode only: the bounded rule text to append to memory"
+        type: string
+        default: ""
+      evidence:
+        description: "propose mode only: up to 3 evidence bullets, separated by '|'"
+        type: string
+        default: ""
+      verification:
+        description: "propose mode only: how this rule was/should be verified"
+        type: string
+        default: ""
+      scope:
+        description: "propose mode only: the bounded scope this rule applies to"
+        type: string
+        default: ""
+      retraction_condition:
+        description: "propose mode only: the condition under which this rule should be retracted"
+        type: string
+        default: ""
+      base_branch:
+        description: "Base branch for the proposal PR (must be main)"
+        type: string
+        default: "main"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jules-persona-learning-${{ inputs.mode }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Read-only collector (U2/U3) ─────────────────────────────────────────────
+  # Always runs, for both modes: `mode: propose` still needs a same-run
+  # artifact to bind the proposal job to. No write permission of any kind.
+  collect:
+    name: Collect and classify (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      digest: ${{ steps.collect.outputs.digest }}
+      expires_at: ${{ steps.collect.outputs.expires_at }}
+      complete: ${{ steps.collect.outputs.complete }}
+    steps:
+      # Default ref only — this workflow is `workflow_dispatch`-only, so
+      # there is no untrusted PR head to check out, and this step never
+      # uses `pull_request_target`.
+      - name: Checkout code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.1"
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('scripts/fleet/bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install fleet dependencies
+        working-directory: scripts/fleet
+        run: bun install
+
+      # Read-only: `GH_TOKEN` here is the default, unelevated
+      # `github.token` with no additional permissions beyond this job's
+      # `contents: read` — sufficient for GitHub REST reads. Step-scoped,
+      # not declared at job or workflow level.
+      - name: Collect and build report
+        id: collect
+        working-directory: scripts/fleet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bun run pr-learning/collect-and-report-cli.ts "${{ runner.temp }}/pr-learning-report.json"
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: jules-persona-learning-report-${{ github.run_id }}
+          path: ${{ runner.temp }}/pr-learning-report.json
+          retention-days: 7
+
+  # ── Narrowly write-capable proposal creator (U5) ────────────────────────────
+  # Runs only for `mode: propose`. The *only* write surface in this
+  # workflow: exactly one branch + one commit + one human-reviewed PR
+  # appending a single entry to one allowlisted `.jules/*.md` file.
+  propose:
+    name: Create human-reviewed proposal PR
+    needs: collect
+    if: ${{ inputs.mode == 'propose' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      # Serializes concurrent propose runs for the *same* candidate
+      # (mirroring `propose.ts`'s `proposalConcurrencyGroupName` /
+      # `PROPOSAL_CONCURRENCY_CANCEL_IN_PROGRESS` contract); distinct
+      # persona/mechanism/scope/rule combinations proceed independently.
+      # `cancel-in-progress: false` so an in-flight proposal mutation is
+      # never cancelled mid-write.
+      group: jules-persona-learning-propose-${{ inputs.persona }}-${{ inputs.mechanism }}-${{ inputs.normalized_rule }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.1"
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('scripts/fleet/bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install fleet dependencies
+        working-directory: scripts/fleet
+        run: bun install
+
+      - name: Download collector artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: jules-persona-learning-report-${{ github.run_id }}
+          path: ${{ runner.temp }}/pr-learning-artifact
+
+      # Workflow inputs are passed through env vars, never interpolated
+      # directly into `run:` — avoids GitHub Actions expression injection
+      # via crafted input strings. `GH_TOKEN` is bound only on this
+      # mutation step (never at job level), scoped to exactly the
+      # permissions declared on this job (`contents: write`,
+      # `pull-requests: write`) and nothing else — no merge, issue,
+      # label, workflow, or session-mutation scope exists on this token
+      # that the propose CLI could even attempt to use.
+      - name: Validate artifact and create proposal
+        id: propose
+        working-directory: scripts/fleet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_LEARNING_ARTIFACT_PATH: ${{ runner.temp }}/pr-learning-artifact/pr-learning-report.json
+          PR_LEARNING_BASE_BRANCH: ${{ inputs.base_branch }}
+          PR_LEARNING_PERSONA: ${{ inputs.persona }}
+          PR_LEARNING_MECHANISM: ${{ inputs.mechanism }}
+          PR_LEARNING_AFFECTED_SCOPE: ${{ inputs.affected_scope }}
+          PR_LEARNING_NORMALIZED_RULE: ${{ inputs.normalized_rule }}
+          PR_LEARNING_EVIDENCE_PR_NUMBERS: ${{ inputs.evidence_pr_numbers }}
+          PR_LEARNING_RULE: ${{ inputs.rule }}
+          PR_LEARNING_EVIDENCE: ${{ inputs.evidence }}
+          PR_LEARNING_VERIFICATION: ${{ inputs.verification }}
+          PR_LEARNING_SCOPE: ${{ inputs.scope }}
+          PR_LEARNING_RETRACTION_CONDITION: ${{ inputs.retraction_condition }}
+        run: |
+          set -euo pipefail
+          bun run pr-learning/propose-cli.ts
+
+      - name: Report outcome
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "This workflow never merges its own proposal. The created PR (if any) requires normal trusted CI and human review/merge — fleet-merge.yml and fleet-dispatch.yml explicitly skip the jules-memory/* branch prefix."
