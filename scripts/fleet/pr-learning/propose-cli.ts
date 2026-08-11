@@ -59,10 +59,9 @@ import {
 } from "./collect.ts";
 import {
   deduplicateCandidate,
-  parseMemoryEntryMarkers,
   type ProposalMarkerLike,
 } from "./deduplicate.ts";
-import { computeCandidateFingerprintAtCurrentVersion, computeEvidenceDigest } from "./fingerprints.ts";
+import { computeCandidateFingerprintAtCurrentVersion } from "./fingerprints.ts";
 import { validateMemoryEntry } from "./memory-validator.ts";
 import {
   createMemoryProposal,
@@ -77,6 +76,7 @@ import {
 import { PRODUCER_WORKFLOW } from "./collect-and-report-cli.ts";
 import {
   TAXONOMY_VERSION,
+  memoryPathForPersona,
   type Candidate,
   type EvidenceEnvelope,
   type MemoryEntry,
@@ -93,14 +93,6 @@ function requireEnv(name: string): string {
     throw new Error(`missing required environment variable: ${name}`);
   }
   return value;
-}
-
-function optionalEnv(name: string): string {
-  return process.env[name] ?? "";
-}
-
-function targetMemoryPathFor(persona: Persona): ".jules/bolt.md" | ".jules/sentinel.md" {
-  return persona === "bolt" ? ".jules/bolt.md" : ".jules/sentinel.md";
 }
 
 function decodeBase64(content: string): string {
@@ -338,7 +330,7 @@ async function main(): Promise<void> {
   const currentRunId = requireEnv("GITHUB_RUN_ID");
   const repositoryOwner = requireEnv("GITHUB_REPOSITORY_OWNER");
   const artifactPath = requireEnv("PR_LEARNING_ARTIFACT_PATH");
-  const baseBranch = optionalEnv("PR_LEARNING_BASE_BRANCH") || "main";
+  const baseBranch = process.env.PR_LEARNING_BASE_BRANCH || "main";
   if (baseBranch !== "main") {
     throw new Error(`PR_LEARNING_BASE_BRANCH must be "main", got: ${baseBranch}`);
   }
@@ -387,7 +379,7 @@ async function main(): Promise<void> {
   const scope = requireEnv("PR_LEARNING_SCOPE");
   const retractionCondition = requireEnv("PR_LEARNING_RETRACTION_CONDITION");
 
-  const targetMemoryPath = targetMemoryPathFor(persona);
+  const targetMemoryPath = memoryPathForPersona(persona);
 
   // Step 1: validate the collector artifact's bindings before trusting
   // anything derived from it (R11, R13).
@@ -520,9 +512,6 @@ async function main(): Promise<void> {
 
   // Step 6: build and pre-validate the bounded memory entry from
   // operator-supplied text (R9) before any mutation is attempted.
-  const evidenceDigest = computeEvidenceDigest(
-    [...matchedEnvelopes].map((envelope) => envelope.evidence_digest).sort()
-  );
   const entry: MemoryEntry = {
     entry_id: entryId,
     persona,
