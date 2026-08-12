@@ -24,3 +24,7 @@
 **Vulnerability:** Token exposure via stderr logs and expression injection (`${{ ... }}`) via GitHub-flavoured markdown rendering.
 **Learning:** API error messages can contain sensitive credentials (e.g., `ghp_`, `github_pat_`, base64 strings) which can be exposed if stderr is not properly redacted. GitHub markdown might trigger side effects if `${{ ... }}` expressions are not neutralized.
 **Prevention:** Centralize and ensure consistent markdown sanitization and error log redaction across all scripts interfacing with external platforms (like GitHub and Google Drive).
+## 2026-08-12 - [Unintended Network Exposure via 0.0.0.0]
+**Vulnerability:** WSGI entrypoints (relay_http.py) defaulted bind `--host` to `0.0.0.0`, potentially exposing the service to unintended network interfaces (Bandit B104).
+**Learning:** Hardcoding `0.0.0.0` as a default fallback can expose development or internal tools to external networks without explicit configuration. Empty environment variable strings (`HOST=""`) also need to be handled to avoid binding to an empty string.
+**Prevention:** Always use an environment variable with a safe local fallback (e.g., `os.environ.get("HOST", "").strip() or "127.0.0.1"`) instead of defaulting to `0.0.0.0`.
