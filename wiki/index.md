@@ -60,23 +60,23 @@ Catalog generated deterministically from wiki content.
 - [wiki-curation framework](entities/wiki-curation-framework.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
 
 ## Concepts
-- [.github/ Customizations Governance](concepts/github-customizations-governance.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
+- [.github/ Customizations Governance](concepts/github-customizations-governance.md) _(status: active; confidence: 5; updated_at: 2026-08-13T06:00:00Z)_
 - [approval gating](concepts/approval-gating.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
 - [content layer](concepts/content-layer.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
-- [CONTEXT.md Domain Model](concepts/context-md-domain-model.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
+- [CONTEXT.md Domain Model](concepts/context-md-domain-model.md) _(status: active; confidence: 5; updated_at: 2026-08-13T06:00:00Z)_
 - [control plane](concepts/control-plane.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
 - [deterministic execution](concepts/deterministic-execution.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
 - [entity resolution](concepts/entity-resolution.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
 - [framework layer](concepts/framework-layer.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
-- [Google Drive Source Monitoring](concepts/google-drive-source-monitoring.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
+- [Google Drive Source Monitoring](concepts/google-drive-source-monitoring.md) _(status: active; confidence: 5; updated_at: 2026-08-13T06:00:00Z)_
 - [infrastructure validation](concepts/infrastructure-validation.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
 - [knowledge-schema governance](concepts/knowledge-schema-governance.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
-- [Knowledgebase Specification](concepts/knowledgebase-spec.md) _(status: active; confidence: 5; updated_at: 2026-05-12T06:00:00Z)_
+- [Knowledgebase Specification](concepts/knowledgebase-spec.md) _(status: active; confidence: 5; updated_at: 2026-08-13T06:00:00Z)_
 - [MVP](concepts/mvp.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
 - [Pre-commit Guardrails](concepts/pre-commit-guardrails.md) _(status: active; confidence: 5; updated_at: 2026-05-31T04:10:00Z)_
 - [synthesis pipeline](concepts/synthesis-pipeline.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
 - [taxonomy governance](concepts/taxonomy-governance.md) _(status: active; confidence: 2; updated_at: 2026-06-02T23:07:16Z)_
-- [Wiki Quality Best Practices](concepts/wiki-quality-best-practices.md) _(status: active; confidence: 3; updated_at: 2026-05-12T06:00:00Z)_
+- [Wiki Quality Best Practices](concepts/wiki-quality-best-practices.md) _(status: active; confidence: 3; updated_at: 2026-08-13T06:00:00Z)_
 
 ## Analyses
 - _None_
