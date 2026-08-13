@@ -10,7 +10,7 @@ open_questions:
   - "Should the initial scan of a newly registered folder_entry produce one aggregated HITL Issue for all discovered files, or should new files be registered as tracking_status: uninitialized silently and processed on the following run?"
 confidence: 5
 sensitivity: internal
-updated_at: "2026-05-12T06:00:00Z"
+updated_at: "2026-08-13T06:00:00Z"
 tags:
   - google-drive
   - source-monitoring
