@@ -8,7 +8,7 @@ open_questions:
   - "External citations [1]–[13] referenced in the source are not independently verifiable through the repository's SourceRef provenance chain. Claims from those citations are attributed to the source document only."
 confidence: 3
 sensitivity: internal
-updated_at: "2026-05-12T06:00:00Z"
+updated_at: "2026-08-14T06:00:00Z"
 tags:
   - wiki-architecture
   - llm-wiki

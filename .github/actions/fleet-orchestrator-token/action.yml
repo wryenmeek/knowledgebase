@@ -52,12 +52,12 @@ description: |
 inputs:
   app-id:
     description: |
-      FLEET_APP_ID secret value. Caller passes ${{ secrets.FLEET_APP_ID }}.
+      FLEET_APP_ID secret value. Caller passes the secret value.
     required: true
   private-key:
     description: |
       FLEET_APP_PRIVATE_KEY secret value. Caller passes
-      ${{ secrets.FLEET_APP_PRIVATE_KEY }}.
+      the secret value.
     required: true
   permission-contents:
     description: |
@@ -83,7 +83,7 @@ outputs:
     description: |
       App installation token. Empty string when secrets absent OR when the
       mint step failed (continue-on-error). Caller falls back via
-      `${{ steps.<id>.outputs.token || secrets.GITHUB_TOKEN }}`.
+      the github token.
     value: ${{ steps.app-token.outputs.token }}
   available:
     description: |
