@@ -56,7 +56,7 @@ fields:
 | `entry_id` | string | ✅ | Stable, unique identifier for this entry (derived from `candidate_fingerprint`, e.g. first 12 hex chars). Used to detect duplicate append attempts. |
 | `persona` | `"bolt" \| "sentinel"` | ✅ | Which memory file this entry targets (`bolt` → `.jules/bolt.md`, `sentinel` → `.jules/sentinel.md`). |
 | `rule` | string | ✅ | The bounded, actionable lesson or prevention rule. Plain prose; no raw PR diff/body text. |
-| `evidence` | string[] | ✅ | 1–3 bounded evidence references (e.g., `"PR #123 (merged)"`, `"PR #456, #789 (closed: test_or_policy_failure)"`). References PR numbers and outcome only — never quotes PR body/comment text verbatim. |
+| `evidence` | string[] | ✅ | 1–3 bounded evidence references (e.g., `"PR #123 (merged)"`, `"PR #456, #789 (closed: test_or_policy_failure)"`). References PR numbers and outcome only — never quotes PR body/comment text verbatim. Proposal tooling derives these references from the independently verified evidence envelopes rather than trusting free-form operator text. |
 | `verification` | string | ✅ | How the rule was verified (e.g., "reproducible benchmark", "two independent closures with matching root cause"). |
 | `scope` | string | ✅ | The bounded area the rule applies to (e.g., a module path or mechanism name). Must not be the literal string `"*"` or otherwise unbounded. |
 | `retraction_condition` | string | ✅ | The condition under which this entry should be revisited or retracted (e.g., "if the referenced function signature changes"). |
@@ -106,6 +106,11 @@ scanned and rejected (not redacted-and-passed) if it contains:
 - Unsupported quantitative claims: a numeric performance/quality claim
   (e.g., a percentage) is only allowed when `verification` names a
   reproducible measurement; otherwise the number must be omitted.
+
+For example, `"This reduces latency by 50%."` with
+`"Reproducible benchmark across three runs."` is allowed, while the same rule
+with `"Looks right."` is rejected. Ordinary numeric prose without a
+performance or quality claim is not affected.
 
 Any match hard-fails the entire proposal (R13). This is the same
 "deny-by-default, fail closed" posture applied elsewhere in the repository

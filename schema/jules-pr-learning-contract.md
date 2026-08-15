@@ -260,6 +260,15 @@ any write" until an authoritative verifier is wired.
 
 ---
 
+### Report digest revalidation
+
+Before consuming `report.envelopes` for session verification or eligibility,
+every `propose` consumer must recompute the report digest from the report's
+`schema_version`, `repo`, `as_of`, and canonicalized envelope set, then compare
+it with `report.digest`. A mismatch, or a missing required report field, is a
+hard failure; the consumer must not derive session links, eligibility, or
+proposal evidence from the artifact.
+
 ## TypeScript implementation
 
 The canonical TypeScript types, enums, and pure functions implementing this

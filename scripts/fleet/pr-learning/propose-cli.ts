@@ -81,6 +81,7 @@ import {
 // consumers/tests import it from here too.
 export { authenticateProposalMarker };
 import { PRODUCER_WORKFLOW } from "./collect-and-report-cli.ts";
+import { computeCollectionReportDigest } from "./report.ts";
 import {
   TAXONOMY_VERSION,
   memoryPathForPersona,
@@ -145,6 +146,9 @@ interface ArtifactBindings {
   expires_at: string;
   artifact_digest: string;
   report: {
+    schema_version: number;
+    repo: string;
+    as_of: string;
     complete: boolean;
     digest: string;
     envelopes: EvidenceEnvelope[];
@@ -187,6 +191,25 @@ export function validateArtifactBindings(
   }
   if (!artifact.report.complete) {
     throw new Error("collector report is incomplete (complete=false); refusing to propose from partial evidence");
+  }
+  if (
+    artifact.report.schema_version === undefined ||
+    artifact.report.repo === undefined ||
+    artifact.report.as_of === undefined
+  ) {
+    throw new Error(
+      "collector artifact is missing report.schema_version, report.repo, or report.as_of; " +
+        "regenerate the artifact with the current collector"
+    );
+  }
+  const recomputedReportDigest = computeCollectionReportDigest(
+    artifact.report.schema_version,
+    artifact.report.repo,
+    artifact.report.as_of,
+    artifact.report.envelopes
+  );
+  if (recomputedReportDigest !== artifact.report.digest) {
+    throw new Error("report.digest does not match the validated evidence envelopes; refusing malformed evidence");
   }
   // Fail-closed collector/proposer contract boundary (R1, R6, R13): if the
   // collector artifact was produced with no authoritative Jules session
@@ -499,10 +522,6 @@ async function main(): Promise<void> {
   }
 
   const rule = requireEnv("PR_LEARNING_RULE");
-  const evidence = requireEnv("PR_LEARNING_EVIDENCE")
-    .split("|")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
   const verification = requireEnv("PR_LEARNING_VERIFICATION");
   const scope = requireEnv("PR_LEARNING_SCOPE");
   const retractionCondition = requireEnv("PR_LEARNING_RETRACTION_CONDITION");
@@ -587,6 +606,9 @@ async function main(): Promise<void> {
         "or two distinct closed_unmerged PRs sharing a non-unknown closure cause"
     );
   }
+  const evidence = matchedEnvelopes.map(
+    (envelope) => `PR #${envelope.pr_number} (${envelope.outcome})`
+  );
 
   // Step 4: compute the candidate fingerprint server-side from the
   // operator-supplied structured fields — never accept a pre-computed

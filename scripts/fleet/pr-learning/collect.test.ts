@@ -126,6 +126,40 @@ function baseOptions(overrides: Partial<CollectorOptions> = {}): CollectorOption
 }
 
 describe("collectPersonaPullRequests", () => {
+  test("deduplicates a PR repeated across offset pagination pages", async () => {
+    const firstPage = [
+      { number: 100, created_at: "2026-08-01T00:00:00.000Z", user: { login: "google-labs-jules[bot]" } },
+      ...Array.from({ length: 99 }, (_, index) => ({
+        number: index + 1,
+        created_at: "2026-08-01T00:00:00.000Z",
+        user: { login: "someone-else" },
+      })),
+    ];
+    const fetchImpl = makeFetch({
+      list: [
+        firstPage,
+        [{ number: 100, created_at: "2026-08-01T00:00:00.000Z", user: { login: "google-labs-jules[bot]" } }],
+      ],
+      detailByNumber: { 100: makePullDetail() },
+      detailSequenceByNumber: {
+        100: [
+          makePullDetail({ created_at: "2026-08-01T00:00:00.000Z" }),
+          makePullDetail({ created_at: "2026-08-01T00:00:00.000Z" }),
+          makePullDetail({ created_at: "2026-08-02T00:00:00.000Z" }),
+        ],
+      },
+      eventsByNumber: { 100: [{ id: 1, event: "closed", created_at: "2026-08-02T00:00:00.000Z" }] },
+      checkRunsByHeadSha: { [SHA_B]: [{ status: "completed", conclusion: "success" }] },
+    });
+
+    const result = await collectPersonaPullRequests(
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
+    );
+
+    expect(result.records.map((record) => record.number)).toEqual([100]);
+    expect(result.records[0]?.created_at).toBe("2026-08-01T00:00:00.000Z");
+  });
+
   test("collects a candidate PR and marks the result complete", async () => {
     const fetchImpl = makeFetch({
       list: [[{ number: 100, created_at: "2026-08-01T00:00:00.000Z", user: { login: "google-labs-jules[bot]" } }]],

@@ -28,7 +28,7 @@ back to author, branch, title, or body markers.
 |---|---|---|
 | `types.ts` | U1 | Canonical `OutcomeState`, `ClosureCause`, `EvidenceEnvelope`, `Candidate`, `MemoryEntry`, `ProposalMarker` types and version constants. Authoritative TypeScript implementation of both schema contracts. |
 | `fingerprints.ts` | U1 | Text normalization/canonicalization and the versioned `CandidateFingerprint`/`evidence_digest` SHA-256 computations. |
-| `collect.ts`, `classify.ts`, `report.ts` | U2 | Read-only GitHub PR collection and outcome classification into a bounded, digest-bound report. |
+| `collect.ts`, `classify.ts`, `report.ts` | U2 | Read-only GitHub PR collection and outcome classification into a bounded, digest-bound report; collection deduplicates PR numbers across pagination boundaries before detail fetches. |
 | `cluster.ts`, `metrics.ts`, `deduplicate.ts` | U3 | Clustering by semantic key, merge-rate/backlog metrics, and deduplication against existing memory/open proposals. |
 | `memory-validator.ts` | U4 | Field-level `MemoryEntry` validation: shape, size limits, redaction boundary, stale-target guard, append-only byte-preservation check. |
 | `proposal-validator.ts` | U4 | Diff/tree-level validation: exactly one allowlisted file, content-preserving edit only, base-tree stale guard, patch-level redaction scan. |

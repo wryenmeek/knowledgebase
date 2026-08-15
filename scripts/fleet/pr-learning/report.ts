@@ -120,6 +120,7 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
   }
+
   if (value !== null && typeof value === "object") {
     const keys = Object.keys(value as Record<string, unknown>).sort();
     const entries = keys.map(
@@ -128,6 +129,28 @@ function canonicalJson(value: unknown): string {
     return `{${entries.join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+export function computeCollectionReportDigest(
+  schemaVersion: number,
+  repo: string,
+  asOf: string,
+  envelopes: readonly EvidenceEnvelope[]
+): string {
+  const sortedEnvelopes = [...envelopes].sort((a, b) => {
+    if (a.persona !== b.persona) {
+      return a.persona < b.persona ? -1 : 1;
+    }
+    return a.pr_number - b.pr_number;
+  });
+  return sha256Hex(
+    canonicalJson({
+      schema_version: schemaVersion,
+      repo,
+      as_of: asOf,
+      envelopes: sortedEnvelopes,
+    })
+  );
 }
 
 function summarizePersona(
@@ -208,13 +231,6 @@ export function buildCollectionReport(
     return a.pr_number - b.pr_number;
   });
 
-  const digestInput = canonicalJson({
-    schema_version: REPORT_SCHEMA_VERSION,
-    repo: options.repo,
-    as_of: options.asOf,
-    envelopes: sortedEnvelopes,
-  });
-
   return {
     schema_version: REPORT_SCHEMA_VERSION,
     repo: options.repo,
@@ -226,6 +242,6 @@ export function buildCollectionReport(
     personas,
     envelopes: sortedEnvelopes,
     total_envelope_count: envelopes.length,
-    digest: sha256Hex(digestInput),
+    digest: computeCollectionReportDigest(REPORT_SCHEMA_VERSION, options.repo, options.asOf, sortedEnvelopes),
   };
 }

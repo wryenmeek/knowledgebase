@@ -207,6 +207,26 @@ describe("renderMemoryEntryMarkdown", () => {
     );
   });
 
+  describe("quantitative claim validation", () => {
+    test("rejects a numeric performance claim without reproducible measurement", () => {
+      const result = validateMemoryEntry(
+        makeMemoryEntry({ rule: "This reduces latency by 50%.", verification: "Looks right." })
+      );
+      expect(result.ok).toBe(false);
+      expect(result.reason).toContain("quantitative");
+    });
+
+    test("accepts a numeric performance claim with benchmark verification", () => {
+      const result = validateMemoryEntry(
+        makeMemoryEntry({
+          rule: "This reduces latency by 50%.",
+          verification: "Reproducible benchmark across three runs.",
+        })
+      );
+      expect(result.ok).toBe(true);
+    });
+  });
+
   test("joins multiple evidence items with a comma separator", () => {
     const entry = makeMemoryEntry({ evidence: ["PR #1 (merged)", "PR #2 (closed: unsafe_change)"] });
     const rendered = renderMemoryEntryMarkdown(entry);

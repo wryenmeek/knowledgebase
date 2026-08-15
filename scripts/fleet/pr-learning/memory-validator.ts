@@ -32,6 +32,11 @@
 import { isValidSha256Hex } from "./fingerprints.ts";
 import { MEMORY_ENTRY_LIMITS, REDACTION_PATTERNS, type MemoryEntry, type Persona } from "./types.ts";
 
+const UNSUPPORTED_QUANTITATIVE_CLAIM =
+  /(?:(?:\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:x|times|ms|milliseconds|seconds?|minutes?|hours?)).{0,40}\b(?:faster|slower|speed|latency|performance|quality|coverage|reduction|increase|decrease|improvement|regression)\b|\b(?:faster|slower|speed|latency|performance|quality|coverage|reduction|increase|decrease|improvement|regression)\b.{0,40}(?:\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:x|times|ms|milliseconds|seconds?|minutes?|hours?)))/i;
+const REPRODUCIBLE_MEASUREMENT =
+  /\b(?:benchmark|measurement|measured|reproducible|profil(?:e|ed|ing)|test(?:ed|ing)? results?)\b/i;
+
 /**
  * A 40-char lowercase-or-mixed-case hex Git blob SHA (SHA-1). Exported so
  * `propose.ts` (U5) can validate `collector_commit` and live blob SHAs
@@ -339,6 +344,9 @@ export function validateMemoryEntry(
   const redaction = scanMemoryEntryForRedactedContent(entry);
   if (!redaction.ok) {
     return redaction;
+  }
+  if (UNSUPPORTED_QUANTITATIVE_CLAIM.test(entry.rule) && !REPRODUCIBLE_MEASUREMENT.test(entry.verification)) {
+    return fail("quantitative performance or quality claims require reproducible measurement verification");
   }
   if (options.liveBlobSha !== undefined) {
     const stale = validateMemoryEntryStaleTarget(entry, options.liveBlobSha);

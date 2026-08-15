@@ -6,6 +6,7 @@ import {
   sessionVerifierFromArtifact,
   validateArtifactBindings,
 } from "./propose-cli.ts";
+import { computeCollectionReportDigest } from "./report.ts";
 import type { EvidenceEnvelope, ProposalMarker } from "./types.ts";
 import type { ProposalPullRequestSummary } from "./propose.ts";
 
@@ -44,6 +45,16 @@ function makeEnvelope(overrides: Partial<EvidenceEnvelope> = {}): EvidenceEnvelo
 }
 
 function makeArtifact(overrides: Record<string, unknown> = {}) {
+  const { report: reportOverride, ...artifactOverrides } = overrides;
+  const report = {
+    schema_version: 1,
+    repo: REPO,
+    as_of: "2026-08-10T00:00:00.000Z",
+    complete: true,
+    envelopes: [] as EvidenceEnvelope[],
+    session_verification: "authoritative" as const,
+    ...(reportOverride as Record<string, unknown> | undefined),
+  };
   const artifact = {
     producer_workflow: PRODUCER_WORKFLOW,
     collector_commit: SHA,
@@ -52,9 +63,17 @@ function makeArtifact(overrides: Record<string, unknown> = {}) {
     generated_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + 60_000).toISOString(),
     artifact_digest: "",
-    report: { complete: true, digest: "b".repeat(64), envelopes: [], session_verification: "authoritative" },
-    ...overrides,
+    report: {
+      ...report,
+    },
+    ...artifactOverrides,
   };
+  artifact.report.digest = computeCollectionReportDigest(
+    artifact.report.schema_version,
+    artifact.report.repo,
+    artifact.report.as_of,
+    artifact.report.envelopes
+  );
   const payload = JSON.stringify({
     report_digest: artifact.report.digest,
     session_verification: artifact.report.session_verification ?? "none",
@@ -108,6 +127,20 @@ describe("validateArtifactBindings", () => {
     expect(() => validateArtifactBindings(artifact, SHA, "123")).toThrow(/artifact_digest/);
   });
 
+  test("rejects envelopes changed without a matching report digest", () => {
+    const artifact = makeArtifact({
+      report: { envelopes: [makeEnvelope()] },
+    });
+    artifact.report.envelopes[0]!.outcome = "closed_unmerged";
+    expect(() => validateArtifactBindings(artifact, SHA, "123")).toThrow(/report\.digest/);
+  });
+
+  test("rejects artifacts missing required report binding fields", () => {
+    expect(() =>
+      validateArtifactBindings(makeArtifact({ report: { schema_version: undefined } }), SHA, "123")
+    ).toThrow(/missing report/);
+  });
+
   test('rejects a "none" session_verification (collector used NullSessionVerifier)', () => {
     expect(() =>
       validateArtifactBindings(
@@ -123,7 +156,7 @@ describe("validateArtifactBindings", () => {
   test("rejects a missing session_verification field (older artifact schema)", () => {
     expect(() =>
       validateArtifactBindings(
-        makeArtifact({ report: { complete: true, digest: "b".repeat(64), envelopes: [] } }),
+        makeArtifact({ report: { complete: true, session_verification: undefined } }),
         SHA,
         "123"
       )

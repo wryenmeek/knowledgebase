@@ -107,10 +107,6 @@ on:
         description: "propose mode only: the bounded rule text to append to memory"
         type: string
         default: ""
-      evidence:
-        description: "propose mode only: up to 3 evidence bullets, separated by '|'"
-        type: string
-        default: ""
       verification:
         description: "propose mode only: how this rule was/should be verified"
         type: string
@@ -279,7 +275,6 @@ jobs:
           PR_LEARNING_NORMALIZED_RULE: ${{ inputs.normalized_rule }}
           PR_LEARNING_EVIDENCE_PR_NUMBERS: ${{ inputs.evidence_pr_numbers }}
           PR_LEARNING_RULE: ${{ inputs.rule }}
-          PR_LEARNING_EVIDENCE: ${{ inputs.evidence }}
           PR_LEARNING_VERIFICATION: ${{ inputs.verification }}
           PR_LEARNING_SCOPE: ${{ inputs.scope }}
           PR_LEARNING_RETRACTION_CONDITION: ${{ inputs.retraction_condition }}

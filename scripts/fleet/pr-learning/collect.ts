@@ -218,6 +218,7 @@ async function listCandidatePulls(
 ): Promise<{ numbers: number[]; complete: boolean; errors: string[] }> {
   const errors: string[] = [];
   const numbers: number[] = [];
+  const acceptedNumbers = new Set<number>();
   const asOfMs = Date.parse(options.asOf);
   const watermarkMs = Date.parse(options.lookbackWatermark);
   const acceptedLogins = new Set(options.authorLogins);
@@ -262,7 +263,8 @@ async function listCandidatePulls(
         break;
       }
       const login = item.user?.login ?? null;
-      if (login !== null && acceptedLogins.has(login)) {
+      if (login !== null && acceptedLogins.has(login) && !acceptedNumbers.has(item.number)) {
+        acceptedNumbers.add(item.number);
         numbers.push(item.number);
       }
     }
