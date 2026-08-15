@@ -1,0 +1,42 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-08-15T06:34:40.003Z",
+  "root_causes": [
+    {
+      "id": "rc-missing-near-expiry-checks",
+      "title": "Missing automated near-expiry refresh notifications",
+      "severity": "medium",
+      "issues": [560],
+      "files": [
+        "scripts/validation/check_doc_freshness.py",
+        ".github/workflows/wiki-freshness.yml"
+      ],
+      "description": "The check_doc_freshness.py script and CI workflow only flag pages that have already crossed the freshness SLA, providing no proactive warning for pages nearing expiration.",
+      "solution_summary": "Add a `--near-expiry-days` argument to check_doc_freshness.py to flag pages nearing expiration and run an additional advisory step in the wiki-freshness CI workflow to surface these warnings."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-add-near-expiry-checks",
+      "title": "Add automated near-expiry refresh tracking",
+      "root_cause": "rc-missing-near-expiry-checks",
+      "issues": [560],
+      "files": [
+        "scripts/validation/check_doc_freshness.py",
+        ".github/workflows/wiki-freshness.yml"
+      ],
+      "new_files": [],
+      "test_files": [
+        "tests/kb/test_check_doc_freshness.py"
+      ],
+      "risk": "medium",
+      "prompt": "You are assigned to implement automated near-expiry freshness checks (Issue #560).\n\n### Root Cause\nThe existing `check_doc_freshness.py` script computes document age and triggers a failure only when the age strictly exceeds `max_age_days`:\n\n```python\n# scripts/validation/check_doc_freshness.py\n    if age_days > max_age_days:\n        return FreshnessFileResult(\n            path=relative_path,\n            status=STATUS_FAIL,\n            reason_code=REASON_CODE_STALE_DOCUMENT,\n            message=f\"document exceeds freshness threshold ({age_days}d > {max_age_days}d). FIX: update page content and set updated_at: <today's date> in the YAML frontmatter.\",\n            updated_at=updated_at_date.isoformat(),\n            age_days=age_days,\n        )\n```\n\nThere is no mechanism to detect when a page is *approaching* the threshold (e.g., within 14 days) and proactively surface a warning.\n\n### Proposed Solution\n1. Modify `scripts/validation/check_doc_freshness.py`:\n   - Add `REASON_CODE_NEAR_EXPIRY = \"near_expiry\"` near the other constants.\n   - Update `_check_file` signature to `def _check_file(path: Path, *, repo_root: Path, as_of_date: date, max_age_days: int, near_expiry_days: int | None = None) -> FreshnessFileResult:`.\n   - Update `run_freshness` to accept `near_expiry_days: int | None = None` and pass it to `_check_file`.\n   - Add `parser.add_argument(\"--near-expiry-days\", type=int, default=None, help=\"Optional days before max-age to flag as near expiry.\")` to `_build_parser` and pass it to `run_freshness` in `run_cli`.\n   - In `_check_file`, add an `elif` before returning `STATUS_PASS`:\n```python\n    if near_expiry_days is not None and age_days >= (max_age_days - near_expiry_days):\n        return FreshnessFileResult(\n            path=relative_path,\n            status=STATUS_FAIL,\n            reason_code=REASON_CODE_NEAR_EXPIRY,\n            message=f\"document is approaching freshness threshold ({age_days}d old, expires in {max_age_days - age_days}d). PROACTIVE FIX: update page content and set updated_at: <today's date>.\",\n            updated_at=updated_at_date.isoformat(),\n            age_days=age_days,\n        )\n```\n2. Modify `.github/workflows/wiki-freshness.yml`:\n   - Add two new steps *before* the 'Upload freshness report artifact' step to run the near-expiry check and annotate pages (using `max_age_days=90` and `near_expiry_days=14`). Ensure you use `continue-on-error: true`.\n```yaml\n      - name: Run wiki near-expiry check\n        continue-on-error: true\n        run: |\n          set -euo pipefail\n          mkdir -p freshness-reports\n          python3 scripts/validation/check_doc_freshness.py \\\n            --scope wiki \\\n            --as-of \"$(date -u +%Y-%m-%d)\" \\\n            --max-age-days 90 \\\n            --near-expiry-days 14 \\\n            --failures-only \\\n            > freshness-reports/wiki-near-expiry.json\n\n      - name: Annotate near-expiry pages\n        if: always()\n        run: |\n          set -euo pipefail\n          if [[ ! -f freshness-reports/wiki-near-expiry.json ]]; then\n            exit 0\n          fi\n          python3 -c '\n          import json, sys\n          with open(\"freshness-reports/wiki-near-expiry.json\") as f:\n              report = json.load(f)\n          for entry in report.get(\"files\", []):\n              if entry.get(\"reason_code\") == \"near_expiry\":\n                  path = entry.get(\"path\", \"unknown\")\n                  msg = entry.get(\"message\", \"near expiry\")\n                  print(f\"::warning file={path}::{msg}\")\n          '\n```\n3. Modify `tests/kb/test_check_doc_freshness.py`:\n   - Add tests verifying the near-expiry logic.\n\n### Rules\n- You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/validation/check_doc_freshness.py": "task-add-near-expiry-checks",
+    ".github/workflows/wiki-freshness.yml": "task-add-near-expiry-checks",
+    "tests/kb/test_check_doc_freshness.py": "task-add-near-expiry-checks"
+  }
+}
