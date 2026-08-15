@@ -62,6 +62,12 @@
 **Learning:** Using `splitlines()` on multiline text unconditionally tokenizes the entire string into an $O(N)$ memory array, creating unnecessary allocations and garbage collection overhead. For fast-path validation like searching for specific prefixes or substrings (e.g. `repo://` or `sources:`), adding an `if target not in text` early return completely bypasses this expensive operation when the target pattern is absent, yielding massive performance gains for large files.
 **Action:** When extracting or validating string structures line-by-line where a specific literal substring is expected, always add a fast-path literal string check (`in` or `not in`) before calling `splitlines()`.
 
+## 2024-05-20 - [Performance] Anti-pattern: Replacing splitlines() with manual ternary newline counting
+**Learning:** While `splitlines()` allocates memory to create an array, manually counting lines with an unreadable ternary expression like `(content.count('
+') + (0 if content.endswith('
+') else 1) if content else 0)` provides zero practical, measurable performance benefits on small text files (e.g., hook config files) and destroys code readability. The codebase's strict performance persona rules explicitly forbid micro-optimizations that sacrifice readability for negligible impact.
+**Action:** Never replace `splitlines()` with complex string-counting math unless benchmarking proves a measurable bottleneck on significantly large payloads where memory allocation is a true constraint.
+
 ## 2026-07-10 - [Path bounds checking optimization]
 **Learning:** Using `try/except Path.relative_to()` is slower than the natively implemented string comparison under the hood of `Path.is_relative_to()` for bounds checking. This is an anti-pattern that slows down path validation logic.
 **Action:** Replace `try/except Path.relative_to()` with `Path.is_relative_to()` for performance gains across the python codebase.
