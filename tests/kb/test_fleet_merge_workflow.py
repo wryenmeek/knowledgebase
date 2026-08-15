@@ -307,19 +307,32 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         #299 / #307 / #308). A filter restricted to the bot identity alone
         silently matches zero PRs post-shift, making both the event-driven
         find-pr step and the manual-sweep step permanently no-op. Both must
-        widen to accept github.repository_owner as well.
+        widen to accept github.repository_owner as well — but only when the
+        PR body also carries the Jules task-URL marker, since owner-authored
+        PRs are not otherwise distinguishable from ordinary human PRs
+        (Codex review finding on #566: an unvalidated owner-identity match
+        would let any owner-authored PR against main be auto-merged as if
+        it were a fleet PR).
         """
         self.assertIn("REPO_OWNER: ${{ github.repository_owner }}", self.workflow_text)
-        # find-pr step (event-driven path)
-        self.assertIn(
-            '.author.login == \\"google-labs-jules\\" or .author.login == \\"${REPO_OWNER}\\"',
-            self.workflow_text,
-        )
-        # manual-sweep step
-        self.assertIn(
-            'select(.author.login == "google-labs-jules" or .author.login == $owner)',
-            self.workflow_text,
-        )
+        self.assertIn('.author.login == "google-labs-jules"', self.workflow_text)
+        self.assertIn(".author.login == $owner", self.workflow_text)
+        # Both call sites must gate the owner-identity match on the Jules
+        # task-URL marker in the PR body, not accept it unconditionally.
+        self.assertIn('test("jules\\\\.google\\\\.com/task/")', self.workflow_text)
+
+    def test_gh_pr_list_jq_flag_receives_single_expression(self) -> None:
+        """`gh pr list --jq` must not be passed extra CLI flags like --arg.
+
+        `gh`'s --jq flag takes exactly one expression argument and does not
+        forward additional jq options — `--jq --arg owner "$X" '...'` causes
+        gh to treat "--arg" as the expression and reject the remaining
+        tokens as unknown arguments, failing every invocation under
+        `set -e` (Codex P2 finding on #566, reproduced directly). Constrained
+        values must be bound via a separate `jq --arg` invocation piped from
+        `gh pr list`'s JSON output instead.
+        """
+        self.assertNotIn("--jq --arg", self.workflow_text)
 
     # ── Re-dispatch ordering ─────────────────────────────────────────────────
 

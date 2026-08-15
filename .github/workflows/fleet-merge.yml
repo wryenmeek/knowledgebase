@@ -83,14 +83,35 @@ jobs:
           # own login (github.repository_owner). Restricting to the bot
           # identity alone silently matches zero PRs post-shift — see
           # ADR-019 Consequences row 3 (issue #82 / #299 / #307 / #308).
+          #
+          # Owner-authored PRs additionally require the Jules task-URL
+          # marker in the PR body (every Jules-created PR body ends with
+          # "PR created automatically by Jules for task
+          # https://jules.google.com/task/<id>" — see fleet-dispatch.ts).
+          # Without this, any ordinary owner-authored PR against main would
+          # be misclassified as a fleet PR by author+SHA match alone and
+          # sent straight to squash-merge with no fleet-specific validation
+          # (unlike fleet-dispatch.yml, which also checks a pending session
+          # ID). google-labs-jules-authored PRs are trusted without the
+          # marker since that identity cannot be spoofed by another actor.
+          #
+          # `gh pr list --jq` accepts exactly one expression argument and
+          # does not forward extra jq CLI flags (e.g. `--arg`) — piping to a
+          # separate `jq --arg` invocation avoids unsafe shell interpolation
+          # of $HEAD_SHA/$REPO_OWNER into the jq expression string.
           PR_NUM=$(gh pr list \
             --state open \
             --repo "$REPO" \
-            --json number,headRefOid,author \
-            --jq "[.[] | select(
-                    .headRefOid == \"${HEAD_SHA}\" and
-                    (.author.login == \"google-labs-jules\" or .author.login == \"${REPO_OWNER}\")
-                  )] | .[0].number // empty")
+            --json number,headRefOid,author,body \
+            | jq -r --arg sha "$HEAD_SHA" --arg owner "$REPO_OWNER" '
+                [.[] | select(
+                  .headRefOid == $sha and
+                  (
+                    (.author.login == "google-labs-jules") or
+                    (.author.login == $owner and ((.body // "") | test("jules\\.google\\.com/task/")))
+                  )
+                )] | .[0].number // empty
+              ')
           if [ -z "$PR_NUM" ]; then
             echo "No open fleet PR for SHA ${HEAD_SHA}. Skipping."
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -267,12 +288,25 @@ jobs:
           # Restricting to the bot identity alone silently matches zero PRs
           # post-shift — see ADR-019 Consequences row 3 (issue #82 / #299 /
           # #307 / #308).
-          # shellcheck disable=SC2016  # the jq expression below intentionally uses $owner as a jq variable (bound via --arg), not a shell variable
+          #
+          # Owner-authored PRs additionally require the Jules task-URL
+          # marker in the PR body (see find-pr step above for rationale —
+          # otherwise any ordinary owner-authored PR would be misclassified
+          # and swept into an unvalidated squash-merge).
+          #
+          # `gh pr list --jq` takes exactly one expression argument and does
+          # not forward extra jq CLI flags like `--arg` — pipe to a separate
+          # `jq --arg` invocation instead of passing `--arg` to `--jq`.
           PRS=$(gh pr list \
             --state open \
             --base "$BASE_BRANCH" \
-            --json number,headRefName,author \
-            --jq --arg owner "$REPO_OWNER" '[.[] | select(.author.login == "google-labs-jules" or .author.login == $owner)] | sort_by(.number) | .[].number')
+            --json number,headRefName,author,body \
+            | jq -r --arg owner "$REPO_OWNER" '
+                [.[] | select(
+                  (.author.login == "google-labs-jules") or
+                  (.author.login == $owner and ((.body // "") | test("jules\\.google\\.com/task/")))
+                )] | sort_by(.number) | .[].number
+              ')
 
           if [ -z "$PRS" ]; then
             echo "ℹ️  No Jules-authored PRs found."
