@@ -12,7 +12,7 @@ CI-1 Gatekeeper triggers on pushes here and hands off to CI-3 for processing.
 
 ## Source requirements
 
-- Descriptive filename (e.g., `medicare-part-d-overview.md`)
+- Descriptive filename (e.g., `policy-guidance-2025.md`)
 - `# Title` heading as the first line of content
 - Plain Markdown body — no custom shortcodes or front matter required
 

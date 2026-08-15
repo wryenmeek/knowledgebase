@@ -212,7 +212,7 @@ class DriveRegistryFile(TypedDict):
 class FolderEntry(TypedDict):
     folder_id: str
     folder_name: str          # display only; may be stale after Drive rename
-    wiki_namespace: str       # e.g. "cms/" → maps to wiki/cms/{slug}.md
+    wiki_namespace: str       # e.g. "policy/" → maps to wiki/policy/{slug}.md
     tracking_status: str      # "active" | "paused" | "archived"
 
 class DriveFileEntry(TypedDict, total=False):

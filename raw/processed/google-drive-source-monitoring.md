@@ -29,7 +29,7 @@ Structural commitments:
    - **Included:** `application/vnd.google-apps.document` (export to Markdown), `application/pdf` (vendor as-is), `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (vendor as-is), `text/plain`, `text/markdown`, `application/vnd.google-apps.presentation` (export to PDF for MVP; Markdown export in Phase 2)
    - **Excluded:** Sheets, images, video, audio, `application/vnd.google-apps.shortcut` (shortcuts skipped; follow-with-deduplication as Phase 2)
 
-5. **`wiki_page` auto-assignment** — each `folder_entry` declares a `wiki_namespace` field (e.g., `"wiki/cms/"`) at registration time. Auto-discovered files get `wiki_page = wiki_namespace + slugified-filename`. Subfolder path is included in the slug as a collision tiebreaker (e.g., two files named `policy.gdoc` in different subfolders produce `wiki/cms/procedures/policy.md` and `wiki/cms/guidelines/policy.md`).
+5. **`wiki_page` auto-assignment** — each `folder_entry` declares a `wiki_namespace` field (e.g., `"wiki/policy/"`) at registration time. Auto-discovered files get `wiki_page = wiki_namespace + slugified-filename`. Subfolder path is included in the slug as a collision tiebreaker (e.g., two files named `guidance.gdoc` in different subfolders produce `wiki/policy/procedures/guidance.md` and `wiki/policy/guidelines/guidance.md`).
 
 6. **Asset path convention:**
    - Native Google Docs: `raw/assets/gdrive/{alias}/{file_id}/{drive_version}/{filename}.md`
