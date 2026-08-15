@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getIssuesAsMarkdown } from "./markdown.ts";
+import { getIssuesAndMarkdown, getIssuesAsMarkdown } from "./markdown.ts";
 
 type MockIssue = {
   number: number;
@@ -63,5 +63,43 @@ describe("getIssuesAsMarkdown", () => {
     expect(markdown).toContain("## #101: ready issue");
     expect(markdown).not.toContain("## #102: in progress issue");
     expect(markdown).not.toContain("## #103: ready for human issue");
+  });
+});
+
+describe("getIssuesAndMarkdown", () => {
+  test("returns a zero count and markdown reporting 0 issues when none match", async () => {
+    const result = await getIssuesAndMarkdown(
+      { labels: ["ready-for-agent"] },
+      async () => [] as never
+    );
+
+    expect(result.count).toBe(0);
+    expect(result.markdown).toContain("0 issues fetched");
+  });
+
+  test("returns a count matching the number of fetched issues", async () => {
+    const issues = [
+      makeIssue(201, "first ready issue", ["ready-for-agent"]),
+      makeIssue(202, "second ready issue", ["ready-for-agent"]),
+    ];
+
+    const result = await getIssuesAndMarkdown(
+      { labels: ["ready-for-agent"] },
+      async () => issues as never
+    );
+
+    expect(result.count).toBe(2);
+    expect(result.markdown).toContain("## #201: first ready issue");
+    expect(result.markdown).toContain("## #202: second ready issue");
+  });
+
+  test("fetches issues exactly once (no duplicate API call vs count+markdown separately)", async () => {
+    let fetchCount = 0;
+    await getIssuesAndMarkdown({ labels: ["ready-for-agent"] }, async () => {
+      fetchCount += 1;
+      return [] as never;
+    });
+
+    expect(fetchCount).toBe(1);
   });
 });

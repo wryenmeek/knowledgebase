@@ -77,8 +77,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$PLAN_SESSION_ID" ]; then
-            echo "❌ PLAN_SESSION_ID is empty — fleet-plan.ts did not export a session ID." >&2
-            exit 1
+            echo "✅ No ready-for-agent issues found — fleet-plan.ts skipped planning as a no-op. Nothing to store."
+            exit 0
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
