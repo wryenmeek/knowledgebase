@@ -84,55 +84,106 @@ jobs:
           # identity alone silently matches zero PRs post-shift — see
           # ADR-019 Consequences row 3 (issue #82 / #299 / #307 / #308).
           #
-          # Owner-authored PRs additionally require the Jules task-URL
-          # marker in the PR body (every Jules-created PR body ends with
-          # "PR created automatically by Jules for task
-          # https://jules.google.com/task/<id>" — see fleet-dispatch.ts).
-          # Without this, any ordinary owner-authored PR against main would
-          # be misclassified as a fleet PR by author+SHA match alone and
-          # sent straight to squash-merge with no fleet-specific validation
-          # (unlike fleet-dispatch.yml, which also checks a pending session
-          # ID). google-labs-jules-authored PRs are trusted without the
-          # marker since that identity cannot be spoofed by another actor.
+          # google-labs-jules-authored PRs are trusted on identity alone
+          # (that login cannot be spoofed by another actor). Owner-authored
+          # PRs are only ever a *candidate* here — the task-URL substring
+          # test below is NOT sufficient proof of Jules origin (an ordinary
+          # PR could merely mention a Jules URL in discussion), so the
+          # extracted session ID is re-validated against real fleet session
+          # artifacts in the next step before the PR is trusted.
           #
           # `gh pr list --jq` accepts exactly one expression argument and
           # does not forward extra jq CLI flags (e.g. `--arg`) — piping to a
           # separate `jq --arg` invocation avoids unsafe shell interpolation
           # of $HEAD_SHA/$REPO_OWNER into the jq expression string.
-          PR_NUM=$(gh pr list \
+          CANDIDATE=$(gh pr list \
             --state open \
             --repo "$REPO" \
             --json number,headRefOid,author,body \
-            | jq -r --arg sha "$HEAD_SHA" --arg owner "$REPO_OWNER" '
-                [.[] | select(
-                  .headRefOid == $sha and
-                  (
-                    (.author.login == "google-labs-jules") or
-                    (.author.login == $owner and ((.body // "") | test("jules\\.google\\.com/task/")))
+            | jq -c --arg sha "$HEAD_SHA" --arg owner "$REPO_OWNER" '
+                [.[] | select(.headRefOid == $sha) | select(
+                  (.author.login == "google-labs-jules") or (.author.login == $owner)
+                ) | {
+                  number,
+                  trusted: (.author.login == "google-labs-jules"),
+                  sessionId: (
+                    try (
+                      ((.body // "") | capture("jules\\.google\\.com/task/(?<id>[A-Za-z0-9_-]+)")) // {} | .id // ""
+                    ) catch ""
                   )
-                )] | .[0].number // empty
+                }] | .[0] // empty
               ')
-          if [ -z "$PR_NUM" ]; then
+          if [ -z "$CANDIDATE" ]; then
             echo "No open fleet PR for SHA ${HEAD_SHA}. Skipping."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Fleet PR #${PR_NUM} found."
+            echo "candidate=${CANDIDATE}" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate owner-authored candidate against fleet session data
+        id: validate-pr
+        if: steps.find-pr.outputs.skip == 'false'
+        env:
+          REPO: ${{ github.repository }}
+          CANDIDATE: ${{ steps.find-pr.outputs.candidate }}
+        run: |
+          set -euo pipefail
+          PR_NUM=$(jq -r '.number' <<<"$CANDIDATE")
+          TRUSTED=$(jq -r '.trusted' <<<"$CANDIDATE")
+          SESSION_ID=$(jq -r '.sessionId' <<<"$CANDIDATE")
+
+          if [ "$TRUSTED" = "true" ]; then
+            echo "Fleet PR #${PR_NUM} found (google-labs-jules-authored, trusted by identity)."
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "pr_num=${PR_NUM}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Owner-authored candidate: the task-URL marker alone is
+          # spoofable (Codex finding on #566 — any owner PR that merely
+          # mentions a Jules URL would otherwise pass). Re-validate the
+          # extracted session ID against real .fleet/*/sessions.json
+          # artifacts on main before trusting this PR as fleet-originated.
+          if [ -z "$SESSION_ID" ]; then
+            echo "No Jules task-URL marker on PR #${PR_NUM}. Not a fleet PR. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FOUND="false"
+          for dir in $(gh api "repos/${REPO}/contents/.fleet?ref=main" --jq '.[] | select(.type=="dir") | .name'); do
+            SESSIONS_JSON=$(gh api "repos/${REPO}/contents/.fleet/${dir}/sessions.json?ref=main" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+            if [ -z "$SESSIONS_JSON" ]; then
+              continue
+            fi
+            if jq -e --arg sid "$SESSION_ID" '[.[] | select(.sessionId == $sid)] | length > 0' >/dev/null 2>&1 <<<"$SESSIONS_JSON"; then
+              FOUND="true"
+              break
+            fi
+          done
+
+          if [ "$FOUND" = "true" ]; then
+            echo "Fleet PR #${PR_NUM} found (owner-authored, session ${SESSION_ID} validated against fleet artifacts)."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "pr_num=${PR_NUM}" >> "$GITHUB_OUTPUT"
+          else
+            echo "PR #${PR_NUM} mentions Jules session ${SESSION_ID} but it does not appear in any .fleet/*/sessions.json. Not classifying as a fleet PR. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout (needed for fleet re-dispatch on conflict)
-        if: steps.find-pr.outputs.skip == 'false'
+        if: steps.validate-pr.outputs.skip == 'false'
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Setup Bun
-        if: steps.find-pr.outputs.skip == 'false'
+        if: steps.validate-pr.outputs.skip == 'false'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.3.1"
 
       - name: Cache Bun dependencies
-        if: steps.find-pr.outputs.skip == 'false'
+        if: steps.validate-pr.outputs.skip == 'false'
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: ~/.bun/install/cache
@@ -140,7 +191,7 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
 
       - name: Install fleet dependencies
-        if: steps.find-pr.outputs.skip == 'false'
+        if: steps.validate-pr.outputs.skip == 'false'
         working-directory: scripts/fleet
         run: bun install
 
@@ -150,7 +201,7 @@ jobs:
       # (Layer 6 trap). Detect+mint extracted to composite per #385.
       - name: Mint fleet-orchestrator App token
         id: app-token
-        if: steps.find-pr.outputs.skip == 'false'
+        if: steps.validate-pr.outputs.skip == 'false'
         uses: ./.github/actions/fleet-orchestrator-token
         with:
           app-id: ${{ secrets.FLEET_APP_ID }}
@@ -159,13 +210,13 @@ jobs:
           permission-pull-requests: write
 
       - name: Update branch and merge
-        if: steps.find-pr.outputs.skip == 'false'
+        if: steps.validate-pr.outputs.skip == 'false'
         env:
           # Issue #310 / ADR-036: prefer fleet-orchestrator App token so the
           # squash-merge fires downstream push workflows. Falls back to
           # GITHUB_TOKEN when the App is not provisioned.
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
-          PR_NUM: ${{ steps.find-pr.outputs.pr_num }}
+          PR_NUM: ${{ steps.validate-pr.outputs.pr_num }}
           REPO: ${{ github.repository }}
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
         run: |
@@ -289,24 +340,76 @@ jobs:
           # post-shift — see ADR-019 Consequences row 3 (issue #82 / #299 /
           # #307 / #308).
           #
-          # Owner-authored PRs additionally require the Jules task-URL
-          # marker in the PR body (see find-pr step above for rationale —
-          # otherwise any ordinary owner-authored PR would be misclassified
-          # and swept into an unvalidated squash-merge).
+          # A bare Jules task-URL substring in the PR body is spoofable —
+          # any owner-authored PR that merely mentions a Jules URL (e.g. in
+          # troubleshooting discussion) would satisfy `test(...)`. Owner-
+          # authored candidates are therefore cross-validated below against
+          # real `.fleet/*/sessions.json` artifacts checked out from `main`
+          # (same defense as the event-driven find-pr/validate-pr steps).
           #
           # `gh pr list --jq` takes exactly one expression argument and does
           # not forward extra jq CLI flags like `--arg` — pipe to a separate
           # `jq --arg` invocation instead of passing `--arg` to `--jq`.
-          PRS=$(gh pr list \
+          CANDIDATES=$(gh pr list \
             --state open \
             --base "$BASE_BRANCH" \
             --json number,headRefName,author,body \
-            | jq -r --arg owner "$REPO_OWNER" '
+            | jq -c --arg owner "$REPO_OWNER" '
                 [.[] | select(
-                  (.author.login == "google-labs-jules") or
-                  (.author.login == $owner and ((.body // "") | test("jules\\.google\\.com/task/")))
-                )] | sort_by(.number) | .[].number
+                  (.author.login == "google-labs-jules") or (.author.login == $owner)
+                ) | {
+                  number,
+                  trusted: (.author.login == "google-labs-jules"),
+                  sessionId: (
+                    try (
+                      ((.body // "") | capture("jules\\.google\\.com/task/(?<id>[A-Za-z0-9_-]+)")) // {} | .id // ""
+                    ) catch ""
+                  )
+                }] | sort_by(.number) | .[]
               ')
+
+          if [ -z "$CANDIDATES" ]; then
+            echo "ℹ️  No Jules-authored PRs found."
+            exit 0
+          fi
+
+          # Cross-validate each owner-authored candidate's extracted session
+          # ID against every real .fleet/*/sessions.json checked out from
+          # main. Trusted (bot-authored) candidates pass through untouched.
+          PRS=""
+          while IFS= read -r CANDIDATE; do
+            [ -z "$CANDIDATE" ] && continue
+            CAND_NUM=$(jq -r '.number' <<<"$CANDIDATE")
+            CAND_TRUSTED=$(jq -r '.trusted' <<<"$CANDIDATE")
+            CAND_SID=$(jq -r '.sessionId' <<<"$CANDIDATE")
+
+            if [ "$CAND_TRUSTED" = "true" ]; then
+              PRS="${PRS}${CAND_NUM}"$'\n'
+              continue
+            fi
+
+            if [ -z "$CAND_SID" ]; then
+              echo "  ⏭️  PR #${CAND_NUM}: owner-authored, no Jules task marker. Skipping."
+              continue
+            fi
+
+            MATCHED="false"
+            for SESSIONS_FILE in .fleet/*/sessions.json; do
+              [ -f "$SESSIONS_FILE" ] || continue
+              if jq -e --arg sid "$CAND_SID" '[.[] | select(.sessionId == $sid)] | length > 0' "$SESSIONS_FILE" >/dev/null 2>&1; then
+                MATCHED="true"
+                break
+              fi
+            done
+
+            if [ "$MATCHED" = "true" ]; then
+              PRS="${PRS}${CAND_NUM}"$'\n'
+            else
+              echo "  ⏭️  PR #${CAND_NUM}: owner-authored, session '${CAND_SID}' not found in any .fleet/*/sessions.json. Skipping."
+            fi
+          done <<<"$CANDIDATES"
+
+          PRS=$(echo "$PRS" | sed '/^$/d')
 
           if [ -z "$PRS" ]; then
             echo "ℹ️  No Jules-authored PRs found."

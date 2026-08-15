@@ -307,19 +307,29 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         #299 / #307 / #308). A filter restricted to the bot identity alone
         silently matches zero PRs post-shift, making both the event-driven
         find-pr step and the manual-sweep step permanently no-op. Both must
-        widen to accept github.repository_owner as well — but only when the
-        PR body also carries the Jules task-URL marker, since owner-authored
-        PRs are not otherwise distinguishable from ordinary human PRs
-        (Codex review finding on #566: an unvalidated owner-identity match
-        would let any owner-authored PR against main be auto-merged as if
-        it were a fleet PR).
+        widen to accept github.repository_owner as well.
+
+        A bare substring `test("jules.google.com/task/")` match on the PR
+        body is spoofable (Codex review finding on #566, round 2): any
+        owner-authored PR that merely mentions a Jules URL in unrelated
+        discussion would be misclassified as a fleet PR. Owner-authored
+        candidates must instead extract the session ID via `capture(...)`
+        and cross-validate it against real `.fleet/*/sessions.json`
+        artifacts before being trusted.
         """
         self.assertIn("REPO_OWNER: ${{ github.repository_owner }}", self.workflow_text)
         self.assertIn('.author.login == "google-labs-jules"', self.workflow_text)
         self.assertIn(".author.login == $owner", self.workflow_text)
-        # Both call sites must gate the owner-identity match on the Jules
-        # task-URL marker in the PR body, not accept it unconditionally.
-        self.assertIn('test("jules\\\\.google\\\\.com/task/")', self.workflow_text)
+        # Owner-authored candidates must extract a session ID via capture(),
+        # not merely test() for the marker's presence.
+        self.assertIn(
+            'capture("jules\\\\.google\\\\.com/task/(?<id>[A-Za-z0-9_-]+)")',
+            self.workflow_text,
+        )
+        # And that session ID must be cross-checked against real fleet
+        # session artifacts before the candidate is trusted.
+        self.assertIn(".fleet/*/sessions.json", self.workflow_text)
+        self.assertIn('select(.sessionId == $sid)', self.workflow_text)
 
     def test_gh_pr_list_jq_flag_receives_single_expression(self) -> None:
         """`gh pr list --jq` must not be passed extra CLI flags like --arg.
@@ -333,6 +343,33 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         `gh pr list`'s JSON output instead.
         """
         self.assertNotIn("--jq --arg", self.workflow_text)
+
+    def test_owner_authored_candidate_requires_session_id_validation(self) -> None:
+        """The event-driven path must gate owner-authored merges on a
+        validate-pr step that cross-checks the extracted session ID against
+        `.fleet/*/sessions.json`, not trust the candidate outright.
+        """
+        self.assertIn("id: validate-pr", self.workflow_text)
+        self.assertIn("Validate owner-authored candidate against fleet session data", self.workflow_text)
+        # trusted bot-authored candidates should short-circuit the session
+        # lookup entirely.
+        self.assertIn("trusted", self.workflow_text)
+
+    def test_manual_sweep_also_validates_session_id(self) -> None:
+        """The manual-sweep job must apply the same session cross-check as
+        the event-driven find-pr/validate-pr steps — not the older
+        marker-substring-only approach, which Codex flagged as equally
+        spoofable in the manual-sweep selector.
+        """
+        # Restrict the search to the manual-sweep job body.
+        idx = self.workflow_text.index("manual-sweep:")
+        manual_sweep_text = self.workflow_text[idx:]
+        self.assertIn(
+            'capture("jules\\\\.google\\\\.com/task/(?<id>[A-Za-z0-9_-]+)")',
+            manual_sweep_text,
+        )
+        self.assertIn(".fleet/*/sessions.json", manual_sweep_text)
+        self.assertNotIn('test("jules\\\\.google\\\\.com/task/")', manual_sweep_text)
 
     # ── Re-dispatch ordering ─────────────────────────────────────────────────
 
