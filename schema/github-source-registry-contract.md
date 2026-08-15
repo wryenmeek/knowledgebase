@@ -21,7 +21,7 @@ raw/github-sources/{owner}-{repo}.source-registry.json
 ```
 
 Examples:
-- `raw/github-sources/cms-gov-regulations-and-guidance.source-registry.json`
+- `raw/github-sources/example-org-regulations-and-guidance.source-registry.json`
 - `raw/github-sources/some-org-policy-docs.source-registry.json`
 
 Slugs must be lowercase, alphanumeric, and hyphen-separated. No underscores, slashes,

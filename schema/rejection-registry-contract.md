@@ -39,7 +39,7 @@ The slug component must satisfy all of the following:
   collisions require operator resolution.
 
 Examples:
-- `raw/rejected/cms-manual-chapter-4--a1b2c3d4.rejection.md`
+- `raw/rejected/source-manual-chapter-4--a1b2c3d4.rejection.md`
 - `raw/rejected/provider-enrollment-guide--deadbeef.rejection.md`
 
 ## Record format

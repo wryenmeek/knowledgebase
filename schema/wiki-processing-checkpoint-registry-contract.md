@@ -112,7 +112,7 @@ re-slugged concept), do not mutate `item_key` in place. Instead:
 1. Create a new item under the replacement `item_key` (with its own `output_path` and
    fingerprints) so future runs continue under the corrected identity.
 2. Mark the prior item `skipped` with `last_error` documenting the replacement key
-   (for example, `"superseded by wiki_entity_page:medicare-part-c-mapd"`).
+   (for example, `"superseded by wiki_entity_page:replacement-page"`).
 3. Leave the prior key in the registry as the historical alias record so orphaned
    identities are explicit and auditable.
 
