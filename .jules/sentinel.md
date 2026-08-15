@@ -24,3 +24,8 @@
 **Vulnerability:** Token exposure via stderr logs and expression injection (`${{ ... }}`) via GitHub-flavoured markdown rendering.
 **Learning:** API error messages can contain sensitive credentials (e.g., `ghp_`, `github_pat_`, base64 strings) which can be exposed if stderr is not properly redacted. GitHub markdown might trigger side effects if `${{ ... }}` expressions are not neutralized.
 **Prevention:** Centralize and ensure consistent markdown sanitization and error log redaction across all scripts interfacing with external platforms (like GitHub and Google Drive).
+
+## 2024-08-09 - Unintended Network Exposure in Webhook Receivers
+**Vulnerability:** WSGI entrypoints defaulted to binding to 0.0.0.0, exposing them to all network interfaces.
+**Learning:** Defaulting to 0.0.0.0 without environment configuration exposes the service unnecessarily. Passing HOST="" from environment variables can also mistakenly bind to empty strings if not trimmed and checked.
+**Prevention:** Use an environment variable with a safe local fallback, explicitly handling trimmed non-empty strings (`os.environ.get('HOST', '').strip() or '127.0.0.1'`).
