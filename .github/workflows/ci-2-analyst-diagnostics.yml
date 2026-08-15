@@ -160,7 +160,7 @@ jobs:
             echo "skip=${skip}"
           } >> "${GITHUB_OUTPUT}"
           echo "[CI-2] freshness scope: event=${GITHUB_EVENT_NAME} scoped=${scoped} skip=${skip}" | tee -a diagnostics/diagnostics.log
-          cat diagnostics/freshness-scope-paths.txt | tee -a diagnostics/diagnostics.log
+          tee -a diagnostics/diagnostics.log < diagnostics/freshness-scope-paths.txt
 
       - name: Run analyst diagnostics (lint + unit tests)
         id: diagnostics

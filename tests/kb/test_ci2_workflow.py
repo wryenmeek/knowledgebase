@@ -7,7 +7,8 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-import unittest
+
+import pytest
 
 from tests.kb._workflow_yaml import (
     extract_named_step_block,
@@ -211,452 +212,422 @@ def _run_freshness_diagnostics_branch_script(
         return completed, invocations
 
 
-class Ci2WorkflowContractTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.assertTrue(WORKFLOW_PATH.exists(), f"Missing workflow file: {WORKFLOW_PATH}")
-        self.workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
-
-    def test_ci2_metadata_and_triggers_are_explicit(self) -> None:
-        self.assertIn("name: CI-2 Analyst Read-Only Diagnostics", self.workflow_text)
-        self.assertIn("CI_ID: CI-2", self.workflow_text)
-        self.assertIn("TOKEN_PROFILE: tp-analyst-readonly", self.workflow_text)
-        self.assertIn('CLOSURE_EVIDENCE_POLICY_START: "2026-05-25T00:00:00Z"', self.workflow_text)
-        self.assertIn("push:", self.workflow_text)
-        self.assertIn("pull_request:", self.workflow_text)
-        self.assertIn("workflow_dispatch:", self.workflow_text)
-
-    def test_permissions_match_tp_analyst_readonly(self) -> None:
-        self.assertEqual(
-            _parse_top_level_mapping_block(self.workflow_text, "permissions"),
-            {
-                "actions": "read",
-                "checks": "read",
-                "contents": "read",
-            },
-        )
-        self.assertIsNone(
-            re.search(
-                r"(?im)^\s*(actions|checks|contents|pull-requests|issues|packages|id-token)\s*:\s*write\s*$",
-                self.workflow_text,
-            ),
-            "Workflow must not request write token scopes",
-        )
-        # issues: read is scoped to the analyst-diagnostics job, not workflow level
-        job_perms = parse_job_mapping_block(
-            self.workflow_text, "analyst-diagnostics", "permissions", WORKFLOW_PATH
-        )
-        self.assertEqual(
-            job_perms,
-            {
-                "actions": "read",
-                "checks": "read",
-                "contents": "read",
-                "issues": "read",
-            },
-            "analyst-diagnostics job must declare issues: read at job level",
-        )
-
-    def test_workflow_yaml_syntax_validated_by_python_test_suite(self) -> None:
-        # YAML syntax validation moved to WorkflowYamlSyntaxTests in the Python
-        # test suite (issue #16: eliminate duplicate YAML parse in CI-2).
-        # The Ruby Psych step was removed; CI-2 no longer parses workflow YAML directly.
-        self.assertNotIn('require "psych"', self.workflow_text)
-        self.assertNotIn("Psych.parse_file", self.workflow_text)
-
-    def test_workflow_is_diagnostics_only_with_explicit_failures(self) -> None:
-        self.assertIn("Install pinned qmd runtime", self.workflow_text)
-        self.assertIn("Set up Node.js", self.workflow_text)
-        self.assertIn("uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444", self.workflow_text)
-        self.assertIn('QMD_NPM_PACKAGE="@tobilu/qmd"', self.workflow_text)
-        self.assertIn('QMD_VERSION="2.5.1"', self.workflow_text)
-        self.assertIn(
-            'QMD_EXPECTED_INTEGRITY="sha512-Ep9ccOj1bNRinfTIszp5UZP8xfi5AJNtmzwWDD4ZVm2YdWVS+rFobWJQovj0HD2uIAFrryvbSpZYeGa3flEO7g=="',
-            self.workflow_text,
-        )
-        self.assertIn(
-            'npm view "${QMD_NPM_PACKAGE}@${QMD_VERSION}" dist.integrity --registry=https://registry.npmjs.org',
-            self.workflow_text,
-        )
-        self.assertIn(
-            'if [ "${QMD_DIST_INTEGRITY}" != "${QMD_EXPECTED_INTEGRITY}" ]; then',
-            self.workflow_text,
-        )
-        self.assertIn(
-            "::error::qmd dist.integrity mismatch",
-            self.workflow_text,
-        )
-        self.assertIn("exit 1", self.workflow_text)
-        self.assertIn(
-            'npm install --global "${QMD_NPM_PACKAGE}@${QMD_VERSION}" --registry=https://registry.npmjs.org',
-            self.workflow_text,
-        )
-        self.assertIn("qmd init", self.workflow_text)
-        self.assertIn("cp .qmd/index.sqlite .qmd/index/index.sqlite", self.workflow_text)
-        self.assertIn("cp .qmd/index.yml .qmd/index/index.yml", self.workflow_text)
-        self.assertIn("python3 scripts/kb/qmd_preflight.py --repo-root .", self.workflow_text)
-        self.assertNotIn(".ci-bin", self.workflow_text)
-        self.assertNotIn("cat > .ci-bin/qmd", self.workflow_text)
-        self.assertIn(
-            "python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py",
-            self.workflow_text,
-        )
-        self.assertIn("python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict", self.workflow_text)
-        self.assertIn("python3 -m pytest tests/ -q", self.workflow_text)
-        self.assertIn(
-            "python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses",
-            self.workflow_text,
-        )
-        self.assertIn(
-            "python3 -m scripts.validation.check_issue_closure_evidence",
-            self.workflow_text,
-        )
-        self.assertIsNotNone(
-            re.search(
-                r"python3 -m scripts\.validation\.check_issue_closure_evidence.*?--lookback-days 3650.*?--issue-limit 500.*?--closed-after",
-                self.workflow_text,
-                flags=re.DOTALL,
-            ),
-            "Closure evidence command must include lookback, issue-limit, and closed-after flags",
-        )
-        self.assertIn("--cov=scripts.validation._runtime_budget", self.workflow_text)
-        self.assertIn("Secret scan (gitleaks)", self.workflow_text)
-        self.assertIn("Dependency vulnerability audit (pip-audit)", self.workflow_text)
-        self.assertIn(
-            "uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
-            self.workflow_text,
-        )
-        self.assertIn("if: always()", self.workflow_text)
-        self.assertIn(
-            "always() && (steps.diagnostics.outcome != 'success' || steps.closure-evidence.outcome != 'success' || steps.diagnostics.outputs.exit_code != '0' || steps.closure-evidence.outputs.closure_evidence_exit != '0' || steps.runtime-budget.outputs.overall_status == 'fail')",
-            self.workflow_text,
-        )
-        self.assertIn("Evaluate CI-2 runtime budgets", self.workflow_text)
-        self.assertIn("schema/runtime-budgets.json", self.workflow_text)
-        self.assertIn("diagnostics/runtime-budget-report.json", self.workflow_text)
-        self.assertIn("exit 1", self.workflow_text)
-
-        forbidden_write_or_release_commands = (
-            "git push",
-            "git commit",
-            "gh pr",
-            "scripts/kb/update_index.py --write",
-            "scripts/kb/persist_query.py",
-        )
-        for forbidden in forbidden_write_or_release_commands:
-            self.assertNotIn(forbidden, self.workflow_text)
-
-    def test_diagnostics_step_propagates_lint_and_test_failures(self) -> None:
-        diagnostics_step = extract_named_step_block(
-            self.workflow_text,
-            "Run analyst diagnostics (lint + unit tests)",
-            workflow_path=WORKFLOW_PATH,
-        )
-        self.assertIn("set -uo pipefail", diagnostics_step)
-        self.assertIn(
-            "set +e",
-            diagnostics_step,
-            "Diagnostics step must disable inherited bash -e so it can emit all outputs deterministically",
-        )
-
-        closure_step = extract_named_step_block(
-            self.workflow_text,
-            "Check issue closure evidence",
-            workflow_path=WORKFLOW_PATH,
-        )
-        self.assertIn("set -uo pipefail", closure_step)
-        self.assertIn(
-            "set +e",
-            closure_step,
-            "Closure-evidence step must disable inherited bash -e so closure_evidence_exit is always emitted",
-        )
-
-        self.assertIsNotNone(
-            re.search(
-                r"python3 \.github/skills/validate-wiki-governance/logic/validate_wiki_governance\.py.*?wrapper_exit=\"\$\{PIPESTATUS\[0\]\}\"",
-                self.workflow_text,
-                flags=re.DOTALL,
-            ),
-            "Wrapper command status must be captured for final diagnostics exit_code",
-        )
-        self.assertIsNotNone(
-            re.search(
-                r"python3 scripts/validation/check_doc_freshness\.py.*?freshness_exit=\"\$\{PIPESTATUS\[0\]\}\"",
-                self.workflow_text,
-                flags=re.DOTALL,
-            ),
-            "Freshness command status must be captured for final diagnostics exit_code",
-        )
-        self.assertIsNotNone(
-            re.search(
-                r"python3 scripts/reporting/content_quality_report\.py.*?quality_exit=\"\$\{PIPESTATUS\[0\]\}\"",
-                self.workflow_text,
-                flags=re.DOTALL,
-            ),
-            "Quality report command status must be captured for final diagnostics exit_code",
-        )
-        # closure_evidence runs in its own dedicated step (issue #154: GH_TOKEN scoped to that step only)
-        self.assertIsNotNone(
-            re.search(
-                r"python3 -m scripts\.validation\.check_issue_closure_evidence.*?closure_evidence_exit=\"\$\{PIPESTATUS\[0\]\}\"",
-                self.workflow_text,
-                flags=re.DOTALL,
-            ),
-            "Closure evidence command status must be captured in the dedicated closure-evidence step",
-        )
-        self.assertIn(
-            "steps.closure-evidence.outputs.closure_evidence_exit",
-            self.workflow_text,
-            "Closure evidence exit must be propagated via steps.closure-evidence.outputs",
-        )
-        self.assertIsNotNone(
-            re.search(
-                r"python3 scripts/kb/lint_wiki\.py --wiki-root wiki --strict.*?lint_exit=\"\$\{PIPESTATUS\[0\]\}\"",
-                self.workflow_text,
-                flags=re.DOTALL,
-            ),
-            "Lint command status must be captured for final diagnostics exit_code",
-        )
-        self.assertIsNotNone(
-            re.search(
-                r"python3 -m pytest tests/ -q.*?tests_exit=\"\$\{PIPESTATUS\[0\]\}\"",
-                self.workflow_text,
-                flags=re.DOTALL,
-            ),
-            "Test command status must be captured for final diagnostics exit_code",
-        )
-        self.assertIn(
-            'if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then',
-            self.workflow_text,
-        )
-        self.assertIn("CLOSURE_EVIDENCE_EXIT", self.workflow_text)
-        self.assertIn('echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"', self.workflow_text)
-
-    def test_freshness_check_is_diff_scoped_on_pull_request(self) -> None:
-        # Issue #558: a repo-wide freshness scan on every pull_request blocks
-        # ALL open PRs the moment any single wiki page anywhere crosses the
-        # 90-day SLA, regardless of what that PR touches. Guard that the
-        # pull_request path is scoped to files the PR itself changed, while
-        # push/workflow_dispatch retain the full repo-wide scan as the
-        # systemic safety net.
-        scope_step = extract_named_step_block(
-            self.workflow_text,
-            "Compute freshness check scope",
-            workflow_path=WORKFLOW_PATH,
-        )
-        self.assertIn("github.event.pull_request.base.sha", scope_step)
-        self.assertIn("github.event.pull_request.base.ref", scope_step)
-        self.assertIn("git merge-base -- HEAD", scope_step)
-        self.assertIn('git -c core.quotePath=false diff --name-only --diff-filter=ACMR', scope_step)
-        self.assertIn("wiki/concepts wiki/entities wiki/analyses", scope_step)
-        self.assertIn('if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then', scope_step)
-
-        diagnostics_step = extract_named_step_block(
-            self.workflow_text,
-            "Run analyst diagnostics (lint + unit tests)",
-            workflow_path=WORKFLOW_PATH,
-        )
-        self.assertIn("FRESHNESS_SCOPED", diagnostics_step)
-        self.assertIn("FRESHNESS_SKIP", diagnostics_step)
-        self.assertIn(
-            "check_doc_freshness skipped: PR touches no wiki/concepts, wiki/entities, or wiki/analyses markdown files (issue #558)",
-            diagnostics_step,
-        )
-        self.assertIn("diff-scoped, issue #558", diagnostics_step)
-        # The unscoped (push/workflow_dispatch) invocation must remain the
-        # full repo-wide scan as the systemic safety net.
-        self.assertIn(
-            "python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses --as-of",
-            diagnostics_step,
-        )
-
-    def test_closure_evidence_token_is_step_scoped(self) -> None:
-        closure_step = extract_named_step_block(
-            self.workflow_text,
-            "Check issue closure evidence",
-            workflow_path=WORKFLOW_PATH,
-        )
-        self.assertIn(
-            "GH_TOKEN: ${{ github.token }}",
-            closure_step,
-            "Closure-evidence step must bind GH_TOKEN locally",
-        )
-
-        diagnostics_step = extract_named_step_block(
-            self.workflow_text,
-            "Run analyst diagnostics (lint + unit tests)",
-            workflow_path=WORKFLOW_PATH,
-        )
-        self.assertNotIn(
-            "GH_TOKEN:",
-            diagnostics_step,
-            "Diagnostics step must not bind GH_TOKEN across all commands",
-        )
-        self.assertEqual(
-            self.workflow_text.count("GH_TOKEN:"),
-            1,
-            "CI-2 workflow must bind GH_TOKEN exactly once in the closure-evidence step",
-        )
+@pytest.fixture()
+def workflow_text() -> str:
+    assert WORKFLOW_PATH.exists(), f"Missing workflow file: {WORKFLOW_PATH}"
+    return WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
+def test_ci2_metadata_and_triggers_are_explicit(workflow_text: str) -> None:
+    assert "name: CI-2 Analyst Read-Only Diagnostics" in workflow_text
+    assert "CI_ID: CI-2" in workflow_text
+    assert "TOKEN_PROFILE: tp-analyst-readonly" in workflow_text
+    assert 'CLOSURE_EVIDENCE_POLICY_START: "2026-05-25T00:00:00Z"' in workflow_text
+    assert "push:" in workflow_text
+    assert "pull_request:" in workflow_text
+    assert "workflow_dispatch:" in workflow_text
 
-class Ci2FreshnessScopeBehaviorTests(unittest.TestCase):
-    """Executes the real extracted bash from the freshness-scoping steps (issue #558).
 
-    Complements Ci2WorkflowContractTests' string-presence assertions with
-    behavioral coverage: real git repos and a stub check_doc_freshness.py.
+def test_permissions_match_tp_analyst_readonly(workflow_text: str) -> None:
+    assert _parse_top_level_mapping_block(workflow_text, "permissions") == {
+        "actions": "read",
+        "checks": "read",
+        "contents": "read",
+    }
+    assert (
+        re.search(
+            r"(?im)^\s*(actions|checks|contents|pull-requests|issues|packages|id-token)\s*:\s*write\s*$",
+            workflow_text,
+        )
+        is None
+    ), "Workflow must not request write token scopes"
+    # issues: read is scoped to the analyst-diagnostics job, not workflow level
+    job_perms = parse_job_mapping_block(
+        workflow_text, "analyst-diagnostics", "permissions", WORKFLOW_PATH
+    )
+    assert job_perms == {
+        "actions": "read",
+        "checks": "read",
+        "contents": "read",
+        "issues": "read",
+    }, "analyst-diagnostics job must declare issues: read at job level"
+
+
+def test_workflow_yaml_syntax_validated_by_python_test_suite(workflow_text: str) -> None:
+    # YAML syntax validation moved to WorkflowYamlSyntaxTests in the Python
+    # test suite (issue #16: eliminate duplicate YAML parse in CI-2).
+    # The Ruby Psych step was removed; CI-2 no longer parses workflow YAML directly.
+    assert 'require "psych"' not in workflow_text
+    assert "Psych.parse_file" not in workflow_text
+
+
+def test_workflow_is_diagnostics_only_with_explicit_failures(workflow_text: str) -> None:
+    assert "Install pinned qmd runtime" in workflow_text
+    assert "Set up Node.js" in workflow_text
+    assert "uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444" in workflow_text
+    assert 'QMD_NPM_PACKAGE="@tobilu/qmd"' in workflow_text
+    assert 'QMD_VERSION="2.5.1"' in workflow_text
+    assert (
+        'QMD_EXPECTED_INTEGRITY="sha512-Ep9ccOj1bNRinfTIszp5UZP8xfi5AJNtmzwWDD4ZVm2YdWVS+rFobWJQovj0HD2uIAFrryvbSpZYeGa3flEO7g=="'
+        in workflow_text
+    )
+    assert (
+        'npm view "${QMD_NPM_PACKAGE}@${QMD_VERSION}" dist.integrity --registry=https://registry.npmjs.org'
+        in workflow_text
+    )
+    assert 'if [ "${QMD_DIST_INTEGRITY}" != "${QMD_EXPECTED_INTEGRITY}" ]; then' in workflow_text
+    assert "::error::qmd dist.integrity mismatch" in workflow_text
+    assert "exit 1" in workflow_text
+    assert (
+        'npm install --global "${QMD_NPM_PACKAGE}@${QMD_VERSION}" --registry=https://registry.npmjs.org'
+        in workflow_text
+    )
+    assert "qmd init" in workflow_text
+    assert "cp .qmd/index.sqlite .qmd/index/index.sqlite" in workflow_text
+    assert "cp .qmd/index.yml .qmd/index/index.yml" in workflow_text
+    assert "python3 scripts/kb/qmd_preflight.py --repo-root ." in workflow_text
+    assert ".ci-bin" not in workflow_text
+    assert "cat > .ci-bin/qmd" not in workflow_text
+    assert (
+        "python3 .github/skills/validate-wiki-governance/logic/validate_wiki_governance.py"
+        in workflow_text
+    )
+    assert "python3 scripts/kb/lint_wiki.py --wiki-root wiki --strict" in workflow_text
+    assert "python3 -m pytest tests/ -q" in workflow_text
+    assert (
+        "python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses"
+        in workflow_text
+    )
+    assert "python3 -m scripts.validation.check_issue_closure_evidence" in workflow_text
+    assert (
+        re.search(
+            r"python3 -m scripts\.validation\.check_issue_closure_evidence.*?--lookback-days 3650.*?--issue-limit 500.*?--closed-after",
+            workflow_text,
+            flags=re.DOTALL,
+        )
+        is not None
+    ), "Closure evidence command must include lookback, issue-limit, and closed-after flags"
+    assert "--cov=scripts.validation._runtime_budget" in workflow_text
+    assert "Secret scan (gitleaks)" in workflow_text
+    assert "Dependency vulnerability audit (pip-audit)" in workflow_text
+    assert (
+        "uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f" in workflow_text
+    )
+    assert "if: always()" in workflow_text
+    assert (
+        "always() && (steps.diagnostics.outcome != 'success' || steps.closure-evidence.outcome != 'success' || steps.diagnostics.outputs.exit_code != '0' || steps.closure-evidence.outputs.closure_evidence_exit != '0' || steps.runtime-budget.outputs.overall_status == 'fail')"
+        in workflow_text
+    )
+    assert "Evaluate CI-2 runtime budgets" in workflow_text
+    assert "schema/runtime-budgets.json" in workflow_text
+    assert "diagnostics/runtime-budget-report.json" in workflow_text
+    assert "exit 1" in workflow_text
+
+    forbidden_write_or_release_commands = (
+        "git push",
+        "git commit",
+        "gh pr",
+        "scripts/kb/update_index.py --write",
+        "scripts/kb/persist_query.py",
+    )
+    for forbidden in forbidden_write_or_release_commands:
+        assert forbidden not in workflow_text
+
+
+def test_diagnostics_step_propagates_lint_and_test_failures(workflow_text: str) -> None:
+    diagnostics_step = extract_named_step_block(
+        workflow_text,
+        "Run analyst diagnostics (lint + unit tests)",
+        workflow_path=WORKFLOW_PATH,
+    )
+    assert "set -uo pipefail" in diagnostics_step
+    assert (
+        "set +e" in diagnostics_step
+    ), "Diagnostics step must disable inherited bash -e so it can emit all outputs deterministically"
+
+    closure_step = extract_named_step_block(
+        workflow_text,
+        "Check issue closure evidence",
+        workflow_path=WORKFLOW_PATH,
+    )
+    assert "set -uo pipefail" in closure_step
+    assert (
+        "set +e" in closure_step
+    ), "Closure-evidence step must disable inherited bash -e so closure_evidence_exit is always emitted"
+
+    assert (
+        re.search(
+            r"python3 \.github/skills/validate-wiki-governance/logic/validate_wiki_governance\.py.*?wrapper_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+            workflow_text,
+            flags=re.DOTALL,
+        )
+        is not None
+    ), "Wrapper command status must be captured for final diagnostics exit_code"
+    assert (
+        re.search(
+            r"python3 scripts/validation/check_doc_freshness\.py.*?freshness_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+            workflow_text,
+            flags=re.DOTALL,
+        )
+        is not None
+    ), "Freshness command status must be captured for final diagnostics exit_code"
+    assert (
+        re.search(
+            r"python3 scripts/reporting/content_quality_report\.py.*?quality_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+            workflow_text,
+            flags=re.DOTALL,
+        )
+        is not None
+    ), "Quality report command status must be captured for final diagnostics exit_code"
+    # closure_evidence runs in its own dedicated step (issue #154: GH_TOKEN scoped to that step only)
+    assert (
+        re.search(
+            r"python3 -m scripts\.validation\.check_issue_closure_evidence.*?closure_evidence_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+            workflow_text,
+            flags=re.DOTALL,
+        )
+        is not None
+    ), "Closure evidence command status must be captured in the dedicated closure-evidence step"
+    assert (
+        "steps.closure-evidence.outputs.closure_evidence_exit" in workflow_text
+    ), "Closure evidence exit must be propagated via steps.closure-evidence.outputs"
+    assert (
+        re.search(
+            r"python3 scripts/kb/lint_wiki\.py --wiki-root wiki --strict.*?lint_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+            workflow_text,
+            flags=re.DOTALL,
+        )
+        is not None
+    ), "Lint command status must be captured for final diagnostics exit_code"
+    assert (
+        re.search(
+            r"python3 -m pytest tests/ -q.*?tests_exit=\"\$\{PIPESTATUS\[0\]\}\"",
+            workflow_text,
+            flags=re.DOTALL,
+        )
+        is not None
+    ), "Test command status must be captured for final diagnostics exit_code"
+    assert (
+        'if [ "${wrapper_exit}" -ne 0 ] || [ "${freshness_exit}" -ne 0 ] || [ "${quality_exit}" -ne 0 ] || [ "${lint_exit}" -ne 0 ] || [ "${tests_exit}" -ne 0 ]; then'
+        in workflow_text
+    )
+    assert "CLOSURE_EVIDENCE_EXIT" in workflow_text
+    assert 'echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"' in workflow_text
+
+
+def test_freshness_check_is_diff_scoped_on_pull_request(workflow_text: str) -> None:
+    # Issue #558: a repo-wide freshness scan on every pull_request blocks
+    # ALL open PRs the moment any single wiki page anywhere crosses the
+    # 90-day SLA, regardless of what that PR touches. Guard that the
+    # pull_request path is scoped to files the PR itself changed, while
+    # push/workflow_dispatch retain the full repo-wide scan as the
+    # systemic safety net.
+    scope_step = extract_named_step_block(
+        workflow_text,
+        "Compute freshness check scope",
+        workflow_path=WORKFLOW_PATH,
+    )
+    assert "github.event.pull_request.base.sha" in scope_step
+    assert "github.event.pull_request.base.ref" in scope_step
+    assert "git merge-base -- HEAD" in scope_step
+    assert 'git -c core.quotePath=false diff --name-only --diff-filter=ACMR' in scope_step
+    assert "wiki/concepts wiki/entities wiki/analyses" in scope_step
+    assert 'if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then' in scope_step
+
+    diagnostics_step = extract_named_step_block(
+        workflow_text,
+        "Run analyst diagnostics (lint + unit tests)",
+        workflow_path=WORKFLOW_PATH,
+    )
+    assert "FRESHNESS_SCOPED" in diagnostics_step
+    assert "FRESHNESS_SKIP" in diagnostics_step
+    assert (
+        "check_doc_freshness skipped: PR touches no wiki/concepts, wiki/entities, or wiki/analyses markdown files (issue #558)"
+        in diagnostics_step
+    )
+    assert "diff-scoped, issue #558" in diagnostics_step
+    # The unscoped (push/workflow_dispatch) invocation must remain the
+    # full repo-wide scan as the systemic safety net.
+    assert (
+        "python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses --as-of"
+        in diagnostics_step
+    )
+
+
+def test_closure_evidence_token_is_step_scoped(workflow_text: str) -> None:
+    closure_step = extract_named_step_block(
+        workflow_text,
+        "Check issue closure evidence",
+        workflow_path=WORKFLOW_PATH,
+    )
+    assert (
+        "GH_TOKEN: ${{ github.token }}" in closure_step
+    ), "Closure-evidence step must bind GH_TOKEN locally"
+
+    diagnostics_step = extract_named_step_block(
+        workflow_text,
+        "Run analyst diagnostics (lint + unit tests)",
+        workflow_path=WORKFLOW_PATH,
+    )
+    assert (
+        "GH_TOKEN:" not in diagnostics_step
+    ), "Diagnostics step must not bind GH_TOKEN across all commands"
+    assert (
+        workflow_text.count("GH_TOKEN:") == 1
+    ), "CI-2 workflow must bind GH_TOKEN exactly once in the closure-evidence step"
+
+
+# --- Ci2FreshnessScopeBehaviorTests ---
+# Executes the real extracted bash from the freshness-scoping steps (issue #558).
+# Complements the contract tests' string-presence assertions with behavioral
+# coverage: real git repos and a stub check_doc_freshness.py.
+
+
+def test_pull_request_with_target_changes_is_scoped_to_changed_paths(workflow_text: str) -> None:
+    completed, outputs, scope_paths = _run_freshness_scope_script(
+        workflow_text,
+        event_name="pull_request",
+        changed_target_files=("wiki/concepts/a.md", "wiki/entities/b.md"),
+        changed_other_files=("README.md",),
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert outputs.get("scoped") == "true"
+    assert outputs.get("skip") == "false"
+    scoped_lines = set(scope_paths.splitlines())
+    assert scoped_lines == {"wiki/concepts/a.md", "wiki/entities/b.md"}
+    assert "README.md" not in scope_paths
+
+
+def test_pull_request_touching_no_target_files_is_skipped(workflow_text: str) -> None:
+    completed, outputs, scope_paths = _run_freshness_scope_script(
+        workflow_text,
+        event_name="pull_request",
+        changed_other_files=("README.md", "scripts/kb/foo.py"),
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert outputs.get("scoped") == "true"
+    assert outputs.get("skip") == "true"
+    assert scope_paths.strip() == ""
+
+
+def test_pull_request_deleting_a_target_file_excludes_it_from_scope(workflow_text: str) -> None:
+    completed, outputs, scope_paths = _run_freshness_scope_script(
+        workflow_text,
+        event_name="pull_request",
+        deleted_target_files=("wiki/concepts/stale.md",),
+    )
+    assert completed.returncode == 0, completed.stderr
+    # Nothing else changed besides the deletion, so this PR is a no-op for
+    # freshness scope (deleted files need no freshness check).
+    assert outputs.get("scoped") == "true"
+    assert outputs.get("skip") == "true"
+    assert "wiki/concepts/stale.md" not in scope_paths
+
+
+def test_push_event_disables_scoping_and_leaves_paths_file_empty(workflow_text: str) -> None:
+    completed, outputs, scope_paths = _run_freshness_scope_script(
+        workflow_text,
+        event_name="push",
+        changed_target_files=("wiki/concepts/a.md",),
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert outputs.get("scoped") == "false"
+    assert outputs.get("skip") == "false"
+    assert scope_paths.strip() == ""
+
+
+def test_workflow_dispatch_event_disables_scoping(workflow_text: str) -> None:
+    completed, outputs, _scope_paths = _run_freshness_scope_script(
+        workflow_text,
+        event_name="workflow_dispatch",
+        changed_target_files=("wiki/concepts/a.md",),
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert outputs.get("scoped") == "false"
+    assert outputs.get("skip") == "false"
+
+
+def test_skip_branch_short_circuits_without_invoking_freshness_check(workflow_text: str) -> None:
+    completed, invocations = _run_freshness_diagnostics_branch_script(
+        workflow_text,
+        freshness_scoped="true",
+        freshness_skip="true",
+        scope_paths_file_content=None,
+    )
+    assert "freshness_exit=0" in completed.stdout
+    assert invocations == "", "Skip branch must not invoke check_doc_freshness.py at all"
+
+
+def test_scoped_branch_passes_one_path_flag_per_changed_file(workflow_text: str) -> None:
+    completed, invocations = _run_freshness_diagnostics_branch_script(
+        workflow_text,
+        freshness_scoped="true",
+        freshness_skip="false",
+        scope_paths_file_content="wiki/concepts/a.md\nwiki/entities/b.md\n",
+    )
+    assert "freshness_exit=0" in completed.stdout
+    assert "--path wiki/concepts/a.md" in invocations
+    assert "--path wiki/entities/b.md" in invocations
+    assert "--path wiki/concepts --path wiki/entities --path wiki/analyses" not in invocations
+
+
+def test_scoped_branch_with_missing_scope_file_fails_closed(workflow_text: str) -> None:
+    completed, invocations = _run_freshness_diagnostics_branch_script(
+        workflow_text,
+        freshness_scoped="true",
+        freshness_skip="false",
+        scope_paths_file_content=None,
+    )
+    assert "freshness_exit=1" in completed.stdout
+    assert (
+        invocations == ""
+    ), "Must fail closed instead of invoking check_doc_freshness.py with no paths"
+
+
+def test_unscoped_branch_passes_full_repo_wide_directories(workflow_text: str) -> None:
+    completed, invocations = _run_freshness_diagnostics_branch_script(
+        workflow_text,
+        freshness_scoped="false",
+        freshness_skip="false",
+        scope_paths_file_content=None,
+    )
+    assert "freshness_exit=0" in completed.stdout
+    assert "--path wiki/concepts --path wiki/entities --path wiki/analyses" in invocations
+
+
+# --- WorkflowYamlSyntaxTests ---
+# Validate that all CI workflow YAML files parse cleanly (#16).
+#
+# This single Python-level check replaces the Ruby Psych step that previously
+# ran in CI-2 as a separate workflow step. One canonical parse path is cheaper
+# than two and keeps validation inside the pytest suite.
+
+
+def test_all_workflow_yaml_files_parse_without_error() -> None:
+    import yaml  # pyyaml — available in dev extras
+
+    workflows_dir = Path(".github/workflows")
+    assert workflows_dir.is_dir(), f"Missing workflows dir: {workflows_dir}"
+    yaml_files = sorted(workflows_dir.glob("*.yml"))
+    assert len(yaml_files) > 0, "No workflow YAML files found"
+    errors: list[str] = []
+    for yf in yaml_files:
+        try:
+            yaml.safe_load(yf.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            errors.append(f"{yf}: {exc}")
+    assert errors == [], "Workflow YAML syntax errors found:\n" + "\n".join(errors)
+
+
+def test_ci2_workflow_file_is_included_in_scanned_yaml_files() -> None:
+    """CI-2's own workflow file must be in the YAML scan list.
+
+    Guards against the file being accidentally deleted or moved, which would
+    allow test_all_workflow_yaml_files_parse_without_error to still pass
+    trivially while the CI-2 file went unvalidated.
     """
-
-    def setUp(self) -> None:
-        self.assertTrue(WORKFLOW_PATH.exists(), f"Missing workflow file: {WORKFLOW_PATH}")
-        self.workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
-
-    def test_pull_request_with_target_changes_is_scoped_to_changed_paths(self) -> None:
-        completed, outputs, scope_paths = _run_freshness_scope_script(
-            self.workflow_text,
-            event_name="pull_request",
-            changed_target_files=("wiki/concepts/a.md", "wiki/entities/b.md"),
-            changed_other_files=("README.md",),
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(outputs.get("scoped"), "true")
-        self.assertEqual(outputs.get("skip"), "false")
-        scoped_lines = set(scope_paths.splitlines())
-        self.assertEqual(scoped_lines, {"wiki/concepts/a.md", "wiki/entities/b.md"})
-        self.assertNotIn("README.md", scope_paths)
-
-    def test_pull_request_touching_no_target_files_is_skipped(self) -> None:
-        completed, outputs, scope_paths = _run_freshness_scope_script(
-            self.workflow_text,
-            event_name="pull_request",
-            changed_other_files=("README.md", "scripts/kb/foo.py"),
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(outputs.get("scoped"), "true")
-        self.assertEqual(outputs.get("skip"), "true")
-        self.assertEqual(scope_paths.strip(), "")
-
-    def test_pull_request_deleting_a_target_file_excludes_it_from_scope(self) -> None:
-        completed, outputs, scope_paths = _run_freshness_scope_script(
-            self.workflow_text,
-            event_name="pull_request",
-            deleted_target_files=("wiki/concepts/stale.md",),
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        # Nothing else changed besides the deletion, so this PR is a no-op for
-        # freshness scope (deleted files need no freshness check).
-        self.assertEqual(outputs.get("scoped"), "true")
-        self.assertEqual(outputs.get("skip"), "true")
-        self.assertNotIn("wiki/concepts/stale.md", scope_paths)
-
-    def test_push_event_disables_scoping_and_leaves_paths_file_empty(self) -> None:
-        completed, outputs, scope_paths = _run_freshness_scope_script(
-            self.workflow_text,
-            event_name="push",
-            changed_target_files=("wiki/concepts/a.md",),
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(outputs.get("scoped"), "false")
-        self.assertEqual(outputs.get("skip"), "false")
-        self.assertEqual(scope_paths.strip(), "")
-
-    def test_workflow_dispatch_event_disables_scoping(self) -> None:
-        completed, outputs, _scope_paths = _run_freshness_scope_script(
-            self.workflow_text,
-            event_name="workflow_dispatch",
-            changed_target_files=("wiki/concepts/a.md",),
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(outputs.get("scoped"), "false")
-        self.assertEqual(outputs.get("skip"), "false")
-
-    def test_skip_branch_short_circuits_without_invoking_freshness_check(self) -> None:
-        completed, invocations = _run_freshness_diagnostics_branch_script(
-            self.workflow_text,
-            freshness_scoped="true",
-            freshness_skip="true",
-            scope_paths_file_content=None,
-        )
-        self.assertIn("freshness_exit=0", completed.stdout)
-        self.assertEqual(invocations, "", "Skip branch must not invoke check_doc_freshness.py at all")
-
-    def test_scoped_branch_passes_one_path_flag_per_changed_file(self) -> None:
-        completed, invocations = _run_freshness_diagnostics_branch_script(
-            self.workflow_text,
-            freshness_scoped="true",
-            freshness_skip="false",
-            scope_paths_file_content="wiki/concepts/a.md\nwiki/entities/b.md\n",
-        )
-        self.assertIn("freshness_exit=0", completed.stdout)
-        self.assertIn("--path wiki/concepts/a.md", invocations)
-        self.assertIn("--path wiki/entities/b.md", invocations)
-        self.assertNotIn("--path wiki/concepts --path wiki/entities --path wiki/analyses", invocations)
-
-    def test_scoped_branch_with_missing_scope_file_fails_closed(self) -> None:
-        completed, invocations = _run_freshness_diagnostics_branch_script(
-            self.workflow_text,
-            freshness_scoped="true",
-            freshness_skip="false",
-            scope_paths_file_content=None,
-        )
-        self.assertIn("freshness_exit=1", completed.stdout)
-        self.assertEqual(
-            invocations,
-            "",
-            "Must fail closed instead of invoking check_doc_freshness.py with no paths",
-        )
-
-    def test_unscoped_branch_passes_full_repo_wide_directories(self) -> None:
-        completed, invocations = _run_freshness_diagnostics_branch_script(
-            self.workflow_text,
-            freshness_scoped="false",
-            freshness_skip="false",
-            scope_paths_file_content=None,
-        )
-        self.assertIn("freshness_exit=0", completed.stdout)
-        self.assertIn(
-            "--path wiki/concepts --path wiki/entities --path wiki/analyses",
-            invocations,
-        )
-
-
-class WorkflowYamlSyntaxTests(unittest.TestCase):
-    """Validate that all CI workflow YAML files parse cleanly (#16).
-
-    This single Python-level check replaces the Ruby Psych step that previously
-    ran in CI-2 as a separate workflow step. One canonical parse path is cheaper
-    than two and keeps validation inside the pytest suite.
-    """
-
-    def test_all_workflow_yaml_files_parse_without_error(self) -> None:
-        import yaml  # pyyaml — available in dev extras
-
-        workflows_dir = Path(".github/workflows")
-        self.assertTrue(workflows_dir.is_dir(), f"Missing workflows dir: {workflows_dir}")
-        yaml_files = sorted(workflows_dir.glob("*.yml"))
-        self.assertGreater(len(yaml_files), 0, "No workflow YAML files found")
-        errors: list[str] = []
-        for yf in yaml_files:
-            try:
-                yaml.safe_load(yf.read_text(encoding="utf-8"))
-            except yaml.YAMLError as exc:
-                errors.append(f"{yf}: {exc}")
-        self.assertEqual(errors, [], "Workflow YAML syntax errors found:\n" + "\n".join(errors))
-
-    def test_ci2_workflow_file_is_included_in_scanned_yaml_files(self) -> None:
-        """CI-2's own workflow file must be in the YAML scan list.
-
-        Guards against the file being accidentally deleted or moved, which would
-        allow test_all_workflow_yaml_files_parse_without_error to still pass
-        trivially while the CI-2 file went unvalidated.
-        """
-        workflows_dir = Path(".github/workflows")
-        yaml_files = [f.name for f in sorted(workflows_dir.glob("*.yml"))]
-        self.assertIn(
-            "ci-2-analyst-diagnostics.yml",
-            yaml_files,
-            "ci-2-analyst-diagnostics.yml must be present and scanned by WorkflowYamlSyntaxTests",
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()
+    workflows_dir = Path(".github/workflows")
+    yaml_files = [f.name for f in sorted(workflows_dir.glob("*.yml"))]
+    assert (
+        "ci-2-analyst-diagnostics.yml" in yaml_files
+    ), "ci-2-analyst-diagnostics.yml must be present and scanned by WorkflowYamlSyntaxTests"
