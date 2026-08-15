@@ -240,10 +240,10 @@ def _validate_output_path(repo_root: Path, output_path: str, artifact_type: str)
 
 
 def _artifact_type_for_path(path: Path, repo_root: Path) -> str | None:
-    try:
-        rel = path.relative_to(repo_root / "wiki")
-    except ValueError:
+    # ⚡ Bolt Optimization: Use is_relative_to instead of try/except for bounds checking
+    if not path.is_relative_to(repo_root / "wiki"):
         return None
+    rel = path.relative_to(repo_root / "wiki")
     if len(rel.parts) != 2 or path.suffix != ".md":
         return None
     return ARTIFACT_TYPE_BY_NAMESPACE.get(rel.parts[0])

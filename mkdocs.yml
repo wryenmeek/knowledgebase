@@ -1,6 +1,6 @@
-site_name: Medicare Coverage Tools — Knowledgebase
+site_name: Knowledgebase Template
 site_url: https://wryenmeek.com/knowledgebase/
-site_description: Curated knowledgebase for the Medicare Coverage Tools project
+site_description: Curated, provenance-first knowledgebase
 repo_url: https://github.com/wryenmeek/knowledgebase
 repo_name: wryenmeek/knowledgebase
 
