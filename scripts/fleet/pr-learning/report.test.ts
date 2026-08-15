@@ -36,8 +36,10 @@ function makeEnvelope(overrides: Partial<EvidenceEnvelope> = {}): EvidenceEnvelo
     base_repo_full_name: REPO,
     head_repo_full_name: REPO,
     event_ids: ["event-1"],
+    created_at: "2026-08-01T00:00:00.000Z",
     collected_at: "2026-08-09T00:00:00.000Z",
     as_of: AS_OF,
+    reverted: false,
     taxonomy_version: 1,
     evidence_digest: DIGEST,
     ...overrides,
@@ -125,12 +127,60 @@ describe("buildCollectionReport summary views", () => {
         makeEnvelope({
           outcome: "open",
           closure_cause: null,
-          collected_at: "2026-06-01T00:00:00.000Z", // far older than the 14-day default threshold
+          created_at: "2026-06-01T00:00:00.000Z", // far older than the 14-day default threshold
         }),
       ],
       baseOptions()
     );
     expect(report.personas[0]?.aged_open_count).toBe(1);
+  });
+
+  test("aged_open_count uses created_at, not collected_at (which is always ~now in a real run)", () => {
+    const report = buildCollectionReport(
+      [
+        makeEnvelope({
+          outcome: "open",
+          closure_cause: null,
+          // collected_at pinned to the report's asOf instant, as in a real
+          // collection run — must NOT be mistaken for an aged record.
+          collected_at: AS_OF,
+          created_at: "2026-06-01T00:00:00.000Z",
+        }),
+      ],
+      baseOptions()
+    );
+    expect(report.personas[0]?.aged_open_count).toBe(1);
+  });
+
+  test("a recently opened record with a stale collected_at is not counted as aged", () => {
+    const report = buildCollectionReport(
+      [
+        makeEnvelope({
+          outcome: "open",
+          closure_cause: null,
+          collected_at: "2026-06-01T00:00:00.000Z", // would previously (wrongly) count as aged
+          created_at: "2026-08-09T00:00:00.000Z", // actually recent
+        }),
+      ],
+      baseOptions()
+    );
+    expect(report.personas[0]?.aged_open_count).toBe(0);
+  });
+
+  test("reverted_count separates reverted-merge signals from the primary merge counts", () => {
+    const report = buildCollectionReport(
+      [
+        makeEnvelope({ pr_number: 1, outcome: "merged", closure_cause: null, reverted: true }),
+        makeEnvelope({ pr_number: 2, outcome: "merged", closure_cause: null, reverted: false }),
+      ],
+      baseOptions()
+    );
+    const bolt = report.personas.find((p) => p.persona === "bolt")!;
+    // The revert never changes the persisted merged outcome/counts...
+    expect(bolt.counts.merged).toBe(2);
+    expect(bolt.merge_rate).toBe(1);
+    // ...but is still surfaced as its own separate signal.
+    expect(bolt.reverted_count).toBe(1);
   });
 
   test("personas are reported in a stable sorted order regardless of insertion order", () => {

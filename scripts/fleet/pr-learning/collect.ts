@@ -54,6 +54,15 @@ export type CollectorFetchLike = (
  */
 export interface VerifiedSessionLink {
   sessionId: string;
+  /**
+   * The persona the authoritative registry independently attributes to
+   * this session (never the caller-requested persona echoed back
+   * unchecked). `passesIdentityPredicate` in `classify.ts` rejects any
+   * record whose `session_link.persona` does not match the persona this
+   * collection run was scoped to, so a session verified for Bolt can
+   * never be reused as Sentinel evidence (or vice versa).
+   */
+  persona: Persona;
 }
 
 /**
@@ -74,6 +83,8 @@ export interface JulesSessionVerifier {
     authorId: string | null;
     headRepoFullName: string | null;
     headSha: string;
+    /** The persona this collection run is scoped to (R1: part of the verification predicate itself, not a caller-selected label stamped on afterward). */
+    persona: Persona;
   }): Promise<VerifiedSessionLink | null> | VerifiedSessionLink | null;
 }
 
@@ -99,6 +110,8 @@ export interface RawPullRecord {
   number: number;
   state: "open" | "closed";
   draft: boolean;
+  /** ISO-8601 PR creation timestamp — the outcome-relevant instant for backlog aging, distinct from any collection-run timestamp. */
+  created_at: string;
   merged_at: string | null;
   merge_commit_sha: string | null;
   base_sha: string;
@@ -161,6 +174,7 @@ interface PullDetail {
   number: number;
   state: "open" | "closed";
   draft: boolean;
+  created_at: string;
   merged_at: string | null;
   merge_commit_sha: string | null;
   mergeable_state: string | null;
@@ -292,7 +306,17 @@ async function fetchAllTimelineEvents(
     const pageEvents = await readJson<TimelineEvent[]>(response, `pull #${prNumber} events page ${page}`);
     events.push(...pageEvents);
     if (pageEvents.length < LIST_PAGE_SIZE) {
-      break;
+      return events;
+    }
+    if (page === MAX_LIST_PAGES) {
+      // A full final page at the safety bound means more events may exist
+      // beyond it (e.g. a later `reopened` event) — the truncated array
+      // must never be treated as authoritative. Hard-fail exactly like
+      // pull-list pagination does, rather than silently returning a
+      // partial history.
+      throw new Error(
+        `pull #${prNumber} events pagination reached the ${MAX_LIST_PAGES}-page safety bound with a full final page; truncated event history cannot be trusted`
+      );
     }
   }
   return events;
@@ -315,7 +339,17 @@ async function fetchCheckConclusion(
     );
     allRuns.push(...data.check_runs);
     if (data.check_runs.length < LIST_PAGE_SIZE) {
-      break;
+      const evaluation = evaluateCheckRuns(allRuns, { allowNoChecks: false });
+      return allRuns.length === 0 ? "no_checks" : evaluation;
+    }
+    if (page === MAX_LIST_PAGES) {
+      // Same truncation hazard as timeline-event pagination above: a full
+      // final page means additional check-runs may exist beyond the
+      // safety bound, so the conclusion computed from a partial set
+      // cannot be trusted as authoritative.
+      throw new Error(
+        `check runs for ${headSha} pagination reached the ${MAX_LIST_PAGES}-page safety bound with a full final page; truncated check-run history cannot be trusted`
+      );
     }
   }
   if (allRuns.length === 0) {
@@ -363,12 +397,14 @@ async function collectSingleRecord(
     authorId,
     headRepoFullName,
     headSha: detail.head.sha,
+    persona: options.persona,
   });
 
   return {
     number: prNumber,
     state: detail.state,
     draft: detail.draft,
+    created_at: detail.created_at,
     merged_at: detail.merged_at,
     merge_commit_sha: detail.merge_commit_sha,
     base_sha: detail.base.sha,

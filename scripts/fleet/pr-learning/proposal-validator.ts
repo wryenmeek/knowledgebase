@@ -141,6 +141,42 @@ export interface ProposalDiffInput {
 }
 
 /**
+ * Validates that the base tree entry for `path` exists, is an ordinary
+ * regular file (Git blob, mode `100644`), and (when `expectedBlobSha` is
+ * supplied) matches the recorded blob SHA. This is the reusable core of
+ * `validateProposalDiff`'s tree-mode check, factored out so mutation
+ * paths that do not have a full GitHub diff available (e.g. the
+ * content-API-based append flow in `propose.ts`) can still reject a
+ * currently-executable or currently-symlinked target before forcing a
+ * replacement to mode `100644` — never trusting the Contents API's
+ * ability to return byte content as proof the target is an ordinary file.
+ */
+export function validateBaseTreeEntryMode(
+  baseTreeEntries: readonly GitHubTreeEntry[],
+  path: string,
+  expectedBlobSha?: string
+): ValidationResult {
+  const baseEntry = baseTreeEntries.find((entry) => entry.path === path);
+  if (baseEntry === undefined) {
+    return fail(`target file "${path}" was not found in the base tree`);
+  }
+  if (baseEntry.type !== "blob") {
+    return fail(`target path "${path}" is not an ordinary regular file (tree entry type: ${baseEntry.type})`);
+  }
+  if (baseEntry.mode !== ORDINARY_REGULAR_FILE_MODE) {
+    return fail(
+      `target path "${path}" is not an ordinary regular file (mode ${baseEntry.mode}; symlink, submodule, and executable modes are rejected)`
+    );
+  }
+  if (expectedBlobSha !== undefined && baseEntry.sha.toLowerCase() !== expectedBlobSha.toLowerCase()) {
+    return fail(
+      `stale target: base tree blob SHA for ${path} does not match the recorded memory_blob_sha; regenerate against the new content, never overwrite`
+    );
+  }
+  return pass(`base tree entry for ${path} is an ordinary regular file`);
+}
+
+/**
  * Validates that a proposal's file-level diff satisfies every structural
  * constraint from R10 before any GitHub mutation is attempted:
  *
@@ -201,23 +237,9 @@ export function validateProposalDiff(input: ProposalDiffInput): ValidationResult
     );
   }
 
-  const baseEntry = input.baseTreeEntries.find((entry) => entry.path === file.filename);
-  if (baseEntry === undefined) {
-    return fail(`target file "${file.filename}" was not found in the base tree`);
-  }
-  if (baseEntry.type !== "blob") {
-    return fail(`target path "${file.filename}" is not an ordinary regular file (tree entry type: ${baseEntry.type})`);
-  }
-  if (baseEntry.mode !== ORDINARY_REGULAR_FILE_MODE) {
-    return fail(
-      `target path "${file.filename}" is not an ordinary regular file (mode ${baseEntry.mode}; symlink, submodule, and executable modes are rejected)`
-    );
-  }
-
-  if (baseEntry.sha.toLowerCase() !== input.expectedBaseBlobSha.toLowerCase()) {
-    return fail(
-      `stale target: base tree blob SHA for ${file.filename} does not match the recorded memory_blob_sha; regenerate against the new content, never overwrite`
-    );
+  const modeResult = validateBaseTreeEntryMode(input.baseTreeEntries, file.filename, input.expectedBaseBlobSha);
+  if (!modeResult.ok) {
+    return modeResult;
   }
 
   if (file.patch === undefined || file.patch.length === 0) {

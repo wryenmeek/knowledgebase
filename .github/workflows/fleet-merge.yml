@@ -93,14 +93,29 @@ jobs:
           # persona PR learning loop's proposal PRs must never be
           # auto-merged by fleet automation, even if their author login
           # incidentally matched. See .github/workflows/jules-persona-learning.yml.
+          #
+          # Login match alone is NOT sufficient evidence of a fleet-dispatched
+          # PR: github.repository_owner is also the login of an ordinary human
+          # maintainer, so any owner-authored PR (opened manually, outside the
+          # fleet pipeline) would otherwise be silently treated as a fleet PR
+          # and auto-merged/auto-redispatched purely on login. Every
+          # Jules-dispatched PR body carries a `https://jules.google.com/task/
+          # <session-id>` link (see buildDispatchCommentBody in fleet-dispatch.ts
+          # and the SESSION_ID extraction in the conflict-recovery step below,
+          # which already relies on this same marker being present). Requiring
+          # that marker in the same `--jq` selection is the same fail-closed
+          # verified-session-evidence bar used everywhere else this workflow
+          # trusts a PR as fleet-owned — an ordinary owner-authored PR has no
+          # such marker and is correctly excluded.
           PR_NUM=$(gh pr list \
             --state open \
             --repo "$REPO" \
-            --json number,headRefOid,headRefName,author \
+            --json number,headRefOid,headRefName,author,body \
             --jq "[.[] | select(
                     .headRefOid == \"${HEAD_SHA}\" and
                     (.author.login == \"google-labs-jules\" or .author.login == \"${REPO_OWNER}\") and
-                    ((.headRefName | startswith(\"jules-memory/\")) | not)
+                    ((.headRefName | startswith(\"jules-memory/\")) | not) and
+                    ((.body // \"\") | test(\"https://jules\\.google\\.com/task/[A-Za-z0-9_-]+\"))
                   )] | .[0].number // empty")
           if [ -z "$PR_NUM" ]; then
             echo "No open fleet PR for SHA ${HEAD_SHA}. Skipping."
@@ -281,14 +296,19 @@ jobs:
           echo "🔍 Finding open Jules-authored PRs targeting ${BASE_BRANCH}..."
 
           # Explicitly excludes jules-memory/* branches (U6/R12) — see the
-          # find-pr step above.
+          # find-pr step above. Also requires a verified Jules session marker
+          # in the PR body (same fail-closed rationale as find-pr above):
+          # login match alone cannot distinguish a fleet-dispatched PR from
+          # an ordinary owner-authored PR, since github.repository_owner is
+          # also a legitimate human maintainer login.
           PRS=$(gh pr list \
             --state open \
             --base "$BASE_BRANCH" \
-            --json number,headRefName,author \
+            --json number,headRefName,author,body \
             --jq "[.[] | select(
                     (.author.login == \"google-labs-jules\" or .author.login == \"${REPO_OWNER}\") and
-                    ((.headRefName | startswith(\"jules-memory/\")) | not)
+                    ((.headRefName | startswith(\"jules-memory/\")) | not) and
+                    ((.body // \"\") | test(\"https://jules\\.google\\.com/task/[A-Za-z0-9_-]+\"))
                   )] | sort_by(.number) | .[].number")
 
           if [ -z "$PRS" ]; then

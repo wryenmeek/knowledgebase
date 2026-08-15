@@ -14,6 +14,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  authenticateProposalMarker,
   buildAppendedMemoryContent,
   buildProposalCommitMessage,
   computeProposalBranchName,
@@ -34,6 +35,7 @@ import {
   type ProposeGitHubClient,
 } from "./propose.ts";
 import { renderMemoryEntryMarkdown } from "./memory-validator.ts";
+import type { GitHubTreeEntry } from "./proposal-validator.ts";
 import { runMutationWithDiagnostics } from "../github/mutation-diagnostics.ts";
 import type { Candidate, MemoryEntry, ProposalMarker } from "./types.ts";
 
@@ -99,6 +101,15 @@ class FakeGitHubClient implements ProposeGitHubClient {
   files = new Map<string, ContentsFileResult>([
     [`.jules/bolt.md@${BASE_HEAD_SHA}`, { content: EXISTING_MEMORY_CONTENT, sha: EXISTING_BLOB_SHA }],
   ]);
+  treeEntries = new Map<string, readonly GitHubTreeEntry[]>([
+    [
+      BASE_TREE_SHA,
+      [
+        { path: ".jules/bolt.md", mode: "100644", type: "blob", sha: EXISTING_BLOB_SHA },
+        { path: ".jules/sentinel.md", mode: "100644", type: "blob", sha: EXISTING_BLOB_SHA },
+      ],
+    ],
+  ]);
   pullRequestsByBranch = new Map<string, ProposalPullRequestSummary[]>();
   nextPrNumber = 1001;
   failCreateRefTimes = 0;
@@ -129,6 +140,11 @@ class FakeGitHubClient implements ProposeGitHubClient {
   async getFileContent(path: string, ref: string): Promise<ContentsFileResult | null> {
     this.calls.push(`getFileContent:${path}@${ref}`);
     return this.files.get(`${path}@${ref}`) ?? null;
+  }
+
+  async getTreeEntries(treeSha: string): Promise<readonly GitHubTreeEntry[]> {
+    this.calls.push(`getTreeEntries:${treeSha}`);
+    return this.treeEntries.get(treeSha) ?? [];
   }
 
   async createBlob(content: string): Promise<string> {
@@ -174,6 +190,10 @@ class FakeGitHubClient implements ProposeGitHubClient {
       number: this.nextPrNumber++,
       state: "open",
       headRef: params.head,
+      // This fake always simulates a same-repo (never a fork) PR creation,
+      // so headRepoFullName must reflect that for authenticateProposalMarker
+      // to accept the marker on a subsequent lookup-before-create call.
+      headRepoFullName: REPO,
       body: params.body,
     };
     const existing = this.pullRequestsByBranch.get(params.head) ?? [];
@@ -262,6 +282,8 @@ describe("renderProposalMarker / parseProposalMarker", () => {
 });
 
 describe("findMatchingProposalPullRequest", () => {
+  const expected = { repoFullName: REPO, producerWorkflow: PRODUCER_WORKFLOW };
+
   test("matches only a PR whose marker carries the exact fingerprint", () => {
     const marker: ProposalMarker = {
       repo: REPO,
@@ -276,16 +298,79 @@ describe("findMatchingProposalPullRequest", () => {
       number: 42,
       state: "open",
       headRef: marker.branch_name,
+      headRepoFullName: REPO,
       body: renderProposalMarker(marker),
     };
     const unrelated: ProposalPullRequestSummary = {
       number: 7,
       state: "closed",
       headRef: "some-other-branch",
+      headRepoFullName: REPO,
       body: "no marker here",
     };
-    expect(findMatchingProposalPullRequest([unrelated, matching], FINGERPRINT)).toBe(matching);
-    expect(findMatchingProposalPullRequest([unrelated], FINGERPRINT)).toBeUndefined();
+    expect(findMatchingProposalPullRequest([unrelated, matching], FINGERPRINT, expected)).toBe(matching);
+    expect(findMatchingProposalPullRequest([unrelated], FINGERPRINT, expected)).toBeUndefined();
+  });
+
+  test("does not match a fingerprint-matching marker whose PR head repo is a fork (defense-in-depth via authenticateProposalMarker)", () => {
+    const marker: ProposalMarker = {
+      repo: REPO,
+      target_memory_path: ".jules/bolt.md",
+      candidate_fingerprint: FINGERPRINT,
+      base_branch: BASE_BRANCH,
+      branch_name: computeProposalBranchName("bolt", FINGERPRINT),
+      producer_workflow: PRODUCER_WORKFLOW,
+      collector_commit: COLLECTOR_COMMIT,
+    };
+    const forgedFromFork: ProposalPullRequestSummary = {
+      number: 99,
+      state: "open",
+      headRef: marker.branch_name,
+      headRepoFullName: "attacker/knowledgebase",
+      body: renderProposalMarker(marker),
+    };
+    expect(findMatchingProposalPullRequest([forgedFromFork], FINGERPRINT, expected)).toBeUndefined();
+  });
+
+  test("does not match a fingerprint-matching marker claiming a foreign producer_workflow", () => {
+    const marker: ProposalMarker = {
+      repo: REPO,
+      target_memory_path: ".jules/bolt.md",
+      candidate_fingerprint: FINGERPRINT,
+      base_branch: BASE_BRANCH,
+      branch_name: computeProposalBranchName("bolt", FINGERPRINT),
+      producer_workflow: "some-other-workflow.yml",
+      collector_commit: COLLECTOR_COMMIT,
+    };
+    const forgedWorkflow: ProposalPullRequestSummary = {
+      number: 100,
+      state: "open",
+      headRef: marker.branch_name,
+      headRepoFullName: REPO,
+      body: renderProposalMarker(marker),
+    };
+    expect(findMatchingProposalPullRequest([forgedWorkflow], FINGERPRINT, expected)).toBeUndefined();
+  });
+
+  test("is consistent with authenticateProposalMarker's own verdict for the same marker/PR/expected inputs", () => {
+    const marker: ProposalMarker = {
+      repo: REPO,
+      target_memory_path: ".jules/bolt.md",
+      candidate_fingerprint: FINGERPRINT,
+      base_branch: BASE_BRANCH,
+      branch_name: computeProposalBranchName("bolt", FINGERPRINT),
+      producer_workflow: PRODUCER_WORKFLOW,
+      collector_commit: COLLECTOR_COMMIT,
+    };
+    const pr: ProposalPullRequestSummary = {
+      number: 1,
+      state: "open",
+      headRef: marker.branch_name,
+      headRepoFullName: REPO,
+      body: renderProposalMarker(marker),
+    };
+    expect(authenticateProposalMarker(marker, pr, expected)).toBe(true);
+    expect(findMatchingProposalPullRequest([pr], FINGERPRINT, expected)).toBe(pr);
   });
 });
 
@@ -465,6 +550,55 @@ describe("createMemoryProposal", () => {
     }
   });
 
+  test("rejects a symlinked target tree entry (mode 120000) instead of silently converting it to a regular file", async () => {
+    const client = new FakeGitHubClient();
+    client.treeEntries.set(BASE_TREE_SHA, [
+      { path: ".jules/bolt.md", mode: "120000", type: "blob", sha: EXISTING_BLOB_SHA },
+    ]);
+
+    const result = await createMemoryProposal(client, makeInput(), { runMutation: fastRunMutation });
+    expect(result.status).toBe("rejected");
+    if (result.status === "rejected") {
+      expect(result.reason).toContain("not an ordinary regular file");
+    }
+    // No mutation should ever be attempted once the tree-mode guard fails.
+    expect(client.calls.some((c) => c.startsWith("createBlob:"))).toBe(false);
+  });
+
+  test("rejects an executable target tree entry (mode 100755) instead of silently converting it to a regular file", async () => {
+    const client = new FakeGitHubClient();
+    client.treeEntries.set(BASE_TREE_SHA, [
+      { path: ".jules/bolt.md", mode: "100755", type: "blob", sha: EXISTING_BLOB_SHA },
+    ]);
+
+    const result = await createMemoryProposal(client, makeInput(), { runMutation: fastRunMutation });
+    expect(result.status).toBe("rejected");
+    if (result.status === "rejected") {
+      expect(result.reason).toContain("not an ordinary regular file");
+    }
+    expect(client.calls.some((c) => c.startsWith("createBlob:"))).toBe(false);
+  });
+
+  test("rejects when the target path is missing entirely from the base tree, even though the Contents API returned content", async () => {
+    const client = new FakeGitHubClient();
+    client.treeEntries.set(BASE_TREE_SHA, []);
+
+    const result = await createMemoryProposal(client, makeInput(), { runMutation: fastRunMutation });
+    expect(result.status).toBe("rejected");
+    if (result.status === "rejected") {
+      expect(result.reason).toContain("was not found in the base tree");
+    }
+    expect(client.calls.some((c) => c.startsWith("createBlob:"))).toBe(false);
+  });
+
+  test("accepts an ordinary regular file tree entry (mode 100644) and proceeds to mutation", async () => {
+    const client = new FakeGitHubClient();
+    const result = await createMemoryProposal(client, makeInput(), { runMutation: fastRunMutation });
+    expect(result.status).toBe("created");
+    expect(client.calls.some((c) => c.startsWith("getTreeEntries:"))).toBe(true);
+    expect(client.calls.some((c) => c.startsWith("createBlob:"))).toBe(true);
+  });
+
   test("rejects a malformed candidate fingerprint before any GitHub call", async () => {
     const client = new FakeGitHubClient();
     const result = await createMemoryProposal(
@@ -519,7 +653,13 @@ describe("createMemoryProposal", () => {
       collector_commit: COLLECTOR_COMMIT,
     };
     client.pullRequestsByBranch.set(marker.branch_name, [
-      { number: 555, state: "closed", headRef: marker.branch_name, body: renderProposalMarker(marker) },
+      {
+        number: 555,
+        state: "closed",
+        headRef: marker.branch_name,
+        headRepoFullName: REPO,
+        body: renderProposalMarker(marker),
+      },
     ]);
 
     const result = await createMemoryProposal(client, makeInput(), { runMutation: fastRunMutation });

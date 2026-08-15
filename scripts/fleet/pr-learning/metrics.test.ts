@@ -43,8 +43,10 @@ function makeEnvelope(
     base_repo_full_name: REPO,
     head_repo_full_name: REPO,
     event_ids: outcome === "open" ? [] : ["event-1"],
+    created_at: NOW,
     collected_at: NOW,
     as_of: NOW,
+    reverted: false,
     taxonomy_version: 1,
     evidence_digest: "d".repeat(64),
     ...overrides,
@@ -138,11 +140,11 @@ describe("buildLearningMetricsReport", () => {
   });
 
   test("aged_open_count counts only open envelopes older than the threshold", () => {
-    const staleCollectedAt = new Date(NOW_MS - DEFAULT_AGED_OPEN_THRESHOLD_MS - 1000).toISOString();
-    const freshCollectedAt = new Date(NOW_MS - 1000).toISOString();
+    const staleCreatedAt = new Date(NOW_MS - DEFAULT_AGED_OPEN_THRESHOLD_MS - 1000).toISOString();
+    const freshCreatedAt = new Date(NOW_MS - 1000).toISOString();
     const envelopes = [
-      makeEnvelope(1, "open", null, { collected_at: staleCollectedAt }),
-      makeEnvelope(2, "open", null, { collected_at: freshCollectedAt }),
+      makeEnvelope(1, "open", null, { created_at: staleCreatedAt }),
+      makeEnvelope(2, "open", null, { created_at: freshCreatedAt }),
     ];
     const report = buildLearningMetricsReport(envelopes, [], {
       complete: true,
@@ -150,6 +152,21 @@ describe("buildLearningMetricsReport", () => {
       nowMs: NOW_MS,
     });
     expect(report.personas[0]!.open_count).toBe(2);
+    expect(report.personas[0]!.aged_open_count).toBe(1);
+  });
+
+  test("aged_open_count uses created_at, not collected_at (which is always ~now in a real run)", () => {
+    const staleCreatedAt = new Date(NOW_MS - DEFAULT_AGED_OPEN_THRESHOLD_MS - 1000).toISOString();
+    const envelopes = [
+      // collected_at pinned to "now", as in a real collection run — the
+      // record must still be counted as aged based on created_at.
+      makeEnvelope(1, "open", null, { created_at: staleCreatedAt, collected_at: NOW }),
+    ];
+    const report = buildLearningMetricsReport(envelopes, [], {
+      complete: true,
+      incompleteRecordCount: 0,
+      nowMs: NOW_MS,
+    });
     expect(report.personas[0]!.aged_open_count).toBe(1);
   });
 

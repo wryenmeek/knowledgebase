@@ -76,7 +76,7 @@ export interface PersonaMetrics {
     merged_lesson: number;
     closed_cause_prevention: number;
   };
-  /** Open envelopes whose `collected_at` is older than the aged-open threshold. */
+  /** Open envelopes whose `created_at` is older than the aged-open threshold. */
   aged_open_count: number;
   /** Envelopes quarantined as `ambiguous` (never a negative outcome, always reported). */
   ambiguous_count_view: number;
@@ -119,8 +119,11 @@ function computePersonaMetrics(
         break;
       case "open": {
         open += 1;
-        const collectedMs = Date.parse(envelope.collected_at);
-        if (Number.isFinite(collectedMs) && options.nowMs - collectedMs >= options.agedOpenThresholdMs) {
+        // Same aged-open fix as report.ts: measure from created_at (PR
+        // open time), not collected_at (this collection run's instant),
+        // which would otherwise make aged_open permanently 0 in real runs.
+        const createdMs = Date.parse(envelope.created_at);
+        if (Number.isFinite(createdMs) && options.nowMs - createdMs >= options.agedOpenThresholdMs) {
           agedOpen += 1;
         }
         break;

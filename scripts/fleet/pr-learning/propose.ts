@@ -56,6 +56,8 @@ import {
   validateMemoryEntry,
 } from "./memory-validator.js";
 import { isValidSha256Hex } from "./fingerprints.js";
+import { validateBaseTreeEntryMode } from "./proposal-validator.js";
+import type { GitHubTreeEntry } from "./proposal-validator.js";
 import { memoryPathForPersona } from "./types.js";
 import type { Candidate, MemoryEntry, ProposalMarker } from "./types.js";
 
@@ -204,6 +206,16 @@ export interface ProposalPullRequestSummary {
   state: "open" | "closed";
   headRef: string;
   body: string;
+  /**
+   * The PR's actual head repository full name (`owner/repo`), or `null`
+   * when the head repo was deleted/unknown. Used to authenticate a parsed
+   * `ProposalMarker` against the PR it was actually read from — a marker
+   * embedded in a fork PR's body can otherwise be forged to spoof a
+   * same-repo proposal binding it never earned. `undefined` (not
+   * populated by the caller) is treated identically to `null`
+   * (untrusted) by marker authentication, never as "trusted by default".
+   */
+  headRepoFullName?: string | null;
 }
 
 export interface CreatePullRequestParams {
@@ -230,6 +242,15 @@ export interface ProposeGitHubClient {
   getCommit(sha: string): Promise<GitCommitResult | null>;
   /** Contents API: read a file at a specific ref/SHA, or `null` if it does not exist at that revision. */
   getFileContent(path: string, ref: string): Promise<ContentsFileResult | null>;
+  /**
+   * Git Data API: lists the full recursive tree entries at `treeSha`
+   * (`GET /git/trees/{tree_sha}?recursive=1`). Used to independently
+   * verify the target path's existing tree-entry mode/type (ordinary
+   * regular blob, never symlink/submodule/executable) before mutation —
+   * the Contents API alone cannot prove this, since it happily returns
+   * byte content for a symlink or executable file too.
+   */
+  getTreeEntries(treeSha: string): Promise<readonly GitHubTreeEntry[]>;
   /** Git Data API: create a blob, returning its SHA. */
   createBlob(content: string): Promise<string>;
   /** Git Data API: create a tree that replaces exactly one path under `baseTreeSha`, returning the new tree SHA. */
@@ -285,14 +306,69 @@ export interface CreateMemoryProposalOptions {
   runMutation?: <T>(options: RunMutationWithDiagnosticsOptions<T>) => Promise<T>;
 }
 
-/** Finds an existing proposal PR whose marker matches the given candidate fingerprint, if any. */
+/**
+ * Authenticates a parsed `ProposalMarker` against the PR it was actually
+ * read from and this run's own repo/producer-workflow bindings, before
+ * the marker is ever trusted for dedup lookup-before-create. A marker's
+ * JSON content is caller-controlled (embedded in a PR body): without
+ * this check, a fork PR whose branch happens to match the
+ * `jules-memory/*` prefix could carry a forged marker claiming
+ * `repo`/`branch_name`/`producer_workflow` bindings it never earned,
+ * either faking an "already proposed" duplicate to suppress a legitimate
+ * proposal, or faking a "previously rejected" marker to permanently block
+ * one (see `deduplicateCandidate` in `deduplicate.ts`).
+ *
+ * `collector_commit` is intentionally not compared against *this* run's
+ * collector commit — a legitimate marker can originate from an earlier
+ * collection run — but its shape is verified so an unresolvable/malformed
+ * value can never masquerade as a resolved commit reference.
+ */
+export function authenticateProposalMarker(
+  marker: ProposalMarker,
+  pr: Pick<ProposalPullRequestSummary, "headRef" | "headRepoFullName">,
+  expected: { repoFullName: string; producerWorkflow: string }
+): boolean {
+  if (marker.repo !== expected.repoFullName) {
+    return false;
+  }
+  if (marker.producer_workflow !== expected.producerWorkflow) {
+    return false;
+  }
+  if (marker.branch_name !== pr.headRef) {
+    return false; // marker content must describe the exact branch it was actually read from
+  }
+  // A marker can only ever be trusted from a same-repo PR. `undefined`
+  // (caller did not populate headRepoFullName) is treated identically to
+  // `null` (unknown) — both fail closed, never "trusted by default".
+  if (pr.headRepoFullName !== expected.repoFullName) {
+    return false; // a fork PR (or one with an unresolvable head repo) can never authenticate a marker
+  }
+  if (!/^[0-9a-f]{40}$/i.test(marker.collector_commit)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Finds an existing proposal PR whose marker matches the given candidate
+ * fingerprint, if any. The marker is also authenticated (via
+ * `authenticateProposalMarker`) against `expected` before it can match —
+ * a fingerprint collision alone is not sufficient, since a forged marker
+ * embedded in a fork PR's body could otherwise fake an "already
+ * proposed"/"already rejected" duplicate for lookup-before-create.
+ */
 export function findMatchingProposalPullRequest(
   pullRequests: readonly ProposalPullRequestSummary[],
-  candidateFingerprint: string
+  candidateFingerprint: string,
+  expected: { repoFullName: string; producerWorkflow: string }
 ): ProposalPullRequestSummary | undefined {
   return pullRequests.find((pr) => {
     const marker = parseProposalMarker(pr.body);
-    return marker !== null && marker.candidate_fingerprint === candidateFingerprint;
+    return (
+      marker !== null &&
+      marker.candidate_fingerprint === candidateFingerprint &&
+      authenticateProposalMarker(marker, pr, expected)
+    );
   });
 }
 
@@ -359,7 +435,8 @@ async function createPullRequestWithTimeoutRecovery(
   client: ProposeGitHubClient,
   branchName: string,
   candidateFingerprint: string,
-  params: CreatePullRequestParams
+  params: CreatePullRequestParams,
+  expected: { repoFullName: string; producerWorkflow: string }
 ): Promise<ProposalPullRequestSummary> {
   try {
     return await client.createPullRequest(params);
@@ -367,7 +444,7 @@ async function createPullRequestWithTimeoutRecovery(
     const classification = classifyMutationError(error);
     if (classification.retryable) {
       const existing = await client.listPullRequestsForBranch(branchName);
-      const match = findMatchingProposalPullRequest(existing, candidateFingerprint);
+      const match = findMatchingProposalPullRequest(existing, candidateFingerprint, expected);
       if (match !== undefined) {
         return match;
       }
@@ -426,7 +503,10 @@ export async function createMemoryProposal(
 
   // Step 1: lookup-before-create.
   const initialPullRequests = await client.listPullRequestsForBranch(branchName);
-  const initialMatch = findMatchingProposalPullRequest(initialPullRequests, fingerprint);
+  const initialMatch = findMatchingProposalPullRequest(initialPullRequests, fingerprint, {
+    repoFullName: input.repo,
+    producerWorkflow: input.producerWorkflow,
+  });
   if (initialMatch !== undefined) {
     return {
       status: "existing",
@@ -451,6 +531,18 @@ export async function createMemoryProposal(
       branchName,
       `target file "${input.candidate.target_memory_path}" does not exist at the live base revision; this pipeline only appends to existing memory files, never creates them`
     );
+  }
+
+  // Step 2b: independently verify the target's existing tree-entry mode
+  // is an ordinary regular file (never symlink/submodule/executable)
+  // before forcing a replacement to mode `100644`. The Contents API
+  // above happily returns byte content for a symlink or executable file
+  // too, so it alone cannot prove the target is safe to overwrite as a
+  // plain blob.
+  const baseTreeEntries = await client.getTreeEntries(baseCommit.treeSha);
+  const treeModeResult = validateBaseTreeEntryMode(baseTreeEntries, input.candidate.target_memory_path);
+  if (!treeModeResult.ok) {
+    return rejected(branchName, treeModeResult.reason);
   }
 
   const newContent = buildAppendedMemoryContent(currentFile.content, input.entry);
@@ -483,7 +575,10 @@ export async function createMemoryProposal(
 
   // Step 5: immediate second lookup right before branch creation (race guard).
   const secondPullRequests = await client.listPullRequestsForBranch(branchName);
-  const secondMatch = findMatchingProposalPullRequest(secondPullRequests, fingerprint);
+  const secondMatch = findMatchingProposalPullRequest(secondPullRequests, fingerprint, {
+    repoFullName: input.repo,
+    producerWorkflow: input.producerWorkflow,
+  });
   if (secondMatch !== undefined) {
     return {
       status: "existing",
@@ -511,12 +606,18 @@ export async function createMemoryProposal(
     operation: `pr-learning:propose:create-pr:${fingerprint.slice(0, FINGERPRINT_ID_LENGTH)}`,
     maxAttempts,
     run: () =>
-      createPullRequestWithTimeoutRecovery(client, branchName, fingerprint, {
-        title: `jules-memory: ${input.entry.persona} learning — ${input.entry.scope}`,
-        body: renderProposalPullRequestBody(input.entry, marker),
-        head: branchName,
-        base: input.baseBranch,
-      }),
+      createPullRequestWithTimeoutRecovery(
+        client,
+        branchName,
+        fingerprint,
+        {
+          title: `jules-memory: ${input.entry.persona} learning — ${input.entry.scope}`,
+          body: renderProposalPullRequestBody(input.entry, marker),
+          head: branchName,
+          base: input.baseBranch,
+        },
+        { repoFullName: input.repo, producerWorkflow: input.producerWorkflow }
+      ),
   });
 
   return {

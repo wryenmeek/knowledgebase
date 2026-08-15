@@ -33,6 +33,7 @@ function makeRecord(overrides: Partial<RawPullRecord> = {}): RawPullRecord {
     number: 1,
     state: "closed",
     draft: false,
+    created_at: "2026-08-01T00:00:00.000Z",
     merged_at: null,
     merge_commit_sha: null,
     base_sha: SHA_A,
@@ -44,7 +45,7 @@ function makeRecord(overrides: Partial<RawPullRecord> = {}): RawPullRecord {
     mergeable_state: "clean",
     check_conclusion: "pass",
     reopened_at: null,
-    session_link: { sessionId: "session-1" },
+    session_link: { sessionId: "session-1", persona: "bolt" },
     event_ids: ["event-1"],
     evidence_inconsistent: false,
     ...overrides,
@@ -122,6 +123,13 @@ describe("outcome state machine precedence", () => {
 
   test("missing/unverified session linkage yields ambiguous", () => {
     const envelope = classify(makeRecord({ session_link: null }));
+    expect(envelope.outcome).toBe("ambiguous");
+  });
+
+  test("a session verified for a different persona is ambiguous, never reused as this persona's evidence", () => {
+    const envelope = classify(
+      makeRecord({ session_link: { sessionId: "session-1", persona: "sentinel" } })
+    );
     expect(envelope.outcome).toBe("ambiguous");
   });
 
@@ -206,12 +214,24 @@ describe("closure taxonomy assignment (structured signals only)", () => {
 
 describe("passesIdentityPredicate", () => {
   test("passes when author, session, repo boundary, and head sha are all present and consistent", () => {
-    expect(passesIdentityPredicate(makeRecord(), { repoFullName: REPO })).toBe(true);
+    expect(passesIdentityPredicate(makeRecord(), { repoFullName: REPO, persona: "bolt" })).toBe(true);
   });
 
   test("fails when base repo differs from the configured boundary", () => {
     expect(
-      passesIdentityPredicate(makeRecord({ base_repo_full_name: "other/repo" }), { repoFullName: REPO })
+      passesIdentityPredicate(makeRecord({ base_repo_full_name: "other/repo" }), {
+        repoFullName: REPO,
+        persona: "bolt",
+      })
+    ).toBe(false);
+  });
+
+  test("fails when the verified session belongs to a different persona (no cross-persona evidence reuse)", () => {
+    expect(
+      passesIdentityPredicate(makeRecord({ session_link: { sessionId: "session-1", persona: "sentinel" } }), {
+        repoFullName: REPO,
+        persona: "bolt",
+      })
     ).toBe(false);
   });
 });
@@ -234,6 +254,70 @@ describe("evidence_digest determinism", () => {
     const merged = classify(makeRecord({ merged_at: "2026-08-01T00:00:00.000Z" }));
     const closed = classify(makeRecord({ merged_at: null }));
     expect(merged.evidence_digest).not.toBe(closed.evidence_digest);
+  });
+
+  test("a different created_at changes the evidence_digest", () => {
+    const a = classify(makeRecord({ created_at: "2026-08-01T00:00:00.000Z" }));
+    const b = classify(makeRecord({ created_at: "2026-07-01T00:00:00.000Z" }));
+    expect(a.evidence_digest).not.toBe(b.evidence_digest);
+  });
+
+  test("reverted status changes the evidence_digest", () => {
+    const merged = classify(makeRecord({ merged_at: "2026-08-01T00:00:00.000Z", labels: [] }));
+    const reverted = classify(
+      makeRecord({ merged_at: "2026-08-01T00:00:00.000Z", labels: ["reverted"] })
+    );
+    expect(merged.evidence_digest).not.toBe(reverted.evidence_digest);
+  });
+});
+
+describe("created_at propagation", () => {
+  test("envelope carries the PR's created_at, distinct from collected_at/as_of", () => {
+    const envelope = classify(makeRecord({ created_at: "2026-07-04T00:00:00.000Z" }));
+    expect(envelope.created_at).toBe("2026-07-04T00:00:00.000Z");
+    expect(envelope.created_at).not.toBe(envelope.collected_at);
+    expect(envelope.created_at).not.toBe(envelope.as_of);
+  });
+});
+
+describe("reverted signal (structured label only)", () => {
+  test("a merged PR labeled 'reverted' carries reverted: true", () => {
+    const envelope = classify(
+      makeRecord({ merged_at: "2026-08-05T00:00:00.000Z", labels: ["reverted"] })
+    );
+    expect(envelope.outcome).toBe("merged");
+    expect(envelope.reverted).toBe(true);
+  });
+
+  test("a merged PR labeled 'revert' (alias) also carries reverted: true", () => {
+    const envelope = classify(
+      makeRecord({ merged_at: "2026-08-05T00:00:00.000Z", labels: ["Revert"] })
+    );
+    expect(envelope.reverted).toBe(true);
+  });
+
+  test("a merged PR without the label carries reverted: false", () => {
+    const envelope = classify(makeRecord({ merged_at: "2026-08-05T00:00:00.000Z", labels: [] }));
+    expect(envelope.reverted).toBe(false);
+  });
+
+  test("revert outcome never overwrites the merged outcome itself", () => {
+    const envelope = classify(
+      makeRecord({ merged_at: "2026-08-05T00:00:00.000Z", labels: ["reverted"] })
+    );
+    expect(envelope.outcome).toBe("merged");
+  });
+
+  test("a non-merged PR is never marked reverted even if adversarially labeled", () => {
+    const envelope = classify(makeRecord({ merged_at: null, labels: ["reverted"] }));
+    expect(envelope.reverted).toBe(false);
+  });
+
+  test("free-text label variants that are not exact allowlist matches never set reverted", () => {
+    const envelope = classify(
+      makeRecord({ merged_at: "2026-08-05T00:00:00.000Z", labels: ["please revert this later"] })
+    );
+    expect(envelope.reverted).toBe(false);
   });
 });
 

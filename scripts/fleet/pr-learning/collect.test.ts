@@ -43,6 +43,7 @@ function makePullDetail(overrides: Record<string, unknown> = {}) {
     number: 100,
     state: "closed",
     draft: false,
+    created_at: "2026-08-01T00:00:00.000Z",
     merged_at: null,
     merge_commit_sha: null,
     mergeable_state: "clean",
@@ -134,14 +135,14 @@ describe("collectPersonaPullRequests", () => {
     });
 
     const result = await collectPersonaPullRequests(
-      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1" }) })
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
     );
 
     expect(result.complete).toBe(true);
     expect(result.errors).toEqual([]);
     expect(result.records).toHaveLength(1);
     expect(result.records[0]?.number).toBe(100);
-    expect(result.records[0]?.session_link).toEqual({ sessionId: "session-1" });
+    expect(result.records[0]?.session_link).toEqual({ sessionId: "session-1", persona: "bolt" });
     expect(result.records[0]?.check_conclusion).toBe("pass");
   });
 
@@ -161,7 +162,7 @@ describe("collectPersonaPullRequests", () => {
     });
 
     const result = await collectPersonaPullRequests(
-      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1" }) })
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
     );
 
     // PR #101 (non-candidate login) is never fetched/collected at all.
@@ -194,7 +195,7 @@ describe("collectPersonaPullRequests", () => {
       baseOptions({
         fetchImpl,
         authorLogins: ["google-labs-jules[bot]", "jules-bot"],
-        sessionVerifier: verifierReturning({ sessionId: "session-1" }),
+        sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }),
       })
     );
 
@@ -210,7 +211,7 @@ describe("collectPersonaPullRequests", () => {
     });
 
     const result = await collectPersonaPullRequests(
-      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1" }) })
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
     );
 
     expect(result.records[0]?.head_repo_full_name).toBeNull();
@@ -225,7 +226,7 @@ describe("collectPersonaPullRequests", () => {
     });
 
     const result = await collectPersonaPullRequests(
-      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1" }) })
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
     );
 
     expect(result.records[0]?.author_id).toBeNull();
@@ -248,7 +249,7 @@ describe("collectPersonaPullRequests", () => {
     });
 
     const result = await collectPersonaPullRequests(
-      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1" }) })
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
     );
 
     expect(result.records[0]?.evidence_inconsistent).toBe(true);
@@ -279,7 +280,7 @@ describe("collectPersonaPullRequests", () => {
     });
 
     const result = await collectPersonaPullRequests(
-      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1" }) })
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
     );
 
     expect(result.records[0]?.check_conclusion).toBe("no_checks");
@@ -299,7 +300,7 @@ describe("collectPersonaPullRequests", () => {
     });
 
     const result = await collectPersonaPullRequests(
-      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1" }) })
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
     );
 
     // The label is captured verbatim as opaque structured data; classify.ts
@@ -324,10 +325,94 @@ describe("collectPersonaPullRequests", () => {
     });
 
     const result = await collectPersonaPullRequests(
-      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1" }) })
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
     );
 
     // #899 predates the lookback watermark and must never be collected.
     expect(result.records.map((r) => r.number)).toEqual([900]);
+  });
+
+  test("propagates created_at from the PR detail onto the collected record", async () => {
+    const fetchImpl = makeFetch({
+      list: [[{ number: 950, created_at: "2026-08-01T00:00:00.000Z", user: { login: "google-labs-jules[bot]" } }]],
+      detailByNumber: { 950: makePullDetail({ number: 950, created_at: "2026-07-15T12:00:00.000Z" }) },
+      eventsByNumber: { 950: [{ id: 1, event: "closed", created_at: "2026-08-02T00:00:00.000Z" }] },
+      checkRunsByHeadSha: { [SHA_B]: [{ status: "completed", conclusion: "success" }] },
+    });
+
+    const result = await collectPersonaPullRequests(
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
+    );
+
+    expect(result.records[0]?.created_at).toBe("2026-07-15T12:00:00.000Z");
+  });
+
+  test("passes the persona this run is scoped to into the session verifier's candidate", async () => {
+    const fetchImpl = makeFetch({
+      list: [[{ number: 960, created_at: "2026-08-01T00:00:00.000Z", user: { login: "google-labs-jules[bot]" } }]],
+      detailByNumber: { 960: makePullDetail({ number: 960 }) },
+      eventsByNumber: { 960: [{ id: 1, event: "closed", created_at: "2026-08-02T00:00:00.000Z" }] },
+      checkRunsByHeadSha: { [SHA_B]: [{ status: "completed", conclusion: "success" }] },
+    });
+
+    const observedCandidates: Array<{ persona: string }> = [];
+    const recordingVerifier: JulesSessionVerifier = {
+      verify: (candidate) => {
+        observedCandidates.push({ persona: candidate.persona });
+        return { sessionId: "session-1", persona: candidate.persona };
+      },
+    };
+
+    await collectPersonaPullRequests(
+      baseOptions({ fetchImpl, persona: "sentinel", sessionVerifier: recordingVerifier })
+    );
+
+    expect(observedCandidates).toEqual([{ persona: "sentinel" }]);
+  });
+
+  test("timeline-event pagination hard-fails when the safety bound is reached with a full final page", async () => {
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({
+      id: i + 1,
+      event: "labeled",
+      created_at: "2026-08-02T00:00:00.000Z",
+    }));
+    const fetchImpl = makeFetch({
+      list: [[{ number: 970, created_at: "2026-08-01T00:00:00.000Z", user: { login: "google-labs-jules[bot]" } }]],
+      detailByNumber: { 970: makePullDetail({ number: 970 }) },
+      // Every page returns a full 100-item page, simulating a PR whose
+      // timeline event count exceeds the 50-page safety bound.
+      eventsByNumber: { 970: fullPage },
+      checkRunsByHeadSha: { [SHA_B]: [{ status: "completed", conclusion: "success" }] },
+    });
+
+    const result = await collectPersonaPullRequests(
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
+    );
+
+    expect(result.complete).toBe(false);
+    expect(result.errors.some((message) => message.includes("events pagination"))).toBe(true);
+    // A truncated-but-authoritative record must never be collected — the
+    // whole PR is dropped from `records`, not silently kept with partial data.
+    expect(result.records).toEqual([]);
+  });
+
+  test("check-runs pagination hard-fails when the safety bound is reached with a full final page", async () => {
+    const fullPage = Array.from({ length: 100 }, () => ({ status: "completed", conclusion: "success" }));
+    const fetchImpl = makeFetch({
+      list: [[{ number: 980, created_at: "2026-08-01T00:00:00.000Z", user: { login: "google-labs-jules[bot]" } }]],
+      detailByNumber: { 980: makePullDetail({ number: 980 }) },
+      eventsByNumber: { 980: [{ id: 1, event: "closed", created_at: "2026-08-02T00:00:00.000Z" }] },
+      // Every page returns a full 100-item page, simulating a head SHA
+      // with more check-runs than the 50-page safety bound can hold.
+      checkRunsByHeadSha: { [SHA_B]: fullPage },
+    });
+
+    const result = await collectPersonaPullRequests(
+      baseOptions({ fetchImpl, sessionVerifier: verifierReturning({ sessionId: "session-1", persona: "bolt" }) })
+    );
+
+    expect(result.complete).toBe(false);
+    expect(result.errors.some((message) => message.includes("check runs"))).toBe(true);
+    expect(result.records).toEqual([]);
   });
 });

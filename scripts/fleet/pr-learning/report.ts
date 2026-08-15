@@ -49,6 +49,14 @@ export interface PersonaSummary {
   closure_causes: Record<string, number>;
   /** open records older than the caller-supplied aged-open threshold. */
   aged_open_count: number;
+  /**
+   * Merged records that were later reverted (structured `reverted` label
+   * signal only — see `classify.ts`). Per the contract, a revert never
+   * changes the persisted `merged` outcome or `counts.merged`; this is
+   * reported as a separate, explicitly labeled signal so a revert can
+   * never be silently absorbed into an unqualified merge-rate number.
+   */
+  reverted_count: number;
 }
 
 export interface CollectionReport {
@@ -133,6 +141,7 @@ function summarizePersona(
   const counts: OutcomeCounts = { merged: 0, closed_unmerged: 0, open: 0, ambiguous: 0 };
   const closureCauses: Record<string, number> = {};
   let agedOpenCount = 0;
+  let revertedCount = 0;
 
   for (const envelope of envelopes) {
     counts[envelope.outcome] += 1;
@@ -140,10 +149,17 @@ function summarizePersona(
       closureCauses[envelope.closure_cause] = (closureCauses[envelope.closure_cause] ?? 0) + 1;
     }
     if (envelope.outcome === "open") {
-      const collectedMs = Date.parse(envelope.collected_at);
-      if (Number.isFinite(collectedMs) && nowMs - collectedMs >= agedThresholdMs) {
+      // Aged-open backlog aging must be measured from when the PR was
+      // actually opened (created_at), not from collected_at — collected_at
+      // is the instant *this collection run* observed the PR and is always
+      // ~nowMs in a real run, which would make aged_open_count permanently 0.
+      const createdMs = Date.parse(envelope.created_at);
+      if (Number.isFinite(createdMs) && nowMs - createdMs >= agedThresholdMs) {
         agedOpenCount += 1;
       }
+    }
+    if (envelope.outcome === "merged" && envelope.reverted) {
+      revertedCount += 1;
     }
   }
 
@@ -156,6 +172,7 @@ function summarizePersona(
     merge_rate: mergeRate,
     closure_causes: closureCauses,
     aged_open_count: agedOpenCount,
+    reverted_count: revertedCount,
   };
 }
 

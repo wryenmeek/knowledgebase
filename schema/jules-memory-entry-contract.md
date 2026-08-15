@@ -87,8 +87,9 @@ scanned and rejected (not redacted-and-passed) if it contains:
 
 - Anything matching a secret-shaped pattern: bearer tokens, PEM key
   headers/footers, GitHub tokens (`gh[pousr]_`), AWS-style access keys,
-  generic `key=`/`token=`/`password=` assignment patterns, or credential-
-  bearing URLs (`https://user:pass@...`).
+  generic `key=`/`token=`/`password=` assignment patterns, or URLs that
+  embed inline basic-auth credentials before the host.
+<!-- pragma: allowlist secret -->
 - Shell metacharacter sequences that resemble command injection payloads
   (`` `...` ``, `$(...)`, `;rm `, pipe chains to network tools).
 - GitHub Actions workflow expression syntax (`${{ ... }}`).
@@ -97,8 +98,11 @@ scanned and rejected (not redacted-and-passed) if it contains:
 - Any first-person imperative phrasing that reads as an instruction to an
   agent reading the memory file (defense against prompt injection smuggled
   through PR text into a generated entry) — the `rule` field must describe
-  a lesson about code, never issue a directive to "ignore", ",bypass", or
-  "disable" any governance step.
+  a lesson about code, never issue a directive to "ignore", "bypass",
+  "disable", "skip", "override", "circumvent", "suppress", "overrule", or
+  "disregard" any governance step (verb + governance-noun co-occurrence,
+  e.g. "override the review gate" — see `REDACTION_PATTERNS` in
+  `scripts/fleet/pr-learning/types.ts` for the enforced pattern).
 - Unsupported quantitative claims: a numeric performance/quality claim
   (e.g., a percentage) is only allowed when `verification` names a
   reproducible measurement; otherwise the number must be omitted.

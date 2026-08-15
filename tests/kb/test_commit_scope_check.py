@@ -130,6 +130,12 @@ def test_gate_b(
         ("schema migration", ["schema/page-template.md"], True),
         ("update spec", ["raw/processed/SPEC.md"], True),
         ("fix pre-commit hook", [".pre-commit-config.yaml"], True),
+        # Gate B / U6 finding: Jules persona PR learning loop memory paths.
+        ("jules-memory: append bolt learning entry", [".jules/bolt.md"], True),
+        ("jules-memory: append sentinel learning entry", [".jules/sentinel.md"], True),
+        # Missing token: neither path is acknowledged.
+        ("fix: routine cleanup", [".jules/bolt.md"], False),
+        ("fix: routine cleanup", [".jules/sentinel.md"], False),
         # ``Wikipedia`` must NOT match ``wiki`` (word-boundary enforcement).
         ("Wikipedia article", ["wiki/page.md"], False),
         # ``Adrian`` must NOT match ``adr`` (word-boundary enforcement).
@@ -162,11 +168,27 @@ def test_gate_b_token_set_is_pinned() -> None:
         "spec",
         "workflows",
         "pre-commit",
+        "jules",
     })
     assert GATE_B_TOKENS == expected, (
         f"GATE_B_TOKENS drifted from spec. "
         f"Extra: {GATE_B_TOKENS - expected}, Missing: {expected - GATE_B_TOKENS}"
     )
+
+
+def test_gate_b_jules_memory_paths_repro() -> None:
+    """Regression for the PR #547 review finding: proposal-mode PRs modify
+    `.jules/bolt.md`/`.jules/sentinel.md` (both in SENSITIVE_PATHS), but
+    before this fix neither path had a `_PATH_TO_TOKENS` entry nor a Jules
+    token in `GATE_B_TOKENS`, so `check_gate_b` always failed for these PRs
+    with an empty "Add one of" list — blocking every generated learning
+    proposal's normal CI/merge path. Reproduces the exact repro from the
+    review comment.
+    """
+    passed, errors = check_gate_b(
+        "jules-memory: append bolt learning entry", "", [".jules/bolt.md"]
+    )
+    assert passed is True, f"expected gate B to pass; got errors={errors}"
 
 
 # ---------------------------------------------------------------------------

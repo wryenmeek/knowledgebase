@@ -68,8 +68,26 @@ const LABEL_CLOSURE_CAUSE_MAP: ReadonlyMap<string, ClosureCause> = new Map([
   ["stale-artifact", "stale_artifact"],
 ]);
 
+/**
+ * Fixed, structured-signal-only label names indicating a merged PR was
+ * later reverted. Per the contract, a revert never changes the persisted
+ * `merged` outcome — it is surfaced only as a separate, explicitly labeled
+ * signal (`reverted`). Only exact (case-insensitive) label matches ever
+ * set this signal; free-text PR content is never consulted.
+ */
+const REVERT_LABEL_NAMES: ReadonlySet<string> = new Set(["reverted", "revert"]);
+
 function normalizeLabel(label: string): string {
   return label.trim().toLowerCase();
+}
+
+/**
+ * Detects the structured "reverted" signal for a merged PR via a fixed
+ * label allowlist (see `REVERT_LABEL_NAMES`). Never consults PR title,
+ * body, comment, or review text.
+ */
+export function hasRevertLabel(record: RawPullRecord): boolean {
+  return record.labels.some((label) => REVERT_LABEL_NAMES.has(normalizeLabel(label)));
 }
 
 /**
@@ -126,13 +144,16 @@ function isStillOpen(record: RawPullRecord, cutoffMs: number, asOfMs: number): b
  */
 export function passesIdentityPredicate(
   record: RawPullRecord,
-  options: Pick<ClassifyOptions, "repoFullName">
+  options: Pick<ClassifyOptions, "repoFullName" | "persona">
 ): boolean {
   if (record.author_id === null) {
     return false;
   }
   if (record.session_link === null || record.session_link.sessionId.length === 0) {
     return false;
+  }
+  if (record.session_link.persona !== options.persona) {
+    return false; // a session verified for a different persona can never be reused as this persona's evidence
   }
   if (record.base_repo_full_name !== options.repoFullName) {
     return false;
@@ -194,6 +215,7 @@ export function classifyPullRequest(
   options: ClassifyOptions
 ): EvidenceEnvelope {
   const { outcome, closure_cause } = determineOutcome(record, options);
+  const reverted = outcome === "merged" && hasRevertLabel(record);
 
   const eventIds = record.event_ids;
   const evidenceDigest = computeEvidenceDigest([
@@ -210,6 +232,8 @@ export function classifyPullRequest(
     record.head_repo_full_name ?? "null",
     ...[...eventIds].sort(),
     options.asOf,
+    record.created_at,
+    String(reverted),
     String(TAXONOMY_VERSION),
   ]);
 
@@ -227,8 +251,10 @@ export function classifyPullRequest(
     base_repo_full_name: record.base_repo_full_name,
     head_repo_full_name: record.head_repo_full_name,
     event_ids: eventIds,
+    created_at: record.created_at,
     collected_at: options.collectedAt,
     as_of: options.asOf,
+    reverted,
     taxonomy_version: TAXONOMY_VERSION,
     evidence_digest: evidenceDigest,
   };

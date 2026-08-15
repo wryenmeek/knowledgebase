@@ -146,10 +146,12 @@ Every collected record (regardless of resulting `OutcomeState`) is an
 | `base_repo_full_name` | string \| null | ✅ | Base repository full name from the PR API response. |
 | `head_repo_full_name` | string \| null | ✅ | Head repository full name; must equal `base_repo_full_name` for eligibility. |
 | `event_ids` | string[] | ✅ | Identifiers (event/check/review IDs) that support the classification decision. May be empty only when `outcome` is `open`. |
-| `collected_at` | string (ISO-8601 UTC) | ✅ | Timestamp the record was collected/observed. |
+| `collected_at` | string (ISO-8601 UTC) | ✅ | Timestamp the record was collected/observed (this snapshot run). Never used for backlog-aging computations — see `created_at` below. |
+| `created_at` | string (ISO-8601 UTC) | ✅ | Timestamp the PR was actually opened, per the PR API's own `created_at`. This is the outcome-relevant instant for "aged open" backlog aging (R6/R7); it is never the same instant as `collected_at`, which only records when this snapshot was taken and would otherwise make an aged-open computation permanently report zero backlog age. |
 | `as_of` | string (ISO-8601 UTC) | ✅ | The fixed collector snapshot watermark this record belongs to. |
 | `taxonomy_version` | integer | ✅ | Taxonomy version used to assign `closure_cause`. |
 | `evidence_digest` | string (sha256 hex, 64 chars) | ✅ | Digest over the canonicalized evidence used for this classification (see Normalization, below). Enables regeneration detection. |
+| `reverted` | boolean | ✅ | `true` only when a `merged` PR's merge was later reverted (structured `reverted` label/marker evidence, never inferred from prose). Always `false` for non-`merged` outcomes. Reported as a distinct backlog-visibility signal (`reverted_count`), separate from `aged_open_count` — a reverted merge is not evidence of prevention/hygiene value and must never be silently folded into the merged-outcome success count. |
 
 An envelope missing any required field, or with `closure_cause` set for a
 non-`closed_unmerged` outcome (or unset for a `closed_unmerged` outcome), is

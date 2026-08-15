@@ -86,10 +86,19 @@ export interface EvidenceEnvelope {
   base_repo_full_name: string | null;
   head_repo_full_name: string | null;
   event_ids: string[];
+  /** ISO-8601 PR creation timestamp (`created_at`), the outcome-relevant instant used for "aged open" backlog aging. Never the same as `collected_at`, which only records when this snapshot was taken. */
+  created_at: string;
   collected_at: string;
   as_of: string;
   taxonomy_version: number;
   evidence_digest: string;
+  /**
+   * True when a `merged` PR was later reverted. Per the outcome state
+   * machine, a revert never re-classifies a `merged` PR away from
+   * `merged` — it is surfaced only as this separate, explicitly labeled
+   * signal (structured label evidence only, never PR text).
+   */
+  reverted: boolean;
 }
 
 /**
@@ -202,4 +211,12 @@ export const REDACTION_PATTERNS: readonly RegExp[] = Object.freeze([
   /\$\([^)]*\)/,
   /\$\{\{[^}]*\}\}/,
   /;\s*rm\s+-rf\b/i,
+  // First-person imperative phrasing that reads as an instruction to an
+  // agent reading the memory file, rather than a description of a lesson
+  // (defense against prompt injection smuggled through PR text into a
+  // generated entry). Matches "ignore"/"bypass"/"disable"/"skip"/"override"/
+  // "circumvent"/"suppress"/"overrule"/"disregard" directed at a governance
+  // noun (check, review, gate, rule, policy, guardrail, lock, approval,
+  // validator, lint).
+  /\b(?:ignore|bypass|disable|skip|override|circumvent|suppress|overrule|disregard)\s+(?:all\s+|any\s+|this\s+|the\s+)?(?:governance|review|checks?|gates?|rules?|polic(?:y|ies)|guardrails?|locks?|approvals?|validators?|lint(?:ing)?)\b/i,
 ]);

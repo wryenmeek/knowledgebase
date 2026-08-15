@@ -64,6 +64,7 @@ import {
 import { computeCandidateFingerprintAtCurrentVersion } from "./fingerprints.ts";
 import { validateMemoryEntry } from "./memory-validator.ts";
 import {
+  authenticateProposalMarker,
   createMemoryProposal,
   parseProposalMarker,
   type ContentsFileResult,
@@ -73,6 +74,12 @@ import {
   type ProposalPullRequestSummary,
   type ProposeGitHubClient,
 } from "./propose.ts";
+
+// Re-exported for backward compatibility: `authenticateProposalMarker` now
+// lives in `propose.ts` (so `findMatchingProposalPullRequest` can use it
+// without an import cycle back into this CLI module), but existing
+// consumers/tests import it from here too.
+export { authenticateProposalMarker };
 import { PRODUCER_WORKFLOW } from "./collect-and-report-cli.ts";
 import {
   TAXONOMY_VERSION,
@@ -81,11 +88,37 @@ import {
   type EvidenceEnvelope,
   type MemoryEntry,
   type Persona,
+  type ProposalMarker,
 } from "./types.ts";
+import type { GitHubTreeEntry, GitTreeEntryMode } from "./proposal-validator.ts";
 
 /** Same short artifact validity window as the collector — see `collect-and-report-cli.ts`. */
 const MAX_EVIDENCE_PR_COUNT = 10;
 const MAX_PROPOSAL_LIST_PAGES = 50;
+
+/**
+ * An `Error` carrying the origin HTTP status code as a first-class,
+ * numeric `status` property. `classifyMutationError`
+ * (`../github/mutation-diagnostics.ts`) reads `error.status` (among other
+ * shapes) to classify retryability; a plain `Error` whose status is only
+ * embedded in the message string is invisible to that classifier and
+ * always falls through to the non-retryable `"unknown"` category, even
+ * for a transient 502/429/503 that should be retried.
+ */
+class HttpStatusError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "HttpStatusError";
+    this.status = status;
+  }
+}
+
+/** Builds an `HttpStatusError` for a failed REST call, preserving `response.status` for retry classification. */
+function httpError(context: string, response: Response): HttpStatusError {
+  return new HttpStatusError(`${context} failed: ${response.status}`, response.status);
+}
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -202,7 +235,7 @@ export function validateArtifactBindings(
   }
 }
 
-function sessionVerifierFromArtifact(
+export function sessionVerifierFromArtifact(
   envelopes: readonly EvidenceEnvelope[]
 ): JulesSessionVerifier {
   return {
@@ -213,9 +246,10 @@ function sessionVerifierFromArtifact(
           envelope.pr_number === candidate.prNumber &&
           envelope.evaluated_head_sha === candidate.headSha &&
           envelope.head_repo_full_name === candidate.headRepoFullName &&
+          envelope.persona === candidate.persona &&
           envelope.session_id !== null
       );
-      return match?.session_id ? { sessionId: match.session_id } : null;
+      return match?.session_id ? { sessionId: match.session_id, persona: match.persona } : null;
     },
   };
 }
@@ -255,7 +289,7 @@ export class RestProposeGitHubClient implements ProposeGitHubClient {
   async getRef(ref: string): Promise<GitRefResult | null> {
     const response = await this.request(`/git/ref/${ref}`);
     if (response.status === 404) return null;
-    if (!response.ok) throw new Error(`getRef(${ref}) failed: ${response.status}`);
+    if (!response.ok) throw httpError(`getRef(${ref})`, response);
     const body = (await response.json()) as { object: { sha: string } };
     return { sha: body.object.sha };
   }
@@ -263,7 +297,7 @@ export class RestProposeGitHubClient implements ProposeGitHubClient {
   async getCommit(sha: string): Promise<GitCommitResult | null> {
     const response = await this.request(`/git/commits/${sha}`);
     if (response.status === 404) return null;
-    if (!response.ok) throw new Error(`getCommit(${sha}) failed: ${response.status}`);
+    if (!response.ok) throw httpError(`getCommit(${sha})`, response);
     const body = (await response.json()) as { sha: string; tree: { sha: string } };
     return { sha: body.sha, treeSha: body.tree.sha };
   }
@@ -271,9 +305,25 @@ export class RestProposeGitHubClient implements ProposeGitHubClient {
   async getFileContent(path: string, ref: string): Promise<ContentsFileResult | null> {
     const response = await this.request(`/contents/${path}?ref=${encodeURIComponent(ref)}`);
     if (response.status === 404) return null;
-    if (!response.ok) throw new Error(`getFileContent(${path}@${ref}) failed: ${response.status}`);
+    if (!response.ok) throw httpError(`getFileContent(${path}@${ref})`, response);
     const body = (await response.json()) as { content: string; sha: string };
     return { content: decodeBase64(body.content), sha: body.sha };
+  }
+
+  async getTreeEntries(treeSha: string): Promise<readonly GitHubTreeEntry[]> {
+    const response = await this.request(`/git/trees/${treeSha}?recursive=1`);
+    if (!response.ok) throw httpError(`getTreeEntries(${treeSha})`, response);
+    const body = (await response.json()) as {
+      truncated: boolean;
+      tree: Array<{ path: string; mode: GitTreeEntryMode; type: "blob" | "tree" | "commit"; sha: string }>;
+    };
+    if (body.truncated) {
+      // A truncated recursive tree cannot be proven to contain (or omit)
+      // the target path; failing closed here is safer than silently
+      // trusting an incomplete listing for a mode/symlink safety check.
+      throw new Error(`getTreeEntries(${treeSha}) result was truncated by the GitHub API; failing closed`);
+    }
+    return body.tree.map((entry) => ({ path: entry.path, mode: entry.mode, type: entry.type, sha: entry.sha }));
   }
 
   async createBlob(content: string): Promise<string> {
@@ -281,7 +331,7 @@ export class RestProposeGitHubClient implements ProposeGitHubClient {
       method: "POST",
       body: JSON.stringify({ content: encodeBase64(content), encoding: "base64" }),
     });
-    if (!response.ok) throw new Error(`createBlob failed: ${response.status}`);
+    if (!response.ok) throw httpError("createBlob", response);
     const body = (await response.json()) as { sha: string };
     return body.sha;
   }
@@ -294,7 +344,7 @@ export class RestProposeGitHubClient implements ProposeGitHubClient {
         tree: [{ path, mode: "100644", type: "blob", sha: blobSha }],
       }),
     });
-    if (!response.ok) throw new Error(`createTree failed: ${response.status}`);
+    if (!response.ok) throw httpError("createTree", response);
     const body = (await response.json()) as { sha: string };
     return body.sha;
   }
@@ -304,7 +354,7 @@ export class RestProposeGitHubClient implements ProposeGitHubClient {
       method: "POST",
       body: JSON.stringify({ message, tree: treeSha, parents: [parentSha] }),
     });
-    if (!response.ok) throw new Error(`createCommit failed: ${response.status}`);
+    if (!response.ok) throw httpError("createCommit", response);
     const body = (await response.json()) as { sha: string };
     return body.sha;
   }
@@ -315,7 +365,7 @@ export class RestProposeGitHubClient implements ProposeGitHubClient {
       body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha }),
     });
     if (!response.ok) {
-      throw new Error(`createRef(${branchName}) failed: ${response.status}`);
+      throw httpError(`createRef(${branchName})`, response);
     }
   }
 
@@ -324,14 +374,20 @@ export class RestProposeGitHubClient implements ProposeGitHubClient {
     const response = await this.request(
       `/pulls?head=${encodeURIComponent(`${owner}:${branchName}`)}&state=all&per_page=20`
     );
-    if (!response.ok) throw new Error(`listPullRequestsForBranch(${branchName}) failed: ${response.status}`);
+    if (!response.ok) throw httpError(`listPullRequestsForBranch(${branchName})`, response);
     const body = (await response.json()) as Array<{
       number: number;
       state: "open" | "closed";
-      head: { ref: string };
+      head: { ref: string; repo: { full_name: string } | null };
       body: string | null;
     }>;
-    return body.map((pr) => ({ number: pr.number, state: pr.state, headRef: pr.head.ref, body: pr.body ?? "" }));
+    return body.map((pr) => ({
+      number: pr.number,
+      state: pr.state,
+      headRef: pr.head.ref,
+      body: pr.body ?? "",
+      headRepoFullName: pr.head.repo?.full_name ?? null,
+    }));
   }
 
   async createPullRequest(params: CreatePullRequestParams): Promise<ProposalPullRequestSummary> {
@@ -339,9 +395,20 @@ export class RestProposeGitHubClient implements ProposeGitHubClient {
       method: "POST",
       body: JSON.stringify(params),
     });
-    if (!response.ok) throw new Error(`createPullRequest failed: ${response.status}`);
-    const body = (await response.json()) as { number: number; state: "open" | "closed"; body: string | null };
-    return { number: body.number, state: body.state, headRef: params.head, body: body.body ?? params.body };
+    if (!response.ok) throw httpError("createPullRequest", response);
+    const body = (await response.json()) as {
+      number: number;
+      state: "open" | "closed";
+      body: string | null;
+      head: { repo: { full_name: string } | null };
+    };
+    return {
+      number: body.number,
+      state: body.state,
+      headRef: params.head,
+      body: body.body ?? params.body,
+      headRepoFullName: body.head?.repo?.full_name ?? null,
+    };
   }
 
   /** Lists open+closed PRs whose head branch starts with the learning-proposal prefix, for dedup marker collection. */
@@ -355,17 +422,23 @@ export class RestProposeGitHubClient implements ProposeGitHubClient {
       }
       pages += 1;
       const response = await this.request(nextPath);
-      if (!response.ok) throw new Error(`listAllProposalPullRequests failed: ${response.status}`);
+      if (!response.ok) throw httpError("listAllProposalPullRequests", response);
       const body = (await response.json()) as Array<{
         number: number;
         state: "open" | "closed";
-        head: { ref: string };
+        head: { ref: string; repo: { full_name: string } | null };
         body: string | null;
       }>;
       proposals.push(
         ...body
           .filter((pr) => pr.head.ref.startsWith("jules-memory/"))
-          .map((pr) => ({ number: pr.number, state: pr.state, headRef: pr.head.ref, body: pr.body ?? "" }))
+          .map((pr) => ({
+            number: pr.number,
+            state: pr.state,
+            headRef: pr.head.ref,
+            body: pr.body ?? "",
+            headRepoFullName: pr.head.repo?.full_name ?? null,
+          }))
       );
       const link = response.headers.get("link") ?? "";
       const nextMatch = link.match(/<([^>]+)>;\s*rel="next"/i);
@@ -545,6 +618,13 @@ async function main(): Promise<void> {
   for (const pr of proposalPrs) {
     const marker = parseProposalMarker(pr.body);
     if (marker === null) continue;
+    // A well-formed marker is not automatically trustworthy: it must be
+    // authenticated against the exact PR it was read from (same-repo
+    // origin, matching branch, matching producer workflow) before it can
+    // influence dedup lookup-before-create (see `authenticateProposalMarker`).
+    if (!authenticateProposalMarker(marker, pr, { repoFullName, producerWorkflow: PRODUCER_WORKFLOW })) {
+      continue;
+    }
     (pr.state === "open" ? openMarkers : closedMarkers).push({
       candidate_fingerprint: marker.candidate_fingerprint,
       target_memory_path: marker.target_memory_path,

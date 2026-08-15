@@ -39,6 +39,7 @@
 import { appendFileSync } from "node:fs";
 
 import { collectPersonaPullRequests, JULES_AUTHOR_LOGINS, NullSessionVerifier } from "./collect.ts";
+import type { CollectorFetchLike } from "./collect.ts";
 import { classifyPullRequests } from "./classify.ts";
 import { buildCollectionReport } from "./report.ts";
 import type { EvidenceEnvelope, Persona } from "./types.ts";
@@ -62,10 +63,92 @@ function requireEnv(name: string): string {
   return value;
 }
 
+/**
+ * Validates the CLI's single positional argument: an explicit out-of-tree
+ * report output path. Extracted as a pure, exported function so the
+ * "missing explicit report path" fail-closed behavior is unit-testable
+ * without invoking the full `main()` collection/classification pipeline.
+ */
+export function requireOutputPath(argv: readonly string[]): string {
+  const outputPath = argv[2];
+  if (outputPath === undefined || outputPath.length === 0) {
+    throw new Error("an explicit out-of-tree report path is required");
+  }
+  return outputPath;
+}
+
 function sha256Hex(input: string): string {
   const hasher = new Bun.CryptoHasher("sha256");
   hasher.update(input);
   return hasher.digest("hex");
+}
+
+/** Options required to collect and classify one persona's evidence for the report loop. */
+export interface CollectAndClassifyPersonaOptions {
+  apiBase: string;
+  headers: HeadersInit;
+  repoFullName: string;
+  persona: Persona;
+  authorLogins: readonly string[];
+  asOf: string;
+  lookbackWatermark: string;
+  /** Injectable fetch override for tests; defaults to `collectPersonaPullRequests`'s own default (global `fetch`). */
+  fetchImpl?: CollectorFetchLike;
+}
+
+/** The result of collecting and classifying one persona's evidence. */
+export interface CollectAndClassifyPersonaResult {
+  envelopes: EvidenceEnvelope[];
+  /** Collection errors and classification errors, each prefixed with `${persona}: `. */
+  errors: string[];
+  /** `false` if collection was incomplete OR classification reported any error. */
+  complete: boolean;
+}
+
+/**
+ * Collects and classifies exactly one persona's PR evidence, folding
+ * completeness from BOTH the collection result and the classification
+ * result. Extracted as its own function (rather than inlined in `main`'s
+ * loop) so `complete` can never be computed from a `classifyErrors`
+ * variable that has not been declared yet — the exact class of bug this
+ * function's regression tests guard against (a `const classifyErrors`
+ * declared below the line that read it previously threw a
+ * `ReferenceError` on every otherwise-successful collection run).
+ */
+export async function collectAndClassifyPersona(
+  options: CollectAndClassifyPersonaOptions
+): Promise<CollectAndClassifyPersonaResult> {
+  const { persona } = options;
+  const result = await collectPersonaPullRequests({
+    apiBase: options.apiBase,
+    headers: options.headers,
+    repoFullName: options.repoFullName,
+    persona,
+    authorLogins: options.authorLogins,
+    asOf: options.asOf,
+    lookbackWatermark: options.lookbackWatermark,
+    fetchImpl: options.fetchImpl,
+    // No session registry is wired up in this environment yet (deferred
+    // follow-up work). Every candidate is therefore quarantined
+    // `ambiguous` rather than accepted on identity alone — fail-closed
+    // per R1/R13, not a bypass.
+    sessionVerifier: NullSessionVerifier,
+  });
+  const errors: string[] = [...result.errors.map((message) => `${persona}: ${message}`)];
+  let complete = result.complete;
+
+  const { envelopes, errors: classifyErrors } = classifyPullRequests(result.records, {
+    repoFullName: options.repoFullName,
+    persona,
+    asOf: options.asOf,
+    collectedAt: options.asOf,
+  });
+  if (classifyErrors.length > 0) {
+    complete = false;
+  }
+  errors.push(...classifyErrors.map((message) => `${persona}: ${message}`));
+
+  return { envelopes, errors, complete };
 }
 
 async function main(): Promise<void> {
@@ -74,10 +157,7 @@ async function main(): Promise<void> {
   const collectorCommit = requireEnv("GITHUB_SHA");
   const collectorRunId = requireEnv("GITHUB_RUN_ID");
   const repositoryOwner = requireEnv("GITHUB_REPOSITORY_OWNER");
-  const outputPath = process.argv[2];
-  if (outputPath === undefined || outputPath.length === 0) {
-    throw new Error("an explicit out-of-tree report path is required");
-  }
+  const outputPath = requireOutputPath(process.argv);
 
   if (!/^[0-9a-f]{40}$/i.test(collectorCommit)) {
     throw new Error(`GITHUB_SHA must be a 40-character hex commit SHA, got: ${collectorCommit}`);
@@ -110,7 +190,7 @@ async function main(): Promise<void> {
   const personaCounts: Record<string, number> = {};
 
   for (const persona of PERSONAS) {
-    const result = await collectPersonaPullRequests({
+    const { envelopes, errors, complete: personaComplete } = await collectAndClassifyPersona({
       apiBase,
       headers,
       repoFullName,
@@ -118,24 +198,11 @@ async function main(): Promise<void> {
       authorLogins,
       asOf,
       lookbackWatermark,
-      // No session registry is wired up in this environment yet (deferred
-      // follow-up work). Every candidate is therefore quarantined
-      // `ambiguous` rather than accepted on identity alone — fail-closed
-      // per R1/R13, not a bypass.
-      sessionVerifier: NullSessionVerifier,
     });
-    if (!result.complete || classifyErrors.length > 0) {
+    if (!personaComplete) {
       complete = false;
     }
-    collectionErrors.push(...result.errors.map((message) => `${persona}: ${message}`));
-
-    const { envelopes, errors: classifyErrors } = classifyPullRequests(result.records, {
-      repoFullName,
-      persona,
-      asOf,
-      collectedAt: asOf,
-    });
-    collectionErrors.push(...classifyErrors.map((message) => `${persona}: ${message}`));
+    collectionErrors.push(...errors);
     allEnvelopes.push(...envelopes);
     personaCounts[persona] = envelopes.length;
   }
