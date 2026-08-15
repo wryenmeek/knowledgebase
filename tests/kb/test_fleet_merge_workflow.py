@@ -312,24 +312,27 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         A bare substring `test("jules.google.com/task/")` match on the PR
         body is spoofable (Codex review finding on #566, round 2): any
         owner-authored PR that merely mentions a Jules URL in unrelated
-        discussion would be misclassified as a fleet PR. Owner-authored
-        candidates must instead extract the session ID via `capture(...)`
-        and cross-validate it against real `.fleet/*/sessions.json`
-        artifacts before being trusted.
+        discussion would be misclassified as a fleet PR. Cross-validating
+        the extracted session ID against `.fleet/*/sessions.json` was tried
+        and rejected (Codex finding on #566, round 3): that file is only
+        ever committed to main by manual/historical commits, never by the
+        automated fleet-dispatch-after-merge.yml pipeline itself, so real
+        automation-generated PRs would always fail that lookup. Owner-
+        authored candidates are instead only trusted when the body matches
+        the EXACT, anchored footer Jules generates verbatim (see
+        buildDispatchCommentBody in scripts/fleet/fleet-dispatch.ts), tied
+        to the real repository_owner login.
         """
         self.assertIn("REPO_OWNER: ${{ github.repository_owner }}", self.workflow_text)
         self.assertIn('.author.login == "google-labs-jules"', self.workflow_text)
         self.assertIn(".author.login == $owner", self.workflow_text)
-        # Owner-authored candidates must extract a session ID via capture(),
-        # not merely test() for the marker's presence.
+        # Owner-authored candidates must be gated on the anchored, full
+        # Jules-generated footer text — not a bare task-URL substring test.
         self.assertIn(
-            'capture("jules\\\\.google\\\\.com/task/(?<id>[A-Za-z0-9_-]+)")',
+            "PR created automatically by Jules for task",
             self.workflow_text,
         )
-        # And that session ID must be cross-checked against real fleet
-        # session artifacts before the candidate is trusted.
-        self.assertIn(".fleet/*/sessions.json", self.workflow_text)
-        self.assertIn('select(.sessionId == $sid)', self.workflow_text)
+        self.assertIn("started by @", self.workflow_text)
 
     def test_gh_pr_list_jq_flag_receives_single_expression(self) -> None:
         """`gh pr list --jq` must not be passed extra CLI flags like --arg.
@@ -344,31 +347,36 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         """
         self.assertNotIn("--jq --arg", self.workflow_text)
 
-    def test_owner_authored_candidate_requires_session_id_validation(self) -> None:
-        """The event-driven path must gate owner-authored merges on a
-        validate-pr step that cross-checks the extracted session ID against
-        `.fleet/*/sessions.json`, not trust the candidate outright.
-        """
-        self.assertIn("id: validate-pr", self.workflow_text)
-        self.assertIn("Validate owner-authored candidate against fleet session data", self.workflow_text)
-        # trusted bot-authored candidates should short-circuit the session
-        # lookup entirely.
-        self.assertIn("trusted", self.workflow_text)
+    def test_owner_authored_match_does_not_rely_on_fleet_session_artifacts(self) -> None:
+        """The author-identity classification itself may not depend on
+        `.fleet/*/sessions.json` being present on main — that file is only
+        ever committed by manual or historical commits, never written by
+        the automated fleet-dispatch-after-merge.yml pipeline (which never
+        commits/pushes its ephemeral working-tree state). A filter that
+        depends on it would silently no-op for the exact automation-
+        generated PRs it must recognize (Codex finding on #566, round 3).
 
-    def test_manual_sweep_also_validates_session_id(self) -> None:
-        """The manual-sweep job must apply the same session cross-check as
-        the event-driven find-pr/validate-pr steps — not the older
-        marker-substring-only approach, which Codex flagged as equally
-        spoofable in the manual-sweep selector.
+        Note: `sessions.json` is still legitimately read elsewhere in this
+        workflow for conflict re-dispatch (looking up the original task
+        prompt) — that is a separate concern from author classification.
+        """
+        self.assertNotIn(
+            'jq -e --arg sid "$SESSION_ID"',
+            self.workflow_text,
+        )
+        self.assertNotIn('select(.sessionId == $sid)] | length > 0', self.workflow_text)
+
+    def test_manual_sweep_uses_anchored_footer_match(self) -> None:
+        """The manual-sweep job must apply the same anchored-footer gate as
+        the event-driven find-pr step — not a bare task-URL substring test,
+        which Codex flagged as equally spoofable in the manual-sweep
+        selector.
         """
         # Restrict the search to the manual-sweep job body.
         idx = self.workflow_text.index("manual-sweep:")
         manual_sweep_text = self.workflow_text[idx:]
-        self.assertIn(
-            'capture("jules\\\\.google\\\\.com/task/(?<id>[A-Za-z0-9_-]+)")',
-            manual_sweep_text,
-        )
-        self.assertIn(".fleet/*/sessions.json", manual_sweep_text)
+        self.assertIn("PR created automatically by Jules for task", manual_sweep_text)
+        self.assertIn("started by @", manual_sweep_text)
         self.assertNotIn('test("jules\\\\.google\\\\.com/task/")', manual_sweep_text)
 
     # ── Re-dispatch ordering ─────────────────────────────────────────────────

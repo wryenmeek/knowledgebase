@@ -432,7 +432,7 @@ EXPECTED_COMPOSITE_IF_GATES: dict[str, dict[str, str | None]] = {
         "dispatch": "steps.check.outputs.is_fleet_pr == 'true'",
     },
     "fleet-merge.yml": {
-        "merge-on-ci-pass": "steps.validate-pr.outputs.skip == 'false'",
+        "merge-on-ci-pass": "steps.find-pr.outputs.skip == 'false'",
         "manual-sweep": None,
     },
     "fleet-dispatch-after-merge.yml": {
