@@ -297,6 +297,30 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         # Must use an explicit equality check instead
         self.assertIn('"google-labs-jules"', self.workflow_text)
 
+    def test_bot_filter_is_widened_to_repository_owner(self) -> None:
+        """Author filter must also match github.repository_owner (PAT-based posting).
+
+        Jules's auth model shifted from bot-authored PRs ('google-labs-jules')
+        to PAT-based posting under the operator's own login some time after
+        the original 'google-labs-jules'-only filter was written (mirrors the
+        Phase 2a fix documented in ADR-019 Consequences row 3 / issue #82 /
+        #299 / #307 / #308). A filter restricted to the bot identity alone
+        silently matches zero PRs post-shift, making both the event-driven
+        find-pr step and the manual-sweep step permanently no-op. Both must
+        widen to accept github.repository_owner as well.
+        """
+        self.assertIn("REPO_OWNER: ${{ github.repository_owner }}", self.workflow_text)
+        # find-pr step (event-driven path)
+        self.assertIn(
+            '.author.login == \\"google-labs-jules\\" or .author.login == \\"${REPO_OWNER}\\"',
+            self.workflow_text,
+        )
+        # manual-sweep step
+        self.assertIn(
+            'select(.author.login == "google-labs-jules" or .author.login == $owner)',
+            self.workflow_text,
+        )
+
     # ── Re-dispatch ordering ─────────────────────────────────────────────────
 
     def test_pr_close_happens_after_redispatch(self) -> None:

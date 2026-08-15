@@ -72,16 +72,24 @@ jobs:
         env:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           REPO: ${{ github.repository }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
           # Cheap API call — exits fast for non-fleet suites (the common case).
+          #
+          # Two-identity login check (mirrors fleet-dispatch.yml's Phase 2a
+          # filter): Jules's auth model shifted from bot-authored PRs
+          # ('google-labs-jules') to PAT-based posting under the operator's
+          # own login (github.repository_owner). Restricting to the bot
+          # identity alone silently matches zero PRs post-shift — see
+          # ADR-019 Consequences row 3 (issue #82 / #299 / #307 / #308).
           PR_NUM=$(gh pr list \
             --state open \
             --repo "$REPO" \
             --json number,headRefOid,author \
             --jq "[.[] | select(
                     .headRefOid == \"${HEAD_SHA}\" and
-                    (.author.login == \"google-labs-jules\")
+                    (.author.login == \"google-labs-jules\" or .author.login == \"${REPO_OWNER}\")
                   )] | .[0].number // empty")
           if [ -z "$PR_NUM" ]; then
             echo "No open fleet PR for SHA ${HEAD_SHA}. Skipping."
@@ -240,6 +248,7 @@ jobs:
           # (never interpolate ${{ inputs.* }} directly into run: blocks).
           INPUT_BASE_BRANCH: ${{ inputs.base_branch }}
           REPO: ${{ github.repository }}
+          REPO_OWNER: ${{ github.repository_owner }}
           # Issue #310 / ADR-036: prefer fleet-orchestrator App token so merges
           # fire downstream push workflows; fall back to GITHUB_TOKEN.
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
@@ -251,11 +260,19 @@ jobs:
           BASE_BRANCH="${INPUT_BASE_BRANCH:-main}"
           echo "🔍 Finding open Jules-authored PRs targeting ${BASE_BRANCH}..."
 
+          # Two-identity login check (mirrors fleet-dispatch.yml's Phase 2a
+          # filter and the find-pr step above): Jules's auth model shifted
+          # from bot-authored PRs ('google-labs-jules') to PAT-based posting
+          # under the operator's own login (github.repository_owner).
+          # Restricting to the bot identity alone silently matches zero PRs
+          # post-shift — see ADR-019 Consequences row 3 (issue #82 / #299 /
+          # #307 / #308).
+          # shellcheck disable=SC2016  # the jq expression below intentionally uses $owner as a jq variable (bound via --arg), not a shell variable
           PRS=$(gh pr list \
             --state open \
             --base "$BASE_BRANCH" \
             --json number,headRefName,author \
-            --jq '[.[] | select(.author.login == "google-labs-jules")] | sort_by(.number) | .[].number')
+            --jq --arg owner "$REPO_OWNER" '[.[] | select(.author.login == "google-labs-jules" or .author.login == $owner)] | sort_by(.number) | .[].number')
 
           if [ -z "$PRS" ]; then
             echo "ℹ️  No Jules-authored PRs found."
