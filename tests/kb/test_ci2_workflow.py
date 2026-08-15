@@ -445,7 +445,7 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         )
         self.assertIn("github.event.pull_request.base.sha", scope_step)
         self.assertIn("github.event.pull_request.base.ref", scope_step)
-        self.assertIn("git merge-base HEAD", scope_step)
+        self.assertIn("git merge-base -- HEAD", scope_step)
         self.assertIn('git -c core.quotePath=false diff --name-only --diff-filter=ACMR', scope_step)
         self.assertIn("wiki/concepts wiki/entities wiki/analyses", scope_step)
         self.assertIn('if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then', scope_step)

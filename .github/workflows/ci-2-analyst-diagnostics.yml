@@ -134,10 +134,14 @@ jobs:
             # base branch has advanced since. Refresh it against the live base
             # ref so the merge-base used below reflects the current base branch,
             # never an over- or under-scoped diff.
-            git fetch --quiet origin "${PR_BASE_REF}"
-            merge_base="$(git merge-base HEAD "origin/${PR_BASE_REF}")"
+            git fetch --quiet origin -- "${PR_BASE_REF}"
+            merge_base="$(git merge-base -- HEAD "origin/${PR_BASE_REF}")"
             git -c core.quotePath=false diff --name-only --diff-filter=ACMR "${merge_base}"...HEAD -- wiki/concepts wiki/entities wiki/analyses \
               | grep -E '\.md$' > diagnostics/freshness-scope-paths.txt || true
+            # The '.md$' filter also incidentally excludes any git-quoted
+            # (control-character-containing) filenames, which always end in a
+            # literal quote rather than 'md' — do not remove without adding an
+            # equivalent safeguard for such paths.
           else
             : > diagnostics/freshness-scope-paths.txt
           fi
