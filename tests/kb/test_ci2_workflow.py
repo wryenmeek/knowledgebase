@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
+import subprocess
+import tempfile
 import unittest
 
 from tests.kb._workflow_yaml import (
     extract_named_step_block,
+    leading_spaces,
     parse_job_mapping_block,
     parse_top_level_mapping_block,
 )
@@ -18,6 +22,193 @@ WORKFLOW_PATH = Path(".github/workflows/ci-2-analyst-diagnostics.yml")
 
 def _parse_top_level_mapping_block(text: str, key: str) -> dict[str, str]:
     return parse_top_level_mapping_block(text, key, workflow_path=WORKFLOW_PATH)
+
+
+def _extract_run_block(step_block: str) -> str:
+    """Pull the ``run: |`` script body out of one extracted step block."""
+    lines = step_block.splitlines()
+    run_index = next(
+        (index for index, line in enumerate(lines) if line.strip() == "run: |"),
+        None,
+    )
+    if run_index is None:
+        raise AssertionError("Unable to locate 'run: |' block in extracted step")
+    run_indent = leading_spaces(lines[run_index])
+
+    raw_script_lines: list[str] = []
+    for line in lines[run_index + 1 :]:
+        if line.strip() and leading_spaces(line) <= run_indent:
+            break
+        raw_script_lines.append(line if line.strip() else "")
+
+    non_empty = [line for line in raw_script_lines if line.strip()]
+    if not non_empty:
+        raise AssertionError("Extracted run block is empty")
+    script_indent = min(leading_spaces(line) for line in non_empty)
+    return "\n".join(line[script_indent:] if line.strip() else "" for line in raw_script_lines)
+
+
+def _run_freshness_scope_script(
+    workflow_text: str,
+    *,
+    event_name: str,
+    changed_target_files: tuple[str, ...] = (),
+    changed_other_files: tuple[str, ...] = (),
+    deleted_target_files: tuple[str, ...] = (),
+) -> tuple[subprocess.CompletedProcess[str], dict[str, str], str]:
+    """Execute the real "Compute freshness check scope" step in a throwaway git repo."""
+    scope_step = extract_named_step_block(
+        workflow_text, "Compute freshness check scope", workflow_path=WORKFLOW_PATH
+    )
+    script = _extract_run_block(scope_step)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo = Path(temp_dir)
+        run = lambda *args: subprocess.run(  # noqa: E731
+            ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+        )
+        run("init", "--quiet", "-b", "main")
+        run("config", "user.email", "test@example.com")
+        run("config", "user.name", "Test")
+
+        (repo / "wiki/concepts").mkdir(parents=True, exist_ok=True)
+        (repo / "wiki/entities").mkdir(parents=True, exist_ok=True)
+        (repo / "wiki/analyses").mkdir(parents=True, exist_ok=True)
+        (repo / "unrelated-scope-base.md").write_text("base\n", encoding="utf-8")
+        for rel in deleted_target_files:
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text("to be deleted\n", encoding="utf-8")
+        run("add", "-A")
+        run("commit", "--quiet", "-m", "base commit")
+        base_sha = run("rev-parse", "HEAD").stdout.strip()
+
+        run("checkout", "--quiet", "-b", "pr-branch")
+        for rel in changed_target_files:
+            path = repo / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("changed content\n", encoding="utf-8")
+        for rel in changed_other_files:
+            path = repo / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("changed content\n", encoding="utf-8")
+        for rel in deleted_target_files:
+            (repo / rel).unlink()
+        if changed_target_files or changed_other_files or deleted_target_files:
+            run("add", "-A")
+            run("commit", "--quiet", "-m", "pr commit")
+        head_sha = run("rev-parse", "HEAD").stdout.strip()
+
+        # "origin/<base_ref>" must resolve for the fetch+merge-base logic; a
+        # same-repo bare-less setup can use the local branch as its own "origin".
+        run("update-ref", "refs/remotes/origin/main", base_sha)
+        # Make `git fetch --quiet origin main` a no-op success (no real remote).
+        run("remote", "add", "origin", str(repo))
+
+        github_output_path = repo / "github-output.txt"
+        github_output_path.write_text("", encoding="utf-8")
+
+        env = os.environ.copy()
+        env.update(
+            {
+                "GITHUB_EVENT_NAME": event_name,
+                "PR_BASE_SHA": base_sha,
+                "PR_BASE_REF": "main",
+                "GITHUB_OUTPUT": str(github_output_path),
+            }
+        )
+
+        completed = subprocess.run(
+            ["bash", "-c", script],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        outputs: dict[str, str] = {}
+        for line in github_output_path.read_text(encoding="utf-8").splitlines():
+            if "=" in line:
+                key, _, value = line.partition("=")
+                outputs[key] = value
+        scope_paths_file = repo / "diagnostics/freshness-scope-paths.txt"
+        scope_paths_text = scope_paths_file.read_text(encoding="utf-8") if scope_paths_file.exists() else ""
+        return completed, outputs, scope_paths_text
+
+
+def _run_freshness_diagnostics_branch_script(
+    workflow_text: str,
+    *,
+    freshness_scoped: str,
+    freshness_skip: str,
+    scope_paths_file_content: str | None,
+) -> tuple[subprocess.CompletedProcess[str], str]:
+    """Execute just the freshness branch of the diagnostics step against a fake check_doc_freshness.py stub."""
+    diagnostics_step = extract_named_step_block(
+        workflow_text, "Run analyst diagnostics (lint + unit tests)", workflow_path=WORKFLOW_PATH
+    )
+    full_script = _extract_run_block(diagnostics_step)
+
+    # Isolate the freshness branch: from "freshness_start=" through the
+    # "freshness_duration=" assignment, so this test exercises exactly the
+    # logic this PR changed without needing the wrapper/quality/lint/tests
+    # commands earlier in the same step to succeed.
+    start_marker = 'freshness_start="$(date -u +%s)"'
+    end_marker = 'freshness_duration="$((freshness_end - freshness_start))"'
+    start_index = full_script.index(start_marker)
+    end_index = full_script.index(end_marker) + len(end_marker)
+    freshness_branch = full_script[start_index:end_index]
+    script = (
+        "set -uo pipefail\nset +e\nmkdir -p diagnostics\n"
+        + freshness_branch
+        + '\necho "freshness_exit=${freshness_exit}"\n'
+    )
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo = Path(temp_dir)
+        (repo / "diagnostics").mkdir(parents=True, exist_ok=True)
+        if scope_paths_file_content is not None:
+            (repo / "diagnostics/freshness-scope-paths.txt").write_text(
+                scope_paths_file_content, encoding="utf-8"
+            )
+
+        fake_bin = repo / "bin"
+        fake_bin.mkdir(parents=True, exist_ok=True)
+        fake_python = fake_bin / "python3"
+        # Records every invocation's argv (one per line) and always exits 0,
+        # so this test asserts argument construction, not check_doc_freshness's
+        # own pass/fail logic (already covered by test_check_doc_freshness.py).
+        fake_python.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            'if [[ "$1" == "scripts/validation/check_doc_freshness.py" ]]; then\n'
+            '  echo "$*" >> \"$(dirname "$0")/../fake-python-invocations.txt\"\n'
+            "  exit 0\n"
+            "fi\n"
+            "exit 1\n",
+            encoding="utf-8",
+        )
+        fake_python.chmod(0o755)
+
+        env = os.environ.copy()
+        env.update(
+            {
+                "FRESHNESS_SCOPED": freshness_scoped,
+                "FRESHNESS_SKIP": freshness_skip,
+                "PATH": f"{fake_bin}:{env.get('PATH', '')}",
+            }
+        )
+
+        completed = subprocess.run(
+            ["bash", "-c", script],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        invocations_file = repo / "fake-python-invocations.txt"
+        invocations = invocations_file.read_text(encoding="utf-8") if invocations_file.exists() else ""
+        return completed, invocations
 
 
 class Ci2WorkflowContractTests(unittest.TestCase):
@@ -306,6 +497,126 @@ class Ci2WorkflowContractTests(unittest.TestCase):
             "CI-2 workflow must bind GH_TOKEN exactly once in the closure-evidence step",
         )
 
+
+
+class Ci2FreshnessScopeBehaviorTests(unittest.TestCase):
+    """Executes the real extracted bash from the freshness-scoping steps (issue #558).
+
+    Complements Ci2WorkflowContractTests' string-presence assertions with
+    behavioral coverage: real git repos and a stub check_doc_freshness.py.
+    """
+
+    def setUp(self) -> None:
+        self.assertTrue(WORKFLOW_PATH.exists(), f"Missing workflow file: {WORKFLOW_PATH}")
+        self.workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    def test_pull_request_with_target_changes_is_scoped_to_changed_paths(self) -> None:
+        completed, outputs, scope_paths = _run_freshness_scope_script(
+            self.workflow_text,
+            event_name="pull_request",
+            changed_target_files=("wiki/concepts/a.md", "wiki/entities/b.md"),
+            changed_other_files=("README.md",),
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(outputs.get("scoped"), "true")
+        self.assertEqual(outputs.get("skip"), "false")
+        scoped_lines = set(scope_paths.splitlines())
+        self.assertEqual(scoped_lines, {"wiki/concepts/a.md", "wiki/entities/b.md"})
+        self.assertNotIn("README.md", scope_paths)
+
+    def test_pull_request_touching_no_target_files_is_skipped(self) -> None:
+        completed, outputs, scope_paths = _run_freshness_scope_script(
+            self.workflow_text,
+            event_name="pull_request",
+            changed_other_files=("README.md", "scripts/kb/foo.py"),
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(outputs.get("scoped"), "true")
+        self.assertEqual(outputs.get("skip"), "true")
+        self.assertEqual(scope_paths.strip(), "")
+
+    def test_pull_request_deleting_a_target_file_excludes_it_from_scope(self) -> None:
+        completed, outputs, scope_paths = _run_freshness_scope_script(
+            self.workflow_text,
+            event_name="pull_request",
+            deleted_target_files=("wiki/concepts/stale.md",),
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        # Nothing else changed besides the deletion, so this PR is a no-op for
+        # freshness scope (deleted files need no freshness check).
+        self.assertEqual(outputs.get("scoped"), "true")
+        self.assertEqual(outputs.get("skip"), "true")
+        self.assertNotIn("wiki/concepts/stale.md", scope_paths)
+
+    def test_push_event_disables_scoping_and_leaves_paths_file_empty(self) -> None:
+        completed, outputs, scope_paths = _run_freshness_scope_script(
+            self.workflow_text,
+            event_name="push",
+            changed_target_files=("wiki/concepts/a.md",),
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(outputs.get("scoped"), "false")
+        self.assertEqual(outputs.get("skip"), "false")
+        self.assertEqual(scope_paths.strip(), "")
+
+    def test_workflow_dispatch_event_disables_scoping(self) -> None:
+        completed, outputs, _scope_paths = _run_freshness_scope_script(
+            self.workflow_text,
+            event_name="workflow_dispatch",
+            changed_target_files=("wiki/concepts/a.md",),
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(outputs.get("scoped"), "false")
+        self.assertEqual(outputs.get("skip"), "false")
+
+    def test_skip_branch_short_circuits_without_invoking_freshness_check(self) -> None:
+        completed, invocations = _run_freshness_diagnostics_branch_script(
+            self.workflow_text,
+            freshness_scoped="true",
+            freshness_skip="true",
+            scope_paths_file_content=None,
+        )
+        self.assertIn("freshness_exit=0", completed.stdout)
+        self.assertEqual(invocations, "", "Skip branch must not invoke check_doc_freshness.py at all")
+
+    def test_scoped_branch_passes_one_path_flag_per_changed_file(self) -> None:
+        completed, invocations = _run_freshness_diagnostics_branch_script(
+            self.workflow_text,
+            freshness_scoped="true",
+            freshness_skip="false",
+            scope_paths_file_content="wiki/concepts/a.md\nwiki/entities/b.md\n",
+        )
+        self.assertIn("freshness_exit=0", completed.stdout)
+        self.assertIn("--path wiki/concepts/a.md", invocations)
+        self.assertIn("--path wiki/entities/b.md", invocations)
+        self.assertNotIn("--path wiki/concepts --path wiki/entities --path wiki/analyses", invocations)
+
+    def test_scoped_branch_with_missing_scope_file_fails_closed(self) -> None:
+        completed, invocations = _run_freshness_diagnostics_branch_script(
+            self.workflow_text,
+            freshness_scoped="true",
+            freshness_skip="false",
+            scope_paths_file_content=None,
+        )
+        self.assertIn("freshness_exit=1", completed.stdout)
+        self.assertEqual(
+            invocations,
+            "",
+            "Must fail closed instead of invoking check_doc_freshness.py with no paths",
+        )
+
+    def test_unscoped_branch_passes_full_repo_wide_directories(self) -> None:
+        completed, invocations = _run_freshness_diagnostics_branch_script(
+            self.workflow_text,
+            freshness_scoped="false",
+            freshness_skip="false",
+            scope_paths_file_content=None,
+        )
+        self.assertIn("freshness_exit=0", completed.stdout)
+        self.assertIn(
+            "--path wiki/concepts --path wiki/entities --path wiki/analyses",
+            invocations,
+        )
 
 
 class WorkflowYamlSyntaxTests(unittest.TestCase):
