@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — extends ADR-019
+Accepted — extends ADR-019; amended in-place (see § Amendment)
 
 ## Date
 
@@ -33,9 +33,16 @@ Adopt HSI ADR-030's label-driven dispatch model with these local rules:
 5. Failure recovery uses strike counting over paginated issue label events:
    - strikes = `in-progress` label-add events in last 30 days
    - counted only after the most recent human `ready-for-agent` apply
-   - reset anchor also advances on merged-close events
+   - reset anchor advances only on verified merged-close events
    - strike 1-2: restore `ready-for-agent`
    - strike 3+: transition to `needs-triage`
+6. As amended, merge-conflict redispatch is a separate human-triage path. It restores
+   `ready-for-agent` for a new session but does not consume a dispatch strike,
+   because issue-event data cannot reliably attribute a merge conflict to the
+   preceding Jules attempt.
+7. As amended, a strike reset requires a closed-event commit to resolve to a
+   pull request with verified `merged_at` evidence; a `closed` event with only
+   `commit_id` does not reset the anchor.
 
 ```mermaid
 stateDiagram-v2
@@ -78,6 +85,20 @@ stateDiagram-v2
 This adoption tracks HSI ADR-030 (currently Proposed). If HSI promotes, amends,
 or rejects ADR-030, re-review ADR-033 within 14 days and amend this ADR if
 local behavior should change.
+
+## Amendment
+
+### 2026-08-14 — Separate merge-conflict recovery from dispatch strikes
+
+- **What changed:** Merge-conflict redispatch is explicitly excluded from
+  dispatch-strike accounting, and strike resets require verified merged-PR
+  metadata rather than `commit_id` alone.
+- **Why:** A merge conflict can arise from concurrent work or branch drift and
+  is not reliable evidence that the Jules dispatch failed. A commit-associated
+  issue closure likewise does not prove a pull request was merged.
+- **What did not change:** Actual dispatch failures still use paginated
+  `in-progress` event counting, restore `ready-for-agent` for strikes one and
+  two, and escalate the third strike to `needs-triage`.
 
 ## Related decisions
 

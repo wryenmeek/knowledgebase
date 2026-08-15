@@ -39,7 +39,7 @@ This directory captures durable architecture and governance decisions derived fr
 | [ADR-030](ADR-030-cli-write-confirmation.md) | CLI write-confirmation flag migration | Accepted — amended in-place |
 | [ADR-031](ADR-031-lock-holder-pid-tracking.md) | Lock holder PID/start-time tracking for lock-unavailable UX | Accepted — extends ADR-005 |
 | [ADR-032](ADR-032-fleet-quota-saturation-soft-warn.md) | Fleet quota-saturation soft-warn exit code for bare FAILED_PRECONDITION | Accepted — extends ADR-019; amended in-place |
-| [ADR-033](ADR-033-fleet-label-driven-dispatch-adoption.md) | Fleet label-driven dispatch adoption with 3-strikes abort | Accepted — extends ADR-019 |
+| [ADR-033](ADR-033-fleet-label-driven-dispatch-adoption.md) | Fleet label-driven dispatch adoption with 3-strikes abort | Accepted — extends ADR-019; amended in-place |
 | [ADR-034](ADR-034-fleet-no-notification-on-quota-saturation.md) | Fleet no-notification policy on quota saturation | Accepted — extends ADR-032 |
 | [ADR-035](ADR-035-tier-3-multi-provider-fallback-deferral.md) | Tier 3 multi-provider implementation-agent fallback — 30-day deferral | Accepted — extends ADR-019 |
 | [ADR-036](ADR-036-fleet-orchestrator-github-app-identity.md) | Fleet orchestrator GitHub App identity | Accepted — amended in-place: extend sensitive-path defense to `.github/actions/**` (see § Amendment); extends ADR-019 and resolves Issue #310 |

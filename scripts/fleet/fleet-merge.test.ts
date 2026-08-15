@@ -30,7 +30,7 @@ describe("fleet-merge issue label lifecycle", () => {
     ]);
   });
 
-  test("merge-conflict redispatch restores ready-for-agent and removes progress labels", async () => {
+  test("merge-conflict redispatch only removes progress labels and restores ready-for-agent", async () => {
     const calls: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       calls.push(String(input));
@@ -50,24 +50,21 @@ describe("fleet-merge issue label lifecycle", () => {
     ]);
   });
 
-  test("awaiting-feedback removal applies for all exit states from awaitingUserFeedback", async () => {
-    const exitStates = ["inProgress", "completed", "failed"] as const;
-    for (const _state of exitStates) {
-      const calls: string[] = [];
-      globalThis.fetch = (async (input: RequestInfo | URL) => {
-        calls.push(String(input));
-        return new Response("", { status: 200 });
-      }) as typeof fetch;
+  test("clearing progress labels removes awaiting-feedback", async () => {
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return new Response("", { status: 200 });
+    }) as typeof fetch;
 
-      await clearIssueProgressLabelsAfterMerge(
-        "https://api.github.test/repos/wryenmeek/knowledgebase",
-        { Authorization: "******" },
-        351
-      );
+    await clearIssueProgressLabelsAfterMerge(
+      "https://api.github.test/repos/wryenmeek/knowledgebase",
+      { Authorization: "******" },
+      351
+    );
 
-      expect(
-        calls.some((url) => url.endsWith("/labels/awaiting-feedback"))
-      ).toBeTrue();
-    }
+    expect(calls).toContain(
+      "https://api.github.test/repos/wryenmeek/knowledgebase/issues/351/labels/awaiting-feedback"
+    );
   });
 });
