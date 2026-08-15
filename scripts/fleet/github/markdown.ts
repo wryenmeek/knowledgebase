@@ -108,3 +108,16 @@ export async function getIssuesAsMarkdown(
   const issues = await issueFetcher(options);
   return toIssueDocMarkdown(issues);
 }
+
+/**
+ * Fetches issues once and returns both the raw count and the rendered
+ * markdown, so callers (e.g. fleet-plan.ts) can decide whether to skip
+ * planning entirely on a zero-issue result without a second API call.
+ */
+export async function getIssuesAndMarkdown(
+  options?: FleetIssueQueryOptions,
+  issueFetcher: typeof getIssues = getIssues
+): Promise<{ count: number; markdown: string }> {
+  const issues = await issueFetcher(options);
+  return { count: issues.length, markdown: await toIssueDocMarkdown(issues) };
+}
