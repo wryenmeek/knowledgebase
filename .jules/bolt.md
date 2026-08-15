@@ -67,3 +67,7 @@
 ') + (0 if content.endswith('
 ') else 1) if content else 0)` provides zero practical, measurable performance benefits on small text files (e.g., hook config files) and destroys code readability. The codebase's strict performance persona rules explicitly forbid micro-optimizations that sacrifice readability for negligible impact.
 **Action:** Never replace `splitlines()` with complex string-counting math unless benchmarking proves a measurable bottleneck on significantly large payloads where memory allocation is a true constraint.
+
+## 2026-07-10 - [Path bounds checking optimization]
+**Learning:** Using `try/except Path.relative_to()` is slower than the natively implemented string comparison under the hood of `Path.is_relative_to()` for bounds checking. This is an anti-pattern that slows down path validation logic.
+**Action:** Replace `try/except Path.relative_to()` with `Path.is_relative_to()` for performance gains across the python codebase.
