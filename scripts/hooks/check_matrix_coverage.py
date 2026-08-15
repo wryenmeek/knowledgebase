@@ -72,11 +72,11 @@ def _normalize(path_str: str) -> str | None:
         return path_utils.normalize_repo_relative_path(path_str)
     except Exception:
         # Fallback: use raw posix path relative to repo root.
-        try:
-            p = Path(path_str).resolve()
+        p = Path(path_str).resolve()
+        # OPTIMIZATION: Use is_relative_to instead of try/except relative_to
+        if p.is_relative_to(_REPO_ROOT):
             return str(p.relative_to(_REPO_ROOT)).replace("\\", "/")
-        except ValueError:
-            return None
+        return None
 
 
 def main(argv: list[str] | None = None) -> int:
