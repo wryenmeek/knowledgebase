@@ -71,3 +71,7 @@
 ## 2026-07-10 - [Path bounds checking optimization]
 **Learning:** Using `try/except Path.relative_to()` is slower than the natively implemented string comparison under the hood of `Path.is_relative_to()` for bounds checking. This is an anti-pattern that slows down path validation logic.
 **Action:** Replace `try/except Path.relative_to()` with `Path.is_relative_to()` for performance gains across the python codebase.
+
+## 2026-08-15 - Do not "optimize" fleet-orchestrator-token/action.yml description fields
+**Learning:** `.github/actions/fleet-orchestrator-token/action.yml` uses `${{ secrets.X }}` and `${{ steps.<id>.outputs.token }}` literals inside YAML `description:` strings purely as documentation examples for callers. These are never evaluated as GitHub Actions expressions (description fields are not an expression context) and are not linted by CI (`CI-2 workflow lint (actionlint)` only scans `.github/workflows/*.yml`, not `.github/actions/**`). This file has been "fixed" and reverted at least 4 times by unrelated dispatches mistaking it for a real lint violation (see issue #563).
+**Action:** Do not edit description-field text in this file. If a task's scope doesn't explicitly include `.github/actions/fleet-orchestrator-token/action.yml` in its `file_ownership`, do not touch it.
