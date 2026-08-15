@@ -51,13 +51,10 @@ description: |
 
 inputs:
   app-id:
-    description: |
-      FLEET_APP_ID secret value. Caller passes ${{ secrets.FLEET_APP_ID }}.
+    description: FLEET_APP_ID secret value. Caller passes it via input.
     required: true
   private-key:
-    description: |
-      FLEET_APP_PRIVATE_KEY secret value. Caller passes
-      ${{ secrets.FLEET_APP_PRIVATE_KEY }}.
+    description: FLEET_APP_PRIVATE_KEY secret value. Caller passes it via input.
     required: true
   permission-contents:
     description: |
@@ -80,10 +77,7 @@ inputs:
 
 outputs:
   token:
-    description: |
-      App installation token. Empty string when secrets absent OR when the
-      mint step failed (continue-on-error). Caller falls back via
-      `${{ steps.<id>.outputs.token || secrets.GITHUB_TOKEN }}`.
+    description: App installation token. Empty string when secrets absent OR when the mint step failed. Caller falls back via their own step ID.
     value: ${{ steps.app-token.outputs.token }}
   available:
     description: |
@@ -113,7 +107,7 @@ runs:
         fi
 
     # Mint the token. continue-on-error is load-bearing: callers fall back
-    # to GITHUB_TOKEN via `${{ steps.<id>.outputs.token || secrets.GITHUB_TOKEN }}`.
+    # to GITHUB_TOKEN via steps.app-token.outputs.token or their own token secret.
     # SHA pin per ADR-036 (v3.2.0 supports permission-* token-level narrowing).
     - id: app-token
       if: steps.detect.outputs.available == 'true'
