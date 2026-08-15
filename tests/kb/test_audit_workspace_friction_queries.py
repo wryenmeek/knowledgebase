@@ -85,7 +85,9 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                     self.assertTrue(lowered.startswith(("select", "with")))
                     self.assertNotIn(";", sql)
                     self.assertIsNone(
-                        re.search(r"\b(insert|update|delete|drop|alter|create)\b", lowered)
+                        re.search(
+                            r"\b(insert|update|delete|drop|alter|create)\b", lowered
+                        )
                     )
                     self.assertIn("now() - interval '7 days'", lowered)
                     self.assertIn("limit 50", lowered)
@@ -106,20 +108,50 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         module = self._module()
         templates = self._templates(module)
 
-        self.assertIn("sr.ref_type = 'commit'", templates["chronicle_commits"]["primary"])
-        self.assertIn("ILIKE '%/chronicle improve%'", templates["chronicle_commits"]["primary"])
-        self.assertIn("HAVING COUNT(*) > 1", templates["repeated_user_prompts"]["primary"])
-        self.assertIn("md5(COALESCE(t.user_message, '')) AS prompt_fingerprint", templates["repeated_user_prompts"]["primary"])
-        self.assertIn("length(COALESCE(t.user_message, '')) AS prompt_length", templates["repeated_user_prompts"]["primary"])
-        self.assertNotIn("AS repeated_prompt", templates["repeated_user_prompts"]["primary"])
-        self.assertNotIn("AS repeated_prompt", templates["repeated_user_prompts"]["broader"])
-        self.assertIn("e.type = 'tool.execution_complete'", templates["repeated_context_loads"]["primary"])
-        self.assertIn("e.tool_start_name = 'skill'", templates["repeated_context_loads"]["primary"])
+        self.assertIn(
+            "sr.ref_type = 'commit'", templates["chronicle_commits"]["primary"]
+        )
+        self.assertIn(
+            "ILIKE '%/chronicle improve%'", templates["chronicle_commits"]["primary"]
+        )
+        self.assertIn(
+            "HAVING COUNT(*) > 1", templates["repeated_user_prompts"]["primary"]
+        )
+        self.assertIn(
+            "md5(COALESCE(t.user_message, '')) AS prompt_fingerprint",
+            templates["repeated_user_prompts"]["primary"],
+        )
+        self.assertIn(
+            "length(COALESCE(t.user_message, '')) AS prompt_length",
+            templates["repeated_user_prompts"]["primary"],
+        )
+        self.assertNotIn(
+            "AS repeated_prompt", templates["repeated_user_prompts"]["primary"]
+        )
+        self.assertNotIn(
+            "AS repeated_prompt", templates["repeated_user_prompts"]["broader"]
+        )
+        self.assertIn(
+            "e.type = 'tool.execution_complete'",
+            templates["repeated_context_loads"]["primary"],
+        )
+        self.assertIn(
+            "e.tool_start_name = 'skill'",
+            templates["repeated_context_loads"]["primary"],
+        )
         hook_primary = templates["hook_bypasses"]["primary"]
         self.assertIn("ILIKE '%no-verify%'", hook_primary)
-        self.assertLess(hook_primary.index("WITH candidate_commits"), hook_primary.index("ILIKE '%no-verify%'"))
-        self.assertLess(hook_primary.index("WHERE sr.ref_type = 'commit'"), hook_primary.index("ILIKE '%no-verify%'"))
-        self.assertIn("tool_complete_success = false", templates["retry_loops"]["primary"])
+        self.assertLess(
+            hook_primary.index("WITH candidate_commits"),
+            hook_primary.index("ILIKE '%no-verify%'"),
+        )
+        self.assertLess(
+            hook_primary.index("WHERE sr.ref_type = 'commit'"),
+            hook_primary.index("ILIKE '%no-verify%'"),
+        )
+        self.assertIn(
+            "tool_complete_success = false", templates["retry_loops"]["primary"]
+        )
         self.assertIn("INTERVAL '15 minutes'", templates["retry_loops"]["primary"])
 
     def test_sql_factories_use_uniform_private_helper_shape(self) -> None:
@@ -134,7 +166,9 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         ):
             with self.subTest(helper_name=helper_name):
                 signature = inspect.signature(getattr(module, helper_name))
-                self.assertEqual(tuple(signature.parameters), ("repo_filter", "interval"))
+                self.assertEqual(
+                    tuple(signature.parameters), ("repo_filter", "interval")
+                )
                 for parameter in signature.parameters.values():
                     self.assertEqual(parameter.kind, inspect.Parameter.KEYWORD_ONLY)
 
@@ -153,7 +187,9 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             self._create_duckdb_session_store_schema(db)
             for friction_class, template in self._templates(module).items():
                 for pass_name in ("primary", "broader"):
-                    with self.subTest(friction_class=friction_class, pass_name=pass_name):
+                    with self.subTest(
+                        friction_class=friction_class, pass_name=pass_name
+                    ):
                         db.execute(template[pass_name]).fetchall()
         finally:
             db.close()
@@ -189,7 +225,9 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                     self.assertEqual(row["repository"], REPO)
                     self.assertEqual(row["friction_class"], friction_class)
                     if friction_class == "chronicle_commits":
-                        self.assertLessEqual(row["chronicle_prompt_at"], row["commit_recorded_at"])
+                        self.assertLessEqual(
+                            row["chronicle_prompt_at"], row["commit_recorded_at"]
+                        )
                 if friction_class == "chronicle_commits":
                     rows_by_commit = {row["commit_sha"]: row for row in result["rows"]}
                     self.assertEqual(
@@ -232,7 +270,9 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
                     self.assertEqual(row["repository"], "other/repo")
                     self.assertEqual(row["friction_class"], friction_class)
                     if friction_class == "chronicle_commits":
-                        self.assertLessEqual(row["chronicle_prompt_at"], row["commit_recorded_at"])
+                        self.assertLessEqual(
+                            row["chronicle_prompt_at"], row["commit_recorded_at"]
+                        )
                 if friction_class == "chronicle_commits":
                     rows_by_commit = {row["commit_sha"]: row for row in result["rows"]}
                     self.assertEqual(
@@ -261,10 +301,12 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         self.assertEqual(row["prompt_length"], len("Repeat this instruction"))
         self.assertEqual(
             row["prompt_fingerprint"],
-            hashlib.md5(b"Repeat this instruction").hexdigest(),
+            hashlib.md5(b"Repeat this instruction", usedforsecurity=False).hexdigest(),
         )
 
-    def test_retry_loop_rows_match_same_tool_request_payload_without_raw_args(self) -> None:
+    def test_retry_loop_rows_match_same_tool_request_payload_without_raw_args(
+        self,
+    ) -> None:
         module = self._module()
         template = module.retry_loops_query(repo=REPO)
         query_log: list[str] = []
@@ -282,13 +324,21 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
         row = next(row for row in result["rows"] if row["tool_name"] == "bash")
         self.assertEqual(row["retry_count"], 1)
         self.assertNotIn("arguments_json", row)
-        self.assertEqual(row["request_length"], len('{"command": "python3 -m pytest tests/kb/test_x.py"}'))
+        self.assertEqual(
+            row["request_length"],
+            len('{"command": "python3 -m pytest tests/kb/test_x.py"}'),
+        )
         self.assertEqual(
             row["request_fingerprint"],
-            hashlib.md5(b'{"command": "python3 -m pytest tests/kb/test_x.py"}').hexdigest(),
+            hashlib.md5(
+                b'{"command": "python3 -m pytest tests/kb/test_x.py"}',
+                usedforsecurity=False,
+            ).hexdigest(),
         )
 
-    def test_retry_loop_window_includes_exact_boundary_and_excludes_after_boundary(self) -> None:
+    def test_retry_loop_window_includes_exact_boundary_and_excludes_after_boundary(
+        self,
+    ) -> None:
         module = self._module()
         template = module.retry_loops_query(repo=REPO)
         query_log: list[str] = []
@@ -342,7 +392,11 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             )
         with self.assertRaises(ValueError):
             module.run_two_pass(
-                {"primary": "", "broader": "", "fallback": module.LIMITED_EVIDENCE_SENTINEL},
+                {
+                    "primary": "",
+                    "broader": "",
+                    "fallback": module.LIMITED_EVIDENCE_SENTINEL,
+                },
                 lambda sql: (),
             )
 
@@ -496,15 +550,34 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
     def _insert_chronicle_rows(db: sqlite3.Connection, repository: str) -> None:
         db.executemany(
             "INSERT INTO sessions (id, repository) VALUES (?, ?)",
-            (("chronicle-1", repository), ("chronicle-2", repository), ("chronicle-no-match", repository)),
+            (
+                ("chronicle-1", repository),
+                ("chronicle-2", repository),
+                ("chronicle-no-match", repository),
+            ),
         )
         db.executemany(
             "INSERT INTO turns (session_id, turn_index, user_message, timestamp) VALUES (?, ?, ?, ?)",
             (
                 ("chronicle-1", 1, "/chronicle improve", "2026-06-12 09:00:00"),
-                ("chronicle-1", 2, "Please run /chronicle improve again", "2026-06-12 09:10:00"),
-                ("chronicle-1", 3, "/chronicle improve after commit", "2026-06-12 09:45:00"),
-                ("chronicle-2", 1, "Please run /chronicle improve", "2026-06-12 09:05:00"),
+                (
+                    "chronicle-1",
+                    2,
+                    "Please run /chronicle improve again",
+                    "2026-06-12 09:10:00",
+                ),
+                (
+                    "chronicle-1",
+                    3,
+                    "/chronicle improve after commit",
+                    "2026-06-12 09:45:00",
+                ),
+                (
+                    "chronicle-2",
+                    1,
+                    "Please run /chronicle improve",
+                    "2026-06-12 09:05:00",
+                ),
                 ("chronicle-no-match", 1, "ordinary prompt", "2026-06-12 09:10:00"),
             ),
         )
@@ -513,13 +586,21 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
             (
                 ("chronicle-1", "commit", "sha-chronicle-1", "2026-06-12 09:30:00"),
                 ("chronicle-2", "commit", "sha-chronicle-2", "2026-06-12 09:35:00"),
-                ("chronicle-no-match", "commit", "sha-chronicle-no-match", "2026-06-12 09:40:00"),
+                (
+                    "chronicle-no-match",
+                    "commit",
+                    "sha-chronicle-no-match",
+                    "2026-06-12 09:40:00",
+                ),
             ),
         )
 
     @staticmethod
     def _insert_repeated_prompt_rows(db: sqlite3.Connection, repository: str) -> None:
-        db.execute("INSERT INTO sessions (id, repository) VALUES (?, ?)", ("prompt-repeat", repository))
+        db.execute(
+            "INSERT INTO sessions (id, repository) VALUES (?, ?)",
+            ("prompt-repeat", repository),
+        )
         db.executemany(
             "INSERT INTO turns (session_id, turn_index, user_message, timestamp) VALUES (?, ?, ?, ?)",
             (
@@ -531,38 +612,84 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
     @staticmethod
     def _insert_repeated_context_rows(db: sqlite3.Connection, repository: str) -> None:
-        db.execute("INSERT INTO sessions (id, repository) VALUES (?, ?)", ("context-repeat", repository))
+        db.execute(
+            "INSERT INTO sessions (id, repository) VALUES (?, ?)",
+            ("context-repeat", repository),
+        )
         db.executemany(
             "INSERT INTO events (session_id, timestamp, type, tool_start_name, tool_complete_call_id, tool_complete_success) VALUES (?, ?, ?, ?, ?, ?)",
             (
-                ("context-repeat", "2026-06-12 11:00:00", "tool.execution_complete", "skill", "skill-call-1", 1),
-                ("context-repeat", "2026-06-12 11:05:00", "tool.execution_complete", "skill", "skill-call-2", 1),
-                ("context-repeat", "2026-06-12 11:10:00", "tool.execution_complete", "bash", "bash-call-1", 1),
+                (
+                    "context-repeat",
+                    "2026-06-12 11:00:00",
+                    "tool.execution_complete",
+                    "skill",
+                    "skill-call-1",
+                    1,
+                ),
+                (
+                    "context-repeat",
+                    "2026-06-12 11:05:00",
+                    "tool.execution_complete",
+                    "skill",
+                    "skill-call-2",
+                    1,
+                ),
+                (
+                    "context-repeat",
+                    "2026-06-12 11:10:00",
+                    "tool.execution_complete",
+                    "bash",
+                    "bash-call-1",
+                    1,
+                ),
             ),
         )
         db.executemany(
             "INSERT INTO tool_requests (session_id, tool_call_id, arguments_json) VALUES (?, ?, ?)",
             (
-                ("context-repeat", "skill-call-1", '{"skill": "audit-knowledgebase-workspace"}'),
-                ("context-repeat", "skill-call-2", '{"skill": "audit-knowledgebase-workspace"}'),
+                (
+                    "context-repeat",
+                    "skill-call-1",
+                    '{"skill": "audit-knowledgebase-workspace"}',
+                ),
+                (
+                    "context-repeat",
+                    "skill-call-2",
+                    '{"skill": "audit-knowledgebase-workspace"}',
+                ),
                 ("context-repeat", "bash-call-1", '{"command": "true"}'),
             ),
         )
 
     @staticmethod
     def _insert_hook_bypass_rows(db: sqlite3.Connection, repository: str) -> None:
-        db.execute("INSERT INTO sessions (id, repository) VALUES (?, ?)", ("hook-bypass", repository))
+        db.execute(
+            "INSERT INTO sessions (id, repository) VALUES (?, ?)",
+            ("hook-bypass", repository),
+        )
         db.execute(
             "INSERT INTO turns (session_id, turn_index, user_message, timestamp) VALUES (?, ?, ?, ?)",
             ("hook-bypass", 1, "Commit the current changes", "2026-06-12 12:00:00"),
         )
         db.execute(
             "INSERT INTO events (session_id, timestamp, type, tool_start_name, tool_complete_call_id, tool_complete_success) VALUES (?, ?, ?, ?, ?, ?)",
-            ("hook-bypass", "2026-06-12 12:03:00", "tool.execution_complete", "bash", "hook-bypass-call", 1),
+            (
+                "hook-bypass",
+                "2026-06-12 12:03:00",
+                "tool.execution_complete",
+                "bash",
+                "hook-bypass-call",
+                1,
+            ),
         )
         db.execute(
             "INSERT INTO tool_requests (session_id, tool_call_id, arguments_json) VALUES (?, ?, ?)",
-            ("hook-bypass", "hook-bypass-call", '{"command": "git commit --no-verify"}'),
+            (
+                "hook-bypass",
+                "hook-bypass-call",
+                '{"command": "git commit --no-verify"}',
+            ),
         )
         db.execute(
             "INSERT INTO session_refs (session_id, ref_type, ref_value, created_at) VALUES (?, ?, ?, ?)",
@@ -571,24 +698,84 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
     @staticmethod
     def _insert_retry_loop_rows(db: sqlite3.Connection, repository: str) -> None:
-        db.execute("INSERT INTO sessions (id, repository) VALUES (?, ?)", ("retry-loop", repository))
+        db.execute(
+            "INSERT INTO sessions (id, repository) VALUES (?, ?)",
+            ("retry-loop", repository),
+        )
         db.executemany(
             "INSERT INTO events (session_id, timestamp, type, tool_start_name, tool_complete_call_id, tool_complete_success) VALUES (?, ?, ?, ?, ?, ?)",
             (
-                ("retry-loop", "2026-06-12 13:00:00", "tool.execution_complete", "bash", "bash-failed", 0),
-                ("retry-loop", "2026-06-12 13:05:00", "tool.execution_complete", "bash", "bash-retry", 1),
-                ("retry-loop", "2026-06-12 13:07:00", "tool.execution_complete", "bash", "bash-unrelated", 1),
-                ("retry-loop", "2026-06-12 13:30:00", "tool.execution_complete", "view", "view-late", 1),
-                ("retry-loop", "2026-06-12 14:00:00", "tool.execution_complete", "view", "view-failed", 0),
-                ("retry-loop", "2026-06-12 14:15:00", "tool.execution_complete", "view", "view-retry-edge", 1),
-                ("retry-loop", "2026-06-12 14:15:01", "tool.execution_complete", "view", "view-retry-late", 1),
+                (
+                    "retry-loop",
+                    "2026-06-12 13:00:00",
+                    "tool.execution_complete",
+                    "bash",
+                    "bash-failed",
+                    0,
+                ),
+                (
+                    "retry-loop",
+                    "2026-06-12 13:05:00",
+                    "tool.execution_complete",
+                    "bash",
+                    "bash-retry",
+                    1,
+                ),
+                (
+                    "retry-loop",
+                    "2026-06-12 13:07:00",
+                    "tool.execution_complete",
+                    "bash",
+                    "bash-unrelated",
+                    1,
+                ),
+                (
+                    "retry-loop",
+                    "2026-06-12 13:30:00",
+                    "tool.execution_complete",
+                    "view",
+                    "view-late",
+                    1,
+                ),
+                (
+                    "retry-loop",
+                    "2026-06-12 14:00:00",
+                    "tool.execution_complete",
+                    "view",
+                    "view-failed",
+                    0,
+                ),
+                (
+                    "retry-loop",
+                    "2026-06-12 14:15:00",
+                    "tool.execution_complete",
+                    "view",
+                    "view-retry-edge",
+                    1,
+                ),
+                (
+                    "retry-loop",
+                    "2026-06-12 14:15:01",
+                    "tool.execution_complete",
+                    "view",
+                    "view-retry-late",
+                    1,
+                ),
             ),
         )
         db.executemany(
             "INSERT INTO tool_requests (session_id, tool_call_id, arguments_json) VALUES (?, ?, ?)",
             (
-                ("retry-loop", "bash-failed", '{"command": "python3 -m pytest tests/kb/test_x.py"}'),
-                ("retry-loop", "bash-retry", '{"command": "python3 -m pytest tests/kb/test_x.py"}'),
+                (
+                    "retry-loop",
+                    "bash-failed",
+                    '{"command": "python3 -m pytest tests/kb/test_x.py"}',
+                ),
+                (
+                    "retry-loop",
+                    "bash-retry",
+                    '{"command": "python3 -m pytest tests/kb/test_x.py"}',
+                ),
                 ("retry-loop", "bash-unrelated", '{"command": "git status --short"}'),
                 ("retry-loop", "view-late", '{"path": "AGENTS.md"}'),
                 ("retry-loop", "view-failed", '{"path": "wiki/index.md"}'),
@@ -599,7 +786,7 @@ class AuditWorkspaceFrictionQueryTests(unittest.TestCase):
 
     @staticmethod
     def _sqlite_md5(value: str) -> str:
-        return hashlib.md5(value.encode("utf-8")).hexdigest()
+        return hashlib.md5(value.encode("utf-8"), usedforsecurity=False).hexdigest()
 
     @staticmethod
     def _sqlite_regexp_extract(value: str, pattern: str, group_index: int) -> str:
