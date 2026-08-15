@@ -54,4 +54,9 @@
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
 ## 2026-08-14 - [Performance] Avoiding splitlines()[0] on large text strings
 **Learning:** Using `text.splitlines()[0]` to extract just the first line of a potentially large text document (like a PR body) tokenizes the entire string into an $O(N)$ memory array just to return the first element.
-**Action:** Use `.find('\n')` and string slicing (e.g., `text[:nl_pos]`) to extract the first line without allocating an array of all lines, achieving $O(1)$ memory allocation.
+**Action:** Use `.find('
+')` and string slicing (e.g., `text[:nl_pos]`) to extract the first line without allocating an array of all lines, achieving $O(1)$ memory allocation.
+
+## 2026-06-25 - [Performance] Fast-path literal check to avoid O(N) splitlines allocation
+**Learning:** Using `splitlines()` on multiline text unconditionally tokenizes the entire string into an $O(N)$ memory array, creating unnecessary allocations and garbage collection overhead. For fast-path validation like searching for specific prefixes or substrings (e.g. `repo://` or `sources:`), adding an `if target not in text` early return completely bypasses this expensive operation when the target pattern is absent, yielding massive performance gains for large files.
+**Action:** When extracting or validating string structures line-by-line where a specific literal substring is expected, always add a fast-path literal string check (`in` or `not in`) before calling `splitlines()`.
