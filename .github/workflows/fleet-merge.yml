@@ -105,6 +105,15 @@ jobs:
           # generated verbatim by Jules and tied to the actual
           # repository_owner login, is the authoritative signal instead.
           #
+          # The match itself is fully line-anchored (`^...$` with the `m`
+          # flag) and requires the opening `*`, so a PR merely quoting the
+          # footer inline within other prose does not match — the footer
+          # must occupy its own complete line, exactly as Jules renders it.
+          # The session ID is captured once and backreferenced (`\k<sid>`)
+          # so the link text and the URL segment must be the SAME value —
+          # a forged `[fake](.../real-id)` cannot satisfy the match (Codex
+          # finding on #566, round 4).
+          #
           # `gh pr list --jq` accepts exactly one expression argument and
           # does not forward extra jq CLI flags (e.g. `--arg`) — piping to a
           # separate `jq --arg` invocation avoids unsafe shell interpolation
@@ -119,7 +128,7 @@ jobs:
                     (.author.login == "google-labs-jules") or
                     (.author.login == $owner and
                       ((.body // "") | test(
-                        "PR created automatically by Jules for task \\[[A-Za-z0-9_-]+\\]\\(https://jules\\.google\\.com/task/[A-Za-z0-9_-]+\\) started by @" + $owner_lc + "\\*";
+                        "(?m)^\\*PR created automatically by Jules for task \\[(?<sid>[A-Za-z0-9_-]+)\\]\\(https://jules\\.google\\.com/task/\\k<sid>\\) started by @" + $owner_lc + "\\*$";
                         "i"
                       ))
                     )
@@ -302,20 +311,20 @@ jobs:
           # post-shift — see ADR-019 Consequences row 3 (issue #82 / #299 /
           # #307 / #308).
           #
-          # A bare Jules task-URL substring in the PR body is spoofable —
-          # any owner-authored PR that merely mentions a Jules URL (e.g. in
-          # troubleshooting discussion) would satisfy a plain test(...).
-          # Owner-authored PRs are therefore only trusted when the body
-          # matches the EXACT, anchored footer Jules generates (see
-          # buildDispatchCommentBody in scripts/fleet/fleet-dispatch.ts):
-          # "*PR created automatically by Jules for task [<sessionId>]
-          # (https://jules.google.com/task/<sessionId>) started by
-          # @<repository_owner>*". Cross-checking against
-          # .fleet/*/sessions.json was considered and rejected: that file
-          # is only ever committed to main by manual/historical commits,
-          # never by the automated fleet-dispatch-after-merge.yml pipeline
-          # itself, so real automation-generated PRs would always fail that
-          # lookup (Codex finding on #566, round 3).
+          # Cross-checking against .fleet/*/sessions.json was considered
+          # and rejected: that file is only ever committed to main by
+          # manual/historical commits, never by the automated
+          # fleet-dispatch-after-merge.yml pipeline itself, so real
+          # automation-generated PRs would always fail that lookup (Codex
+          # finding on #566, round 3).
+          #
+          # The match is fully line-anchored (`^...$` with the `m` flag)
+          # and requires the opening `*`, so a PR merely quoting the footer
+          # inline within other prose does not match. The session ID is
+          # captured once and backreferenced (`\k<sid>`) so the link text
+          # and URL segment must be the SAME value — a forged
+          # `[fake](.../real-id)` cannot satisfy the match (Codex finding
+          # on #566, round 4).
           #
           # `gh pr list --jq` takes exactly one expression argument and does
           # not forward extra jq CLI flags like `--arg` — pipe to a separate
@@ -330,7 +339,7 @@ jobs:
                     (.author.login == "google-labs-jules") or
                     (.author.login == $owner and
                       ((.body // "") | test(
-                        "PR created automatically by Jules for task \\[[A-Za-z0-9_-]+\\]\\(https://jules\\.google\\.com/task/[A-Za-z0-9_-]+\\) started by @" + $owner_lc + "\\*";
+                        "(?m)^\\*PR created automatically by Jules for task \\[(?<sid>[A-Za-z0-9_-]+)\\]\\(https://jules\\.google\\.com/task/\\k<sid>\\) started by @" + $owner_lc + "\\*$";
                         "i"
                       ))
                     )

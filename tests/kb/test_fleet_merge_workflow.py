@@ -24,6 +24,9 @@ that previously asserted Phase 1 contained the now-Phase-2b steps.
 
 from __future__ import annotations
 
+import json
+import re
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 import yaml
@@ -333,6 +336,15 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
             self.workflow_text,
         )
         self.assertIn("started by @", self.workflow_text)
+        # The match must be fully line-anchored (multiline `^...$`) so a PR
+        # merely quoting the footer inline within other prose does not
+        # match (Codex finding on #566, round 4).
+        self.assertIn("(?m)^\\\\*PR created automatically by Jules for task", self.workflow_text)
+        # The session ID must be captured once and backreferenced so the
+        # link text and the URL segment are required to be the SAME value —
+        # a forged `[fake](.../real-id)` must not satisfy the match.
+        self.assertIn("(?<sid>[A-Za-z0-9_-]+)", self.workflow_text)
+        self.assertIn("\\\\k<sid>", self.workflow_text)
 
     def test_gh_pr_list_jq_flag_receives_single_expression(self) -> None:
         """`gh pr list --jq` must not be passed extra CLI flags like --arg.
@@ -378,6 +390,78 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         self.assertIn("PR created automatically by Jules for task", manual_sweep_text)
         self.assertIn("started by @", manual_sweep_text)
         self.assertNotIn('test("jules\\\\.google\\\\.com/task/")', manual_sweep_text)
+
+    def test_anchored_footer_regex_rejects_spoofed_prose_accepts_real_footer(self) -> None:
+        """Behavioral proof (Prove-It Pattern) that the anchored footer jq
+        regex — run for real via `jq`, not merely asserted as a substring —
+        correctly rejects every spoof variant Codex identified across
+        rounds 2-4 while still matching the real Jules-generated footer.
+
+        Extracts the exact jq test(...) expression from the find-pr step
+        and evaluates it against representative PR bodies using the real
+        `jq` binary, so this test would fail if the regex were ever
+        accidentally weakened (unanchored, missing backreference, etc.).
+        """
+        match = re.search(
+            r'test\(\s*\n\s*"((?:[^"\\]|\\.)*)" \+ \$owner_lc \+ "((?:[^"\\]|\\.)*)"',
+            self.workflow_text,
+        )
+        self.assertIsNotNone(match, "could not locate the anchored footer regex in find-pr")
+        pattern_prefix, pattern_suffix = match.group(1), match.group(2)
+
+        def matches(body: str, owner: str = "wryenmeek") -> bool:
+            jq_expr = (
+                f'($owner_lc) as $owner_lc | '
+                f'(. | test("{pattern_prefix}" + $owner_lc + "{pattern_suffix}"; "i"))'
+            )
+            result = subprocess.run(
+                ["jq", "-r", "--arg", "owner_lc", owner, jq_expr],
+                input=json.dumps(body),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.stdout.strip() == "true"
+
+        real_footer = (
+            "Some description.\n\n---\n"
+            "*PR created automatically by Jules for task "
+            "[mock-session-id-0](https://jules.google.com/task/mock-session-id-0) "
+            "started by @wryenmeek*"
+        )
+        self.assertTrue(matches(real_footer), "must match the real, well-formed Jules footer")
+
+        bare_mention = "random PR mentions https://jules.google.com/task/nonexistent-999 in passing"
+        self.assertFalse(matches(bare_mention), "must reject a bare task-URL mention (round 2 spoof)")
+
+        embedded_in_prose = (
+            "Discussing troubleshooting: quoting "
+            "*PR created automatically by Jules for task "
+            "[fake](https://jules.google.com/task/real) started by @wryenmeek* "
+            "inline in prose."
+        )
+        self.assertFalse(
+            matches(embedded_in_prose),
+            "must reject the footer quoted inline within other prose, not on its own line (round 4 spoof)",
+        )
+
+        mismatched_session_ids = (
+            "*PR created automatically by Jules for task "
+            "[fake](https://jules.google.com/task/real) started by @wryenmeek*"
+        )
+        self.assertFalse(
+            matches(mismatched_session_ids),
+            "must reject when the link text and URL session IDs disagree (round 4 spoof)",
+        )
+
+        prefixed_text = (
+            "prefix text *PR created automatically by Jules for task "
+            "[z](https://jules.google.com/task/z) started by @wryenmeek*"
+        )
+        self.assertFalse(
+            matches(prefixed_text),
+            "must reject when the footer is not at the start of its own line (round 4 spoof)",
+        )
 
     # ── Re-dispatch ordering ─────────────────────────────────────────────────
 
