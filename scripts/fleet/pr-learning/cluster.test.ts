@@ -132,6 +132,14 @@ describe("determineEligibility", () => {
     ]);
     expect(reason).toBe("closed_cause_prevention");
   });
+
+  test("different closure causes do not satisfy one prevention-cause threshold", () => {
+    const reason = determineEligibility([
+      makeEnvelope(1, "closed_unmerged", "scope_creep"),
+      makeEnvelope(2, "closed_unmerged", "unsafe_change"),
+    ]);
+    expect(reason).toBeNull();
+  });
 });
 
 describe("clusterEnvelopes", () => {

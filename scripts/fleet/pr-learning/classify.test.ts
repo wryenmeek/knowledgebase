@@ -67,6 +67,13 @@ describe("outcome state machine precedence", () => {
     expect(envelope.closure_cause).toBeNull();
   });
 
+  test("merged_at without verified identity is quarantined as ambiguous", () => {
+    const envelope = classify(
+      makeRecord({ merged_at: "2026-08-05T00:00:00.000Z", session_link: null })
+    );
+    expect(envelope.outcome).toBe("ambiguous");
+  });
+
   test("merge_commit_sha present without merged_at is never treated as merged", () => {
     const envelope = classify(
       makeRecord({ merged_at: null, merge_commit_sha: SHA_A, mergeable_state: "clean", check_conclusion: "pass" })

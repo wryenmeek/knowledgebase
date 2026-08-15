@@ -410,7 +410,10 @@ async function main(): Promise<void> {
     .map((value) => value.trim())
     .filter((value) => value.length > 0)
     .map((value) => {
-      const parsed = Number.parseInt(value, 10);
+      if (!/^[1-9]\d*$/.test(value)) {
+        throw new Error(`PR_LEARNING_EVIDENCE_PR_NUMBERS contains an invalid entry: "${value}"`);
+      }
+      const parsed = Number(value);
       if (!Number.isInteger(parsed) || parsed <= 0) {
         throw new Error(`PR_LEARNING_EVIDENCE_PR_NUMBERS contains a non-positive-integer entry: "${value}"`);
       }

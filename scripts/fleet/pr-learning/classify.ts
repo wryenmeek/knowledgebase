@@ -156,9 +156,12 @@ function determineOutcome(
   const cutoffMs = options.stabilizationCutoffMs ?? DEFAULT_STABILIZATION_CUTOFF_MS;
   const asOfMs = Date.parse(options.asOf);
 
-  // Rule 1: merged_at is the sole merge authority, evaluated before any
-  // other field (including merge_commit_sha, identity, or event history).
+  // A merge timestamp is authoritative only after the same identity and
+  // repository-boundary checks required for every terminal outcome.
   if (record.merged_at !== null && record.merged_at.length > 0) {
+    if (!passesIdentityPredicate(record, options)) {
+      return { outcome: "ambiguous", closure_cause: null };
+    }
     return { outcome: "merged", closure_cause: null };
   }
 

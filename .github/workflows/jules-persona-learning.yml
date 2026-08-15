@@ -145,6 +145,9 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      pull-requests: read
+      issues: read
+      checks: read
     outputs:
       digest: ${{ steps.collect.outputs.digest }}
       expires_at: ${{ steps.collect.outputs.expires_at }}
@@ -218,6 +221,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: read
+      checks: read
     concurrency:
       # Serializes concurrent propose runs for the *same* candidate
       # (mirroring `propose.ts`'s `proposalConcurrencyGroupName` /

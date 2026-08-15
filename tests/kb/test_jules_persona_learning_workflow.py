@@ -125,12 +125,18 @@ def test_workflow_level_permissions_are_read_only(workflow: dict) -> None:
 
 
 def test_collect_job_has_read_only_permissions(collect_job: dict) -> None:
-    """The `collect` job must declare `contents: read` only — no write
-    scope of any kind (it is the read-only collector/report boundary).
+    """The `collect` job must declare only read scopes — no write scope
+    of any kind (it is the read-only collector/report boundary).
     """
     perms = collect_job.get("permissions", {})
-    assert perms == {"contents": "read"}, (
-        f"collect job permissions must be exactly {{'contents': 'read'}}, got: {perms}"
+    assert perms == {
+        "contents": "read",
+        "pull-requests": "read",
+        "issues": "read",
+        "checks": "read",
+    }, (
+        "collect job permissions must be exactly the required read scopes, "
+        f"got: {perms}"
     )
     for value in perms.values():
         assert value == "read", f"collect job must not declare any write permission, got: {perms}"
@@ -144,7 +150,7 @@ def test_propose_job_has_narrow_write_permissions(propose_job: dict) -> None:
     perms = propose_job.get("permissions", {})
     assert perms.get("contents") == "write"
     assert perms.get("pull-requests") == "write"
-    allowed_keys = {"contents", "pull-requests"}
+    allowed_keys = {"contents", "pull-requests", "issues", "checks"}
     assert set(perms.keys()) <= allowed_keys, (
         f"propose job must declare only {allowed_keys}, got: {set(perms.keys())}"
     )

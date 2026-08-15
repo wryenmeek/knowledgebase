@@ -95,7 +95,7 @@ function hasVerifiedMergedLesson(members: readonly EvidenceEnvelope[]): boolean 
  * number of `unknown`/`ambiguous` records, never satisfies this.
  */
 function hasTwoDistinctClosedCauses(members: readonly EvidenceEnvelope[]): boolean {
-  const distinctPrNumbers = new Set<number>();
+  const causeBuckets = new Map<ClosureCause, Set<number>>();
   for (const member of members) {
     if (member.outcome !== "closed_unmerged") {
       continue;
@@ -103,9 +103,11 @@ function hasTwoDistinctClosedCauses(members: readonly EvidenceEnvelope[]): boole
     if (member.closure_cause === null || member.closure_cause === "unknown") {
       continue;
     }
-    distinctPrNumbers.add(member.pr_number);
+    const bucket = causeBuckets.get(member.closure_cause) ?? new Set<number>();
+    bucket.add(member.pr_number);
+    causeBuckets.set(member.closure_cause, bucket);
   }
-  return distinctPrNumbers.size >= 2;
+  return [...causeBuckets.values()].some((prNumbers) => prNumbers.size >= 2);
 }
 
 /**

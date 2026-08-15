@@ -74,7 +74,10 @@ async function main(): Promise<void> {
   const collectorCommit = requireEnv("GITHUB_SHA");
   const collectorRunId = requireEnv("GITHUB_RUN_ID");
   const repositoryOwner = requireEnv("GITHUB_REPOSITORY_OWNER");
-  const outputPath = process.argv[2] ?? "pr-learning-report.json";
+  const outputPath = process.argv[2];
+  if (outputPath === undefined || outputPath.length === 0) {
+    throw new Error("an explicit out-of-tree report path is required");
+  }
 
   if (!/^[0-9a-f]{40}$/i.test(collectorCommit)) {
     throw new Error(`GITHUB_SHA must be a 40-character hex commit SHA, got: ${collectorCommit}`);
@@ -121,7 +124,7 @@ async function main(): Promise<void> {
       // per R1/R13, not a bypass.
       sessionVerifier: NullSessionVerifier,
     });
-    if (!result.complete) {
+    if (!result.complete || classifyErrors.length > 0) {
       complete = false;
     }
     collectionErrors.push(...result.errors.map((message) => `${persona}: ${message}`));
