@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import { jules } from "@google/jules-sdk";
 import { analyzeIssuesPrompt, getFleetDate } from "./prompts/analyze-issues.js";
-import { getIssuesAsMarkdown } from "./github/markdown.js";
+import { getIssuesAndMarkdown } from "./github/markdown.js";
 import { branchExists, getGitRepoInfo, getCurrentBranch } from "./github/git.js";
 import { assertFleetEnvironment } from "./env.js";
 import {
@@ -60,7 +60,23 @@ export async function main(): Promise<void> {
     });
   }
 
-  const issuesMarkdown = await getIssuesAsMarkdown({ labels: ["ready-for-agent"] });
+  const { count: readyIssueCount, markdown: issuesMarkdown } = await getIssuesAndMarkdown({
+    labels: ["ready-for-agent"],
+  });
+
+  if (readyIssueCount === 0) {
+    // Contract: fleet-plan must exit 0 as a no-op when there are no
+    // ready-for-agent issues, rather than spawning a Jules planning session
+    // that produces an empty issue_tasks.{json,md} manifest. Writing that
+    // empty manifest still matches the path filter on the Phase 2b dispatch
+    // workflow (`.fleet/*/issue_tasks.json`), triggering a no-op dispatch
+    // run for no benefit. See PR #555 Codex review comment / issue #563.
+    console.log(
+      `✅ No ready-for-agent issues found for ${repoInfo.fullName} — skipping planning session (no-op).`
+    );
+    return;
+  }
+
   // Capture the fleet date at planning time so fleet-dispatch reads the same
   // dated directory even if Jules takes more than a day to post its PR.
   const fleetDate = getFleetDate();

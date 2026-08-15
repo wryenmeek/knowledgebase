@@ -24,3 +24,13 @@
 **Vulnerability:** Token exposure via stderr logs and expression injection (`${{ ... }}`) via GitHub-flavoured markdown rendering.
 **Learning:** API error messages can contain sensitive credentials (e.g., `ghp_`, `github_pat_`, base64 strings) which can be exposed if stderr is not properly redacted. GitHub markdown might trigger side effects if `${{ ... }}` expressions are not neutralized.
 **Prevention:** Centralize and ensure consistent markdown sanitization and error log redaction across all scripts interfacing with external platforms (like GitHub and Google Drive).
+
+## 2024-08-09 - Unintended Network Exposure in Webhook Receivers
+**Vulnerability:** WSGI entrypoints defaulted to binding to 0.0.0.0, exposing them to all network interfaces.
+**Learning:** Defaulting to 0.0.0.0 without environment configuration exposes the service unnecessarily. Passing HOST="" from environment variables can also mistakenly bind to empty strings if not trimmed and checked.
+**Prevention:** Use an environment variable with a safe local fallback, explicitly handling trimmed non-empty strings (`os.environ.get('HOST', '').strip() or '127.0.0.1'`).
+
+## 2026-08-15 - Do not "optimize" fleet-orchestrator-token/action.yml description fields
+**Vulnerability:** None — this is a false-positive pattern, not a real vulnerability.
+**Learning:** `.github/actions/fleet-orchestrator-token/action.yml` uses `${{ secrets.X }}` and `${{ steps.<id>.outputs.token }}` literals inside YAML `description:` strings purely as documentation examples for callers. Description fields are not an expression-evaluation context, so this is inert text, not an "expression injection" risk. It is also not linted by CI. This file has been repeatedly "fixed" and reverted by unrelated dispatches mistaking it for a real finding (see issue #563).
+**Prevention:** Do not flag or edit description-field `${{ }}` text in this file as a security finding. If a task's scope doesn't explicitly include `.github/actions/fleet-orchestrator-token/action.yml` in its `file_ownership`, do not touch it.

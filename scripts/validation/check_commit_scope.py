@@ -38,26 +38,30 @@ SURFACE = "scripts/validation/check_commit_scope.py"
 # Each token maps to one or more sensitive path prefixes (see _PATH_TO_TOKENS).
 # Pure substring matching is intentionally rejected to prevent false negatives
 # such as ``wikipedia`` matching ``wiki`` or ``Adrian`` matching ``adr``.
-GATE_B_TOKENS: frozenset[str] = frozenset({
-    "wiki",
-    "schema",
-    "adr",
-    "adrs",
-    "agents",
-    "copilot",
-    "contracts",
-    "write_utils",
-    "spec",
-    "workflows",
-    "pre-commit",
-    "jules",
-})
+GATE_B_TOKENS: frozenset[str] = frozenset(
+    {
+        "wiki",
+        "schema",
+        "adr",
+        "adrs",
+        "agents",
+        "copilot",
+        "contracts",
+        "write_utils",
+        "spec",
+        "workflows",
+        "pre-commit",
+        "jules",
+    }
+)
 
 # Build the regex from the token set (longest tokens first to avoid partial
 # shadowing; the alternation is anchored by \b so ordering is irrelevant for
 # correctness, but longest-first is conventional).
 _GATE_B_TOKEN_RE = re.compile(
-    r"\b(?:" + "|".join(re.escape(t) for t in sorted(GATE_B_TOKENS, key=len, reverse=True)) + r")\b",
+    r"\b(?:"
+    + "|".join(re.escape(t) for t in sorted(GATE_B_TOKENS, key=len, reverse=True))
+    + r")\b",
     re.IGNORECASE,
 )
 
@@ -106,7 +110,13 @@ def check_gate_b(
     word-boundary token match — in the PR title or the first line of the PR
     body.
     """
-    body_first_line = (pr_body or "").splitlines()[0].strip() if pr_body else ""
+    body_first_line = ""
+    if pr_body:
+        nl_pos = pr_body.find("\n")
+        if nl_pos != -1:
+            body_first_line = pr_body[:nl_pos].strip()
+        else:
+            body_first_line = pr_body.strip()
     combined = f"{pr_title}\n{body_first_line}"
     tokens = _present_tokens(combined)
 
@@ -122,11 +132,9 @@ def check_gate_b(
     if not uncovered:
         return True, []
 
-    needed_tokens = sorted({
-        tok
-        for surf in uncovered
-        for tok in _PATH_TO_TOKENS.get(surf, ())
-    })
+    needed_tokens = sorted(
+        {tok for surf in uncovered for tok in _PATH_TO_TOKENS.get(surf, ())}
+    )
     surfaces_str = ", ".join(f"'{s}'" for s in sorted(uncovered))
     return False, [
         f"Gate B failed: PR touches sensitive path(s) {surfaces_str} but neither "
@@ -186,11 +194,15 @@ def _default_reverts_validator(value: str) -> bool:
         try:
             subprocess.run(
                 ["git", "cat-file", "-e", f"{value}^{{commit}}"],
-                check=True, capture_output=True, timeout=15,
+                check=True,
+                capture_output=True,
+                timeout=15,
             )
             subprocess.run(
                 ["git", "merge-base", "--is-ancestor", value, "main"],
-                check=True, capture_output=True, timeout=15,
+                check=True,
+                capture_output=True,
+                timeout=15,
             )
             return True
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
@@ -204,7 +216,8 @@ def _default_reverts_validator(value: str) -> bool:
             try:
                 result = subprocess.run(
                     ["gh", subcmd, "view", issue_num, "--json", "number"],
-                    capture_output=True, timeout=15,
+                    capture_output=True,
+                    timeout=15,
                 )
                 if result.returncode == 0:
                     return True
@@ -245,7 +258,9 @@ def check_gate_c(
     for key, val in commit_trailers + body_trailers:
         if key.lower() == "reverts":
             val_stripped = val.strip()
-            if _REVERTS_SHA_RE.match(val_stripped) or _REVERTS_REF_RE.match(val_stripped):
+            if _REVERTS_SHA_RE.match(val_stripped) or _REVERTS_REF_RE.match(
+                val_stripped
+            ):
                 if reverts_validator(val_stripped):
                     return True, []
         elif key.lower() == "cleanup":
@@ -266,12 +281,15 @@ def check_gate_c(
 # Subprocess helpers for CI entry point
 # ---------------------------------------------------------------------------
 
+
 def _get_pr_files(pr_number: str) -> list[dict[str, object]]:
     """Return list of changed files with additions/deletions for *pr_number*."""
     try:
         result = subprocess.run(
             ["gh", "pr", "view", pr_number, "--json", "files"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             print(
@@ -291,7 +309,9 @@ def _get_last_commit_msg() -> str:
     try:
         result = subprocess.run(
             ["git", "log", "-1", "--format=%B", "HEAD"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         if result.returncode != 0:
             return ""
@@ -304,13 +324,14 @@ def _get_last_commit_msg() -> str:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> int:
     pr_number = os.environ.get("PR_NUMBER", "").strip()
     pr_title = os.environ.get("PR_TITLE", "").strip()
     pr_body = os.environ.get("PR_BODY", "")
 
     if not pr_number:
-        print(f"::error::PR_NUMBER environment variable is required.", file=sys.stderr)
+        print("::error::PR_NUMBER environment variable is required.", file=sys.stderr)
         return 1
 
     files = _get_pr_files(pr_number)

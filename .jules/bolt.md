@@ -52,3 +52,26 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
+
+## 2026-08-14 - [Performance] Avoiding splitlines()[0] on large text strings
+**Learning:** Using `text.splitlines()[0]` to extract just the first line of a potentially large text document (like a PR body) tokenizes the entire string into an $O(N)$ memory array just to return the first element.
+**Action:** Use `.find('
+')` and string slicing (e.g., `text[:nl_pos]`) to extract the first line without allocating an array of all lines, achieving $O(1)$ memory allocation.
+
+## 2026-06-25 - [Performance] Fast-path literal check to avoid O(N) splitlines allocation
+**Learning:** Using `splitlines()` on multiline text unconditionally tokenizes the entire string into an $O(N)$ memory array, creating unnecessary allocations and garbage collection overhead. For fast-path validation like searching for specific prefixes or substrings (e.g. `repo://` or `sources:`), adding an `if target not in text` early return completely bypasses this expensive operation when the target pattern is absent, yielding massive performance gains for large files.
+**Action:** When extracting or validating string structures line-by-line where a specific literal substring is expected, always add a fast-path literal string check (`in` or `not in`) before calling `splitlines()`.
+
+## 2024-05-20 - [Performance] Anti-pattern: Replacing splitlines() with manual ternary newline counting
+**Learning:** While `splitlines()` allocates memory to create an array, manually counting lines with an unreadable ternary expression like `(content.count('
+') + (0 if content.endswith('
+') else 1) if content else 0)` provides zero practical, measurable performance benefits on small text files (e.g., hook config files) and destroys code readability. The codebase's strict performance persona rules explicitly forbid micro-optimizations that sacrifice readability for negligible impact.
+**Action:** Never replace `splitlines()` with complex string-counting math unless benchmarking proves a measurable bottleneck on significantly large payloads where memory allocation is a true constraint.
+
+## 2026-07-10 - [Path bounds checking optimization]
+**Learning:** Using `try/except Path.relative_to()` is slower than the natively implemented string comparison under the hood of `Path.is_relative_to()` for bounds checking. This is an anti-pattern that slows down path validation logic.
+**Action:** Replace `try/except Path.relative_to()` with `Path.is_relative_to()` for performance gains across the python codebase.
+
+## 2026-08-15 - Do not "optimize" fleet-orchestrator-token/action.yml description fields
+**Learning:** `.github/actions/fleet-orchestrator-token/action.yml` uses `${{ secrets.X }}` and `${{ steps.<id>.outputs.token }}` literals inside YAML `description:` strings purely as documentation examples for callers. These are never evaluated as GitHub Actions expressions (description fields are not an expression context) and are not linted by CI (`CI-2 workflow lint (actionlint)` only scans `.github/workflows/*.yml`, not `.github/actions/**`). This file has been "fixed" and reverted at least 4 times by unrelated dispatches mistaking it for a real lint violation (see issue #563).
+**Action:** Do not edit description-field text in this file. If a task's scope doesn't explicitly include `.github/actions/fleet-orchestrator-token/action.yml` in its `file_ownership`, do not touch it.

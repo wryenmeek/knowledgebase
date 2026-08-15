@@ -36,12 +36,25 @@ describe("fleet entrypoint wiring", () => {
     expect(planSource).toContain('from "./preMergeSanityCheck.js"');
     expect(planSource).toContain("expectedPlanningArtifactPaths");
     expect(planSource).toContain("buildPreMergeSanityPromptBlock(expectedPlanningArtifactPaths)");
-    expect(planSource).toContain('getIssuesAsMarkdown({ labels: ["ready-for-agent"] })');
+    expect(planSource).toContain('getIssuesAndMarkdown({\n    labels: ["ready-for-agent"],\n  })');
     expect(planSource).toContain("issue_tasks.md");
     expect(planSource).toContain("issue_tasks.json");
 
     expect(dispatchSource).toContain('from "./preMergeSanityCheck.js"');
     expect(dispatchSource).toContain("buildPreMergeSanityPromptBlock([], { allowAdditional: true })");
+  });
+
+  test("fleet-plan exits as a no-op before invoking jules.run() when there are 0 ready-for-agent issues", async () => {
+    const planSource = await Bun.file(entrypointPath("fleet-plan.ts")).text();
+
+    expect(planSource).toContain("readyIssueCount === 0");
+    // The no-op branch must return before jules.run() and before GITHUB_OUTPUT
+    // is written, so downstream steps see an empty plan_session_id and skip
+    // storing a pending session (see fleet-plan.yml "Store pending session ID").
+    const noOpBranchIndex = planSource.indexOf("readyIssueCount === 0");
+    const julesRunIndex = planSource.indexOf("jules.run({");
+    expect(noOpBranchIndex).toBeGreaterThan(-1);
+    expect(julesRunIndex).toBeGreaterThan(noOpBranchIndex);
   });
 
   test("merge inspects per-task PR file lists before CI and merge", async () => {
