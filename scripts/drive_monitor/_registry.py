@@ -334,7 +334,7 @@ def add_file_entry(
     mime_type:
         MIME type of the Drive file.
     wiki_namespace:
-        Relative namespace prefix (e.g. ``"cms/"``); used to derive the
+        Relative namespace prefix (e.g. ``"policy/"``); used to derive the
         target wiki page path.
 
     Raises

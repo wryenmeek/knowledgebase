@@ -28,3 +28,8 @@
 **Vulnerability:** The `scripts/validation/check_issue_closure_evidence.py` script dumped raw `completed.stderr` output directly into `RuntimeError` messages when `gh` CLI commands failed, risking exposure of GitHub tokens (e.g. `ghp_`) in GitHub Actions logs.
 **Learning:** External command wrappers like `subprocess.run` do not automatically redact secrets. Passing unredacted output into exceptions bubbles the raw text into user-visible logs, violating credential safety.
 **Prevention:** Always wrap external subprocess stderr output with `scripts._redaction.redact_stderr` before formatting it into exceptions or log statements.
+
+## 2024-08-09 - Unintended Network Exposure in Webhook Receivers
+**Vulnerability:** WSGI entrypoints defaulted to binding to 0.0.0.0, exposing them to all network interfaces.
+**Learning:** Defaulting to 0.0.0.0 without environment configuration exposes the service unnecessarily. Passing HOST="" from environment variables can also mistakenly bind to empty strings if not trimmed and checked.
+**Prevention:** Use an environment variable with a safe local fallback, explicitly handling trimmed non-empty strings (`os.environ.get('HOST', '').strip() or '127.0.0.1'`).

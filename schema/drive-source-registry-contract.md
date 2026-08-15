@@ -22,8 +22,8 @@ raw/drive-sources/{alias}.source-registry.json
 
 Where `alias` is the operator-assigned slug for this Drive source. Examples:
 
-- `raw/drive-sources/cms-policies.source-registry.json`
-- `raw/drive-sources/coverage-docs.source-registry.json`
+- `raw/drive-sources/policy-documents.source-registry.json`
+- `raw/drive-sources/topic-guidance.source-registry.json`
 
 Aliases must be lowercase, alphanumeric, and hyphen-separated. No underscores, slashes,
 or dots other than the `.source-registry.json` suffix. No leading or trailing hyphens.
@@ -33,26 +33,26 @@ or dots other than the `.source-registry.json` suffix. No leading or trailing hy
 ```json
 {
   "version": "1",
-  "alias": "cms-policies",
+  "alias": "policy-documents",
   "credential_secret_name": "GDRIVE_SA_KEY",
   "changes_page_token": "AJE...",
   "last_full_scan_at": null,
   "folder_entries": [
     {
       "folder_id": "1BxiM...",
-      "folder_name": "CMS Policy Documents",
-      "wiki_namespace": "cms/",
+      "folder_name": "Policy Documents",
+      "wiki_namespace": "policy/",
       "tracking_status": "active"
     }
   ],
   "file_entries": [
     {
       "file_id": "1A2B3...",
-      "display_name": "coverage-guidance-2025.md",
-      "display_path": "CMS Policy Documents/coverage-guidance-2025.md",
+      "display_name": "guidance-2025.md",
+      "display_path": "Policy Documents/guidance-2025.md",
       "mime_type": "application/vnd.google-apps.document",
       "tracking_status": "active",
-      "wiki_page": "wiki/pages/topical/cms/coverage-guidance-2025.md",
+      "wiki_page": "wiki/pages/topical/policy/guidance-2025.md",
       "drive_version": 42,
       "md5_checksum_at_last_applied": null,
       "sha256_at_last_applied": "64hexchars...",
@@ -88,7 +88,7 @@ or dots other than the `.source-registry.json` suffix. No leading or trailing hy
 |---|---|---|---|
 | `folder_id` | string | Yes | Google Drive folder ID (alphanumeric, no slashes or traversal sequences). |
 | `folder_name` | string | Yes | Human-readable folder name (display only; not used for path construction). |
-| `wiki_namespace` | string | Yes | Wiki namespace prefix for files under this folder (e.g. `cms/`). Used to construct `wiki_page` paths. |
+| `wiki_namespace` | string | Yes | Wiki namespace prefix for files under this folder (e.g. `policy/`). Used to construct `wiki_page` paths. |
 | `tracking_status` | string enum | Yes | Monitoring state; see below. |
 
 ### `file_entries` fields

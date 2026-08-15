@@ -26,8 +26,8 @@ def validate_alias(alias: str) -> str:
 
     Aliases must be lowercase, alphanumeric, hyphen-separated slugs.
 
-    Example valid aliases: ``cms-guidelines``, ``policy-docs``, ``myalias``
-    Example invalid: ``CMS_Guidelines``, ``../evil``, ``my/alias``
+    Example valid aliases: ``policy-guidelines``, ``policy-docs``, ``myalias``
+    Example invalid: ``Policy_Guidelines``, ``../evil``, ``my/alias``
 
     Parameters
     ----------
@@ -222,7 +222,7 @@ def build_wiki_page_path(repo_root: Path, wiki_page: str) -> Path:
     repo_root:
         Absolute path to the knowledgebase repository root.
     wiki_page:
-        Repo-relative path to the wiki page (e.g. ``"wiki/cms/my-page.md"``).
+        Repo-relative path to the wiki page (e.g. ``"wiki/policy/my-page.md"``).
 
     Returns
     -------
