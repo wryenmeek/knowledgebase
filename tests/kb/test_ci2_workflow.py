@@ -240,6 +240,42 @@ class Ci2WorkflowContractTests(unittest.TestCase):
         self.assertIn("CLOSURE_EVIDENCE_EXIT", self.workflow_text)
         self.assertIn('echo "exit_code=${diagnostics_exit}" >> "${GITHUB_OUTPUT}"', self.workflow_text)
 
+    def test_freshness_check_is_diff_scoped_on_pull_request(self) -> None:
+        # Issue #558: a repo-wide freshness scan on every pull_request blocks
+        # ALL open PRs the moment any single wiki page anywhere crosses the
+        # 90-day SLA, regardless of what that PR touches. Guard that the
+        # pull_request path is scoped to files the PR itself changed, while
+        # push/workflow_dispatch retain the full repo-wide scan as the
+        # systemic safety net.
+        scope_step = extract_named_step_block(
+            self.workflow_text,
+            "Compute freshness check scope",
+            workflow_path=WORKFLOW_PATH,
+        )
+        self.assertIn("github.event.pull_request.base.sha", scope_step)
+        self.assertIn('git diff --name-only --diff-filter=ACMR', scope_step)
+        self.assertIn("wiki/concepts wiki/entities wiki/analyses", scope_step)
+        self.assertIn('if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then', scope_step)
+
+        diagnostics_step = extract_named_step_block(
+            self.workflow_text,
+            "Run analyst diagnostics (lint + unit tests)",
+            workflow_path=WORKFLOW_PATH,
+        )
+        self.assertIn("FRESHNESS_SCOPED", diagnostics_step)
+        self.assertIn("FRESHNESS_SKIP", diagnostics_step)
+        self.assertIn(
+            "check_doc_freshness skipped: PR touches no wiki/concepts, wiki/entities, or wiki/analyses markdown files (issue #558)",
+            diagnostics_step,
+        )
+        self.assertIn("diff-scoped, issue #558", diagnostics_step)
+        # The unscoped (push/workflow_dispatch) invocation must remain the
+        # full repo-wide scan as the systemic safety net.
+        self.assertIn(
+            "python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses --as-of",
+            diagnostics_step,
+        )
+
     def test_closure_evidence_token_is_step_scoped(self) -> None:
         closure_step = extract_named_step_block(
             self.workflow_text,

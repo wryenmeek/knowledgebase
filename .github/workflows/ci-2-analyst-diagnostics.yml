@@ -110,16 +110,58 @@ jobs:
       - name: Install test dependencies
         run: pip install --quiet pytest pytest-cov pyyaml
 
+      - name: Compute freshness check scope
+        id: freshness-scope
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # Issue #558: repo-wide freshness scans on every pull_request block ALL
+          # open PRs the instant any single wiki page anywhere crosses the 90-day
+          # SLA, regardless of what that PR actually touches. On pull_request
+          # events, scope the freshness gate to only the wiki/concepts,
+          # wiki/entities, and wiki/analyses markdown files the PR itself
+          # added or modified (deleted files are excluded — nothing to check).
+          # On push (post-merge, main) and workflow_dispatch, keep the full
+          # repo-wide scan as the systemic safety net.
+          mkdir -p diagnostics
+          : > diagnostics/diagnostics.log
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            git diff --name-only --diff-filter=ACMR "${PR_BASE_SHA}"...HEAD -- wiki/concepts wiki/entities wiki/analyses \
+              | grep -E '\.md$' > diagnostics/freshness-scope-paths.txt || true
+          else
+            : > diagnostics/freshness-scope-paths.txt
+          fi
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && [ ! -s diagnostics/freshness-scope-paths.txt ]; then
+            scoped=true
+            skip=true
+          elif [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            scoped=true
+            skip=false
+          else
+            scoped=false
+            skip=false
+          fi
+          {
+            echo "scoped=${scoped}"
+            echo "skip=${skip}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "[CI-2] freshness scope: event=${GITHUB_EVENT_NAME} scoped=${scoped} skip=${skip}" | tee -a diagnostics/diagnostics.log
+          cat diagnostics/freshness-scope-paths.txt | tee -a diagnostics/diagnostics.log
+
       - name: Run analyst diagnostics (lint + unit tests)
         id: diagnostics
         continue-on-error: true
+        env:
+          FRESHNESS_SCOPED: ${{ steps.freshness-scope.outputs.scoped }}
+          FRESHNESS_SKIP: ${{ steps.freshness-scope.outputs.skip }}
         run: |
           set -uo pipefail
           # GitHub invokes bash with -e by default. Disable fail-fast so this step
           # always captures all command exit codes and emits outputs deterministically.
           set +e
           mkdir -p diagnostics
-          : > diagnostics/diagnostics.log
 
           wrapper_start="$(date -u +%s)"
           echo "[CI-2] validate_wiki_governance wrapper" | tee -a diagnostics/diagnostics.log
@@ -129,9 +171,23 @@ jobs:
           wrapper_duration="$((wrapper_end - wrapper_start))"
 
           freshness_start="$(date -u +%s)"
-          echo "[CI-2] check_doc_freshness --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses" | tee -a diagnostics/diagnostics.log
-          python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 --failures-only 2>&1 | tee -a diagnostics/diagnostics.log
-          freshness_exit="${PIPESTATUS[0]}"
+          if [ "${FRESHNESS_SKIP}" = "true" ]; then
+            echo "[CI-2] check_doc_freshness skipped: PR touches no wiki/concepts, wiki/entities, or wiki/analyses markdown files (issue #558)" | tee -a diagnostics/diagnostics.log
+            freshness_exit=0
+          elif [ "${FRESHNESS_SCOPED}" = "true" ]; then
+            mapfile -t freshness_paths < diagnostics/freshness-scope-paths.txt
+            path_args=()
+            for p in "${freshness_paths[@]}"; do
+              path_args+=(--path "${p}")
+            done
+            echo "[CI-2] check_doc_freshness --scope wiki (diff-scoped, issue #558): ${freshness_paths[*]}" | tee -a diagnostics/diagnostics.log
+            python3 scripts/validation/check_doc_freshness.py --scope wiki "${path_args[@]}" --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 --failures-only 2>&1 | tee -a diagnostics/diagnostics.log
+            freshness_exit="${PIPESTATUS[0]}"
+          else
+            echo "[CI-2] check_doc_freshness --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses" | tee -a diagnostics/diagnostics.log
+            python3 scripts/validation/check_doc_freshness.py --scope wiki --path wiki/concepts --path wiki/entities --path wiki/analyses --as-of "$(date -u +%Y-%m-%d)" --max-age-days 90 --failures-only 2>&1 | tee -a diagnostics/diagnostics.log
+            freshness_exit="${PIPESTATUS[0]}"
+          fi
           freshness_end="$(date -u +%s)"
           freshness_duration="$((freshness_end - freshness_start))"
 
