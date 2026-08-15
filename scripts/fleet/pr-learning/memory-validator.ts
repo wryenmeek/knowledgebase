@@ -183,6 +183,37 @@ export function validateMemoryEntrySizes(entry: MemoryEntry): ValidationResult {
 }
 
 /**
+ * Scans every textual field of a `MemoryEntry` for CR/LF and other ASCII
+ * control characters (0x00-0x1F, 0x7F), excluding a plain space (0x20)
+ * and printable characters. Every rendered field in
+ * `renderMemoryEntryMarkdown` sits on its own single Markdown line (a
+ * heading line or a `**Label:** value` line); an embedded `\n` or `\r`
+ * would let a crafted field value inject an additional Markdown heading
+ * or line into the rendered block (e.g. a `scope` value containing
+ * `\n## Forged heading`), corrupting the append-only Markdown structure
+ * downstream. This check runs before rendering so no control character
+ * ever reaches `renderMemoryEntryMarkdown`.
+ */
+export function scanMemoryEntryForControlCharacters(entry: MemoryEntry): ValidationResult {
+  // eslint-disable-next-line no-control-regex -- intentional control-character scan
+  const CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/;
+  for (const field of MEMORY_ENTRY_TEXT_FIELDS) {
+    for (const value of field.values(entry)) {
+      const match = CONTROL_CHAR_RE.exec(value);
+      if (match) {
+        const codePoint = match[0].codePointAt(0) ?? 0;
+        return fail(
+          `field "${field.name}" contains a disallowed control character (0x${codePoint
+            .toString(16)
+            .padStart(2, "0")}); CR/LF and other control characters are not permitted`
+        );
+      }
+    }
+  }
+  return pass("no disallowed control character found");
+}
+
+/**
  * Scans every textual field of a `MemoryEntry` against the shared
  * `REDACTION_PATTERNS` (secrets, shell/command-substitution shapes,
  * workflow expressions, prompt-injection-shaped imperatives). Any match
@@ -296,6 +327,10 @@ export function validateMemoryEntry(
   const shape = validateMemoryEntryShape(entry);
   if (!shape.ok) {
     return shape;
+  }
+  const controlChars = scanMemoryEntryForControlCharacters(entry);
+  if (!controlChars.ok) {
+    return controlChars;
   }
   const sizes = validateMemoryEntrySizes(entry);
   if (!sizes.ok) {

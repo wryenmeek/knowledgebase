@@ -40,6 +40,16 @@ export const AWAITING_FEEDBACK_LABEL = "awaiting-feedback";
 export const NEEDS_TRIAGE_LABEL = "needs-triage";
 const LOOKBACK_WINDOW_DAYS = 30;
 const FAILURE_ABORT_THRESHOLD = 3;
+/**
+ * Bounds concurrent `listPullRequestsAssociatedWithCommit` calls made while
+ * enriching an issue's close events with merge evidence. A single issue's
+ * event history can contain many `closed` events (e.g. repeated
+ * reopen/close cycles); fanning all of them out unbounded via
+ * `Promise.all` risks GitHub secondary rate limiting. This is
+ * independent of `FLEET_MAX_PARALLEL`, which bounds concurrency across
+ * *tasks*, not across events within a single issue's history.
+ */
+export const MERGE_EVIDENCE_MAX_CONCURRENCY = 5;
 
 interface IssueEventActor {
   login?: string | null;
@@ -176,30 +186,28 @@ async function loadIssueEventsWithMergeEvidence(
     per_page: 100,
   });
 
-  return Promise.all(
-    events.map(async (event) => {
-      if (event.event !== "closed" || !event.commit_id) {
-        return event;
-      }
-      const associatedPullRequests =
-        await octokit.rest.repos.listPullRequestsAssociatedWithCommit({
-          owner,
-          repo,
-          commit_sha: event.commit_id,
-          per_page: 100,
-        });
-      return {
-        ...event,
-        verified_merged_pr: associatedPullRequests.data.some(
-          (pullRequest) =>
-            Boolean(
-              pullRequest.merged_at &&
-                Number.isFinite(Date.parse(pullRequest.merged_at))
-            )
-        ),
-      };
-    })
-  );
+  return mapWithConcurrency(events, MERGE_EVIDENCE_MAX_CONCURRENCY, async (event) => {
+    if (event.event !== "closed" || !event.commit_id) {
+      return event;
+    }
+    const associatedPullRequests =
+      await octokit.rest.repos.listPullRequestsAssociatedWithCommit({
+        owner,
+        repo,
+        commit_sha: event.commit_id,
+        per_page: 100,
+      });
+    return {
+      ...event,
+      verified_merged_pr: associatedPullRequests.data.some(
+        (pullRequest) =>
+          Boolean(
+            pullRequest.merged_at &&
+              Number.isFinite(Date.parse(pullRequest.merged_at))
+          )
+      ),
+    };
+  });
 }
 
 export function buildDispatchCommentBody(

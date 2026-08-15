@@ -162,6 +162,21 @@ def test_propose_job_depends_on_collect(propose_job: dict) -> None:
         assert needs == "collect"
 
 
+def test_propose_job_gated_on_environment_approval(propose_job: dict) -> None:
+    """The `propose` job must require approval on a dedicated GitHub
+    Environment — an authorization boundary independent of the
+    `mode: propose` dispatch-input gate, consistent with
+    `jules-archive-approval` (`jules-archive-stale.yml`) and
+    `sweep-real-delete-approval` (`sweep-stale-bot-branches.yml`)
+    elsewhere in this repository (finding-#4 remediation).
+    """
+    environment = propose_job.get("environment")
+    assert environment, "propose job must declare an `environment:` approval gate"
+    assert "propose" in str(environment), (
+        f"propose job's environment gate should be persona-learning-propose-specific, got: {environment!r}"
+    )
+
+
 def test_propose_job_gated_on_propose_mode(propose_job: dict) -> None:
     """The `propose` job must only run when `mode == 'propose'`."""
     condition = str(propose_job.get("if", ""))

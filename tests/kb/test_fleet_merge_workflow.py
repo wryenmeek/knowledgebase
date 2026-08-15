@@ -294,8 +294,45 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         """Author filter must not use endswith('[bot]') — too broad, merges any bot PR."""
         self.assertNotIn('endswith("[bot]")', self.workflow_text)
         self.assertNotIn("endswith('[bot]')", self.workflow_text)
-        # Must use an explicit equality check instead
-        self.assertIn('"google-labs-jules"', self.workflow_text)
+        # Must use an explicit equality check instead (the jq string is
+        # double-quoted with escaped inner quotes so shell variables such as
+        # ${REPO_OWNER} can be interpolated — see the repository-owner
+        # fallback test below).
+        self.assertIn("google-labs-jules", self.workflow_text)
+
+    def test_author_filter_accepts_repository_owner_login(self) -> None:
+        """Both fleet-merge author-filter jq expressions must also accept
+        github.repository_owner as a PR author login, not just the literal
+        'google-labs-jules' bot login.
+
+        Jules's auth model shifted from bot-as-opener to PAT-based posting
+        (PR #308 / Issue #82), where the PR opener is the human repository
+        owner. fleet-dispatch.yml's Phase 2a pre-filter already accounts for
+        this (`github.event.pull_request.user.login == github.repository_owner`),
+        but fleet-merge.yml's find-pr and manual-sweep steps historically only
+        matched the bot login, silently making every PAT-authored fleet PR
+        (planning or per-task) invisible to `gh pr list` and never merged.
+        """
+        find_pr_step = next(
+            step
+            for step in self.workflow["jobs"]["merge-on-ci-pass"]["steps"]
+            if step.get("id") == "find-pr"
+        )
+        find_pr_run = find_pr_step.get("run", "")
+        self.assertIn("REPO_OWNER", find_pr_step.get("env", {}))
+        self.assertIn("google-labs-jules", find_pr_run)
+        self.assertIn("REPO_OWNER", find_pr_run)
+
+        manual_sweep_job = self.workflow["jobs"]["manual-sweep"]
+        merge_step = next(
+            step
+            for step in manual_sweep_job["steps"]
+            if "gh pr list" in step.get("run", "")
+        )
+        merge_run = merge_step.get("run", "")
+        self.assertIn("REPO_OWNER", merge_step.get("env", {}))
+        self.assertIn("google-labs-jules", merge_run)
+        self.assertIn("REPO_OWNER", merge_run)
 
     # ── Jules persona PR learning loop exclusion (U6/R12) ───────────────────
 

@@ -55,6 +55,19 @@
 #     this repository's automation.
 #   - Credentials are step-scoped: `GH_TOKEN` is bound only on the
 #     collection/proposal-mutation steps, never at job or workflow level.
+#   - The `propose` job additionally requires approval on the
+#     `jules-persona-learning-propose-approval` GitHub Environment
+#     (configure required reviewers in Settings → Environments) — an
+#     explicit authorization boundary independent of the `mode: propose`
+#     dispatch-input gate, consistent with `jules-archive-approval`
+#     (`jules-archive-stale.yml`) elsewhere in this repository.
+#   - `propose` mode is currently unavailable end-to-end by design: the
+#     `collect` job's report carries `session_verification: "none"`
+#     because no authoritative Jules session/source registry is wired up
+#     yet (deferred follow-up work). `propose-cli.ts` refuses to proceed
+#     past artifact-binding validation whenever `session_verification` is
+#     not `"authoritative"` — see `schema/jules-pr-learning-contract.md`
+#     "Collector/proposer session-verification contract".
 name: Jules Persona Learning
 
 on:
@@ -189,6 +202,19 @@ jobs:
     if: ${{ inputs.mode == 'propose' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Explicit authorization boundary (finding-#4 remediation): requires a
+    # human reviewer approval on the `jules-persona-learning-propose`
+    # GitHub Environment (configure required reviewers in Settings →
+    # Environments) before this job's `contents: write` /
+    # `pull-requests: write` steps can run — even though `mode: propose`
+    # is already gated above, environment approval is a second,
+    # independent authorization boundary consistent with
+    # `jules-archive-approval` (`jules-archive-stale.yml`) and
+    # `sweep-real-delete-approval` (`sweep-stale-bot-branches.yml`)
+    # elsewhere in this repository. This job only ever runs for
+    # `mode: propose` (see the `if:` above), so the environment applies
+    # unconditionally here rather than via a ternary.
+    environment: jules-persona-learning-propose-approval
     permissions:
       contents: write
       pull-requests: write

@@ -224,6 +224,40 @@ unknown` or `outcome: ambiguous`, never satisfies eligibility.
 
 ---
 
+## Collector/proposer session-verification contract (R1, R6, R11, R13)
+
+Every `CollectionReport` (see `scripts/fleet/pr-learning/report.ts`) carries
+a top-level `session_verification: "authoritative" | "none"` field,
+recording whether the collection run(s) that produced it used a real,
+independently verified Jules session/source registry
+(`"authoritative"`) or `NullSessionVerifier`/no verifier at all
+(`"none"`, the fail-closed default when unspecified).
+
+This field is deliberately excluded from the report's content `digest` —
+it describes collection *provenance*, not evidence content — but every
+`propose` consumer must check it before doing anything else:
+
+- If `session_verification` is `"none"` (or absent, for an older artifact
+  schema), **every** candidate's `session_id` was quarantined `ambiguous`
+  by construction (R1), so no envelope can ever satisfy R6 eligibility.
+  `propose-cli.ts`'s `validateArtifactBindings` refuses to proceed with an
+  explicit "propose mode is unavailable" error at artifact-validation
+  time — before re-collection or eligibility re-derivation even run —
+  rather than allowing the operator to hit a misleading "does not satisfy
+  R6 eligibility" error deep in the propose flow.
+- Only `"authoritative"` permits `propose-cli.ts` to continue past
+  artifact-binding validation.
+
+As of this MVP, `collect-and-report-cli.ts` always passes
+`sessionVerification: "none"` to `buildCollectionReport` (see its module
+docstring) — no authoritative Jules session registry is wired up yet
+(deferred follow-up work per the loop's plan doc). **`propose` mode is
+therefore currently unavailable end-to-end**, by design: this matches the
+plan's explicit requirement that "proposal mode must fail closed before
+any write" until an authoritative verifier is wired.
+
+---
+
 ## TypeScript implementation
 
 The canonical TypeScript types, enums, and pure functions implementing this

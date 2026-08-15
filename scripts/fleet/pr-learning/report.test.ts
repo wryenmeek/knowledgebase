@@ -142,3 +142,33 @@ describe("buildCollectionReport summary views", () => {
     expect(report.personas.map((p) => p.persona)).toEqual(["bolt", "sentinel"]);
   });
 });
+
+describe("buildCollectionReport session_verification (collector/proposer contract boundary)", () => {
+  test('defaults to "none" (fail-closed) when sessionVerification is not supplied', () => {
+    const report = buildCollectionReport([makeEnvelope()], baseOptions());
+    expect(report.session_verification).toBe("none");
+  });
+
+  test('records "none" explicitly when the collector used NullSessionVerifier', () => {
+    const report = buildCollectionReport([makeEnvelope()], { ...baseOptions(), sessionVerification: "none" });
+    expect(report.session_verification).toBe("none");
+  });
+
+  test('records "authoritative" when an authoritative session verifier was wired', () => {
+    const report = buildCollectionReport([makeEnvelope()], {
+      ...baseOptions(),
+      sessionVerification: "authoritative",
+    });
+    expect(report.session_verification).toBe("authoritative");
+  });
+
+  test("session_verification does not affect the content digest", () => {
+    const envelopes = [makeEnvelope()];
+    const withNone = buildCollectionReport(envelopes, { ...baseOptions(), sessionVerification: "none" });
+    const withAuthoritative = buildCollectionReport(envelopes, {
+      ...baseOptions(),
+      sessionVerification: "authoritative",
+    });
+    expect(withNone.digest).toBe(withAuthoritative.digest);
+  });
+});

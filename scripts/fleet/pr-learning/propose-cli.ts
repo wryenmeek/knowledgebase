@@ -111,7 +111,12 @@ interface ArtifactBindings {
   generated_at: string;
   expires_at: string;
   artifact_digest: string;
-  report: { complete: boolean; digest: string; envelopes: EvidenceEnvelope[] };
+  report: {
+    complete: boolean;
+    digest: string;
+    envelopes: EvidenceEnvelope[];
+    session_verification?: "authoritative" | "none";
+  };
 }
 
 /**
@@ -150,9 +155,38 @@ export function validateArtifactBindings(
   if (!artifact.report.complete) {
     throw new Error("collector report is incomplete (complete=false); refusing to propose from partial evidence");
   }
+  // Fail-closed collector/proposer contract boundary (R1, R6, R13): if the
+  // collector artifact was produced with no authoritative Jules session
+  // verifier wired up (`"none"`, or absent on an older artifact schema),
+  // every candidate's `session_id` is quarantined `ambiguous` by
+  // construction and can never satisfy R6 eligibility. Refuse explicitly
+  // here — before re-collection and eligibility re-derivation even run —
+  // rather than allowing the caller to hit a misleading "does not satisfy
+  // R6 eligibility" error deep in the propose flow.
+  if (artifact.report.session_verification !== "authoritative") {
+    throw new Error(
+      "propose mode is unavailable: the collector artifact was produced with no authoritative Jules " +
+        'session verifier wired up (session_verification is "' +
+        (artifact.report.session_verification ?? "none") +
+        '", not "authoritative"). Every candidate is quarantined ambiguous under NullSessionVerifier and ' +
+        "cannot satisfy R6 eligibility; wire an authoritative JulesSessionVerifier into the collector before " +
+        "using propose mode."
+    );
+  }
 
   const digestPayload = JSON.stringify({
     report_digest: artifact.report.digest,
+    // Bound into artifact_digest (not just checked above) so that an
+    // artifact whose session_verification was flipped post-hoc — e.g. by
+    // an actor with artifact write access mutating "none" to
+    // "authoritative" after collection — fails the digest recomputation
+    // below rather than sailing through on the mutated value alone. The
+    // check above and this binding are complementary, not redundant: the
+    // check above gives a clear "propose unavailable" error on an honest
+    // "none" artifact; this binding is the tamper-detection boundary for
+    // a dishonest one. Both sides of this digest (here and in
+    // collect-and-report-cli.ts's computation) must change together.
+    session_verification: artifact.report.session_verification ?? "none",
     producer_workflow: artifact.producer_workflow,
     collector_commit: artifact.collector_commit,
     collector_run_id: artifact.collector_run_id,
@@ -187,16 +221,34 @@ function sessionVerifierFromArtifact(
 }
 
 /** Minimal fetch-based GitHub REST client implementing `ProposeGitHubClient` (U5/U6). */
-class RestProposeGitHubClient implements ProposeGitHubClient {
+export class RestProposeGitHubClient implements ProposeGitHubClient {
   constructor(
     private readonly apiBase: string,
     private readonly headers: Record<string, string>
   ) {}
 
   private async request(path: string, init?: RequestInit): Promise<Response> {
+    // Every mutation call in this client passes a JSON string as `body`
+    // (see createBlob/createTree/createCommit/createRef/createPullRequest
+    // below); GitHub's REST API requires an explicit `Content-Type:
+    // application/json` header for those requests. Add it whenever a
+    // body is present, but never override a caller-supplied header.
+    const headers: Record<string, string> = { ...this.headers };
+    if (init?.body !== undefined) {
+      headers["Content-Type"] = "application/json";
+    }
+    // Normalize HeadersInit (which may be a Headers instance, a
+    // [string, string][] array, or a plain object) into a plain object
+    // before merging. `Object.assign` on a `Headers` instance copies
+    // nothing — `Headers` has no own enumerable properties, its entries
+    // live in an internal slot — which would silently drop every
+    // caller-supplied header if one were ever passed that way.
+    if (init?.headers !== undefined) {
+      Object.assign(headers, Object.fromEntries(new Headers(init.headers).entries()));
+    }
     return fetch(`${this.apiBase}${path}`, {
       ...init,
-      headers: { ...this.headers, ...(init?.headers as Record<string, string> | undefined) },
+      headers,
     });
   }
 

@@ -11,8 +11,8 @@ Accepted — extends ADR-005, ADR-019, ADR-022, ADR-028
 `.jules/bolt.md` and `.jules/sentinel.md` are passive Markdown journals that
 record technical lessons for the Bolt and Sentinel Jules personas. They have
 no automated write path today: any change is a manual, unreviewed edit.
-`docs/plans/2026-08-10-001-feat-jules-persona-learning-loop-plan.md` (units
-U1–U6) built a repository-scoped analyzer under `scripts/fleet/pr-learning/`
+`docs/plans/2026-08-10-001-feat-jules-persona-learning-loop-plan.md` contains
+seven units: U1–U6 built a repository-scoped analyzer under `scripts/fleet/pr-learning/`,
 that collects Bolt/Sentinel Jules PR outcomes, classifies them against a
 fixed taxonomy, clusters evidence into deduplicated candidates, validates a
 bounded memory-entry proposal, and can open exactly one human-reviewed pull

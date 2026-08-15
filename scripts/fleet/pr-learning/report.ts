@@ -58,6 +58,18 @@ export interface CollectionReport {
   generated_at: string;
   /** False if any contributing collection run was incomplete; consumers must not treat this report as authoritative for watermark advancement. */
   complete: boolean;
+  /**
+   * Whether the collector was run with an authoritative Jules session
+   * registry/SDK-backed `JulesSessionVerifier` (`"authoritative"`), or
+   * with `NullSessionVerifier`/no verifier at all (`"none"`). This is
+   * the collector/proposer contract boundary: when `"none"`, every
+   * candidate's `session_id` is quarantined `ambiguous` by construction
+   * (R1), so no envelope can ever satisfy R6 eligibility and `propose`
+   * mode must refuse to proceed rather than fail deep in eligibility
+   * checks with a misleading error (see `propose-cli.ts`
+   * `validateArtifactBindings`).
+   */
+  session_verification: "authoritative" | "none";
   collection_errors: string[];
   personas: PersonaSummary[];
   /** Canonical envelopes retained for proposal-job session-link revalidation. */
@@ -76,6 +88,13 @@ export interface BuildReportOptions {
   agedOpenThresholdMs?: number;
   /** Reference instant for "aged open" calculation; defaults to `Date.parse(asOf)`. */
   nowMs?: number;
+  /**
+   * Whether the collection run(s) contributing to this report used an
+   * authoritative session verifier. Defaults to `"none"` (fail-closed):
+   * callers must explicitly opt in to `"authoritative"` once a real
+   * Jules session registry is wired up, never the other way around.
+   */
+  sessionVerification?: "authoritative" | "none";
 }
 
 function sha256Hex(input: string): string {
@@ -185,6 +204,7 @@ export function buildCollectionReport(
     as_of: options.asOf,
     generated_at: options.generatedAt,
     complete: options.complete,
+    session_verification: options.sessionVerification ?? "none",
     collection_errors: [...options.collectionErrors],
     personas,
     envelopes: sortedEnvelopes,

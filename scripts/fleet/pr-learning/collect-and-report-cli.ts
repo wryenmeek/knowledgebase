@@ -143,6 +143,13 @@ async function main(): Promise<void> {
     generatedAt: asOf,
     complete,
     collectionErrors,
+    // No authoritative Jules session registry is wired up in this
+    // environment yet (deferred follow-up work) — every candidate above
+    // was collected under NullSessionVerifier and is therefore
+    // quarantined `ambiguous` by construction. Recording this explicitly
+    // lets `propose-cli.ts` refuse to proceed with a clear, fail-closed
+    // error instead of failing deep in eligibility checks (R6).
+    sessionVerification: "none",
   });
 
   const expiresAt = new Date(now.getTime() + ARTIFACT_TTL_MS).toISOString();
@@ -150,8 +157,20 @@ async function main(): Promise<void> {
   // Fixed key order so this digest is reproducible without a generic
   // canonical-JSON serializer; `report.digest` already summarizes the
   // full envelope set deterministically (see `report.ts`).
+  //
+  // session_verification is deliberately included here even though it is
+  // excluded from `report.digest` itself: `report.digest` covers *evidence
+  // content* only, but `artifact_digest` is the tamper-detection boundary
+  // that `propose-cli.ts`'s fail-closed session_verification gate relies
+  // on. Without binding session_verification into `artifact_digest`, an
+  // attacker with artifact write access could flip a `"none"` artifact to
+  // `"authoritative"` post-hoc and pass both digest checks unchanged,
+  // defeating the fail-closed contract (R1, R6, R13). Both sides of this
+  // digest (here and in propose-cli.ts's recomputation) must change
+  // together.
   const digestPayload = JSON.stringify({
     report_digest: report.digest,
+    session_verification: report.session_verification,
     producer_workflow: PRODUCER_WORKFLOW,
     collector_commit: collectorCommit,
     collector_run_id: collectorRunId,

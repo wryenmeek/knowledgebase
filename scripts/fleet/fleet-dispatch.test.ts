@@ -3,6 +3,7 @@ import {
   buildDispatchCommentBody,
   countRecentInProgressAttempts,
   markIssueInProgress,
+  MERGE_EVIDENCE_MAX_CONCURRENCY,
   restoreIssueAfterFailure,
   runWithIssueRecovery,
   selectRecoveryLabelFromEvents,
@@ -373,6 +374,46 @@ describe("fleet-dispatch label lifecycle", () => {
 
     await restoreIssueAfterFailure(octokit as never, "wryenmeek", "knowledgebase", 350);
     expect(labels).toEqual(["ready-for-agent"]);
+  });
+
+  test("merge-evidence lookups for many closed events are concurrency-bounded, not unbounded Promise.all fan-out", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const closedEventCount = 25;
+    const octokit = {
+      rest: {
+        issues: {
+          addLabels: async () => {},
+          removeLabel: async () => {},
+          createComment: async () => {},
+          listEvents: function listEvents() {},
+        },
+        repos: {
+          listPullRequestsAssociatedWithCommit: async () => {
+            inFlight += 1;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            // Yield so overlapping calls can actually race if unbounded.
+            await new Promise((resolve) => setTimeout(resolve, 1));
+            inFlight -= 1;
+            return { data: [] };
+          },
+        },
+      },
+      paginate: async () =>
+        Array.from({ length: closedEventCount }, (_, index) => ({
+          event: "closed",
+          created_at: isoDaysAgo(1),
+          commit_id: `commit-${index}`,
+        })),
+    };
+
+    await restoreIssueAfterFailure(octokit as never, "wryenmeek", "knowledgebase", 350);
+
+    // Bounded by MERGE_EVIDENCE_MAX_CONCURRENCY: must never exceed it,
+    // and with 25 events must actually exercise the concurrency limiter
+    // (more than one in flight at a time) rather than running serially.
+    expect(maxInFlight).toBeGreaterThan(1);
+    expect(maxInFlight).toBeLessThanOrEqual(MERGE_EVIDENCE_MAX_CONCURRENCY);
   });
 
   test("dispatch comment wraps task.prompt in fenced code block so HTML/markdown cannot escape (P3)", () => {
