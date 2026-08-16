@@ -1021,6 +1021,8 @@ def test_run_gh_json_redacts_token_shaped_stderr_at_callsite(tmp_path, monkeypat
     mocked/stubbed version. This guards the actual call site wiring added in
     PR #434 (import + invocation of `redact_stderr` inside `_run_gh_json`),
     complementing the helper's own unit tests in `tests/test_redaction.py`.
+    The fixture stderr embeds an actual ghp_-shaped token (not a pre-masked
+    placeholder) so the assertion exercises real redaction, not a no-op.
     """
     leaked_token = "ghp_" + "A" * 36
 
@@ -1029,7 +1031,7 @@ def test_run_gh_json_redacts_token_shaped_stderr_at_callsite(tmp_path, monkeypat
             args=["gh", "issue", "list"],
             returncode=1,
             stdout="",
-            stderr=f"error: Authorization: Bearer {leaked_token} rejected\n",
+            stderr=f"error: could not read Username, token={leaked_token} rejected\n",
         )
 
     monkeypatch.setattr(closure_evidence.subprocess, "run", _return_failure_with_token)
@@ -1038,6 +1040,55 @@ def test_run_gh_json_redacts_token_shaped_stderr_at_callsite(tmp_path, monkeypat
 
     assert leaked_token not in str(excinfo.value)
     assert "[REDACTED]" in str(excinfo.value)
+
+
+def test_run_gh_json_redacts_github_pat_shaped_stderr_at_callsite(
+    tmp_path, monkeypatch
+) -> None:
+    """Same integration-level regression as above, but for the fine-grained
+    `github_pat_` token prefix, which uses a distinct regex
+    (`_GITHUB_PAT_RE`) from the classic `ghp_`/`ghs_`/etc. prefixes in
+    `scripts._redaction`. Both prefix families must be covered at this
+    callsite since either could plausibly appear in real `gh` CLI stderr."""
+    leaked_token = "github_pat_" + "B" * 40
+
+    def _return_failure_with_pat(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["gh", "issue", "list"],
+            returncode=1,
+            stdout="",
+            stderr=f"error: could not read Username, token={leaked_token} rejected\n",
+        )
+
+    monkeypatch.setattr(closure_evidence.subprocess, "run", _return_failure_with_pat)
+    with pytest.raises(RuntimeError, match="gh command failed") as excinfo:
+        closure_evidence._run_gh_json(["gh", "issue", "list"], repo_root=tmp_path.resolve())
+
+    assert leaked_token not in str(excinfo.value)
+    assert "[REDACTED]" in str(excinfo.value)
+
+
+def test_run_gh_json_handles_empty_stderr_on_nonzero_exit(tmp_path, monkeypatch) -> None:
+    """Fallback coverage: `gh` can exit non-zero with empty stderr (e.g., a
+    bare non-zero exit code with no diagnostic text). `_run_gh_json` must
+    still fail closed with a well-formed message and must not raise from
+    `redact_stderr` itself on an empty string input."""
+
+    def _return_failure_with_empty_stderr(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["gh", "issue", "list"],
+            returncode=1,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        closure_evidence.subprocess, "run", _return_failure_with_empty_stderr
+    )
+    with pytest.raises(RuntimeError, match="gh command failed") as excinfo:
+        closure_evidence._run_gh_json(["gh", "issue", "list"], repo_root=tmp_path.resolve())
+
+    assert str(excinfo.value) == "gh command failed: "
 
 
 def test_run_gh_json_fails_closed_on_malformed_json(tmp_path, monkeypatch) -> None:
