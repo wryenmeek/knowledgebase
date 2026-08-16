@@ -24,6 +24,10 @@
 **Vulnerability:** Token exposure via stderr logs and expression injection (`${{ ... }}`) via GitHub-flavoured markdown rendering.
 **Learning:** API error messages can contain sensitive credentials (e.g., `ghp_`, `github_pat_`, base64 strings) which can be exposed if stderr is not properly redacted. GitHub markdown might trigger side effects if `${{ ... }}` expressions are not neutralized.
 **Prevention:** Centralize and ensure consistent markdown sanitization and error log redaction across all scripts interfacing with external platforms (like GitHub and Google Drive).
+## 2024-07-03 - Fix gh CLI Credential Leakage in check_issue_closure_evidence.py
+**Vulnerability:** The `scripts/validation/check_issue_closure_evidence.py` script dumped raw `completed.stderr` output directly into `RuntimeError` messages when `gh` CLI commands failed, risking exposure of GitHub tokens (e.g. `ghp_`) in GitHub Actions logs.
+**Learning:** External command wrappers like `subprocess.run` do not automatically redact secrets. Passing unredacted output into exceptions bubbles the raw text into user-visible logs, violating credential safety.
+**Prevention:** Always wrap external subprocess stderr output with `scripts._redaction.redact_stderr` before formatting it into exceptions or log statements.
 
 ## 2024-08-09 - Unintended Network Exposure in Webhook Receivers
 **Vulnerability:** WSGI entrypoints defaulted to binding to 0.0.0.0, exposing them to all network interfaces.

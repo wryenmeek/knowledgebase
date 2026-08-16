@@ -11,12 +11,15 @@ import subprocess
 import sys
 from typing import Any, Mapping, Sequence, TextIO
 
-if __package__ in (None, ""):  # supports both 'python -m' and direct invocation without package install
+if __package__ in (
+    None,
+    "",
+):  # supports both 'python -m' and direct invocation without package install
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts._redaction import redact_stderr
 from scripts._optional_surface_common import (
     APPROVAL_NONE,
     JsonArgumentParser,
-    REASON_CODE_INVALID_INPUT,
     REASON_CODE_OK,
     STATUS_FAIL,
     STATUS_PASS,
@@ -50,7 +53,10 @@ REQUIRED_EVIDENCE_FIELDS: tuple[str, ...] = (
 )
 REQUIRED_EXEMPTION_FIELDS: tuple[str, ...] = ("exemption_rationale",)
 EXEMPTION_APPROVAL_LABEL = "closure-evidence-exemption-approved"
-REQUIRED_TEMPLATE_FIELDS: tuple[str, ...] = ("closure_evidence_heading", *REQUIRED_EVIDENCE_FIELDS)
+REQUIRED_TEMPLATE_FIELDS: tuple[str, ...] = (
+    "closure_evidence_heading",
+    *REQUIRED_EVIDENCE_FIELDS,
+)
 REQUIRED_EXEMPTION_TEMPLATE_FIELDS: tuple[str, ...] = (
     "closure_evidence_exemption_heading",
     *REQUIRED_EXEMPTION_FIELDS,
@@ -69,7 +75,9 @@ _NON_COMMAND_FIRST_TOKENS: frozenset[str] = frozenset(
 _SHORT_COMMAND_TOOL_ALLOWLIST: frozenset[str] = frozenset(
     {"go", "cargo", "npm", "pnpm", "yarn", "bun", "make"}
 )
-_SHORT_COMMAND_ACTION_ALLOWLIST: frozenset[str] = frozenset({"test", "check", "lint", "build"})
+_SHORT_COMMAND_ACTION_ALLOWLIST: frozenset[str] = frozenset(
+    {"test", "check", "lint", "build"}
+)
 _SHORT_COMMAND_PREFIX_ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
     {("npm", "run"), ("pnpm", "run"), ("yarn", "run"), ("bun", "run")}
 )
@@ -208,7 +216,9 @@ def _resolve_repo_json_path(repo_root: Path, raw_path: str) -> Path:
     if not resolved.is_relative_to(repo_root):
         raise ValueError("--issues-json escapes repository root")
     if not resolved.is_file() or resolved.suffix.lower() != ".json":
-        raise ValueError("--issues-json must reference an existing .json file in the repository")
+        raise ValueError(
+            "--issues-json must reference an existing .json file in the repository"
+        )
     return resolved
 
 
@@ -225,11 +235,12 @@ def _run_gh_json(command: Sequence[str], *, repo_root: Path) -> Any:
     except FileNotFoundError as exc:
         raise RuntimeError("gh CLI is required but not installed") from exc
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"gh command timed out after {GH_COMMAND_TIMEOUT_SECONDS} seconds") from exc
+        raise RuntimeError(
+            f"gh command timed out after {GH_COMMAND_TIMEOUT_SECONDS} seconds"
+        ) from exc
     if completed.returncode != 0:
-        stderr = completed.stderr.strip().splitlines()
-        stderr_snippet = stderr[0] if stderr else "unknown gh error"
-        raise RuntimeError(f"gh command failed: {stderr_snippet}")
+        redacted = redact_stderr(completed.stderr)
+        raise RuntimeError(f"gh command failed: {redacted}")
     try:
         return json.loads(completed.stdout)
     except json.JSONDecodeError as exc:
@@ -264,7 +275,9 @@ def _extract_comment_bodies(raw_comments: Any) -> tuple[str, ...]:
         elif isinstance(entry, Mapping):
             body = entry.get("body")
         else:
-            raise ValueError("issue comments must be strings or objects with a body field")
+            raise ValueError(
+                "issue comments must be strings or objects with a body field"
+            )
         if not isinstance(body, str):
             raise ValueError("issue comment body must be a string")
         comments.append(body)
@@ -306,17 +319,23 @@ def _parse_issues_payload(payload: Any) -> tuple[dict[str, Any], ...]:
     else:
         entries = payload
     if not isinstance(entries, list):
-        raise ValueError("issues payload must be a list or an object containing an 'issues' list")
+        raise ValueError(
+            "issues payload must be a list or an object containing an 'issues' list"
+        )
     return tuple(_normalize_issue(entry) for entry in entries)
 
 
-def _load_issues_from_json(repo_root: Path, issues_json_path: str) -> tuple[dict[str, Any], ...]:
+def _load_issues_from_json(
+    repo_root: Path, issues_json_path: str
+) -> tuple[dict[str, Any], ...]:
     resolved = _resolve_repo_json_path(repo_root, issues_json_path)
     payload = json.loads(resolved.read_text(encoding="utf-8"))
     return _parse_issues_payload(payload)
 
 
-def _is_within_lookback(closed_at: datetime, *, as_of: datetime, lookback_days: int) -> bool:
+def _is_within_lookback(
+    closed_at: datetime, *, as_of: datetime, lookback_days: int
+) -> bool:
     window_start = as_of - timedelta(days=lookback_days)
     return window_start <= closed_at <= as_of
 
@@ -475,7 +494,9 @@ def _is_command_like_line(raw_line: str) -> bool:
 
 
 def _has_command_like_content(section_text: str) -> bool:
-    return any(_is_command_like_line(raw_line) for raw_line in section_text.splitlines())
+    return any(
+        _is_command_like_line(raw_line) for raw_line in section_text.splitlines()
+    )
 
 
 def evaluate_closure_evidence_comment(
@@ -579,7 +600,9 @@ def _evaluate_issue(issue: Mapping[str, Any]) -> dict[str, Any]:
     comments = issue["comments"]
     best_missing = REQUIRED_TEMPLATE_FIELDS
     for index, comment in enumerate(comments):
-        result = evaluate_closure_evidence_comment(comment, issue_labels=issue["labels"])
+        result = evaluate_closure_evidence_comment(
+            comment, issue_labels=issue["labels"]
+        )
         if result["is_compliant"]:
             return {
                 "issue_number": issue["number"],
@@ -624,7 +647,9 @@ def run_closure_evidence_report(
     path_rules = _path_rules()
     normalized_repo_root = Path(repo_root).resolve()
     if not looks_like_repo_root(normalized_repo_root):
-        return repo_root_failure(surface=SURFACE, mode=mode, approval=APPROVAL_NONE, path_rules=path_rules)
+        return repo_root_failure(
+            surface=SURFACE, mode=mode, approval=APPROVAL_NONE, path_rules=path_rules
+        )
     if lookback_days < 0:
         return invalid_input_result(
             surface=SURFACE,
@@ -698,7 +723,9 @@ def run_closure_evidence_report(
         for issue in issues
         if target_label_set.intersection(issue["labels"])
         and (closed_after_dt is None or issue["closed_at"] >= closed_after_dt)
-        and _is_within_lookback(issue["closed_at"], as_of=as_of_dt, lookback_days=lookback_days)
+        and _is_within_lookback(
+            issue["closed_at"], as_of=as_of_dt, lookback_days=lookback_days
+        )
     )
     if not filtered:
         return SurfaceResult(
@@ -727,7 +754,9 @@ def run_closure_evidence_report(
     items = tuple(_evaluate_issue(issue) for issue in filtered)
     flagged_issue_count = sum(1 for item in items if item["status"] == STATUS_FAIL)
     status = STATUS_PASS if flagged_issue_count == 0 else STATUS_FAIL
-    reason_code = REASON_CODE_OK if flagged_issue_count == 0 else "missing_closure_evidence"
+    reason_code = (
+        REASON_CODE_OK if flagged_issue_count == 0 else "missing_closure_evidence"
+    )
     message = (
         "all recently closed target-labeled issues include closure evidence comments"
         if flagged_issue_count == 0
@@ -766,7 +795,9 @@ def run_closure_evidence_report(
     )
 
 
-def run_cli(argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout) -> int:
+def run_cli(
+    argv: Sequence[str] | None = None, *, output_stream: TextIO = sys.stdout
+) -> int:
     return run_surface_cli(
         argv=argv,
         parser_factory=_build_parser,
