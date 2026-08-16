@@ -78,7 +78,9 @@ def _require_frontmatter(markdown_text: str, page_path: Path) -> str:
         )
     frontmatter, _ = page_template_utils.extract_frontmatter(markdown_text)
     if frontmatter is None:
-        raise IndexGenerationError(f"{page_path}: missing YAML frontmatter end delimiter")
+        raise IndexGenerationError(
+            f"{page_path}: missing YAML frontmatter end delimiter"
+        )
     return frontmatter
 
 
@@ -126,25 +128,26 @@ def _collect_section_entries(
     if not section_root.exists():
         return []
 
-    page_paths = []
-    for page_path in section_root.rglob("*.md"):
-        validated = _validate_section_page_path(page_path, wiki_root)
-        if validated is not None:
-            page_paths.append(validated)
+    def iter_valid_paths():
+        for page_path in section_root.rglob("*.md"):
+            validated = _validate_section_page_path(page_path, wiki_root)
+            if validated is not None:
+                yield validated
 
     if executor:
         # We process files efficiently by passing chunksize
         entries = list(
             executor.map(
                 _parse_page_summary,
-                page_paths,
+                iter_valid_paths(),
                 itertools.repeat(wiki_root),
                 chunksize=100,
             )
         )
     else:
         entries = [
-            _parse_page_summary(page_path, wiki_root) for page_path in page_paths
+            _parse_page_summary(page_path, wiki_root)
+            for page_path in iter_valid_paths()
         ]
 
     entries.sort(key=lambda entry: (entry.title.casefold(), entry.relative_path))
@@ -168,7 +171,10 @@ def _validate_section_page_path(page_path: Path, wiki_root: Path) -> Path | None
     if not _stat.S_ISREG(st.st_mode):
         return None
     relative_parts = page_path.relative_to(wiki_root).parts
-    if len(relative_parts) > 2 and relative_parts[0] in page_template_utils.TOPICAL_NAMESPACES:
+    if (
+        len(relative_parts) > 2
+        and relative_parts[0] in page_template_utils.TOPICAL_NAMESPACES
+    ):
         raise IndexGenerationError(
             f"{page_path.relative_to(wiki_root).as_posix()}: "
             "nested topical markdown pages are not allowed in MVP flat namespaces"
