@@ -674,9 +674,12 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         automated fleet-dispatch-after-merge.yml pipeline itself, so real
         automation-generated PRs would always fail that lookup. Owner-
         authored candidates are instead only trusted when the body matches
-        the EXACT, anchored footer Jules generates verbatim (see
-        buildDispatchCommentBody in scripts/fleet/fleet-dispatch.ts), tied
-        to the real repository_owner login.
+        the EXACT, anchored footer Jules itself appends verbatim to every
+        PR it opens (Jules-service-generated text, not produced by any
+        function in this repo — buildDispatchCommentBody in
+        scripts/fleet/fleet-dispatch.ts only builds the *issue* tracking
+        comment, a different template), tied to the real repository_owner
+        login.
         """
         self.assertIn("REPO_OWNER: ${{ github.repository_owner }}", self.workflow_text)
         self.assertIn('.author.login == "google-labs-jules"', self.workflow_text)
