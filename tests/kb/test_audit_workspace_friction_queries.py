@@ -155,6 +155,13 @@ def test_sql_factories_use_uniform_private_helper_shape() -> None:
 
 
 def test_sql_templates_parse_under_duckdb_session_store_dialect() -> None:
+    # `duckdb` is not a declared project dependency (see pyproject.toml), and
+    # CI's pytest job does not install it, so this smoke test is skipped in
+    # every CI run today. It is kept as an opportunistic, stronger check for
+    # local environments that happen to have duckdb installed.
+    # `test_sql_templates_avoid_known_duckdb_incompatible_syntax` below is the
+    # always-on equivalent that keeps the dialect-safety test-gate meaningful
+    # without adding an unjustified hard dependency on duckdb.
     if importlib.util.find_spec("duckdb") is None:
         pytest.skip(
             "duckdb package unavailable; SQLite fixture covers semantics, "
@@ -172,6 +179,46 @@ def test_sql_templates_parse_under_duckdb_session_store_dialect() -> None:
                 db.execute(template[pass_name]).fetchall()
     finally:
         db.close()
+
+
+def test_sql_templates_avoid_known_duckdb_incompatible_syntax() -> None:
+    """Always-on dialect-safety guard.
+
+    ``test_sql_templates_parse_under_duckdb_session_store_dialect`` above only
+    runs when the optional ``duckdb`` package happens to be installed, which
+    is never true in this repository's CI (duckdb is intentionally not a
+    declared dependency in ``pyproject.toml``). This test performs a
+    dependency-free static check for the DuckDB-incompatible patterns most
+    likely to appear in a session_store_sql template edit — unbalanced
+    parens/quotes, MySQL-style backtick identifiers, positional placeholders,
+    and double-quoted string literals (DuckDB treats double quotes as
+    identifiers, not string literals) — so the test-gate still produces real
+    evidence on every CI run.
+    """
+    module = _module()
+
+    for friction_class, template in _templates(module).items():
+        for pass_name in ("primary", "broader"):
+            sql = template[pass_name]
+            context = f"{friction_class}/{pass_name}"
+
+            assert "`" not in sql, (
+                f"{context}: backtick identifiers are invalid in DuckDB"
+            )
+            assert "?" not in sql, (
+                f"{context}: positional placeholders are not supported by "
+                "session_store_sql templates"
+            )
+            assert re.search(r'[=<>]\s*"[^"]*"', sql) is None, (
+                f"{context}: double-quoted string literal used as a value; "
+                "DuckDB treats double quotes as identifiers, not string literals"
+            )
+            assert sql.count("(") == sql.count(")"), (
+                f"{context}: unbalanced parentheses"
+            )
+            assert sql.count("'") % 2 == 0, (
+                f"{context}: unbalanced single-quote string literals"
+            )
 
 
 def test_primary_query_rows_are_returned_for_each_friction_class() -> None:
