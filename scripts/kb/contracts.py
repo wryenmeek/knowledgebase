@@ -130,7 +130,7 @@ SENSITIVE_PATHS: tuple[str, ...] = (
 
 # ADR-029 pytest migration ratchet. Decrement after each unittest-to-pytest
 # migration; never raise without an ADR amendment.
-MAX_UNITTEST_FILES = 52
+MAX_UNITTEST_FILES = 51
 # ADR-030 approval-flag migration ratchet. Count represents legacy script files
 # still containing the deprecated approval-flag spelling.
 MAX_APPROVAL_FLAG_SCRIPTS = 8
