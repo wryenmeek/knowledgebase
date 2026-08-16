@@ -494,6 +494,70 @@ class UpdateIndexOptimizationRegressionTests(KnowledgebaseWorkspaceTestCase):
                 result = update_index._validate_section_page_path(real_file, wiki)
             self.assertIsNone(result)
 
+    def test_collect_section_entries_passes_lazy_generator_to_executor_map(self) -> None:
+        """Regression test for #553: `_collect_section_entries` must hand
+        `executor.map()` a lazy generator (not a pre-built list) so chunked
+        dispatch can begin without first materializing every path, and it
+        must preserve the documented chunksize=100 contract."""
+
+        class _RecordingExecutor:
+            def __init__(self) -> None:
+                self.received_iterable_type: type | None = None
+                self.received_chunksize: int | None = None
+
+            def map(self, func, page_paths, repeated_wiki_root, chunksize=None):
+                self.received_iterable_type = type(page_paths)
+                self.received_chunksize = chunksize
+                # Consume lazily, mirroring ProcessPoolExecutor.map's contract.
+                return [
+                    func(page_path, wiki_root)
+                    for page_path, wiki_root in zip(page_paths, repeated_wiki_root)
+                ]
+
+        self.write_wiki_page("sources/z-source.md", self._build_page("Z Source", "source"))
+        self.write_wiki_page("sources/a-source.md", self._build_page("A Source", "source"))
+
+        executor = _RecordingExecutor()
+        entries = update_index._collect_section_entries(
+            self.wiki_root, "sources", executor=executor
+        )
+
+        self.assertEqual(executor.received_iterable_type.__name__, "generator")
+        self.assertEqual(executor.received_chunksize, 100)
+        self.assertEqual([entry.title for entry in entries], ["A Source", "Z Source"])
+
+    def test_collect_section_entries_ordering_matches_with_and_without_executor(
+        self,
+    ) -> None:
+        """Regression test for #553: the lazy-generator refactor must not
+        change output content or ordering between the executor-dispatched
+        path and the sequential (executor=None) path."""
+
+        class _RecordingExecutor:
+            def map(self, func, page_paths, repeated_wiki_root, chunksize=None):
+                return [
+                    func(page_path, wiki_root)
+                    for page_path, wiki_root in zip(page_paths, repeated_wiki_root)
+                ]
+
+        self.write_wiki_page("sources/z-source.md", self._build_page("Z Source", "source"))
+        self.write_wiki_page("sources/a-source.md", self._build_page("A Source", "source"))
+        self.write_wiki_page("sources/m-source.md", self._build_page("M Source", "source"))
+
+        sequential = update_index._collect_section_entries(
+            self.wiki_root, "sources", executor=None
+        )
+        parallel = update_index._collect_section_entries(
+            self.wiki_root, "sources", executor=_RecordingExecutor()
+        )
+
+        sequential_keys = [(entry.title, entry.relative_path) for entry in sequential]
+        parallel_keys = [(entry.title, entry.relative_path) for entry in parallel]
+        self.assertEqual(sequential_keys, parallel_keys)
+        self.assertEqual(
+            sequential_keys, [("A Source", "sources/a-source.md"), ("M Source", "sources/m-source.md"), ("Z Source", "sources/z-source.md")]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
