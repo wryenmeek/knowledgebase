@@ -688,6 +688,14 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("@google/jules-sdk", ".github/workflows/jules-account-probe.yml"),
         "Hard-fail behavior": ("missing env", "Jules API errors", "fail closed"),
     },
+    "scripts/fleet/pr-learning/**": {
+        "Runtime mode": ("Mixed surface", "read-only only", "propose.ts", "blocking-only", "external github api", "no local repository file writes"),
+        "Writable paths": ("none within the working-tree repo", ".jules/bolt.md", ".jules/sentinel.md", "github git data api", "never touches the local filesystem"),
+        "Read-only / prerequisite paths": (".jules/bolt.md", ".jules/sentinel.md", "collect.ts", "schema/jules-pr-learning-contract.md", "schema/jules-memory-entry-contract.md"),
+        "Lock requirements": ("none", "adr-005", "does not coordinate separate github actions runners", "adr-037", "concurrency.group", "jules-memory-proposal", "base-tree/blob-sha revalidation"),
+        "Artifact / schema owners": ("schema/jules-pr-learning-contract.md", "schema/jules-memory-entry-contract.md", ".github/workflows/jules-persona-learning.yml", "adr-037"),
+        "Hard-fail behavior": ("ambiguous jules identity", "duplicate memory content", "changed since classification", "rejected, never overwritten", "secret/prompt-injection", "rename/delete/add/mode/symlink/submodule", "fail closed", "never auto-merged or redispatched"),
+    },
     "scripts/init.py` — `--fresh` mode only": {
         "Runtime mode": ("blocking-only", "destructive"),
         "Writable paths": ("wiki/log.md", "wiki/index.md", "raw/processed/SPEC.md"),

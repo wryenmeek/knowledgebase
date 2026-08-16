@@ -294,8 +294,338 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         """Author filter must not use endswith('[bot]') — too broad, merges any bot PR."""
         self.assertNotIn('endswith("[bot]")', self.workflow_text)
         self.assertNotIn("endswith('[bot]')", self.workflow_text)
-        # Must use an explicit equality check instead
-        self.assertIn('"google-labs-jules"', self.workflow_text)
+        # Must use an explicit equality check instead (the jq string is
+        # double-quoted with escaped inner quotes so shell variables such as
+        # ${REPO_OWNER} can be interpolated — see the repository-owner
+        # fallback test below).
+        self.assertIn("google-labs-jules", self.workflow_text)
+
+    def test_author_filter_accepts_repository_owner_login(self) -> None:
+        """Both fleet-merge author-filter jq expressions must also accept
+        github.repository_owner as a PR author login, not just the literal
+        'google-labs-jules' bot login.
+
+        Jules's auth model shifted from bot-as-opener to PAT-based posting
+        (PR #308 / Issue #82), where the PR opener is the human repository
+        owner. fleet-dispatch.yml's Phase 2a pre-filter already accounts for
+        this (`github.event.pull_request.user.login == github.repository_owner`),
+        but fleet-merge.yml's find-pr and manual-sweep steps historically only
+        matched the bot login, silently making every PAT-authored fleet PR
+        (planning or per-task) invisible to `gh pr list` and never merged.
+        """
+        find_pr_step = next(
+            step
+            for step in self.workflow["jobs"]["merge-on-ci-pass"]["steps"]
+            if step.get("id") == "find-pr"
+        )
+        find_pr_run = find_pr_step.get("run", "")
+        self.assertIn("REPO_OWNER", find_pr_step.get("env", {}))
+        self.assertIn("google-labs-jules", find_pr_run)
+        self.assertIn("REPO_OWNER", find_pr_run)
+
+        manual_sweep_job = self.workflow["jobs"]["manual-sweep"]
+        merge_step = next(
+            step
+            for step in manual_sweep_job["steps"]
+            if "gh pr list" in step.get("run", "")
+        )
+        merge_run = merge_step.get("run", "")
+        self.assertIn("REPO_OWNER", merge_step.get("env", {}))
+        self.assertIn("google-labs-jules", merge_run)
+        self.assertIn("REPO_OWNER", merge_run)
+
+    def test_author_filter_requires_verified_jules_session_marker(self) -> None:
+        """Owner-login match alone must not be sufficient evidence of a fleet
+        PR: both find-pr and manual-sweep's jq selections must also require
+        a verified Jules session marker (`https://jules.google.com/task/
+        <id>`) in the PR body, since github.repository_owner is also a
+        legitimate human maintainer login. Without this, an ordinary
+        owner-authored PR whose CI passes could be auto-merged (or
+        redispatched to Jules on conflict) with zero fleet session evidence.
+        """
+        find_pr_step = next(
+            step
+            for step in self.workflow["jobs"]["merge-on-ci-pass"]["steps"]
+            if step.get("id") == "find-pr"
+        )
+        find_pr_run = find_pr_step.get("run", "")
+        self.assertIn(r"jules\\.google\\.com/task", find_pr_run)
+        # `body` must be requested in the --json field list or the marker
+        # check below has nothing to test against.
+        self.assertIn("--json number,headRefOid,headRefName,author,body", find_pr_run)
+
+        manual_sweep_job = self.workflow["jobs"]["manual-sweep"]
+        merge_step = next(
+            step
+            for step in manual_sweep_job["steps"]
+            if "gh pr list" in step.get("run", "")
+        )
+        merge_run = merge_step.get("run", "")
+        self.assertIn(r"jules\\.google\\.com/task", merge_run)
+        self.assertIn("--json number,headRefName,author,body", merge_run)
+
+    def test_jq_predicate_rejects_owner_pr_without_jules_session_marker(self) -> None:
+        """Functional regression: run find-pr's actual jq selection expression
+        (extracted verbatim from the workflow YAML) against fixture PR data
+        and confirm an owner-authored PR with no Jules session marker is
+        excluded, while a fleet-dispatched PR (same login, with marker) is
+        selected. Proves the fix is not just cosmetic YAML text but an
+        enforced predicate.
+        """
+        import json
+        import re
+        import subprocess
+
+        find_pr_step = next(
+            step
+            for step in self.workflow["jobs"]["merge-on-ci-pass"]["steps"]
+            if step.get("id") == "find-pr"
+        )
+        run_script = find_pr_step["run"]
+        # The workflow's --jq "..." argument is a double-quoted shell string
+        # whose *internal* jq double-quotes are backslash-escaped (\"). A
+        # naive "(.*?)" match would stop at the first internal \" instead of
+        # the string's real closing quote, so match escaped-or-non-quote
+        # characters until the terminating unescaped quote, then unescape.
+        match = re.search(r'--jq "((?:[^"\\]|\\.)*)"\)', run_script, re.S)
+        assert match is not None, "could not locate --jq expression in find-pr step"
+        jq_expr = match.group(1).replace('\\"', '"')
+
+        fixture = [
+            {
+                "number": 1,
+                "headRefOid": "abc123",
+                "headRefName": "fleet/task-1",
+                "author": {"login": "repo-owner"},
+                "body": "This is an ordinary manually-opened PR with no Jules marker.",
+            },
+            {
+                "number": 2,
+                "headRefOid": "abc123",
+                "headRefName": "fleet/task-2",
+                "author": {"login": "repo-owner"},
+                "body": "Track progress in Jules session: [xyz](https://jules.google.com/task/xyz789)",
+            },
+            {
+                "number": 3,
+                "headRefOid": "abc123",
+                "headRefName": "jules-memory/foo",
+                "author": {"login": "repo-owner"},
+                "body": "https://jules.google.com/task/abc",
+            },
+        ]
+
+        env = {"HEAD_SHA": "abc123", "REPO_OWNER": "repo-owner"}
+        # The workflow's shell double-quotes the jq expression with
+        # `${HEAD_SHA}`/`${REPO_OWNER}` shell-variable interpolation before
+        # jq ever sees it — reproduce that substitution exactly rather than
+        # passing --arg, to keep this test faithful to the actual runtime
+        # behavior (including the escaping of `\\.` for jq's regex engine).
+        substituted = jq_expr.replace("${HEAD_SHA}", env["HEAD_SHA"]).replace(
+            "${REPO_OWNER}", env["REPO_OWNER"]
+        )
+        result = subprocess.run(
+            ["jq", "-r", substituted],
+            input=json.dumps(fixture),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        selected = result.stdout.strip()
+        self.assertEqual(selected, "2")
+
+    def test_manual_sweep_jq_predicate_rejects_owner_pr_without_jules_session_marker(
+        self,
+    ) -> None:
+        """Functional regression (symmetric with the find-pr test above):
+        run manual-sweep's actual jq selection expression (extracted
+        verbatim from the workflow YAML) against fixture PR data and
+        confirm an owner-authored PR with no Jules session marker is
+        excluded, a jules-memory/* branch is excluded even with a marker,
+        and only a genuine fleet-dispatched PR (matching login + verified
+        marker + non-jules-memory branch) is selected. manual-sweep's
+        fixture omits `headRefOid` (unlike find-pr's), since the manual
+        sweep is not scoped to a specific commit SHA.
+        """
+        import json
+        import re
+        import subprocess
+
+        manual_sweep_job = self.workflow["jobs"]["manual-sweep"]
+        merge_step = next(
+            step
+            for step in manual_sweep_job["steps"]
+            if "gh pr list" in step.get("run", "")
+        )
+        run_script = merge_step["run"]
+        match = re.search(r'--jq "((?:[^"\\]|\\.)*)"\)', run_script, re.S)
+        assert match is not None, "could not locate --jq expression in manual-sweep step"
+        jq_expr = match.group(1).replace('\\"', '"')
+
+        fixture = [
+            {
+                "number": 1,
+                "headRefName": "fleet/task-1",
+                "author": {"login": "repo-owner"},
+                "body": "This is an ordinary manually-opened PR with no Jules marker.",
+            },
+            {
+                "number": 2,
+                "headRefName": "fleet/task-2",
+                "author": {"login": "repo-owner"},
+                "body": "Track progress in Jules session: [xyz](https://jules.google.com/task/xyz789)",
+            },
+            {
+                "number": 3,
+                "headRefName": "jules-memory/foo",
+                "author": {"login": "repo-owner"},
+                "body": "https://jules.google.com/task/abc",
+            },
+            {
+                "number": 4,
+                "headRefName": "fleet/task-4",
+                "author": {"login": "google-labs-jules"},
+                "body": "https://jules.google.com/task/def456",
+            },
+        ]
+
+        env = {"REPO_OWNER": "repo-owner"}
+        substituted = jq_expr.replace("${REPO_OWNER}", env["REPO_OWNER"])
+        result = subprocess.run(
+            ["jq", "-r", substituted],
+            input=json.dumps(fixture),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        selected = result.stdout.strip().splitlines()
+        self.assertEqual(selected, ["2", "4"])
+
+    def test_jq_predicate_rejects_malformed_evidence_pr_tokens(self) -> None:
+        """Functional regression: both find-pr's and manual-sweep's jq
+        session-marker predicate must reject near-miss/malformed evidence
+        tokens (wrong scheme, wrong host, empty/invalid task id) and only
+        accept a well-formed `https://jules.google.com/task/<id>` token.
+        Guards against a typo'd or truncated marker being silently trusted
+        as a Jules session link, since login match alone is not sufficient.
+        """
+        import json
+        import re
+        import subprocess
+
+        malformed_fixture = [
+            {
+                "number": 1,
+                "headRefOid": "abc123",
+                "headRefName": "fleet/task-1",
+                "author": {"login": "repo-owner"},
+                "body": "http://jules.google.com/task/xyz789",  # wrong scheme (http, not https)
+            },
+            {
+                "number": 2,
+                "headRefOid": "abc123",
+                "headRefName": "fleet/task-2",
+                "author": {"login": "repo-owner"},
+                "body": "https://jules.google.co/task/xyz789",  # wrong host (.co, not .com)
+            },
+            {
+                "number": 3,
+                "headRefOid": "abc123",
+                "headRefName": "fleet/task-3",
+                "author": {"login": "repo-owner"},
+                "body": "https://jules.google.com/tasks/xyz789",  # wrong path segment (tasks, not task)
+            },
+            {
+                "number": 4,
+                "headRefOid": "abc123",
+                "headRefName": "fleet/task-4",
+                "author": {"login": "repo-owner"},
+                "body": "https://jules.google.com/task/",  # empty task id
+            },
+            {
+                "number": 5,
+                "headRefOid": "abc123",
+                "headRefName": "fleet/task-5",
+                "author": {"login": "repo-owner"},
+                "body": "https://evil.example.com/https://jules.google.com/task",  # no id, dangling reference
+            },
+            {
+                "number": 6,
+                "headRefOid": "abc123",
+                "headRefName": "fleet/task-6",
+                "author": {"login": "repo-owner"},
+                "body": "https://jules.google.com/task/xyz789",  # well-formed: must be the only match
+            },
+        ]
+
+        find_pr_step = next(
+            step
+            for step in self.workflow["jobs"]["merge-on-ci-pass"]["steps"]
+            if step.get("id") == "find-pr"
+        )
+        find_pr_match = re.search(r'--jq "((?:[^"\\]|\\.)*)"\)', find_pr_step["run"], re.S)
+        assert find_pr_match is not None
+        find_pr_jq = find_pr_match.group(1).replace('\\"', '"')
+        find_pr_substituted = find_pr_jq.replace("${HEAD_SHA}", "abc123").replace(
+            "${REPO_OWNER}", "repo-owner"
+        )
+        find_pr_result = subprocess.run(
+            ["jq", "-r", find_pr_substituted],
+            input=json.dumps(malformed_fixture),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(find_pr_result.stdout.strip(), "6")
+
+        manual_sweep_job = self.workflow["jobs"]["manual-sweep"]
+        merge_step = next(
+            step for step in manual_sweep_job["steps"] if "gh pr list" in step.get("run", "")
+        )
+        manual_sweep_match = re.search(r'--jq "((?:[^"\\]|\\.)*)"\)', merge_step["run"], re.S)
+        assert manual_sweep_match is not None
+        manual_sweep_jq = manual_sweep_match.group(1).replace('\\"', '"')
+        manual_sweep_substituted = manual_sweep_jq.replace("${REPO_OWNER}", "repo-owner")
+        # manual-sweep's fixture omits headRefOid (not used by that predicate).
+        manual_sweep_fixture = [
+            {k: v for k, v in pr.items() if k != "headRefOid"} for pr in malformed_fixture
+        ]
+        manual_sweep_result = subprocess.run(
+            ["jq", "-r", manual_sweep_substituted],
+            input=json.dumps(manual_sweep_fixture),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(manual_sweep_result.stdout.strip(), "6")
+
+    # ── Jules persona PR learning loop exclusion (U6/R12) ───────────────────
+
+    def test_jules_memory_branch_excluded_from_find_pr(self) -> None:
+        """merge-on-ci-pass's find-pr step must explicitly exclude
+        jules-memory/* branches (the Jules persona PR learning loop's
+        proposal branch prefix) so a learning-proposal PR can never be
+        auto-merged even if its author login incidentally matches.
+        """
+        job = self.workflow["jobs"]["merge-on-ci-pass"]
+        find_pr_step = next(
+            step for step in job["steps"] if step.get("id") == "find-pr"
+        )
+        run_val = find_pr_step.get("run", "")
+        self.assertIn("jules-memory/", run_val)
+        self.assertIn("headRefName", run_val)
+
+    def test_jules_memory_branch_excluded_from_manual_sweep(self) -> None:
+        """manual-sweep's PR-listing step must explicitly exclude
+        jules-memory/* branches for the same reason as find-pr above.
+        """
+        job = self.workflow["jobs"]["manual-sweep"]
+        for step in job["steps"]:
+            run_val = step.get("run", "")
+            if "gh pr list" in run_val and "headRefName" in run_val:
+                self.assertIn("jules-memory/", run_val)
+                return
+        raise AssertionError("manual-sweep has no gh pr list step referencing headRefName")
 
     # ── Re-dispatch ordering ─────────────────────────────────────────────────
 
@@ -356,6 +686,24 @@ class TestFleetDispatchInjectionGuard(_AssertMixin):
         self.assertNotIn("startsWith(github.event.pull_request.head.ref, 'fleet/')", self.workflow_text)
         # Must use exact login equality
         self.assertIn("'google-labs-jules'", self.workflow_text)
+
+    def test_jules_memory_branch_explicitly_excluded(self) -> None:
+        """Phase 2a's job-level if: must explicitly exclude jules-memory/*
+        branches (the Jules persona PR learning loop's proposal prefix),
+        as defense-in-depth alongside the downstream session-ID check
+        (U6/R12). This is a narrowing exclusion, not a widening bypass —
+        distinct from the banned startsWith('jules/'/'fleet/') patterns
+        above, which allowed arbitrary collaborator branches IN.
+        """
+        dispatch_job = self.workflow["jobs"]["dispatch"]
+        condition = str(dispatch_job.get("if", ""))
+        self.assertIn("jules-memory/", condition)
+        self.assertIn("startsWith", condition)
+
+        check_step = next(
+            step for step in dispatch_job["steps"] if step.get("id") == "check"
+        )
+        self.assertIn("jules-memory/", check_step.get("run", ""))
 
     def test_phase_2a_does_not_run_fleet_dispatch_ts(self) -> None:
         """Phase 2a must NOT call fleet-dispatch.ts directly.

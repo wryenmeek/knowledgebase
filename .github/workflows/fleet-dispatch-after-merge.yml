@@ -63,6 +63,13 @@ on:
 permissions:
   contents: write
   issues: write
+  # pull-requests: read is required because fleet-dispatch.ts's issue-recovery
+  # path (restoreIssueAfterFailure -> loadIssueEventsWithMergeEvidence) calls
+  # octokit.rest.repos.listPullRequestsAssociatedWithCommit to verify merge
+  # evidence before deciding the recovery label. That endpoint requires
+  # "Pull requests" read access; contents/issues alone are insufficient and
+  # the call would 403 whenever the failure-recovery path executes.
+  pull-requests: read
 
 concurrency:
   group: fleet-dispatch-label-driven
@@ -289,10 +296,16 @@ jobs:
       # Issue #311 permission gap on this surface). Detect+mint extracted to
       # composite per #385.
       #
-      # NOTE: permission-pull-requests intentionally omitted — the dispatch
-      # script's only API call is `issues.createComment`, which accepts
-      # `issues: write` alone. Per ADR-036 § Decision (token-level least
-      # privilege), each mint requests only what the workflow uses.
+      # permission-pull-requests: read is also requested here (in addition to
+      # the top-level workflow `permissions:` block above) because the App
+      # token — not just the GITHUB_TOKEN fallback — is what
+      # restoreIssueAfterFailure's loadIssueEventsWithMergeEvidence uses to
+      # call listPullRequestsAssociatedWithCommit on the failure-recovery
+      # path. The dispatch script's happy-path API call is `issues.
+      # createComment` (issues: write alone), but that is not its *only*
+      # call — the prior NOTE here understated the surface. Per ADR-036 §
+      # Decision (token-level least privilege), each mint requests only what
+      # the workflow actually uses.
       - name: Mint fleet-orchestrator App token
         id: app-token
         if: steps.session.outputs.have_session == 'true'
@@ -302,6 +315,7 @@ jobs:
           private-key: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-issues: write
+          permission-pull-requests: read
 
       - name: Dispatch task sessions
         if: steps.session.outputs.have_session == 'true'

@@ -116,6 +116,8 @@ export async function restoreIssueForRedispatch(
   headers: Record<string, string>,
   issueNumber: number
 ): Promise<void> {
+  // Merge conflicts are a separate HITL path: conflict causality is not
+  // reliable enough to consume the dispatch-failure strike budget.
   await removeIssueLabel(apiBase, headers, issueNumber, IN_PROGRESS_LABEL);
   await removeIssueLabel(apiBase, headers, issueNumber, AWAITING_FEEDBACK_LABEL);
   await addIssueLabel(apiBase, headers, issueNumber, READY_FOR_AGENT_LABEL);

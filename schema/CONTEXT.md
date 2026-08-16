@@ -1,6 +1,6 @@
 ---
 scope: directory
-last_updated: 2026-06-13
+last_updated: 2026-08-14
 ---
 
 # CONTEXT — schema/
@@ -25,6 +25,8 @@ Vocabulary for the schema and contract layer. `AGENTS.md` takes precedence on an
 | drive-source-registry-contract | `schema/drive-source-registry-contract.md` — defines the JSON schema for `*.source-registry.json` files in `raw/drive-sources/`. |
 | rejection-registry-contract | `schema/rejection-registry-contract.md` — defines the contract for write-once rejection records in `raw/rejected/`. Governs `log-intake-rejection` skill. |
 | wiki-processing-checkpoint-registry-contract | `schema/wiki-processing-checkpoint-registry-contract.md` — defines the JSON schema, identity rules, state machines, retention constants, and lock contract for the wiki-processing checkpoint registry. |
+| jules-memory-entry-contract | `schema/jules-memory-entry-contract.md` — defines the allowlisted persona-memory file format and append-only validation contract for Jules learning proposals. |
+| jules-pr-learning-contract | `schema/jules-pr-learning-contract.md` — defines the evidence, candidate, artifact, and proposal contracts for the Jules persona-learning loop. |
 
 ## Invariants
 
@@ -51,3 +53,5 @@ Vocabulary for the schema and contract layer. `AGENTS.md` takes precedence on an
 | `drive-source-registry-contract.md` | JSON schema for Drive source registry files. |
 | `rejection-registry-contract.md` | Contract for write-once rejection records (ADR-013). |
 | `wiki-processing-checkpoint-registry-contract.md` | Contract for the governed wiki-processing checkpoint registry under `raw/wiki-processing/` (ADR-026/ADR-027). |
+| `jules-memory-entry-contract.md` | Contract for validated, append-only `.jules/bolt.md` and `.jules/sentinel.md` persona-memory entries. |
+| `jules-pr-learning-contract.md` | Contract for evidence-bound Jules learning candidates, artifacts, and proposal eligibility. |

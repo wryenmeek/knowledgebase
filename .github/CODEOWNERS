@@ -14,3 +14,5 @@
 /.pre-commit-config.yaml @wryenmeek
 /.github/workflows/ @wryenmeek
 /.github/actions/ @wryenmeek
+/.jules/bolt.md @wryenmeek
+/.jules/sentinel.md @wryenmeek

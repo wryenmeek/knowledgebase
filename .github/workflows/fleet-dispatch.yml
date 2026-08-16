@@ -76,9 +76,18 @@ jobs:
     # "no branch-prefix bypass" contract.
     #
     # Refs: PR #308, Issue #82 diagnosis (2026-06-20).
+    #
+    # Explicit jules-memory/* exclusion (U6/R12): the Jules persona PR
+    # learning loop (.github/workflows/jules-persona-learning.yml) opens
+    # its own human-reviewed proposal PRs on jules-memory/<persona>/<fp>
+    # branches. Those must never be auto-merged by fleet automation, so
+    # this pre-filter explicitly skips them even though the downstream
+    # session-ID check below would already reject them (defense-in-depth,
+    # not a substitute for that check).
     if: |
-      github.event.pull_request.user.login == 'google-labs-jules' ||
-      github.event.pull_request.user.login == github.repository_owner
+      (github.event.pull_request.user.login == 'google-labs-jules' ||
+       github.event.pull_request.user.login == github.repository_owner) &&
+      !startsWith(github.event.pull_request.head.ref, 'jules-memory/')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -100,6 +109,18 @@ jobs:
           PR_BRANCH:   ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
+
+          # Explicit jules-memory/* exclusion (U6/R12), duplicated here as
+          # defense-in-depth in case this step is ever reached directly
+          # (e.g. a future workflow_dispatch re-run bypassing the job-level
+          # if:). See .github/workflows/jules-persona-learning.yml.
+          case "$PR_BRANCH" in
+            jules-memory/*)
+              echo "ℹ️  PR branch $PR_BRANCH is a jules-memory/* learning proposal. Skipping."
+              echo "is_fleet_pr=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
 
           # Read pending session from fleet-state branch (unprotected state branch).
           git fetch origin fleet-state 2>/dev/null || true

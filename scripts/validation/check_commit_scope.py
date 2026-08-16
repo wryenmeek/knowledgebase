@@ -51,6 +51,7 @@ GATE_B_TOKENS: frozenset[str] = frozenset(
         "spec",
         "workflows",
         "pre-commit",
+        "jules",
     }
 )
 
@@ -78,6 +79,8 @@ _PATH_TO_TOKENS: dict[str, tuple[str, ...]] = {
     "raw/processed/SPEC.md": ("spec",),
     ".pre-commit-config.yaml": ("pre-commit",),
     ".github/workflows/": ("workflows",),
+    ".jules/bolt.md": ("jules",),
+    ".jules/sentinel.md": ("jules",),
 }
 
 
