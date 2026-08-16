@@ -244,8 +244,9 @@ def test_inputs_not_interpolated_directly_in_run_blocks(
 
 
 def test_propose_inputs_passed_via_env_block(propose_job: dict) -> None:
-    """Every human-supplied propose input must be threaded through a step
-    `env:` block (`PR_LEARNING_*` vars), not inlined into `run:`.
+    """Every operator-supplied propose input still consumed by the CLI must be
+    threaded through a step `env:` block (`PR_LEARNING_*` vars), not inlined
+    into `run:`.
     """
     expected_env_vars = {
         "PR_LEARNING_PERSONA",
@@ -254,7 +255,6 @@ def test_propose_inputs_passed_via_env_block(propose_job: dict) -> None:
         "PR_LEARNING_NORMALIZED_RULE",
         "PR_LEARNING_EVIDENCE_PR_NUMBERS",
         "PR_LEARNING_RULE",
-        "PR_LEARNING_EVIDENCE",
         "PR_LEARNING_VERIFICATION",
         "PR_LEARNING_SCOPE",
         "PR_LEARNING_RETRACTION_CONDITION",
