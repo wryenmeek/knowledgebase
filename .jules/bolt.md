@@ -52,6 +52,9 @@
 ## 2024-05-19 - Avoid Intermediate Set Creation for Dict Views
 **Learning:** In Python 3, dictionary views (`dict.keys()`, `dict.items()`) behave identically to sets and fully support set operations (like `-`, `&`, `|`, `^`). Converting them explicitly to sets (`set(d.keys()) - other_set`) is an anti-pattern that creates an unnecessary, memory-allocating intermediate object. Similarly, `set1 - set(d.keys())` allocates a new set, whereas `set1.difference(d)` iterates over `d` directly and is faster.
 **Action:** Always prefer native dictionary view operations (e.g., `d.keys() - other_set` or `set1.difference(d)`) to avoid intermediate O(N) memory allocations during set arithmetic.
+## 2026-08-16 - Optimizing rglob for parallel execution
+**Learning:** Sequentially populating a list from `rglob()` before parallel execution builds the entire result set in memory upfront and delays the first `executor.map()` chunk from being dispatched until the full directory walk completes.
+**Action:** Wrap `rglob` in a generator and yield paths lazily so `executor.map(..., chunksize=N)` can dispatch chunks as paths become available, reducing peak memory usage without requiring the full path list to be materialized before dispatch begins.
 
 ## 2026-08-14 - [Performance] Avoiding splitlines()[0] on large text strings
 **Learning:** Using `text.splitlines()[0]` to extract just the first line of a potentially large text document (like a PR body) tokenizes the entire string into an $O(N)$ memory array just to return the first element.
