@@ -24,6 +24,31 @@ class CheckDocFreshnessTests(RuntimeWorkspaceTestCase):
         )
         self.write_file("AGENTS.md", "# Test repo\n")
 
+    def test_run_freshness_near_expiry_logic(self) -> None:
+        self.write_file("wiki/near_expiry.md", self._build_page("Near Expiry", "2024-01-01T00:00:00Z"))
+
+        report = self.module.run_freshness(
+            repo_root=self.workspace,
+            scope="wiki",
+            as_of="2024-01-31",
+            max_age_days=40,
+            near_expiry_days=10,
+        )
+
+        payload = report.to_dict()
+        self.assertEqual(payload["status"], "fail")
+        self.assertEqual(payload["reason_code"], "near_expiry")
+        self.assertEqual(payload["files"], [
+            {
+                "age_days": 30,
+                "message": "document is approaching freshness threshold (30d old, expires in 10d). PROACTIVE FIX: update page content and set updated_at: <today's date>.",
+                "path": "wiki/near_expiry.md",
+                "reason_code": "near_expiry",
+                "status": "fail",
+                "updated_at": "2024-01-01",
+            }
+        ])
+
     def test_run_freshness_emits_stable_json_shape(self) -> None:
         self.write_file("wiki/reference.md", self._build_page("Reference", "2024-01-01T00:00:00Z"))
 

@@ -123,6 +123,37 @@ jobs:
               print(f"::warning file={target}::[{validator}] {msg} (advisory — signal mode)")
           EOF
 
+      - name: Run wiki near-expiry check
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p freshness-reports
+          python3 scripts/validation/check_doc_freshness.py \
+            --scope wiki \
+            --as-of "$(date -u +%Y-%m-%d)" \
+            --max-age-days 90 \
+            --near-expiry-days 14 \
+            --failures-only \
+            > freshness-reports/wiki-near-expiry.json
+
+      - name: Annotate near-expiry pages
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ ! -f freshness-reports/wiki-near-expiry.json ]]; then
+            exit 0
+          fi
+          python3 -c '
+          import json, sys
+          with open("freshness-reports/wiki-near-expiry.json") as f:
+              report = json.load(f)
+          for entry in report.get("files", []):
+              if entry.get("reason_code") == "near_expiry":
+                  path = entry.get("path", "unknown")
+                  msg = entry.get("message", "near expiry")
+                  print(f"::warning file={path}::{msg}")
+          '
+
       - name: Upload freshness report artifact
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

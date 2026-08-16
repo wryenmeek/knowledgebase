@@ -24,6 +24,7 @@ from scripts._optional_surface_common import (
 REASON_CODE_MISSING_UPDATED_AT = "missing_updated_at"
 REASON_CODE_INVALID_UPDATED_AT = "invalid_updated_at"
 REASON_CODE_STALE_DOCUMENT = "stale_document"
+REASON_CODE_NEAR_EXPIRY = "near_expiry"
 REASON_CODE_PREREQ_MISSING_REPO_ROOT = "prereq_missing:repo_root"
 
 SCOPE_ROOTS: dict[str, tuple[str, ...]] = {
@@ -85,6 +86,7 @@ def run_freshness(
     as_of: str,
     max_age_days: int,
     paths: Sequence[str] | None = None,
+    near_expiry_days: int | None = None,
 ) -> FreshnessReport:
     normalized_repo_root = Path(repo_root).resolve()
     if not looks_like_repo_root(normalized_repo_root):
@@ -118,7 +120,7 @@ def run_freshness(
         )
 
     results = tuple(
-        _check_file(path, repo_root=normalized_repo_root, as_of_date=as_of_date, max_age_days=normalized_max_age)
+        _check_file(path, repo_root=normalized_repo_root, as_of_date=as_of_date, max_age_days=normalized_max_age, near_expiry_days=near_expiry_days)
         for path in markdown_files
     )
     first_failure = next((result for result in results if result.status == STATUS_FAIL), None)
@@ -173,6 +175,7 @@ def run_cli(
         as_of=args.as_of,
         max_age_days=args.max_age_days,
         paths=args.path,
+        near_expiry_days=getattr(args, "near_expiry_days", None),
     )
     if getattr(args, "failures_only", False):
         report_dict = report.to_dict()
@@ -194,6 +197,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--path", action="append", default=[], help="Optional repo-relative markdown file or directory.")
     parser.add_argument("--as-of", required=True, help="Required ISO date used for deterministic age checks.")
     parser.add_argument("--max-age-days", required=True, type=int, help="Maximum allowed age in days.")
+    parser.add_argument("--near-expiry-days", type=int, default=None, help="Optional days before max-age to flag as near expiry.")
     parser.add_argument("--failures-only", action="store_true", default=False, help="Suppress passing files; emit only stale or invalid entries.")
     return parser
 
@@ -269,7 +273,7 @@ def _expand_path_candidate(raw_path: str, *, repo_root: Path, allowed_roots: Seq
     return (resolved_candidate,)
 
 
-def _check_file(path: Path, *, repo_root: Path, as_of_date: date, max_age_days: int) -> FreshnessFileResult:
+def _check_file(path: Path, *, repo_root: Path, as_of_date: date, max_age_days: int, near_expiry_days: int | None = None) -> FreshnessFileResult:
     relative_path = path.relative_to(repo_root).as_posix()
     updated_at_value = _extract_updated_at(path.read_text(encoding="utf-8"))
     if updated_at_value is None:
@@ -305,6 +309,15 @@ def _check_file(path: Path, *, repo_root: Path, as_of_date: date, max_age_days: 
             status=STATUS_FAIL,
             reason_code=REASON_CODE_STALE_DOCUMENT,
             message=f"document exceeds freshness threshold ({age_days}d > {max_age_days}d). FIX: update page content and set updated_at: <today's date> in the YAML frontmatter.",
+            updated_at=updated_at_date.isoformat(),
+            age_days=age_days,
+        )
+    if near_expiry_days is not None and age_days >= (max_age_days - near_expiry_days):
+        return FreshnessFileResult(
+            path=relative_path,
+            status=STATUS_FAIL,
+            reason_code=REASON_CODE_NEAR_EXPIRY,
+            message=f"document is approaching freshness threshold ({age_days}d old, expires in {max_age_days - age_days}d). PROACTIVE FIX: update page content and set updated_at: <today's date>.",
             updated_at=updated_at_date.isoformat(),
             age_days=age_days,
         )
