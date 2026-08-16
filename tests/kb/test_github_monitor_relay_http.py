@@ -456,6 +456,106 @@ def test_main_wires_make_server_with_from_env_app(
 
 
 @pytest.mark.parametrize(
+    ("host_env", "expected_host"),
+    [
+        (None, "127.0.0.1"),
+        ("", "127.0.0.1"),
+        ("   ", "127.0.0.1"),
+        ("10.0.0.5", "10.0.0.5"),
+    ],
+)
+def test_main_host_default_from_env_when_flag_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    host_env: str | None,
+    expected_host: str,
+) -> None:
+    """Bandit B104: --host must default to localhost, not 0.0.0.0, and only
+    bind to a non-loopback address when HOST is explicitly set to one."""
+    fake_app = GitHubRelayWsgiApp(
+        repo_root=tmp_path,
+        webhook_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    server_state: dict[str, Any] = {}
+
+    class _FakeServer:
+        def __init__(self, host: str, port: int, application: Any) -> None:
+            server_state["host"] = host
+
+        def __enter__(self) -> "_FakeServer":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def serve_forever(self) -> None:
+            server_state["served"] = True
+
+    if host_env is None:
+        monkeypatch.delenv("HOST", raising=False)
+    else:
+        monkeypatch.setenv("HOST", host_env)
+
+    monkeypatch.setattr(
+        relay_http.GitHubRelayWsgiApp, "from_env", classmethod(lambda cls: fake_app)
+    )
+    monkeypatch.setattr(
+        relay_http, "make_server", lambda host, port, app: _FakeServer(host, port, app)
+    )
+    monkeypatch.setattr(
+        relay_http.sys, "argv", ["relay_http.py", "--port", "8099"]
+    )
+
+    relay_http.main()
+
+    assert server_state["host"] == expected_host
+    assert server_state["served"] is True
+
+
+def test_main_host_flag_overrides_host_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake_app = GitHubRelayWsgiApp(
+        repo_root=tmp_path,
+        webhook_secret="secret",
+        dispatch_client=_NoopDispatchClient(),  # type: ignore[arg-type]
+    )
+    server_state: dict[str, Any] = {}
+
+    class _FakeServer:
+        def __init__(self, host: str, port: int, application: Any) -> None:
+            server_state["host"] = host
+
+        def __enter__(self) -> "_FakeServer":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def serve_forever(self) -> None:
+            server_state["served"] = True
+
+    monkeypatch.setenv("HOST", "10.0.0.5")
+    monkeypatch.setattr(
+        relay_http.GitHubRelayWsgiApp, "from_env", classmethod(lambda cls: fake_app)
+    )
+    monkeypatch.setattr(
+        relay_http, "make_server", lambda host, port, app: _FakeServer(host, port, app)
+    )
+    monkeypatch.setattr(
+        relay_http.sys,
+        "argv",
+        ["relay_http.py", "--host", "192.168.1.1", "--port", "8099"],
+    )
+
+    relay_http.main()
+
+    assert server_state["host"] == "192.168.1.1"
+    assert server_state["served"] is True
+
+
+@pytest.mark.parametrize(
     ("relay_status", "internal_reason", "expected_reason"),
     [
         ("rejected", "registry file is unreadable/invalid: raw/github-sources/x.source-registry.json", "request_rejected"),
