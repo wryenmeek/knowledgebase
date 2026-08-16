@@ -3,7 +3,9 @@ import {
   buildDispatchCommentBody,
   countRecentInProgressAttempts,
   markIssueInProgress,
+  MERGE_EVIDENCE_MAX_CONCURRENCY,
   restoreIssueAfterFailure,
+  runWithIssueRecovery,
   selectRecoveryLabelFromEvents,
 } from "./fleet-dispatch.ts";
 
@@ -32,6 +34,47 @@ describe("fleet-dispatch label lifecycle", () => {
 
     await markIssueInProgress(octokit as never, "wryenmeek", "knowledgebase", 350);
     expect(calls).toEqual(["add", "remove"]);
+  });
+
+  test("dispatch recovery restores labels when the operation fails", async () => {
+    const calls: string[] = [];
+    const octokit = {
+      rest: {
+        issues: {
+          addLabels: async () => {
+            calls.push("add");
+          },
+          removeLabel: async () => {
+            calls.push("remove");
+          },
+          createComment: async () => {},
+          listEvents: async () => ({}),
+        },
+      },
+      paginate: async () => [],
+    };
+
+    await expect(
+      runWithIssueRecovery(
+        octokit as never,
+        "wryenmeek",
+        "knowledgebase",
+        [350],
+        async () => {
+          await markIssueInProgress(octokit as never, "wryenmeek", "knowledgebase", 350);
+          throw new Error("dispatch failed");
+        }
+      )
+    ).rejects.toThrow("dispatch failed");
+    expect(calls).toEqual([
+      "add",
+      "remove",
+      "remove",
+      "remove",
+      "remove",
+      "remove",
+      "add",
+    ]);
   });
 
   test("dispatch comment embeds exactly task.prompt inside details block", () => {
@@ -83,7 +126,12 @@ describe("fleet-dispatch label lifecycle", () => {
       },
       { event: "labeled", created_at: isoDaysAgo(19), label: { name: "in-progress" } },
       { event: "labeled", created_at: isoDaysAgo(18), label: { name: "in-progress" } },
-      { event: "closed", created_at: isoDaysAgo(2), commit_id: "abc123" },
+      {
+        event: "closed",
+        created_at: isoDaysAgo(2),
+        commit_id: "abc123",
+        verified_merged_pr: true,
+      },
       { event: "labeled", created_at: isoDaysAgo(1), label: { name: "in-progress" } },
     ];
     expect(countRecentInProgressAttempts(events)).toBe(1);
@@ -227,8 +275,9 @@ describe("fleet-dispatch label lifecycle", () => {
     expect(selectRecoveryLabelFromEvents(events)).toBe("needs-triage");
   });
 
-  test("unmerged close (commit_id null) does NOT reset strike counter (P2: gap fill)", () => {
-    // Reset on close requires both `event === "closed"` AND `commit_id`.
+  test("commit-associated non-merge close does NOT reset strike counter", () => {
+    // A commit_id only proves that a commit closed the issue; it does not
+    // prove that a pull request was merged.
     // A manual unmerged close (operator clearing stale state) must not
     // erase strike history. Pin this so the guard cannot be removed
     // without a failing test.
@@ -241,7 +290,28 @@ describe("fleet-dispatch label lifecycle", () => {
       },
       { event: "labeled", created_at: isoDaysAgo(9), label: { name: "in-progress" } },
       { event: "labeled", created_at: isoDaysAgo(8), label: { name: "in-progress" } },
-      { event: "closed", created_at: isoDaysAgo(5), commit_id: null },
+      { event: "closed", created_at: isoDaysAgo(5), commit_id: "abc123" },
+      { event: "labeled", created_at: isoDaysAgo(1), label: { name: "in-progress" } },
+    ];
+    expect(countRecentInProgressAttempts(events)).toBe(3);
+  });
+
+  test("closed event with incomplete merge metadata does NOT reset strike counter", () => {
+    const events = [
+      {
+        event: "labeled",
+        created_at: isoDaysAgo(10),
+        label: { name: "ready-for-agent" },
+        actor: { login: "human-user", type: "User" },
+      },
+      { event: "labeled", created_at: isoDaysAgo(9), label: { name: "in-progress" } },
+      { event: "labeled", created_at: isoDaysAgo(8), label: { name: "in-progress" } },
+      {
+        event: "closed",
+        created_at: isoDaysAgo(5),
+        commit_id: "abc123",
+        verified_merged_pr: false,
+      },
       { event: "labeled", created_at: isoDaysAgo(1), label: { name: "in-progress" } },
     ];
     expect(countRecentInProgressAttempts(events)).toBe(3);
@@ -256,6 +326,9 @@ describe("fleet-dispatch label lifecycle", () => {
           removeLabel: async () => {},
           createComment: async () => {},
           listEvents: function listEvents() {},
+        },
+        repos: {
+          listPullRequestsAssociatedWithCommit: async () => ({ data: [] }),
         },
       },
       paginate: async (fn: unknown, params: Record<string, unknown>) => {
@@ -272,6 +345,75 @@ describe("fleet-dispatch label lifecycle", () => {
       issue_number: 350,
       per_page: 100,
     });
+  });
+
+  test("restore verifies merge evidence through associated pull requests", async () => {
+    const labels: string[] = [];
+    const octokit = {
+      rest: {
+        issues: {
+          addLabels: async ({ labels: added }: { labels: string[] }) => {
+            labels.push(...added);
+          },
+          removeLabel: async () => {},
+          createComment: async () => {},
+          listEvents: function listEvents() {},
+        },
+        repos: {
+          listPullRequestsAssociatedWithCommit: async () => ({
+            data: [{ merged_at: isoDaysAgo(2) }],
+          }),
+        },
+      },
+      paginate: async () => [
+        { event: "labeled", created_at: isoDaysAgo(5), label: { name: "in-progress" } },
+        { event: "closed", created_at: isoDaysAgo(2), commit_id: "abc123" },
+        { event: "labeled", created_at: isoDaysAgo(1), label: { name: "in-progress" } },
+      ],
+    };
+
+    await restoreIssueAfterFailure(octokit as never, "wryenmeek", "knowledgebase", 350);
+    expect(labels).toEqual(["ready-for-agent"]);
+  });
+
+  test("merge-evidence lookups for many closed events are concurrency-bounded, not unbounded Promise.all fan-out", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const closedEventCount = 25;
+    const octokit = {
+      rest: {
+        issues: {
+          addLabels: async () => {},
+          removeLabel: async () => {},
+          createComment: async () => {},
+          listEvents: function listEvents() {},
+        },
+        repos: {
+          listPullRequestsAssociatedWithCommit: async () => {
+            inFlight += 1;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            // Yield so overlapping calls can actually race if unbounded.
+            await new Promise((resolve) => setTimeout(resolve, 1));
+            inFlight -= 1;
+            return { data: [] };
+          },
+        },
+      },
+      paginate: async () =>
+        Array.from({ length: closedEventCount }, (_, index) => ({
+          event: "closed",
+          created_at: isoDaysAgo(1),
+          commit_id: `commit-${index}`,
+        })),
+    };
+
+    await restoreIssueAfterFailure(octokit as never, "wryenmeek", "knowledgebase", 350);
+
+    // Bounded by MERGE_EVIDENCE_MAX_CONCURRENCY: must never exceed it,
+    // and with 25 events must actually exercise the concurrency limiter
+    // (more than one in flight at a time) rather than running serially.
+    expect(maxInFlight).toBeGreaterThan(1);
+    expect(maxInFlight).toBeLessThanOrEqual(MERGE_EVIDENCE_MAX_CONCURRENCY);
   });
 
   test("dispatch comment wraps task.prompt in fenced code block so HTML/markdown cannot escape (P3)", () => {

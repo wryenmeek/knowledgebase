@@ -40,6 +40,16 @@ export const AWAITING_FEEDBACK_LABEL = "awaiting-feedback";
 export const NEEDS_TRIAGE_LABEL = "needs-triage";
 const LOOKBACK_WINDOW_DAYS = 30;
 const FAILURE_ABORT_THRESHOLD = 3;
+/**
+ * Bounds concurrent `listPullRequestsAssociatedWithCommit` calls made while
+ * enriching an issue's close events with merge evidence. A single issue's
+ * event history can contain many `closed` events (e.g. repeated
+ * reopen/close cycles); fanning all of them out unbounded via
+ * `Promise.all` risks GitHub secondary rate limiting. This is
+ * independent of `FLEET_MAX_PARALLEL`, which bounds concurrency across
+ * *tasks*, not across events within a single issue's history.
+ */
+export const MERGE_EVIDENCE_MAX_CONCURRENCY = 5;
 
 interface IssueEventActor {
   login?: string | null;
@@ -54,6 +64,7 @@ interface IssueEvent {
   event?: string | null;
   created_at?: string | null;
   commit_id?: string | null;
+  verified_merged_pr?: boolean;
   actor?: IssueEventActor | null;
   label?: IssueEventLabel | null;
 }
@@ -85,6 +96,14 @@ interface FleetIssuesClient {
         issue_number: number;
         per_page?: number;
       }): Promise<unknown>;
+    };
+    repos: {
+      listPullRequestsAssociatedWithCommit(params: {
+        owner: string;
+        repo: string;
+        commit_sha: string;
+        per_page?: number;
+      }): Promise<{ data: Array<{ merged_at?: string | null }> }>;
     };
   };
   paginate<T>(fn: unknown, params: Record<string, unknown>): Promise<T[]>;
@@ -123,7 +142,12 @@ export function countRecentInProgressAttempts(
         resetAnchorMs = ts;
       }
     }
-    if (event.event === "closed" && event.commit_id && Number.isFinite(ts)) {
+    if (
+      event.event === "closed" &&
+      event.commit_id &&
+      event.verified_merged_pr &&
+      Number.isFinite(ts)
+    ) {
       resetAnchorMs = ts;
     }
   }
@@ -147,6 +171,43 @@ export function selectRecoveryLabelFromEvents(
   return countRecentInProgressAttempts(events, now) >= FAILURE_ABORT_THRESHOLD
     ? NEEDS_TRIAGE_LABEL
     : READY_FOR_AGENT_LABEL;
+}
+
+async function loadIssueEventsWithMergeEvidence(
+  octokit: FleetIssuesClient,
+  owner: string,
+  repo: string,
+  issueNumber: number
+): Promise<IssueEvent[]> {
+  const events = await octokit.paginate<IssueEvent>(octokit.rest.issues.listEvents, {
+    owner,
+    repo,
+    issue_number: issueNumber,
+    per_page: 100,
+  });
+
+  return mapWithConcurrency(events, MERGE_EVIDENCE_MAX_CONCURRENCY, async (event) => {
+    if (event.event !== "closed" || !event.commit_id) {
+      return event;
+    }
+    const associatedPullRequests =
+      await octokit.rest.repos.listPullRequestsAssociatedWithCommit({
+        owner,
+        repo,
+        commit_sha: event.commit_id,
+        per_page: 100,
+      });
+    return {
+      ...event,
+      verified_merged_pr: associatedPullRequests.data.some(
+        (pullRequest) =>
+          Boolean(
+            pullRequest.merged_at &&
+              Number.isFinite(Date.parse(pullRequest.merged_at))
+          )
+      ),
+    };
+  });
 }
 
 export function buildDispatchCommentBody(
@@ -230,12 +291,12 @@ export async function restoreIssueAfterFailure(
   issueNumber: number,
   now: Date = new Date()
 ): Promise<string> {
-  const events = await octokit.paginate<IssueEvent>(octokit.rest.issues.listEvents, {
+  const events = await loadIssueEventsWithMergeEvidence(
+    octokit,
     owner,
     repo,
-    issue_number: issueNumber,
-    per_page: 100,
-  });
+    issueNumber
+  );
   const nextLabel = selectRecoveryLabelFromEvents(events, now);
   await removeLabelIfPresent(octokit, owner, repo, issueNumber, IN_PROGRESS_LABEL);
   await removeLabelIfPresent(octokit, owner, repo, issueNumber, AWAITING_FEEDBACK_LABEL);
@@ -243,6 +304,38 @@ export async function restoreIssueAfterFailure(
   await removeLabelIfPresent(octokit, owner, repo, issueNumber, NEEDS_TRIAGE_LABEL);
   await addLabel(octokit, owner, repo, issueNumber, nextLabel);
   return nextLabel;
+}
+
+export async function runWithIssueRecovery<T>(
+  octokit: FleetIssuesClient,
+  owner: string,
+  repo: string,
+  issueNumbers: number[],
+  operation: () => Promise<T>
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    for (const issueNumber of issueNumbers) {
+      try {
+        const restoredLabel = await restoreIssueAfterFailure(
+          octokit,
+          owner,
+          repo,
+          issueNumber
+        );
+        console.error(`  ↩️ Restored issue #${issueNumber} to label "${restoredLabel}".`);
+      } catch (restoreError) {
+        console.error(
+          "  ❌ Failed to restore labels for issue #" +
+            issueNumber +
+            ": " +
+            getSanitizedErrorMessage(restoreError)
+        );
+      }
+    }
+    throw error;
+  }
 }
 
 async function mapWithConcurrency<T, R>(
@@ -354,61 +447,49 @@ export async function main(): Promise<void> {
       ` (max parallel: ${maxParallel})...`
   );
 
-  const dispatchedSessions = await mapWithConcurrency(tasks, maxParallel, async (task) => {
-    for (const issueNumber of task.issues) {
-      await markIssueInProgress(octokit, repoInfo.owner, repoInfo.repo, issueNumber);
-    }
+  const dispatchedSessions = await mapWithConcurrency(tasks, maxParallel, async (task) =>
+    runWithIssueRecovery(
+      octokit,
+      repoInfo.owner,
+      repoInfo.repo,
+      task.issues,
+      async () => {
+        // Restore every issue uniformly if any mutation fails; recovery derives
+        // each issue's label from fresh event history rather than loop position.
+        for (const issueNumber of task.issues) {
+          await markIssueInProgress(octokit, repoInfo.owner, repoInfo.repo, issueNumber);
+        }
 
-    try {
-      // Per-task PR scope is intentionally open: the manifest bounds the prompt,
-      // but implementation agents may stage any owned source/test path. This
-      // sanity block only catches the 0/0/0 staged-diff hallucination signature.
-      const prompt = `${task.prompt}
+        // Per-task PR scope is intentionally open: the manifest bounds the prompt,
+        // but implementation agents may stage any owned source/test path. This
+        // sanity block only catches the 0/0/0 staged-diff hallucination signature.
+        const prompt = `${task.prompt}
 
 ${buildPreMergeSanityPromptBlock([], { allowAdditional: true })}`;
 
-      const session = await runMutationWithDiagnostics({
-        operation: `fleet-dispatch:jules.run:${task.id}`,
-        maxAttempts: mutationMaxAttempts,
-        run: () =>
-          jules.run({
-            prompt,
-            source: {
-              github: repoInfo.fullName,
-              baseBranch,
-            },
-          }),
-        onAttemptFailure: (envelope) => {
-          logMutationAttemptFailure(
-            `⚠️ Jules dispatch mutation attempt failed for task "${task.id}".`,
-            envelope
-          );
-        },
-      });
+        const session = await runMutationWithDiagnostics({
+          operation: `fleet-dispatch:jules.run:${task.id}`,
+          maxAttempts: mutationMaxAttempts,
+          run: () =>
+            jules.run({
+              prompt,
+              source: {
+                github: repoInfo.fullName,
+                baseBranch,
+              },
+            }),
+          onAttemptFailure: (envelope) => {
+            logMutationAttemptFailure(
+              `⚠️ Jules dispatch mutation attempt failed for task "${task.id}".`,
+              envelope
+            );
+          },
+        });
 
-      return { task, sessionId: session.id };
-    } catch (error) {
-      for (const issueNumber of task.issues) {
-        try {
-          const restoredLabel = await restoreIssueAfterFailure(
-            octokit,
-            repoInfo.owner,
-            repoInfo.repo,
-            issueNumber
-          );
-          console.error(`  ↩️ Restored issue #${issueNumber} to label "${restoredLabel}".`);
-        } catch (restoreError) {
-          console.error(
-            "  ❌ Failed to restore labels for issue #" +
-              issueNumber +
-              ": " +
-              getSanitizedErrorMessage(restoreError)
-          );
-        }
+        return { task, sessionId: session.id };
       }
-      throw error;
-    }
-  });
+    )
+  );
 
   const sessionResults: Array<{ taskId: string; sessionId: string }> = [];
 

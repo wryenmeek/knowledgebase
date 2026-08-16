@@ -249,6 +249,16 @@ class TestFleetDispatchAfterMergeStructure(_AssertMixin):
             dispatch step's `git pull`.
           - `issues: write` — to post per-task tracker comments on the
             GitHub issues handled by each dispatched Jules session.
+          - `pull-requests: read` — fleet-dispatch.ts's failure-recovery path
+            (`restoreIssueAfterFailure` -> `loadIssueEventsWithMergeEvidence`)
+            calls `octokit.rest.repos.listPullRequestsAssociatedWithCommit` to
+            verify merge evidence before selecting a recovery label. That
+            endpoint requires PR read access; `contents`/`issues` alone are
+            insufficient and the call 403s whenever the recovery path runs.
+            Added as part of the PR #547 review remediation (the prior
+            comment on this workflow claiming the dispatch script's "only
+            API call is issues.createComment" was inaccurate — this
+            merge-evidence lookup is a second, real call site).
 
         Anything else (notably `pull-requests: write` — Phase 2a's surface
         for queuing the planning-PR auto-merge — and `actions: write`,
@@ -262,26 +272,31 @@ class TestFleetDispatchAfterMergeStructure(_AssertMixin):
 
         Issue #311 grants `issues: write` specifically for dispatch
         comment-posting. `pull-requests: write` remains forbidden because
-        Phase 2a owns planning-PR auto-merge.
+        Phase 2a owns planning-PR auto-merge — only `read` is granted here.
 
         History note: this test was silently deleted in commit `51acc01`
         (the Layer 7 git-rm fix) when a new test was inadvertently
         overwritten into the same line range. Restored 2026-06-20 with
         a stronger set-equality formulation per the cross-functional
-        review of Layers 6-8.
+        review of Layers 6-8. Amended again to add `pull-requests: read`
+        per the PR #547 review remediation (merge-evidence permission gap).
         """
         perms = self.workflow.get("permissions", {})
         # Issue #311: fleet-dispatch.ts comments on target issues via GITHUB_TOKEN.
         self.assertEqual(
             set(perms.keys()),
-            {"contents", "issues"},
-            "Phase 2b permissions must enumerate exactly {contents, issues}. "
-            "Any addition or removal must amend this test deliberately.",
+            {"contents", "issues", "pull-requests"},
+            "Phase 2b permissions must enumerate exactly "
+            "{contents, issues, pull-requests}. Any addition or removal "
+            "must amend this test deliberately.",
         )
-        self.assertNotIn(
-            "pull-requests",
-            perms,
-            "Phase 2b must not request pull-requests: write; Phase 2a owns PR auto-merge.",
+        self.assertEqual(
+            perms.get("pull-requests"),
+            "read",
+            "Phase 2b must request pull-requests: read (not write) — "
+            "read is needed for merge-evidence lookups on the "
+            "failure-recovery path; write remains Phase 2a's exclusive "
+            "surface for planning-PR auto-merge.",
         )
         self.assertEqual(
             perms.get("contents"),

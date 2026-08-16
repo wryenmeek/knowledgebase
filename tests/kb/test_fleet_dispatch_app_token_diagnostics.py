@@ -415,10 +415,20 @@ EXPECTED_TOKEN_PERMISSIONS = {
         "manual-sweep": {"permission-contents": "write", "permission-pull-requests": "write"},
     },
     "fleet-dispatch-after-merge.yml": {
-        # Phase 2b: dispatch sessions + post per-task tracker comments on issues
-        # NOTE: permission-pull-requests intentionally absent (sec L-2 — Phase 2b
-        # script only calls issues.createComment).
-        "dispatch": {"permission-contents": "write", "permission-issues": "write"},
+        # Phase 2b: dispatch sessions + post per-task tracker comments on issues.
+        # permission-pull-requests: read is required (PR #547 review remediation)
+        # because fleet-dispatch.ts's failure-recovery path
+        # (restoreIssueAfterFailure -> loadIssueEventsWithMergeEvidence) calls
+        # listPullRequestsAssociatedWithCommit to verify merge evidence. The
+        # prior NOTE here ("script only calls issues.createComment") was
+        # inaccurate — that merge-evidence lookup is a second, real call site.
+        # Read-only, distinct from Phase 2a/3's permission-pull-requests: write
+        # (PR auto-merge is not something Phase 2b performs).
+        "dispatch": {
+            "permission-contents": "write",
+            "permission-issues": "write",
+            "permission-pull-requests": "read",
+        },
     },
 }
 
@@ -498,7 +508,13 @@ def test_app_token_permissions_match_adr_036_per_workflow(
                 f"needs issues:write per ADR-036; got {with_block.get('permission-issues')!r}"
             )
 
-        # Symmetric: Phase 2b must NOT request pull_requests:write.
+        # Symmetric: any job that doesn't declare a permission-pull-requests
+        # scope in EXPECTED_TOKEN_PERMISSIONS must not request it. As of the
+        # PR #547 review remediation, Phase 2b (dispatch) now declares
+        # permission-pull-requests: read (see the positive check above), so
+        # this branch currently guards only against an undeclared job
+        # regressing to request pull-requests write/read without updating
+        # the expected-permissions contract above.
         if "permission-pull-requests" not in expected_perms:
             assert with_block.get("permission-pull-requests", "") in ("", None), (
                 f"{workflow_name}/{job_name}: composite invocation must NOT pass "

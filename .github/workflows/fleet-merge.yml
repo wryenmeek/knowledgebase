@@ -72,6 +72,19 @@ jobs:
         env:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           REPO: ${{ github.repository }}
+          # Two-identity login check, mirroring fleet-dispatch.yml's Phase 2a
+          # pre-filter (PR #308 / Issue #82): Jules's auth model shifted from
+          # bot-as-opener ('google-labs-jules') to PAT-based posting, where
+          # the opener is the human repository owner. Without this fallback,
+          # every PAT-authored fleet PR (planning or per-task) is silently
+          # invisible to this job's `gh pr list` filter and never merges.
+          # github.repository_owner (not a hardcoded username) keeps the
+          # filter portable across forks/transfers. Like HEAD_SHA above,
+          # this is a GitHub-controlled context value, not attacker input:
+          # repository_owner is restricted to the same [A-Za-z0-9-]
+          # (max 39 char) charset as GitHub usernames/orgs — no
+          # whitespace or jq/shell metacharacters — so interpolating it
+          # into the double-quoted --jq expression below is safe.
           REPO_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
@@ -118,19 +131,26 @@ jobs:
           # does not forward extra jq CLI flags (e.g. `--arg`) — piping to a
           # separate `jq --arg` invocation avoids unsafe shell interpolation
           # of $HEAD_SHA/$REPO_OWNER into the jq expression string.
+          #
+          # Explicitly excludes jules-memory/* branches (U6/R12): the Jules
+          # persona PR learning loop's proposal PRs must never be
+          # auto-merged by fleet automation, even if their author login
+          # incidentally matched. See .github/workflows/jules-persona-learning.yml.
           PR_NUM=$(gh pr list \
             --state open \
             --repo "$REPO" \
-            --json number,headRefOid,author,body \
+            --json number,headRefOid,headRefName,author,body \
             | jq -r --arg sha "$HEAD_SHA" --arg owner "$REPO_OWNER" '
                 ($owner | ascii_downcase) as $owner_lc
                 | [.[] | select(.headRefOid == $sha) | select(
-                    (.author.login == "google-labs-jules") or
-                    (.author.login == $owner and
-                      ((.body // "") | test(
-                        "(?m)^\\*PR created automatically by Jules for task \\[(?<sid>[A-Za-z0-9_-]+)\\]\\(https://jules\\.google\\.com/task/\\k<sid>\\) started by @" + $owner_lc + "\\*$";
-                        "i"
-                      ))
+                    ((.headRefName | startswith("jules-memory/")) | not) and (
+                      (.author.login == "google-labs-jules") or
+                      (.author.login == $owner and
+                        ((.body // "") | test(
+                          "(?m)^\\*PR created automatically by Jules for task \\[(?<sid>[A-Za-z0-9_-]+)\\]\\(https://jules\\.google\\.com/task/\\k<sid>\\) started by @" + $owner_lc + "\\*$";
+                          "i"
+                        ))
+                      )
                     )
                   ) | .number] | .[0] // empty
               ')
@@ -297,6 +317,15 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           # JULES_API_KEY scoped to this step only — not needed for checkout/install.
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          # Two-identity login check, mirroring fleet-dispatch.yml's Phase 2a
+          # pre-filter and the find-pr step above (PR #308 / Issue #82):
+          # PAT-based Jules posting makes the opener the human repository
+          # owner, so the manual sweep must accept that identity too or it
+          # silently misses every PAT-authored fleet PR. github.repository_owner
+          # is a GitHub-controlled context value restricted to the same
+          # [A-Za-z0-9-] (max 39 char) charset as GitHub usernames/orgs — no
+          # whitespace or jq/shell metacharacters — so interpolating it into
+          # the double-quoted --jq expression below is safe.
         run: |
           set -euo pipefail
 
@@ -329,6 +358,9 @@ jobs:
           # `gh pr list --jq` takes exactly one expression argument and does
           # not forward extra jq CLI flags like `--arg` — pipe to a separate
           # `jq --arg` invocation instead of passing `--arg` to `--jq`.
+          #
+          # Explicitly excludes jules-memory/* branches (U6/R12) — see the
+          # find-pr step above.
           PRS=$(gh pr list \
             --state open \
             --base "$BASE_BRANCH" \
@@ -336,12 +368,14 @@ jobs:
             | jq -r --arg owner "$REPO_OWNER" '
                 ($owner | ascii_downcase) as $owner_lc
                 | [.[] | select(
-                    (.author.login == "google-labs-jules") or
-                    (.author.login == $owner and
-                      ((.body // "") | test(
-                        "(?m)^\\*PR created automatically by Jules for task \\[(?<sid>[A-Za-z0-9_-]+)\\]\\(https://jules\\.google\\.com/task/\\k<sid>\\) started by @" + $owner_lc + "\\*$";
-                        "i"
-                      ))
+                    ((.headRefName | startswith("jules-memory/")) | not) and (
+                      (.author.login == "google-labs-jules") or
+                      (.author.login == $owner and
+                        ((.body // "") | test(
+                          "(?m)^\\*PR created automatically by Jules for task \\[(?<sid>[A-Za-z0-9_-]+)\\]\\(https://jules\\.google\\.com/task/\\k<sid>\\) started by @" + $owner_lc + "\\*$";
+                          "i"
+                        ))
+                      )
                     )
                   )] | sort_by(.number) | .[].number
               ')
