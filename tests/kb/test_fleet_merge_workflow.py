@@ -24,6 +24,9 @@ that previously asserted Phase 1 contained the now-Phase-2b steps.
 
 from __future__ import annotations
 
+import json
+import re
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 import yaml
@@ -366,14 +369,15 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
 
     def test_jq_predicate_rejects_owner_pr_without_jules_session_marker(self) -> None:
         """Functional regression: run find-pr's actual jq selection expression
-        (extracted verbatim from the workflow YAML) against fixture PR data
-        and confirm an owner-authored PR with no Jules session marker is
-        excluded, while a fleet-dispatched PR (same login, with marker) is
-        selected. Proves the fix is not just cosmetic YAML text but an
-        enforced predicate.
+        (extracted verbatim from the workflow YAML, piped from `gh pr list`
+        rather than passed via `--jq`, per the round-2 fix) against fixture
+        PR data and confirm an owner-authored PR with no Jules session
+        marker is excluded, a jules-memory/* branch is excluded even with a
+        marker, and a fleet-dispatched PR (same login, with the real
+        anchored footer) is selected. Proves the fix is not just cosmetic
+        YAML text but an enforced predicate.
         """
         import json
-        import re
         import subprocess
 
         find_pr_step = next(
@@ -382,14 +386,17 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
             if step.get("id") == "find-pr"
         )
         run_script = find_pr_step["run"]
-        # The workflow's --jq "..." argument is a double-quoted shell string
-        # whose *internal* jq double-quotes are backslash-escaped (\"). A
-        # naive "(.*?)" match would stop at the first internal \" instead of
-        # the string's real closing quote, so match escaped-or-non-quote
-        # characters until the terminating unescaped quote, then unescape.
-        match = re.search(r'--jq "((?:[^"\\]|\\.)*)"\)', run_script, re.S)
-        assert match is not None, "could not locate --jq expression in find-pr step"
-        jq_expr = match.group(1).replace('\\"', '"')
+        # The workflow pipes `gh pr list` JSON into a standalone
+        # `jq -r --arg sha ... --arg owner ... '...'` invocation (round 2
+        # fix: `gh pr list --jq` does not forward `--arg`). Extract the
+        # single-quoted jq program that follows.
+        match = re.search(
+            r"jq -r --arg sha \"\$HEAD_SHA\" --arg owner \"\$REPO_OWNER\" '(.*?)'\)",
+            run_script,
+            re.S,
+        )
+        assert match is not None, "could not locate the piped jq --arg expression in find-pr step"
+        jq_expr = match.group(1)
 
         fixture = [
             {
@@ -404,28 +411,27 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
                 "headRefOid": "abc123",
                 "headRefName": "fleet/task-2",
                 "author": {"login": "repo-owner"},
-                "body": "Track progress in Jules session: [xyz](https://jules.google.com/task/xyz789)",
+                "body": (
+                    "*PR created automatically by Jules for task "
+                    "[xyz789](https://jules.google.com/task/xyz789) "
+                    "started by @repo-owner*"
+                ),
             },
             {
                 "number": 3,
                 "headRefOid": "abc123",
                 "headRefName": "jules-memory/foo",
                 "author": {"login": "repo-owner"},
-                "body": "https://jules.google.com/task/abc",
+                "body": (
+                    "*PR created automatically by Jules for task "
+                    "[abc](https://jules.google.com/task/abc) "
+                    "started by @repo-owner*"
+                ),
             },
         ]
 
-        env = {"HEAD_SHA": "abc123", "REPO_OWNER": "repo-owner"}
-        # The workflow's shell double-quotes the jq expression with
-        # `${HEAD_SHA}`/`${REPO_OWNER}` shell-variable interpolation before
-        # jq ever sees it — reproduce that substitution exactly rather than
-        # passing --arg, to keep this test faithful to the actual runtime
-        # behavior (including the escaping of `\\.` for jq's regex engine).
-        substituted = jq_expr.replace("${HEAD_SHA}", env["HEAD_SHA"]).replace(
-            "${REPO_OWNER}", env["REPO_OWNER"]
-        )
         result = subprocess.run(
-            ["jq", "-r", substituted],
+            ["jq", "-r", "--arg", "sha", "abc123", "--arg", "owner", "repo-owner", jq_expr],
             input=json.dumps(fixture),
             capture_output=True,
             text=True,
@@ -442,13 +448,12 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         verbatim from the workflow YAML) against fixture PR data and
         confirm an owner-authored PR with no Jules session marker is
         excluded, a jules-memory/* branch is excluded even with a marker,
-        and only a genuine fleet-dispatched PR (matching login + verified
-        marker + non-jules-memory branch) is selected. manual-sweep's
+        and only genuine fleet-dispatched PRs (matching login + verified
+        footer + non-jules-memory branch) are selected. manual-sweep's
         fixture omits `headRefOid` (unlike find-pr's), since the manual
         sweep is not scoped to a specific commit SHA.
         """
         import json
-        import re
         import subprocess
 
         manual_sweep_job = self.workflow["jobs"]["manual-sweep"]
@@ -458,9 +463,13 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
             if "gh pr list" in step.get("run", "")
         )
         run_script = merge_step["run"]
-        match = re.search(r'--jq "((?:[^"\\]|\\.)*)"\)', run_script, re.S)
-        assert match is not None, "could not locate --jq expression in manual-sweep step"
-        jq_expr = match.group(1).replace('\\"', '"')
+        match = re.search(
+            r"jq -r --arg owner \"\$REPO_OWNER\" '(.*?)'\)",
+            run_script,
+            re.S,
+        )
+        assert match is not None, "could not locate the piped jq --arg expression in manual-sweep step"
+        jq_expr = match.group(1)
 
         fixture = [
             {
@@ -473,13 +482,21 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
                 "number": 2,
                 "headRefName": "fleet/task-2",
                 "author": {"login": "repo-owner"},
-                "body": "Track progress in Jules session: [xyz](https://jules.google.com/task/xyz789)",
+                "body": (
+                    "*PR created automatically by Jules for task "
+                    "[xyz789](https://jules.google.com/task/xyz789) "
+                    "started by @repo-owner*"
+                ),
             },
             {
                 "number": 3,
                 "headRefName": "jules-memory/foo",
                 "author": {"login": "repo-owner"},
-                "body": "https://jules.google.com/task/abc",
+                "body": (
+                    "*PR created automatically by Jules for task "
+                    "[abc](https://jules.google.com/task/abc) "
+                    "started by @repo-owner*"
+                ),
             },
             {
                 "number": 4,
@@ -489,10 +506,8 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
             },
         ]
 
-        env = {"REPO_OWNER": "repo-owner"}
-        substituted = jq_expr.replace("${REPO_OWNER}", env["REPO_OWNER"])
         result = subprocess.run(
-            ["jq", "-r", substituted],
+            ["jq", "-r", "--arg", "owner", "repo-owner", jq_expr],
             input=json.dumps(fixture),
             capture_output=True,
             text=True,
@@ -503,58 +518,64 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
 
     def test_jq_predicate_rejects_malformed_evidence_pr_tokens(self) -> None:
         """Functional regression: both find-pr's and manual-sweep's jq
-        session-marker predicate must reject near-miss/malformed evidence
-        tokens (wrong scheme, wrong host, empty/invalid task id) and only
-        accept a well-formed `https://jules.google.com/task/<id>` token.
-        Guards against a typo'd or truncated marker being silently trusted
-        as a Jules session link, since login match alone is not sufficient.
+        anchored-footer predicate must reject near-miss/malformed footer
+        text (missing anchors, mismatched session IDs, footer embedded
+        mid-line) and only accept the exact, well-formed Jules-generated
+        footer. Guards against a truncated or forged footer being silently
+        trusted, since login match alone is not sufficient.
         """
         import json
-        import re
         import subprocess
 
+        real_footer = (
+            "*PR created automatically by Jules for task "
+            "[xyz789](https://jules.google.com/task/xyz789) started by @repo-owner*"
+        )
         malformed_fixture = [
             {
                 "number": 1,
                 "headRefOid": "abc123",
                 "headRefName": "fleet/task-1",
                 "author": {"login": "repo-owner"},
-                "body": "http://jules.google.com/task/xyz789",  # wrong scheme (http, not https)
+                "body": "http://jules.google.com/task/xyz789",  # bare mention, no footer at all
             },
             {
                 "number": 2,
                 "headRefOid": "abc123",
                 "headRefName": "fleet/task-2",
                 "author": {"login": "repo-owner"},
-                "body": "https://jules.google.co/task/xyz789",  # wrong host (.co, not .com)
+                "body": (
+                    "*PR created automatically by Jules for task "
+                    "[fake](https://jules.google.com/task/real) started by @repo-owner*"
+                ),  # mismatched link-text/URL session IDs
             },
             {
                 "number": 3,
                 "headRefOid": "abc123",
                 "headRefName": "fleet/task-3",
                 "author": {"login": "repo-owner"},
-                "body": "https://jules.google.com/tasks/xyz789",  # wrong path segment (tasks, not task)
+                "body": "prefix text " + real_footer,  # footer not at start of its own line
             },
             {
                 "number": 4,
                 "headRefOid": "abc123",
                 "headRefName": "fleet/task-4",
                 "author": {"login": "repo-owner"},
-                "body": "https://jules.google.com/task/",  # empty task id
+                "body": "quoting inline: " + real_footer + " within other prose",
             },
             {
                 "number": 5,
                 "headRefOid": "abc123",
                 "headRefName": "fleet/task-5",
                 "author": {"login": "repo-owner"},
-                "body": "https://evil.example.com/https://jules.google.com/task",  # no id, dangling reference
+                "body": real_footer.rstrip("*"),  # missing closing asterisk
             },
             {
                 "number": 6,
                 "headRefOid": "abc123",
                 "headRefName": "fleet/task-6",
                 "author": {"login": "repo-owner"},
-                "body": "https://jules.google.com/task/xyz789",  # well-formed: must be the only match
+                "body": real_footer,  # well-formed: must be the only match
             },
         ]
 
@@ -563,14 +584,15 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
             for step in self.workflow["jobs"]["merge-on-ci-pass"]["steps"]
             if step.get("id") == "find-pr"
         )
-        find_pr_match = re.search(r'--jq "((?:[^"\\]|\\.)*)"\)', find_pr_step["run"], re.S)
-        assert find_pr_match is not None
-        find_pr_jq = find_pr_match.group(1).replace('\\"', '"')
-        find_pr_substituted = find_pr_jq.replace("${HEAD_SHA}", "abc123").replace(
-            "${REPO_OWNER}", "repo-owner"
+        find_pr_match = re.search(
+            r"jq -r --arg sha \"\$HEAD_SHA\" --arg owner \"\$REPO_OWNER\" '(.*?)'\)",
+            find_pr_step["run"],
+            re.S,
         )
+        assert find_pr_match is not None
+        find_pr_jq = find_pr_match.group(1)
         find_pr_result = subprocess.run(
-            ["jq", "-r", find_pr_substituted],
+            ["jq", "-r", "--arg", "sha", "abc123", "--arg", "owner", "repo-owner", find_pr_jq],
             input=json.dumps(malformed_fixture),
             capture_output=True,
             text=True,
@@ -582,16 +604,19 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
         merge_step = next(
             step for step in manual_sweep_job["steps"] if "gh pr list" in step.get("run", "")
         )
-        manual_sweep_match = re.search(r'--jq "((?:[^"\\]|\\.)*)"\)', merge_step["run"], re.S)
+        manual_sweep_match = re.search(
+            r"jq -r --arg owner \"\$REPO_OWNER\" '(.*?)'\)",
+            merge_step["run"],
+            re.S,
+        )
         assert manual_sweep_match is not None
-        manual_sweep_jq = manual_sweep_match.group(1).replace('\\"', '"')
-        manual_sweep_substituted = manual_sweep_jq.replace("${REPO_OWNER}", "repo-owner")
+        manual_sweep_jq = manual_sweep_match.group(1)
         # manual-sweep's fixture omits headRefOid (not used by that predicate).
         manual_sweep_fixture = [
             {k: v for k, v in pr.items() if k != "headRefOid"} for pr in malformed_fixture
         ]
         manual_sweep_result = subprocess.run(
-            ["jq", "-r", manual_sweep_substituted],
+            ["jq", "-r", "--arg", "owner", "repo-owner", manual_sweep_jq],
             input=json.dumps(manual_sweep_fixture),
             capture_output=True,
             text=True,
@@ -626,6 +651,169 @@ class TestFleetMergeWorkflowContract(_AssertMixin):
                 self.assertIn("jules-memory/", run_val)
                 return
         raise AssertionError("manual-sweep has no gh pr list step referencing headRefName")
+
+    def test_bot_filter_is_widened_to_repository_owner(self) -> None:
+        """Author filter must also match github.repository_owner (PAT-based posting).
+
+        Jules's auth model shifted from bot-authored PRs ('google-labs-jules')
+        to PAT-based posting under the operator's own login some time after
+        the original 'google-labs-jules'-only filter was written (mirrors the
+        Phase 2a fix documented in ADR-019 Consequences row 3 / issue #82 /
+        #299 / #307 / #308). A filter restricted to the bot identity alone
+        silently matches zero PRs post-shift, making both the event-driven
+        find-pr step and the manual-sweep step permanently no-op. Both must
+        widen to accept github.repository_owner as well.
+
+        A bare substring `test("jules.google.com/task/")` match on the PR
+        body is spoofable (Codex review finding on #566, round 2): any
+        owner-authored PR that merely mentions a Jules URL in unrelated
+        discussion would be misclassified as a fleet PR. Cross-validating
+        the extracted session ID against `.fleet/*/sessions.json` was tried
+        and rejected (Codex finding on #566, round 3): that file is only
+        ever committed to main by manual/historical commits, never by the
+        automated fleet-dispatch-after-merge.yml pipeline itself, so real
+        automation-generated PRs would always fail that lookup. Owner-
+        authored candidates are instead only trusted when the body matches
+        the EXACT, anchored footer Jules generates verbatim (see
+        buildDispatchCommentBody in scripts/fleet/fleet-dispatch.ts), tied
+        to the real repository_owner login.
+        """
+        self.assertIn("REPO_OWNER: ${{ github.repository_owner }}", self.workflow_text)
+        self.assertIn('.author.login == "google-labs-jules"', self.workflow_text)
+        self.assertIn(".author.login == $owner", self.workflow_text)
+        # Owner-authored candidates must be gated on the anchored, full
+        # Jules-generated footer text — not a bare task-URL substring test.
+        self.assertIn(
+            "PR created automatically by Jules for task",
+            self.workflow_text,
+        )
+        self.assertIn("started by @", self.workflow_text)
+        # The match must be fully line-anchored (multiline `^...$`) so a PR
+        # merely quoting the footer inline within other prose does not
+        # match (Codex finding on #566, round 4).
+        self.assertIn("(?m)^\\\\*PR created automatically by Jules for task", self.workflow_text)
+        # The session ID must be captured once and backreferenced so the
+        # link text and the URL segment are required to be the SAME value —
+        # a forged `[fake](.../real-id)` must not satisfy the match.
+        self.assertIn("(?<sid>[A-Za-z0-9_-]+)", self.workflow_text)
+        self.assertIn("\\\\k<sid>", self.workflow_text)
+
+    def test_gh_pr_list_jq_flag_receives_single_expression(self) -> None:
+        """`gh pr list --jq` must not be passed extra CLI flags like --arg.
+
+        `gh`'s --jq flag takes exactly one expression argument and does not
+        forward additional jq options — `--jq --arg owner "$X" '...'` causes
+        gh to treat "--arg" as the expression and reject the remaining
+        tokens as unknown arguments, failing every invocation under
+        `set -e` (Codex P2 finding on #566, reproduced directly). Constrained
+        values must be bound via a separate `jq --arg` invocation piped from
+        `gh pr list`'s JSON output instead.
+        """
+        self.assertNotIn("--jq --arg", self.workflow_text)
+
+    def test_owner_authored_match_does_not_rely_on_fleet_session_artifacts(self) -> None:
+        """The author-identity classification itself may not depend on
+        `.fleet/*/sessions.json` being present on main — that file is only
+        ever committed by manual or historical commits, never written by
+        the automated fleet-dispatch-after-merge.yml pipeline (which never
+        commits/pushes its ephemeral working-tree state). A filter that
+        depends on it would silently no-op for the exact automation-
+        generated PRs it must recognize (Codex finding on #566, round 3).
+
+        Note: `sessions.json` is still legitimately read elsewhere in this
+        workflow for conflict re-dispatch (looking up the original task
+        prompt) — that is a separate concern from author classification.
+        """
+        self.assertNotIn(
+            'jq -e --arg sid "$SESSION_ID"',
+            self.workflow_text,
+        )
+        self.assertNotIn('select(.sessionId == $sid)] | length > 0', self.workflow_text)
+
+    def test_manual_sweep_uses_anchored_footer_match(self) -> None:
+        """The manual-sweep job must apply the same anchored-footer gate as
+        the event-driven find-pr step — not a bare task-URL substring test,
+        which Codex flagged as equally spoofable in the manual-sweep
+        selector.
+        """
+        # Restrict the search to the manual-sweep job body.
+        idx = self.workflow_text.index("manual-sweep:")
+        manual_sweep_text = self.workflow_text[idx:]
+        self.assertIn("PR created automatically by Jules for task", manual_sweep_text)
+        self.assertIn("started by @", manual_sweep_text)
+        self.assertNotIn('test("jules\\\\.google\\\\.com/task/")', manual_sweep_text)
+
+    def test_anchored_footer_regex_rejects_spoofed_prose_accepts_real_footer(self) -> None:
+        """Behavioral proof (Prove-It Pattern) that the anchored footer jq
+        regex — run for real via `jq`, not merely asserted as a substring —
+        correctly rejects every spoof variant Codex identified across
+        rounds 2-4 while still matching the real Jules-generated footer.
+
+        Extracts the exact jq test(...) expression from the find-pr step
+        and evaluates it against representative PR bodies using the real
+        `jq` binary, so this test would fail if the regex were ever
+        accidentally weakened (unanchored, missing backreference, etc.).
+        """
+        match = re.search(
+            r'test\(\s*\n\s*"((?:[^"\\]|\\.)*)" \+ \$owner_lc \+ "((?:[^"\\]|\\.)*)"',
+            self.workflow_text,
+        )
+        self.assertIsNotNone(match, "could not locate the anchored footer regex in find-pr")
+        pattern_prefix, pattern_suffix = match.group(1), match.group(2)
+
+        def matches(body: str, owner: str = "wryenmeek") -> bool:
+            jq_expr = (
+                f'($owner_lc) as $owner_lc | '
+                f'(. | test("{pattern_prefix}" + $owner_lc + "{pattern_suffix}"; "i"))'
+            )
+            result = subprocess.run(
+                ["jq", "-r", "--arg", "owner_lc", owner, jq_expr],
+                input=json.dumps(body),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.stdout.strip() == "true"
+
+        real_footer = (
+            "Some description.\n\n---\n"
+            "*PR created automatically by Jules for task "
+            "[mock-session-id-0](https://jules.google.com/task/mock-session-id-0) "
+            "started by @wryenmeek*"
+        )
+        self.assertTrue(matches(real_footer), "must match the real, well-formed Jules footer")
+
+        bare_mention = "random PR mentions https://jules.google.com/task/nonexistent-999 in passing"
+        self.assertFalse(matches(bare_mention), "must reject a bare task-URL mention (round 2 spoof)")
+
+        embedded_in_prose = (
+            "Discussing troubleshooting: quoting "
+            "*PR created automatically by Jules for task "
+            "[fake](https://jules.google.com/task/real) started by @wryenmeek* "
+            "inline in prose."
+        )
+        self.assertFalse(
+            matches(embedded_in_prose),
+            "must reject the footer quoted inline within other prose, not on its own line (round 4 spoof)",
+        )
+
+        mismatched_session_ids = (
+            "*PR created automatically by Jules for task "
+            "[fake](https://jules.google.com/task/real) started by @wryenmeek*"
+        )
+        self.assertFalse(
+            matches(mismatched_session_ids),
+            "must reject when the link text and URL session IDs disagree (round 4 spoof)",
+        )
+
+        prefixed_text = (
+            "prefix text *PR created automatically by Jules for task "
+            "[z](https://jules.google.com/task/z) started by @wryenmeek*"
+        )
+        self.assertFalse(
+            matches(prefixed_text),
+            "must reject when the footer is not at the start of its own line (round 4 spoof)",
+        )
 
     # ── Re-dispatch ordering ─────────────────────────────────────────────────
 
