@@ -1015,6 +1015,31 @@ def test_run_gh_json_fails_closed_on_nonzero_exit(tmp_path, monkeypatch) -> None
         closure_evidence._run_gh_json(["gh", "issue", "list"], repo_root=tmp_path.resolve())
 
 
+def test_run_gh_json_redacts_token_shaped_stderr_at_callsite(tmp_path, monkeypatch) -> None:
+    """Integration-level regression: `_run_gh_json` must redact token-shaped
+    stderr via the real `scripts._redaction.redact_stderr` helper, not a
+    mocked/stubbed version. This guards the actual call site wiring added in
+    PR #434 (import + invocation of `redact_stderr` inside `_run_gh_json`),
+    complementing the helper's own unit tests in `tests/test_redaction.py`.
+    """
+    leaked_token = "ghp_" + "A" * 36
+
+    def _return_failure_with_token(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["gh", "issue", "list"],
+            returncode=1,
+            stdout="",
+            stderr=f"error: Authorization: Bearer {leaked_token} rejected\n",
+        )
+
+    monkeypatch.setattr(closure_evidence.subprocess, "run", _return_failure_with_token)
+    with pytest.raises(RuntimeError, match="gh command failed") as excinfo:
+        closure_evidence._run_gh_json(["gh", "issue", "list"], repo_root=tmp_path.resolve())
+
+    assert leaked_token not in str(excinfo.value)
+    assert "[REDACTED]" in str(excinfo.value)
+
+
 def test_run_gh_json_fails_closed_on_malformed_json(tmp_path, monkeypatch) -> None:
     def _return_bad_json(*_args, **_kwargs):
         return subprocess.CompletedProcess(
