@@ -128,7 +128,10 @@ def _collect_section_entries(
     if not section_root.exists():
         return []
 
-    # ⚡ Bolt: Yield validated paths lazily to overlap disk I/O with CPU processing and reduce peak memory usage
+    # ⚡ Bolt: Yield validated paths lazily instead of building a full list upfront,
+    # reducing peak memory usage and letting executor.map() dispatch work in
+    # chunksize=100 chunks as paths become available, rather than requiring the
+    # entire directory tree to be listed before dispatch can begin.
     def _generate_page_paths():
         for page_path in section_root.rglob("*.md"):
             validated = _validate_section_page_path(page_path, wiki_root)
