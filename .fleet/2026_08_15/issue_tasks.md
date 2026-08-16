@@ -12,7 +12,7 @@ One root cause was identified corresponding to a feature request for automated n
 
 **Related issues:** #560
 **Severity:** Medium
-**Files involved:** `scripts/validation/check_doc_freshness.py`, `tests/kb/test_check_doc_freshness.py`, `.github/workflows/wiki-freshness.yml`, `docs/architecture.md`
+**Files involved:** `scripts/validation/check_doc_freshness.py`, `tests/kb/test_check_doc_freshness.py`, `.github/workflows/wiki-freshness.yml`, `docs/architecture.md`, `docs/mvp-runbook.md`
 
 #### Diagnosis
 
@@ -109,6 +109,7 @@ Add near-expiry tracking to `check_doc_freshness.py`:
 ```
    The annotation step uses a heredoc (`python3 <<'PY' ... PY`) rather than a `python3 -c '...'` one-liner: the one-liner is fragile against quoting/indentation and cannot cleanly guard missing, empty, or malformed report JSON. The heredoc's shell `-s` check (missing/empty file) plus the `try/except (OSError, json.JSONDecodeError)` (malformed JSON) both log a warning and exit 0 instead of failing the step.
 7. In `docs/architecture.md`, add a `freshness_near_expiry_days` row (value `14`) to the "Governed constants" table alongside `freshness_stale_days` and `freshness_afk_threshold_days`, documenting the rationale for the proactive-warning window relative to the 90-day stale threshold — governance-affecting configuration values require documented rationale per that section, and the dispatched task now owns this file so the constant isn't left undocumented.
+8. In `docs/mvp-runbook.md`, update the `wiki-freshness.yml` workflow table row (which currently enumerates the stale-check, annotate, classify-stale, and governance-signal-sweep steps) to add the two new near-expiry steps (`Run wiki near-expiry check`, `Annotate near-expiry pages`) so the operator-facing table remains a complete description of the workflow. Also add the equivalent local-repro `check_doc_freshness` command with `--near-expiry-days 14` next to the existing documented `--max-age-days 90 --failures-only` invocation, so operators can reproduce the near-expiry warning locally.
 
 #### Test Plan
 
@@ -124,7 +125,7 @@ Add near-expiry tracking to `check_doc_freshness.py`:
 
 | # | Task | Root Cause | Issues | Files | Risk |
 |---|------|-----------|--------|-------|------|
-| 1 | Add automated near-expiry refresh tracking | RC-1 | #560 | `scripts/validation/check_doc_freshness.py`, `tests/kb/test_check_doc_freshness.py`, `.github/workflows/wiki-freshness.yml`, `docs/architecture.md` | Medium |
+| 1 | Add automated near-expiry refresh tracking | RC-1 | #560 | `scripts/validation/check_doc_freshness.py`, `tests/kb/test_check_doc_freshness.py`, `.github/workflows/wiki-freshness.yml`, `docs/architecture.md`, `docs/mvp-runbook.md` | Medium |
 
 ## File Ownership Matrix
 
@@ -134,3 +135,4 @@ Add near-expiry tracking to `check_doc_freshness.py`:
 | `tests/kb/test_check_doc_freshness.py` | 1 | Modify |
 | `.github/workflows/wiki-freshness.yml` | 1 | Modify |
 | `docs/architecture.md` | 1 | Modify |
+| `docs/mvp-runbook.md` | 1 | Modify |
