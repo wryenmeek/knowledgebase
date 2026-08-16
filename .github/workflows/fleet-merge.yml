@@ -100,10 +100,13 @@ jobs:
           # google-labs-jules-authored PRs are trusted on identity alone
           # (that login cannot be spoofed by another actor). Owner-authored
           # PRs are only trusted when the PR body matches the EXACT,
-          # anchored footer Jules generates (see buildDispatchCommentBody in
-          # scripts/fleet/fleet-dispatch.ts): "*PR created automatically by
-          # Jules for task [<sessionId>](https://jules.google.com/task/
-          # <sessionId>) started by @<repository_owner>*". A bare substring
+          # anchored footer Jules itself appends to every PR it opens (this
+          # is Jules-service-generated text, not produced by any function in
+          # this repo — buildDispatchCommentBody in scripts/fleet/
+          # fleet-dispatch.ts only builds the *issue* tracking comment, a
+          # different template): "*PR created automatically by Jules for
+          # task [<sessionId>](https://jules.google.com/task/<sessionId>)
+          # started by @<repository_owner>*". A bare substring
           # test for the task-URL alone is spoofable (Codex finding on #566,
           # round 2) — any owner-authored PR that merely mentions a Jules
           # URL in unrelated discussion would otherwise pass. Cross-checking
