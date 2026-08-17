@@ -7,7 +7,7 @@ description: Scans repo-local markdown freshness through the approved validation
 
 ## Overview
 
-Use this skill as a thin operator-facing wrapper over `scripts/validation/check_doc_freshness.py`. The skill keeps freshness logic in the repo-level validation surface and exposes only typed arguments for scope, as-of date, max age, and optional repo-relative path filters. In maintenance flows, treat the result as read-only evidence for `maintenance-auditor` or `recommend-maintenance-follow-up`, not as permission to edit stale content directly.
+Use this skill as a thin operator-facing wrapper over `scripts/validation/check_doc_freshness.py`. The skill keeps freshness logic in the repo-level validation surface and exposes only typed arguments for scope, as-of date, max age, optional near-expiry window, and optional repo-relative path filters. In maintenance flows, treat the result as read-only evidence for `maintenance-auditor` or `recommend-maintenance-follow-up`, not as permission to edit stale content directly.
 
 ## When to Use
 
@@ -17,9 +17,11 @@ Use this skill as a thin operator-facing wrapper over `scripts/validation/check_
 
 ## Contract
 
-- Inputs are typed only: `scope`, `as_of`, `max_age_days`, and optional repeated repo-relative `path`
+- Inputs are typed only: `scope`, `as_of`, `max_age_days`, optional `near_expiry_days`, and optional repeated repo-relative `path`
 - The skill routes directly to `scripts/validation/check_doc_freshness.py`
 - Execution stays repo-local and read-only
+- When supplied, `near_expiry_days` must be greater than zero and less than `max_age_days`; pages at or beyond the near-expiry boundary fail with reason code `near_expiry`, while already-stale pages retain `stale_document`
+- Reports include both `max_age_days` and the applied `near_expiry_days` window so findings are reproducible
 - Freshness findings may inform `maintenance-auditor`, but any page edit, archive, supersede, or index change returns to `knowledgebase-orchestrator` for `evidence-verifier` and `policy-arbiter` review first
 - Any invalid path, missing `updated_at`, invalid timestamp, or stale document fails closed
 
@@ -37,6 +39,7 @@ Run from the repository root:
 
 ```bash
 python3 scripts/validation/check_doc_freshness.py --scope wiki --as-of 2024-01-31 --max-age-days 45
+python3 scripts/validation/check_doc_freshness.py --scope wiki --as-of 2024-01-31 --max-age-days 45 --near-expiry-days 14 --failures-only
 python3 scripts/validation/check_doc_freshness.py --scope docs --as-of 2024-01-31 --max-age-days 30 --path docs/mvp-runbook.md
 ```
 

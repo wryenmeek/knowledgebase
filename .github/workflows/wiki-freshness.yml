@@ -20,6 +20,8 @@ permissions:
 env:
   CI_ID: CI-freshness
   TOKEN_PROFILE: tp-freshness-readonly
+  FRESHNESS_MAX_AGE_DAYS: "90"
+  FRESHNESS_NEAR_EXPIRY_DAYS: "14"
 
 concurrency:
   group: kb-freshness-${{ github.repository }}
@@ -44,16 +46,16 @@ jobs:
           python-version: "3.12"
 
       - name: Run wiki freshness check
-        # Governed constants: freshness_stale_days=90, see docs/architecture.md
+        # Governed constants: freshness_stale_days, see docs/architecture.md
         id: freshness
         continue-on-error: true
         run: |
           set -euo pipefail
           mkdir -p freshness-reports
-          python3 scripts/validation/check_doc_freshness.py \
+          python3 -m scripts.validation.check_doc_freshness \
             --scope wiki \
             --as-of "$(date -u +%Y-%m-%d)" \
-            --max-age-days 90 \
+            --max-age-days "$FRESHNESS_MAX_AGE_DAYS" \
             --failures-only \
             > freshness-reports/wiki-freshness.json
 
@@ -67,6 +69,13 @@ jobs:
           fi
           python3 - <<'EOF'
           import json, sys
+
+          def escape_property(value):
+              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+          def escape_message(value):
+              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
           with open("freshness-reports/wiki-freshness.json") as f:
               report = json.load(f)
           files = report.get("files", [])
@@ -74,8 +83,8 @@ jobs:
               print("All wiki pages are within the freshness threshold.")
               sys.exit(0)
           for entry in files:
-              path = entry.get("path", "unknown")
-              msg = entry.get("message", "stale document")
+              path = escape_property(str(entry.get("path", "unknown")))
+              msg = escape_message(str(entry.get("message", "stale document")))
               print(f"::warning file={path}::{msg} FIX: update page content and set updated_at to today's date in the YAML frontmatter.")
           EOF
 
@@ -109,6 +118,13 @@ jobs:
             > freshness-reports/governance-signal.json
           python3 - <<'EOF'
           import json, sys
+
+          def escape_property(value):
+              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+          def escape_message(value):
+              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
           with open("freshness-reports/governance-signal.json") as f:
               report = json.load(f)
           findings = report.get("findings", [])
@@ -117,9 +133,9 @@ jobs:
               print("Governance signal sweep: no advisory findings.")
               sys.exit(0)
           for fn in fail_findings:
-              target = fn.get("target", "wiki")
-              msg = fn.get("message", "governance finding")
-              validator = fn.get("validator", "governance")
+              target = escape_property(str(fn.get("target", "wiki")))
+              msg = escape_message(str(fn.get("message", "governance finding")))
+              validator = escape_message(str(fn.get("validator", "governance")))
               print(f"::warning file={target}::[{validator}] {msg} (advisory — signal mode)")
           EOF
 
@@ -128,31 +144,52 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p freshness-reports
-          python3 scripts/validation/check_doc_freshness.py \
+          python3 -m scripts.validation.check_doc_freshness \
             --scope wiki \
             --as-of "$(date -u +%Y-%m-%d)" \
-            --max-age-days 90 \
-            --near-expiry-days 14 \
+            --max-age-days "$FRESHNESS_MAX_AGE_DAYS" \
+            --near-expiry-days "$FRESHNESS_NEAR_EXPIRY_DAYS" \
             --failures-only \
             > freshness-reports/wiki-near-expiry.json
 
       - name: Annotate near-expiry pages
         if: always()
+        continue-on-error: true
         run: |
           set -euo pipefail
           if [[ ! -f freshness-reports/wiki-near-expiry.json ]]; then
+            echo "No near-expiry report generated."
             exit 0
           fi
-          python3 -c '
-          import json, sys
-          with open("freshness-reports/wiki-near-expiry.json") as f:
-              report = json.load(f)
-          for entry in report.get("files", []):
-              if entry.get("reason_code") == "near_expiry":
-                  path = entry.get("path", "unknown")
-                  msg = entry.get("message", "near expiry")
-                  print(f"::warning file={path}::{msg}")
-          '
+          python3 - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          try:
+              report = json.loads(
+                  Path("freshness-reports/wiki-near-expiry.json").read_text(encoding="utf-8")
+              )
+          except (OSError, json.JSONDecodeError) as exc:
+              print(f"::warning::near-expiry report missing or malformed: {exc}")
+              sys.exit(0)
+          if not isinstance(report, dict) or not isinstance(report.get("files", []), list):
+              print("::warning::near-expiry report must contain a files array; skipping annotations")
+              sys.exit(0)
+
+          def escape_property(value: str) -> str:
+              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+          def escape_message(value: str) -> str:
+              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+          for entry in report["files"]:
+              if not isinstance(entry, dict) or entry.get("reason_code") != "near_expiry":
+                  continue
+              path = escape_property(str(entry.get("path", "unknown")))
+              message = escape_message(str(entry.get("message", "near expiry")))
+              print(f"::warning file={path}::{message}")
+          PY
 
       - name: Upload freshness report artifact
         if: always()

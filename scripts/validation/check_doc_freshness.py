@@ -62,6 +62,7 @@ class FreshnessReport:
     scope: str
     as_of: str
     max_age_days: int
+    near_expiry_days: int | None
     files: tuple[FreshnessFileResult, ...]
 
     def to_dict(self) -> dict[str, object]:
@@ -72,6 +73,7 @@ class FreshnessReport:
             "scope": self.scope,
             "as_of": self.as_of,
             "max_age_days": self.max_age_days,
+            "near_expiry_days": self.near_expiry_days,
             "files": [item.to_dict() for item in self.files],
         }
 
@@ -97,12 +99,17 @@ def run_freshness(
             scope=scope,
             as_of=as_of,
             max_age_days=max_age_days,
+            near_expiry_days=near_expiry_days,
             files=(),
         )
 
     try:
         as_of_date = _parse_iso_date(as_of)
         normalized_max_age = _normalize_max_age_days(max_age_days)
+        normalized_near_expiry = _normalize_near_expiry_days(
+            near_expiry_days,
+            max_age_days=normalized_max_age,
+        )
         markdown_files = _resolve_markdown_files(
             repo_root=normalized_repo_root,
             scope=scope,
@@ -116,11 +123,18 @@ def run_freshness(
             scope=scope,
             as_of=as_of,
             max_age_days=max_age_days,
+            near_expiry_days=near_expiry_days,
             files=(),
         )
 
     results = tuple(
-        _check_file(path, repo_root=normalized_repo_root, as_of_date=as_of_date, max_age_days=normalized_max_age, near_expiry_days=near_expiry_days)
+        _check_file(
+            path,
+            repo_root=normalized_repo_root,
+            as_of_date=as_of_date,
+            max_age_days=normalized_max_age,
+            near_expiry_days=normalized_near_expiry,
+        )
         for path in markdown_files
     )
     first_failure = next((result for result in results if result.status == STATUS_FAIL), None)
@@ -132,6 +146,7 @@ def run_freshness(
             scope=scope,
             as_of=as_of_date.isoformat(),
             max_age_days=normalized_max_age,
+            near_expiry_days=normalized_near_expiry,
             files=results,
         )
     return FreshnessReport(
@@ -141,6 +156,7 @@ def run_freshness(
         scope=scope,
         as_of=as_of_date.isoformat(),
         max_age_days=normalized_max_age,
+        near_expiry_days=normalized_near_expiry,
         files=results,
     )
 
@@ -164,6 +180,7 @@ def run_cli(
             scope="unknown",
             as_of="unknown",
             max_age_days=-1,
+            near_expiry_days=None,
             files=(),
         )
         output_stream.write(report.to_json())
@@ -215,6 +232,16 @@ def _parse_iso_date(value: str) -> date:
 def _normalize_max_age_days(value: int) -> int:
     if value < 0:
         raise ValueError("max-age-days must be zero or greater")
+    return value
+
+
+def _normalize_near_expiry_days(value: int | None, *, max_age_days: int) -> int | None:
+    if value is None:
+        return None
+    if value <= 0:
+        raise ValueError("near-expiry-days must be greater than zero")
+    if value >= max_age_days:
+        raise ValueError("near-expiry-days must be less than max-age-days")
     return value
 
 
