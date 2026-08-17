@@ -59,6 +59,10 @@ def _make_github_request(url: str, token: str) -> Any:
     Returns the parsed JSON body.  Raises ``GitHubAPIRequestError`` on HTTP
     4xx/5xx (after retries for 5xx) or network errors.
     """
+    # SECURITY: Validate URL scheme to prevent unintended protocol access (e.g., file://) (Bandit B310)
+    if not url.startswith(("http://", "https://")):
+        raise ValueError(f"Invalid URL scheme: {url}")
+
     req = urllib.request.Request(
         url,
         headers={
@@ -71,7 +75,7 @@ def _make_github_request(url: str, token: str) -> Any:
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES):
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             if (exc.code >= 500 or exc.code == 429) and attempt < _MAX_RETRIES - 1:

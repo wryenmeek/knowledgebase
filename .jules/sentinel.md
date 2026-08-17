@@ -38,3 +38,8 @@
 **Vulnerability:** None — this is a false-positive pattern, not a real vulnerability.
 **Learning:** `.github/actions/fleet-orchestrator-token/action.yml` uses `${{ secrets.X }}` and `${{ steps.<id>.outputs.token }}` literals inside YAML `description:` strings purely as documentation examples for callers. Description fields are not an expression-evaluation context, so this is inert text, not an "expression injection" risk. It is also not linted by CI. This file has been repeatedly "fixed" and reverted by unrelated dispatches mistaking it for a real finding (see issue #563).
 **Prevention:** Do not flag or edit description-field `${{ }}` text in this file as a security finding. If a task's scope doesn't explicitly include `.github/actions/fleet-orchestrator-token/action.yml` in its `file_ownership`, do not touch it.
+
+## 2026-08-16 - [Fix Bandit Alert for urllib.request.urlopen Usage]
+**Vulnerability:** Use of `urllib.request.urlopen` without explicitly restricting the allowed schemes can trigger Bandit B310 alerts and allow unexpected local file access (e.g., `file://`).
+**Learning:** `urllib.request.urlopen` by default accepts various schemes. If user-controlled input manages to reach it, this can read arbitrary files. Explicit scheme validation is required.
+**Prevention:** Always validate URL schemes (e.g., check that they start with `http://` or `https://`) before calling `urllib.request.urlopen` and use `# nosec B310` to suppress false positives after validation is added.

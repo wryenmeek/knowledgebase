@@ -48,11 +48,16 @@ class GitHubApiDispatchClient:
             "event_type": event_type,
             "client_payload": dict(client_payload),
         }
+        url = (
+            f"{self._base_url}/repos/"
+            f"{self._target_owner}/{self._target_repo}/dispatches"
+        )
+        # SECURITY: Validate URL scheme to prevent unintended protocol access (e.g., file://) (Bandit B310)
+        if not url.startswith(("http://", "https://")):
+            raise ValueError(f"Invalid URL scheme: {url}")
+
         request = urllib.request.Request(
-            url=(
-                f"{self._base_url}/repos/"
-                f"{self._target_owner}/{self._target_repo}/dispatches"
-            ),
+            url=url,
             data=json.dumps(payload).encode("utf-8"),
             method="POST",
             headers={
@@ -64,7 +69,7 @@ class GitHubApiDispatchClient:
             },
         )
         try:
-            with urllib.request.urlopen(
+            with urllib.request.urlopen(  # nosec B310
                 request, timeout=self._timeout_seconds
             ) as response:
                 if getattr(response, "status", 204) >= 400:
