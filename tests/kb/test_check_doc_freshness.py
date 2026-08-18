@@ -173,6 +173,27 @@ def test_already_stale_document_keeps_stale_reason(freshness_module, workspace: 
     assert report.files[0].reason_code == "stale_document"
 
 
+def test_stale_reason_precedes_near_expiry_in_mixed_report(
+    freshness_module, workspace: Path
+) -> None:
+    (workspace / "wiki/near.md").write_text(
+        build_page("Near", "2024-01-16T00:00:00Z"), encoding="utf-8"
+    )
+    (workspace / "wiki/stale.md").write_text(
+        build_page("Stale", "2024-01-01T00:00:00Z"), encoding="utf-8"
+    )
+
+    report = freshness_module.run_freshness(
+        repo_root=workspace,
+        scope="wiki",
+        as_of="2024-01-31",
+        max_age_days=20,
+        near_expiry_days=10,
+    )
+
+    assert report.reason_code == "stale_document"
+
+
 def test_cli_near_expiry_and_failures_only(freshness_module, workspace: Path) -> None:
     (workspace / "wiki/near.md").write_text(
         build_page("Near", "2024-01-01T00:00:00Z"), encoding="utf-8"

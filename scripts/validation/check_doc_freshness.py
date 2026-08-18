@@ -137,7 +137,16 @@ def run_freshness(
         )
         for path in markdown_files
     )
-    first_failure = next((result for result in results if result.status == STATUS_FAIL), None)
+    # Surface blocking freshness failures before advisory near-expiry signals.
+    first_failure = next(
+        (
+            result
+            for result in results
+            if result.status == STATUS_FAIL
+            and result.reason_code != REASON_CODE_NEAR_EXPIRY
+        ),
+        None,
+    ) or next((result for result in results if result.status == STATUS_FAIL), None)
     if first_failure is None:
         return FreshnessReport(
             status=STATUS_PASS,
