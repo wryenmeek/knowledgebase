@@ -20,6 +20,8 @@ permissions:
 env:
   CI_ID: CI-freshness
   TOKEN_PROFILE: tp-freshness-readonly
+  FRESHNESS_MAX_AGE_DAYS: "90"
+  FRESHNESS_NEAR_EXPIRY_DAYS: "14"
 
 concurrency:
   group: kb-freshness-${{ github.repository }}
@@ -44,21 +46,22 @@ jobs:
           python-version: "3.12"
 
       - name: Run wiki freshness check
-        # Governed constants: freshness_stale_days=90, see docs/architecture.md
+        # Governed constants: freshness_stale_days, see docs/architecture.md
         id: freshness
         continue-on-error: true
         run: |
           set -euo pipefail
           mkdir -p freshness-reports
-          python3 scripts/validation/check_doc_freshness.py \
+          python3 -m scripts.validation.check_doc_freshness \
             --scope wiki \
             --as-of "$(date -u +%Y-%m-%d)" \
-            --max-age-days 90 \
+            --max-age-days "$FRESHNESS_MAX_AGE_DAYS" \
             --failures-only \
             > freshness-reports/wiki-freshness.json
 
       - name: Annotate stale pages
         if: always()
+        continue-on-error: true
         run: |
           set -euo pipefail
           if [[ ! -f freshness-reports/wiki-freshness.json ]]; then
@@ -66,16 +69,24 @@ jobs:
             exit 0
           fi
           python3 - <<'EOF'
-          import json, sys
-          with open("freshness-reports/wiki-freshness.json") as f:
-              report = json.load(f)
-          files = report.get("files", [])
+          import sys
+          from scripts.validation.github_actions_annotations import (
+              escape_message,
+              escape_property,
+              load_report_entries,
+          )
+
+          try:
+              files = load_report_entries("freshness-reports/wiki-freshness.json", "files")
+          except ValueError as exc:
+              print(f"::warning::freshness report missing or malformed: {exc}")
+              sys.exit(0)
           if not files:
               print("All wiki pages are within the freshness threshold.")
               sys.exit(0)
           for entry in files:
-              path = entry.get("path", "unknown")
-              msg = entry.get("message", "stale document")
+              path = escape_property(str(entry.get("path", "unknown")))
+              msg = escape_message(str(entry.get("message", "stale document")))
               print(f"::warning file={path}::{msg} FIX: update page content and set updated_at to today's date in the YAML frontmatter.")
           EOF
 
@@ -108,20 +119,74 @@ jobs:
             --validator freshness-threshold \
             > freshness-reports/governance-signal.json
           python3 - <<'EOF'
-          import json, sys
-          with open("freshness-reports/governance-signal.json") as f:
-              report = json.load(f)
-          findings = report.get("findings", [])
+          import sys
+          from scripts.validation.github_actions_annotations import (
+              escape_message,
+              escape_property,
+              load_report_entries,
+          )
+
+          try:
+              findings = load_report_entries("freshness-reports/governance-signal.json", "findings")
+          except ValueError as exc:
+              print(f"::warning::governance report missing or malformed: {exc}")
+              sys.exit(0)
           fail_findings = [fn for fn in findings if fn.get("status") == "fail"]
           if not fail_findings:
               print("Governance signal sweep: no advisory findings.")
               sys.exit(0)
           for fn in fail_findings:
-              target = fn.get("target", "wiki")
-              msg = fn.get("message", "governance finding")
-              validator = fn.get("validator", "governance")
+              target = escape_property(str(fn.get("target", "wiki")))
+              msg = escape_message(str(fn.get("message", "governance finding")))
+              validator = escape_message(str(fn.get("validator", "governance")))
               print(f"::warning file={target}::[{validator}] {msg} (advisory — signal mode)")
           EOF
+
+      - name: Run wiki near-expiry check
+        # Keep the advisory signal running when an earlier advisory step fails.
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p freshness-reports
+          python3 -m scripts.validation.check_doc_freshness \
+            --scope wiki \
+            --as-of "$(date -u +%Y-%m-%d)" \
+            --max-age-days "$FRESHNESS_MAX_AGE_DAYS" \
+            --near-expiry-days "$FRESHNESS_NEAR_EXPIRY_DAYS" \
+            --failures-only \
+            > freshness-reports/wiki-near-expiry.json
+
+      - name: Annotate near-expiry pages
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if [[ ! -f freshness-reports/wiki-near-expiry.json ]]; then
+            echo "No near-expiry report generated."
+            exit 0
+          fi
+          python3 - <<'PY'
+          import sys
+          from scripts.validation.github_actions_annotations import (
+              escape_message,
+              escape_property,
+              load_report_entries,
+          )
+
+          try:
+              files = load_report_entries("freshness-reports/wiki-near-expiry.json", "files")
+          except ValueError as exc:
+              print(f"::warning::near-expiry report missing or malformed: {exc}")
+              sys.exit(0)
+
+          for entry in files:
+              if not isinstance(entry, dict) or entry.get("reason_code") != "near_expiry":
+                  continue
+              path = escape_property(str(entry.get("path", "unknown")))
+              message = escape_message(str(entry.get("message", "near expiry")))
+              print(f"::warning file={path}::{message}")
+          PY
 
       - name: Upload freshness report artifact
         if: always()
