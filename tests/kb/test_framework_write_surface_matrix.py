@@ -217,6 +217,13 @@ EXPECTED_WRITE_SURFACE_MATRIX_ROWS: dict[str, dict[str, tuple[str, ...]]] = {
         "Artifact / schema owners": ("scripts/kb/page_template_utils.py", "scripts/_optional_surface_common.py"),
         "Hard-fail behavior": ("SCOPE_ROOTS", "fail closed"),
     },
+    "scripts/validation/github_actions_annotations.py": {
+        "Runtime mode": ("read-only only",),
+        "Writable paths": ("None", "no repository writes",),
+        "Lock requirements": ("None", "forbidden"),
+        "Artifact / schema owners": (".github/workflows/wiki-freshness.yml",),
+        "Hard-fail behavior": ("ValueError", "repository mutation"),
+    },
     "scripts/validation/check_issue_closure_evidence.py": {
         "Runtime mode": ("read-only only",),
         "Writable paths": ("None", "forbidden"),

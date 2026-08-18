@@ -61,6 +61,7 @@ jobs:
 
       - name: Annotate stale pages
         if: always()
+        continue-on-error: true
         run: |
           set -euo pipefail
           if [[ ! -f freshness-reports/wiki-freshness.json ]]; then
@@ -68,17 +69,18 @@ jobs:
             exit 0
           fi
           python3 - <<'EOF'
-          import json, sys
+          import sys
+          from scripts.validation.github_actions_annotations import (
+              escape_message,
+              escape_property,
+              load_report_entries,
+          )
 
-          def escape_property(value):
-              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-
-          def escape_message(value):
-              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-
-          with open("freshness-reports/wiki-freshness.json") as f:
-              report = json.load(f)
-          files = report.get("files", [])
+          try:
+              files = load_report_entries("freshness-reports/wiki-freshness.json", "files")
+          except ValueError as exc:
+              print(f"::warning::freshness report missing or malformed: {exc}")
+              sys.exit(0)
           if not files:
               print("All wiki pages are within the freshness threshold.")
               sys.exit(0)
@@ -117,17 +119,18 @@ jobs:
             --validator freshness-threshold \
             > freshness-reports/governance-signal.json
           python3 - <<'EOF'
-          import json, sys
+          import sys
+          from scripts.validation.github_actions_annotations import (
+              escape_message,
+              escape_property,
+              load_report_entries,
+          )
 
-          def escape_property(value):
-              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-
-          def escape_message(value):
-              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-
-          with open("freshness-reports/governance-signal.json") as f:
-              report = json.load(f)
-          findings = report.get("findings", [])
+          try:
+              findings = load_report_entries("freshness-reports/governance-signal.json", "findings")
+          except ValueError as exc:
+              print(f"::warning::governance report missing or malformed: {exc}")
+              sys.exit(0)
           fail_findings = [fn for fn in findings if fn.get("status") == "fail"]
           if not fail_findings:
               print("Governance signal sweep: no advisory findings.")
@@ -140,6 +143,8 @@ jobs:
           EOF
 
       - name: Run wiki near-expiry check
+        # Keep the advisory signal running when an earlier advisory step fails.
+        if: always()
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -162,28 +167,20 @@ jobs:
             exit 0
           fi
           python3 - <<'PY'
-          import json
           import sys
-          from pathlib import Path
+          from scripts.validation.github_actions_annotations import (
+              escape_message,
+              escape_property,
+              load_report_entries,
+          )
 
           try:
-              report = json.loads(
-                  Path("freshness-reports/wiki-near-expiry.json").read_text(encoding="utf-8")
-              )
-          except (OSError, json.JSONDecodeError) as exc:
+              files = load_report_entries("freshness-reports/wiki-near-expiry.json", "files")
+          except ValueError as exc:
               print(f"::warning::near-expiry report missing or malformed: {exc}")
               sys.exit(0)
-          if not isinstance(report, dict) or not isinstance(report.get("files", []), list):
-              print("::warning::near-expiry report must contain a files array; skipping annotations")
-              sys.exit(0)
 
-          def escape_property(value: str) -> str:
-              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-
-          def escape_message(value: str) -> str:
-              return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-
-          for entry in report["files"]:
+          for entry in files:
               if not isinstance(entry, dict) or entry.get("reason_code") != "near_expiry":
                   continue
               path = escape_property(str(entry.get("path", "unknown")))

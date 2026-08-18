@@ -99,7 +99,7 @@ def run_freshness(
             scope=scope,
             as_of=as_of,
             max_age_days=max_age_days,
-            near_expiry_days=near_expiry_days,
+            near_expiry_days=None,
             files=(),
         )
 
@@ -192,7 +192,7 @@ def run_cli(
         as_of=args.as_of,
         max_age_days=args.max_age_days,
         paths=args.path,
-        near_expiry_days=getattr(args, "near_expiry_days", None),
+        near_expiry_days=args.near_expiry_days,
     )
     if getattr(args, "failures_only", False):
         report_dict = report.to_dict()
@@ -330,12 +330,12 @@ def _check_file(path: Path, *, repo_root: Path, as_of_date: date, max_age_days: 
             updated_at=updated_at_date.isoformat(),
             age_days=age_days,
         )
-    if age_days > max_age_days:
+    if age_days >= max_age_days:
         return FreshnessFileResult(
             path=relative_path,
             status=STATUS_FAIL,
             reason_code=REASON_CODE_STALE_DOCUMENT,
-            message=f"document exceeds freshness threshold ({age_days}d > {max_age_days}d). FIX: update page content and set updated_at: <today's date> in the YAML frontmatter.",
+            message=f"document reaches or exceeds freshness threshold ({age_days}d >= {max_age_days}d). FIX: update page content and set updated_at: <today's date> in the YAML frontmatter.",
             updated_at=updated_at_date.isoformat(),
             age_days=age_days,
         )
