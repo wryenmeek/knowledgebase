@@ -251,8 +251,11 @@ def _call_models_api(
         }
     ).encode("utf-8")
 
+    url = f"{endpoint.rstrip('/')}/chat/completions"
+    if not url.startswith(("http://", "https://")):
+        raise ValueError(f"Invalid URL scheme: {url}")
     req = request.Request(
-        f"{endpoint.rstrip('/')}/chat/completions",
+        url,
         data=payload,
         headers={
             "Authorization": f"Bearer {github_token}",
@@ -260,7 +263,7 @@ def _call_models_api(
         },
         method="POST",
     )
-    with request.urlopen(req, timeout=90) as resp:
+    with request.urlopen(req, timeout=90) as resp:  # nosec B310
         return json.loads(resp.read().decode("utf-8"))
 
 
