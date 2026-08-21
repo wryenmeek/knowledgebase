@@ -26,6 +26,7 @@ from pathlib import Path
 if __package__ in (None, ""):  # supports both ``python -m`` and direct invocation
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from scripts._redaction import redact_stderr
 from scripts.kb.contracts import SENSITIVE_PATHS
 
 SURFACE = "scripts/validation/check_commit_scope.py"
@@ -294,7 +295,7 @@ def _get_pr_files(pr_number: str) -> list[dict[str, object]]:
         if result.returncode != 0:
             print(
                 f"::warning::gh pr view failed (exit {result.returncode}): "
-                f"{result.stderr.strip()}",
+                f"{redact_stderr(result.stderr)}",
             )
             return []
         data = json.loads(result.stdout)
