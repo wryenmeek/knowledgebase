@@ -28,6 +28,10 @@ import time
 from pathlib import Path
 from typing import NamedTuple, Sequence
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts._redaction import redact_stderr
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -40,7 +44,9 @@ BRANCH_INCLUDE_REGEX = re.compile(r"^(jules/|google-labs-jules/|copilot/)")
 #: Defense-in-depth blocklist: applied AFTER the include regex.  Even if a
 #: future regex broadening accidentally matches these names, the blocklist
 #: short-circuits the sweep.
-BRANCH_EXCLUDE_BLOCKLIST: frozenset[str] = frozenset({"main", "fleet-state", "gh-pages"})
+BRANCH_EXCLUDE_BLOCKLIST: frozenset[str] = frozenset(
+    {"main", "fleet-state", "gh-pages"}
+)
 
 #: Default staleness threshold in days.
 STALE_THRESHOLD_DAYS: int = 14
@@ -48,7 +54,9 @@ STALE_THRESHOLD_DAYS: int = 14
 #: Explicitly NOT swept: ``agents/issue-*`` branches (fleet convention, mixed
 #: authorship, review can take weeks).  The include regex already excludes
 #: these, but the comment makes the intent explicit.
-_NOT_SWEPT_NOTE = "agents/issue-* branches are deliberately excluded (see BRANCH_INCLUDE_REGEX)"
+_NOT_SWEPT_NOTE = (
+    "agents/issue-* branches are deliberately excluded (see BRANCH_INCLUDE_REGEX)"
+)
 
 
 class BranchInfo(NamedTuple):
@@ -74,9 +82,14 @@ def branch_in_exclude_blocklist(branch_name: str) -> bool:
     return branch_name in BRANCH_EXCLUDE_BLOCKLIST
 
 
-def is_stale(branch_info: BranchInfo, stale_threshold_days: int = STALE_THRESHOLD_DAYS) -> bool:
+def is_stale(
+    branch_info: BranchInfo, stale_threshold_days: int = STALE_THRESHOLD_DAYS
+) -> bool:
     """Return True if the branch is older than *stale_threshold_days* AND has no open PR."""
-    return branch_info.commit_age_days >= stale_threshold_days and not branch_info.has_open_pr
+    return (
+        branch_info.commit_age_days >= stale_threshold_days
+        and not branch_info.has_open_pr
+    )
 
 
 def filter_branches(
@@ -107,7 +120,9 @@ def filter_branches(
 # ---------------------------------------------------------------------------
 
 
-def _run(cmd: list[str], check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
+def _run(
+    cmd: list[str], check: bool = True, capture: bool = True
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd,
         check=check,
@@ -124,13 +139,19 @@ def enumerate_remote_branches() -> list[tuple[str, float]]:
     prefix.
     """
     try:
-        result = _run([
-            "git", "for-each-ref",
-            "--format=%(refname:short) %(committerdate:unix)",
-            "refs/remotes/origin/",
-        ])
+        result = _run(
+            [
+                "git",
+                "for-each-ref",
+                "--format=%(refname:short) %(committerdate:unix)",
+                "refs/remotes/origin/",
+            ]
+        )
     except subprocess.CalledProcessError as exc:
-        print(f"[{SURFACE}] ERROR: git for-each-ref failed: {exc.stderr}", file=sys.stderr)
+        print(
+            f"[{SURFACE}] ERROR: git for-each-ref failed: {redact_stderr(exc.stderr)}",
+            file=sys.stderr,
+        )
         return []
 
     now = int(time.time())
@@ -159,8 +180,21 @@ def check_open_pr(branch_name: str) -> bool:
     into a shell string) so no shell injection is possible.
     """
     try:
-        result = _run(["gh", "pr", "list", "--head", branch_name, "--state", "open", "--json", "number"])
+        result = _run(
+            [
+                "gh",
+                "pr",
+                "list",
+                "--head",
+                branch_name,
+                "--state",
+                "open",
+                "--json",
+                "number",
+            ]
+        )
         import json as _json
+
         items = _json.loads(result.stdout or "[]")
         return len(items) > 0
     except (subprocess.CalledProcessError, ValueError):
@@ -179,7 +213,10 @@ def delete_branch(branch_name: str) -> bool:
         _run(["git", "push", "--delete", "origin", "--", branch_name])
         return True
     except subprocess.CalledProcessError as exc:
-        print(f"[{SURFACE}] ERROR deleting {branch_name}: {exc.stderr}", file=sys.stderr)
+        print(
+            f"[{SURFACE}] ERROR deleting {branch_name}: {redact_stderr(exc.stderr)}",
+            file=sys.stderr,
+        )
         return False
 
 
@@ -188,7 +225,9 @@ def delete_branch(branch_name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def build_branch_info_list(stale_threshold_days: int = STALE_THRESHOLD_DAYS) -> list[BranchInfo]:
+def build_branch_info_list(
+    stale_threshold_days: int = STALE_THRESHOLD_DAYS,
+) -> list[BranchInfo]:
     """Build the full list of BranchInfo for all matching remote branches."""
     raw = enumerate_remote_branches()
     result: list[BranchInfo] = []
@@ -198,7 +237,9 @@ def build_branch_info_list(stale_threshold_days: int = STALE_THRESHOLD_DAYS) -> 
         if branch_in_exclude_blocklist(branch_name):
             continue
         has_pr = check_open_pr(branch_name)
-        result.append(BranchInfo(name=branch_name, commit_age_days=age_days, has_open_pr=has_pr))
+        result.append(
+            BranchInfo(name=branch_name, commit_age_days=age_days, has_open_pr=has_pr)
+        )
     return result
 
 
@@ -221,10 +262,14 @@ def run_sweep(
     for branch in to_sweep:
         success = delete_branch(branch.name)
         if success:
-            print(f"[{SURFACE}] Deleted: {branch.name} (age={branch.commit_age_days:.1f}d)")
+            print(
+                f"[{SURFACE}] Deleted: {branch.name} (age={branch.commit_age_days:.1f}d)"
+            )
         else:
             errors += 1
-    print(f"[{SURFACE}] Real-delete sweep complete: {len(to_sweep) - errors} deleted, {errors} errors")
+    print(
+        f"[{SURFACE}] Real-delete sweep complete: {len(to_sweep) - errors} deleted, {errors} errors"
+    )
     return 0 if errors == 0 else 1
 
 
@@ -243,7 +288,9 @@ def _print_dry_run_summary(
         lines.append("| Branch | Age (days) | Open PR |")
         lines.append("|---|---|---|")
         for b in to_sweep:
-            lines.append(f"| `{b.name}` | {b.commit_age_days:.1f} | {'yes' if b.has_open_pr else 'no'} |")
+            lines.append(
+                f"| `{b.name}` | {b.commit_age_days:.1f} | {'yes' if b.has_open_pr else 'no'} |"
+            )
     else:
         lines.append("*(none)*")
 
@@ -258,6 +305,7 @@ def _print_dry_run_summary(
 
     # Write to GitHub step summary if GITHUB_STEP_SUMMARY is set
     import os
+
     step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if step_summary_path:
         Path(step_summary_path).write_text(summary + "\n", encoding="utf-8")
