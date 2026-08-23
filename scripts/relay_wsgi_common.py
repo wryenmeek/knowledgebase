@@ -49,6 +49,9 @@ def json_response(
         [
             ("Content-Type", "application/json"),
             ("Content-Length", str(len(body))),
+            # SECURITY: Defense-in-depth security headers
+            ("X-Content-Type-Options", "nosniff"),
+            ("Content-Security-Policy", "default-src 'none'"),
         ],
     )
     return [body]
