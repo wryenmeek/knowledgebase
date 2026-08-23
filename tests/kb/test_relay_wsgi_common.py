@@ -67,7 +67,11 @@ def test_capture_start_response_preserves_duplicate_header_tuples() -> None:
 
     start_response(
         "200 OK",
-        [("Set-Cookie", "a=1"), ("Set-Cookie", "b=2"), ("Content-Type", "application/json")],
+        [
+            ("Set-Cookie", "a=1"),
+            ("Set-Cookie", "b=2"),
+            ("Content-Type", "application/json"),
+        ],
     )
 
     assert status_holder["status"] == "200 OK"
@@ -93,6 +97,8 @@ def test_json_response_sets_status_headers_and_json_body() -> None:
     assert status_holder["status"] == "202 Accepted"
     assert headers["Content-Type"] == "application/json"
     assert headers["Content-Length"] == str(len(body))
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert headers["Content-Security-Policy"] == "default-src 'none'"
     assert parsed == {"a": 1, "b": 2}
 
 
