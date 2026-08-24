@@ -264,6 +264,9 @@ def _is_substantive_deleted_line(line: str) -> bool:
 
 def _html_comment_lines(content: str) -> set[int]:
     comment_lines: set[int] = set()
+    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
+    if "<!--" not in content and "-->" not in content:
+        return comment_lines
     in_comment = False
     for line_number, line in enumerate(content.splitlines(), start=1):
         stripped = line.strip()
