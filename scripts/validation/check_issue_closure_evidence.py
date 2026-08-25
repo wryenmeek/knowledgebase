@@ -414,7 +414,9 @@ def _load_recent_closed_issues_from_gh(
 def _extract_template_sections(comment_body: str) -> dict[str, str]:
     sections: dict[str, list[str]] = {key: [] for key in _SECTION_PATTERNS}
     current_section: str | None = None
-    for raw_line in comment_body.splitlines():
+
+    def _process_line(raw_line: str) -> None:
+        nonlocal current_section
         matched_section: str | None = None
         for section_key, pattern in _SECTION_PATTERNS.items():
             match = pattern.match(raw_line)
@@ -426,9 +428,19 @@ def _extract_template_sections(comment_body: str) -> dict[str, str]:
             sections[section_key] = [inline_value] if inline_value else []
             break
         if matched_section is not None:
-            continue
+            return
         if current_section is not None:
             sections[current_section].append(raw_line.strip())
+
+    start = 0
+    end = comment_body.find("\n")
+    while end != -1:
+        _process_line(comment_body[start:end])
+        start = end + 1
+        end = comment_body.find("\n", start)
+    if start < len(comment_body):
+        _process_line(comment_body[start:])
+
     return {
         key: "\n".join(line for line in lines if line.strip()).strip()
         for key, lines in sections.items()
