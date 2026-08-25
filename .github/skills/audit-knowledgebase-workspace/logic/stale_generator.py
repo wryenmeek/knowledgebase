@@ -40,6 +40,7 @@ if __package__ in (None, ""):
     _prepend_sys_path_once(Path(__file__).resolve().parents[4])
     _prepend_sys_path_once(Path(__file__).resolve().parent)
 
+from scripts._redaction import redact_stderr
 from scripts.kb.contracts import (
     CHECKPOINT_REGISTRY_LOCK_PATH,
     CUSTOMIZATIONS_LOCK_PATH,
@@ -606,7 +607,7 @@ def _status_indicates_supersession(status: str) -> bool:
 
 
 def _command_error_message(command_name: str, result: subprocess.CompletedProcess[str]) -> str:
-    stderr = result.stderr.strip().splitlines()
+    stderr = redact_stderr(result.stderr).splitlines()
     detail = stderr[0] if stderr else f"exit {result.returncode}"
     return f"{command_name} failed: {detail}"
 
