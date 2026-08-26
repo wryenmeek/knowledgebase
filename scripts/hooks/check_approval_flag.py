@@ -12,6 +12,10 @@ import subprocess
 import sys
 from typing import Any
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts._redaction import redact_stderr
+
 ADR_REFERENCE = "ADR-030"
 _APPROVAL_TOKEN = "--" + "approval"
 _APPROVAL_EQUALS_TOKEN = f"{_APPROVAL_TOKEN}="
@@ -48,15 +52,25 @@ PATH_KEYS = {
     "changed_file",
     "changed_files",
 }
-PATH_CONTAINER_KEYS = {"args", "arguments", "input", "parameters", "tool_arguments", "tool_input", "toolInput"}
+PATH_CONTAINER_KEYS = {
+    "args",
+    "arguments",
+    "input",
+    "parameters",
+    "tool_arguments",
+    "tool_input",
+    "toolInput",
+}
 
 # Transitional exemptions:
 # - scripts/_optional_surface_common.py owns compatibility alias handling.
 # - scripts/kb/checkpoint_registry.py already uses --apply for bootstrap semantics.
-_EXEMPT_PATHS = frozenset({
-    "scripts/_optional_surface_common.py",
-    "scripts/kb/checkpoint_registry.py",
-})
+_EXEMPT_PATHS = frozenset(
+    {
+        "scripts/_optional_surface_common.py",
+        "scripts/kb/checkpoint_registry.py",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,7 +119,10 @@ def _staged_script_paths() -> tuple[list[StagedScriptPath], str | None]:
         "scripts",
     )
     if rc != 0:
-        return [], f"cannot enumerate staged script paths: {err.strip() or out.strip()}"
+        return (
+            [],
+            f"cannot enumerate staged script paths: {redact_stderr(err).strip() or out.strip()}",
+        )
 
     staged: list[StagedScriptPath] = []
     for line in out.splitlines():
@@ -130,7 +147,10 @@ def _staged_script_paths() -> tuple[list[StagedScriptPath], str | None]:
 def _get_staged_content(path: str) -> tuple[str, str | None]:
     rc, out, err = _run_git("show", f":{path}")
     if rc != 0:
-        return "", f"{path}: cannot read staged content: {err.strip() or out.strip()}"
+        return (
+            "",
+            f"{path}: cannot read staged content: {redact_stderr(err).strip() or out.strip()}",
+        )
     return out, None
 
 
@@ -192,7 +212,7 @@ def _normalize_payload_path(path: str, cwd: str) -> str:
     if normalized.startswith("file://"):
         normalized = normalized.removeprefix("file://")
     if cwd and (normalized == cwd or normalized.startswith(f"{cwd}/")):
-        normalized = normalized[len(cwd):].lstrip("/")
+        normalized = normalized[len(cwd) :].lstrip("/")
     while normalized.startswith("./"):
         normalized = normalized[2:]
     return _normalize_path(normalized)
@@ -212,20 +232,28 @@ def _payload_script_paths() -> tuple[list[StagedScriptPath], str | None]:
         return [], None
 
     tool_name = payload.get("tool_name")
-    if not isinstance(tool_name, str) or tool_name.strip().lower() not in WRITE_TOOL_NAMES:
+    if (
+        not isinstance(tool_name, str)
+        or tool_name.strip().lower() not in WRITE_TOOL_NAMES
+    ):
         return [], None
 
     tool_result = payload.get("tool_result")
     if isinstance(tool_result, dict):
         if tool_result.get("success") is False:
             return [], None
-        if isinstance(tool_result.get("returncode"), int) and tool_result["returncode"] != 0:
+        if (
+            isinstance(tool_result.get("returncode"), int)
+            and tool_result["returncode"] != 0
+        ):
             return [], None
     elif isinstance(tool_result, bool) and not tool_result:
         return [], None
 
     cwd = payload.get("cwd")
-    normalized_cwd = cwd.strip().replace("\\", "/").rstrip("/") if isinstance(cwd, str) else ""
+    normalized_cwd = (
+        cwd.strip().replace("\\", "/").rstrip("/") if isinstance(cwd, str) else ""
+    )
 
     payload_paths = []
     for raw_path in _collect_paths(payload):
@@ -258,7 +286,10 @@ def main(argv: list[str] | None = None) -> int:
                 staged_text = file_path.read_text(encoding="utf-8")
                 read_error = None
             else:
-                staged_text, read_error = "", f"{staged_path.path}: worktree file does not exist"
+                staged_text, read_error = (
+                    "",
+                    f"{staged_path.path}: worktree file does not exist",
+                )
         else:
             staged_text, read_error = _get_staged_content(staged_path.path)
         if read_error is not None:
@@ -273,10 +304,7 @@ def main(argv: list[str] | None = None) -> int:
         # See issue #300 / regression test test_hook_allows_exempt_approval_equals_after_deadline.
         if staged_path.path in _EXEMPT_PATHS:
             continue
-        if (
-            _contains_approval_equals(staged_text)
-            and _migration_deadline_passed()
-        ):
+        if _contains_approval_equals(staged_text) and _migration_deadline_passed():
             failures.append(
                 f"{staged_path.path}: {_APPROVAL_EQUALS_TOKEN}<value> is forbidden after "
                 f"{APPROVAL_EQUALS_REJECTION_DEADLINE.isoformat()}; use --apply"
