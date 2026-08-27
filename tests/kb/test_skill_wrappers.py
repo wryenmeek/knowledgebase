@@ -1208,12 +1208,21 @@ class SyncKnowledgebaseStateWrapperRuntimeTests(_RuntimeWrapperFixture):
 
 
     def test_write_index_mode_runs_end_to_end_with_authoritative_lint(self) -> None:
+        # Copy _redaction.py to the fixture repo so it can be imported
+        import shutil
+        import sys
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+        shutil.copy(repo_root / "scripts" / "_redaction.py", self.repo_root / "scripts" / "_redaction.py")
+
         module = self._load_fixture_module(
             ".github/skills/sync-knowledgebase-state/logic/sync_knowledgebase_state.py",
             "sync_knowledgebase_state_runtime",
         )
 
         with patch.dict(os.environ, {"PATH": self.fixture_path}, clear=False):
+            # sys.path is already updated by _load_fixture_module if needed, but we must ensure
+            # the scripts module inside self.repo_root is discoverable if it runs in subprocess or directly
             exit_code = module.main(["--write-index"])
 
         self.assertEqual(exit_code, 0)
