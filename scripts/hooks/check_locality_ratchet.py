@@ -244,10 +244,12 @@ def _agents_matrix_body_lines(content: str) -> set[int]:
 
 
 def _gated_lines(path: str, content: str) -> set[int]:
-    line_count = len(content.splitlines())
     if path == COPILOT_INSTRUCTIONS_PATH:
         return _copilot_gated_lines(content)
     if path == AGENTS_PATH:
+        # OPTIMIZATION: Defer O(N) string array allocation until after path filtering
+        # to avoid unnecessary memory spikes for non-target files.
+        line_count = len(content.splitlines())
         return set(range(1, line_count + 1)) - _agents_matrix_body_lines(content)
     return set()
 
