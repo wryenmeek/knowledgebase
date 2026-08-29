@@ -215,13 +215,10 @@ def _copilot_gated_lines(content: str) -> set[int]:
 
 
 def _agents_matrix_body_lines(content: str) -> set[int]:
-    exempt_lines: set[int] = set()
-    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
-    if "## Write-surface matrix" not in content:
-        return exempt_lines
     lines = content.splitlines()
     in_matrix_section = False
     body_started = False
+    exempt_lines: set[int] = set()
 
     for line_number, line in enumerate(lines, start=1):
         stripped = line.strip()
@@ -247,11 +244,10 @@ def _agents_matrix_body_lines(content: str) -> set[int]:
 
 
 def _gated_lines(path: str, content: str) -> set[int]:
-    # ⚡ Bolt: Defer splitlines() allocation to avoid O(N) memory spike on non-target files
+    line_count = len(content.splitlines())
     if path == COPILOT_INSTRUCTIONS_PATH:
         return _copilot_gated_lines(content)
     if path == AGENTS_PATH:
-        line_count = len(content.splitlines())
         return set(range(1, line_count + 1)) - _agents_matrix_body_lines(content)
     return set()
 
