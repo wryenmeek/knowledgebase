@@ -215,13 +215,10 @@ def _copilot_gated_lines(content: str) -> set[int]:
 
 
 def _agents_matrix_body_lines(content: str) -> set[int]:
-    exempt_lines: set[int] = set()
-    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
-    if "## Write-surface matrix" not in content:
-        return exempt_lines
     lines = content.splitlines()
     in_matrix_section = False
     body_started = False
+    exempt_lines: set[int] = set()
 
     for line_number, line in enumerate(lines, start=1):
         stripped = line.strip()
