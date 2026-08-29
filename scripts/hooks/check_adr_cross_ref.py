@@ -15,13 +15,19 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from pathlib import Path
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts._redaction import redact_stderr  # noqa: E402
 
 _STATUS_HEADING_RE = re.compile(r"^## Status\s*$", re.MULTILINE)
 
 
 def _run_git(*args: str) -> tuple[int, str]:
     result = subprocess.run(["git", *args], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"ERROR: git {args[0]} failed: {redact_stderr(result.stderr)}", file=sys.stderr)
     return result.returncode, result.stdout
 
 
