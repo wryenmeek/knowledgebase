@@ -26,9 +26,7 @@ LOG_PATH = Path("wiki/log.md")
 # exclusive_write_lock concurrently from multiple threads without adding a
 # threading.Lock around this counter.
 _HELD_LOCK_COUNTS: dict[Path, int] = {}
-_LOCK_UNAVAILABLE_HINT = (
-    "retry after the competing process completes, or remove the lock file if it is stale"
-)
+_LOCK_UNAVAILABLE_HINT = "retry after the competing process completes, or remove the lock file if it is stale"
 
 
 def _resolved_governance_sibling_locks(repo_root: Path) -> dict[Path, str]:
@@ -39,16 +37,14 @@ def _resolved_governance_sibling_locks(repo_root: Path) -> dict[Path, str]:
     }
 
 
-def _can_cohold_with_held_sibling(target_lock_path: str, held_sibling_lock_path: str) -> bool:
+def _can_cohold_with_held_sibling(
+    target_lock_path: str, held_sibling_lock_path: str
+) -> bool:
     """Allow approved same-process lock nesting with enforced acquisition order."""
-    return (
-        held_sibling_lock_path == contracts.WRITE_LOCK_PATH
-        and target_lock_path
-        in {
-            contracts.GITHUB_SOURCES_LOCK_PATH,
-            contracts.DRIVE_SOURCES_LOCK_PATH,
-        }
-    )
+    return held_sibling_lock_path == contracts.WRITE_LOCK_PATH and target_lock_path in {
+        contracts.GITHUB_SOURCES_LOCK_PATH,
+        contracts.DRIVE_SOURCES_LOCK_PATH,
+    }
 
 
 def governed_artifact_contract_for_path(
@@ -96,10 +92,9 @@ def _check_no_symlink_path_within_root(repo_root: Path, path: Path) -> None:
     resolved_candidate = candidate.resolve(strict=False)
     if not resolved_candidate.is_relative_to(root):
         raise OSError(f"path escapes repository root: {path}")
-    try:
-        relative = candidate.relative_to(root)
-    except ValueError as exc:
-        raise OSError(f"path is not under repository root: {path}") from exc
+    if not candidate.is_relative_to(root):
+        raise OSError(f"path is not under repository root: {path}")
+    relative = candidate.relative_to(root)
     current = root
     for part in relative.parts:
         current = current / part
@@ -135,7 +130,9 @@ class LockUnavailableError(RuntimeError):
             return
 
         self.holder_pid = holder_details.pid
-        self.holder_started_at = _format_unix_seconds_utc(holder_details.started_at_unix_seconds)
+        self.holder_started_at = _format_unix_seconds_utc(
+            holder_details.started_at_unix_seconds
+        )
         self.holder_context_hash = _lock_holder_context_hash(holder_details)
         holder_alive = _holder_process_is_alive(
             holder_details.pid,
@@ -178,7 +175,9 @@ class _LockHolderDetails:
 def _format_unix_seconds_utc(unix_seconds: float) -> str:
     """Render unix seconds as UTC ISO-8601 (`YYYY-MM-DDTHH:MM:SSZ`)."""
 
-    return datetime.fromtimestamp(unix_seconds, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.fromtimestamp(unix_seconds, tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
 
 def _lock_holder_context_hash(holder_details: _LockHolderDetails) -> str:
@@ -187,7 +186,9 @@ def _lock_holder_context_hash(holder_details: _LockHolderDetails) -> str:
     Canonical payload format is exactly ``<pid>\t<start_time_unix_seconds:.6f>\n``.
     """
 
-    canonical_payload = f"{holder_details.pid}\t{holder_details.started_at_unix_seconds:.6f}\n"
+    canonical_payload = (
+        f"{holder_details.pid}\t{holder_details.started_at_unix_seconds:.6f}\n"
+    )
     return hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
 
 
@@ -302,7 +303,9 @@ def _read_lock_holder_details(lock_file_path: Path) -> _LockHolderDetails | None
     """
 
     try:
-        line = lock_file_path.read_text(encoding="utf-8").splitlines()[0].strip()
+        text = lock_file_path.read_text(encoding="utf-8")
+        nl_pos = text.find("\n")
+        line = (text[:nl_pos] if nl_pos != -1 else text).strip()
     except IndexError:
         return None
     except (OSError, UnicodeDecodeError):
@@ -321,7 +324,9 @@ def _read_lock_holder_details(lock_file_path: Path) -> _LockHolderDetails | None
     return _LockHolderDetails(pid=pid, started_at_unix_seconds=started_at)
 
 
-def _holder_process_is_alive(pid: int, *, expected_started_at_unix_seconds: float) -> bool | None:
+def _holder_process_is_alive(
+    pid: int, *, expected_started_at_unix_seconds: float
+) -> bool | None:
     """Return holder liveness: ``True`` alive, ``False`` dead/reused, ``None`` unknown."""
 
     try:
@@ -438,7 +443,9 @@ def _acquire_sibling_governance_lock(
                     ) from exc
                 with sibling_lock_file:
                     try:
-                        fcntl.flock(sibling_lock_file.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+                        fcntl.flock(
+                            sibling_lock_file.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB
+                        )
                     except OSError as exc:
                         raise LockUnavailableError(
                             sibling_lock_path,
@@ -489,7 +496,9 @@ def exclusive_write_lock(
         return
 
     try:
-        abs_lock, resolved_lock, lock_file = _open_lock_file(root, lock_path, create=True)
+        abs_lock, resolved_lock, lock_file = _open_lock_file(
+            root, lock_path, create=True
+        )
     except OSError as exc:
         raise LockUnavailableError(lock_path, lock_file_path=abs_lock) from exc
 
@@ -511,7 +520,9 @@ def exclusive_write_lock(
         _write_lock_holder_details(lock_file)
 
         try:
-            _HELD_LOCK_COUNTS[resolved_lock] = _HELD_LOCK_COUNTS.get(resolved_lock, 0) + 1
+            _HELD_LOCK_COUNTS[resolved_lock] = (
+                _HELD_LOCK_COUNTS.get(resolved_lock, 0) + 1
+            )
             yield abs_lock
         finally:
             remaining = _HELD_LOCK_COUNTS.get(resolved_lock, 0) - 1
@@ -540,7 +551,10 @@ def atomic_replace_governed_artifact(
     contract = governed_artifact_contract_for_path(path)
     if contract is None:
         raise ValueError(f"unsupported governed artifact: {path}")
-    if contract.write_strategy != contracts.ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK.value:
+    if (
+        contract.write_strategy
+        != contracts.ArtifactWriteStrategy.ATOMIC_REPLACE_UNDER_LOCK.value
+    ):
         raise ValueError(f"artifact does not support atomic replace: {contract.path}")
 
     root = Path(repo_root).resolve(strict=False)
@@ -627,7 +641,9 @@ def write_text_capturing_previous(path: Path, content: str) -> tuple[bool, str |
     ``write_text_if_changed``.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    previous_content: str | None = path.read_text(encoding="utf-8") if path.exists() else None
+    previous_content: str | None = (
+        path.read_text(encoding="utf-8") if path.exists() else None
+    )
     if previous_content == content:
         return False, previous_content
     with path.open("w", encoding="utf-8", newline="\n") as handle:
@@ -646,7 +662,9 @@ def check_no_symlink_path(path: Path) -> None:
         current = current.parent
 
 
-def write_text_capturing_previous_safe(path: Path, content: str) -> tuple[bool, str | None]:
+def write_text_capturing_previous_safe(
+    path: Path, content: str
+) -> tuple[bool, str | None]:
     """Like ``write_text_capturing_previous`` but with symlink and atomic-write guards.
 
     Rejects symlinks anywhere in the path chain, and uses a temp-file + rename to
@@ -659,7 +677,9 @@ def write_text_capturing_previous_safe(path: Path, content: str) -> tuple[bool, 
     if path.exists() or path.is_symlink():
         check_no_symlink_path(path)
 
-    previous_content: str | None = path.read_text(encoding="utf-8") if path.exists() else None
+    previous_content: str | None = (
+        path.read_text(encoding="utf-8") if path.exists() else None
+    )
     if previous_content == content:
         return False, previous_content
 
@@ -740,7 +760,12 @@ def validate_log_entry(entry: str) -> str:
     if not isinstance(entry, str):
         raise ValueError("entry must be a string")
     normalized = entry.strip()
-    if not normalized or not normalized.startswith("- ") or "\n" in normalized or "\r" in normalized:
+    if (
+        not normalized
+        or not normalized.startswith("- ")
+        or "\n" in normalized
+        or "\r" in normalized
+    ):
         raise ValueError(
             "entry must be a single non-empty markdown bullet beginning with '- '"
         )
