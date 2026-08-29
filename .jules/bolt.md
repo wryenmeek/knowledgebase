@@ -88,3 +88,7 @@
 ## 2026-08-25 - [Performance] Removing O(N) splitlines() array allocation for multi-line extraction in closure evidence checks
 **Learning:** Using `splitlines()` on multiline text blocks (e.g. GitHub comments) unconditionally tokenizes the entire string into an $O(N)$ memory array, creating unnecessary allocations and garbage collection overhead. Extracting lines with a `while` loop over string slices delimited by `.find('\n')` entirely eliminates this memory spike (true $O(1)$). However, this optimization can be complex and should not be preferred if it affects correct handling of `\r\n` line endings, unless performance is a critical path and `splitlines()` causes proven bottlenecks, but it can be implemented with `.find('\n')` and slicing if appropriate.
 **Action:** The codebase encourages memory-efficient processing with `.find('\n')`, but be careful to avoid this manual parsing if it breaks functionality and results in unreadable code. Use `splitlines()` when correctness for complex line endings or code readability is critical.
+
+## 2026-08-30 - [Performance] Defer O(N) string array allocations after path filtering
+**Learning:** In functions that process files but immediately filter by path (like pre-commit hooks), unconditionally executing expensive tokenizations (like `content.splitlines()`) at the top of the function causes unnecessary memory spikes for non-target files.
+**Action:** Defer O(N) string array allocations until after the path filtering condition is met.
