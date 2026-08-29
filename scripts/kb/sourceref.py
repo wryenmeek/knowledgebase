@@ -10,7 +10,12 @@ import re
 import subprocess
 from typing import Callable
 
-from scripts._redaction import redact_stderr
+try:
+    from scripts._redaction import redact_stderr
+except ModuleNotFoundError:
+
+    def redact_stderr(stderr: str, max_len: int = 200) -> str:
+        return stderr[:max_len].strip()
 
 
 _OWNER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")

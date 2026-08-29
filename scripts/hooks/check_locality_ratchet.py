@@ -247,11 +247,10 @@ def _agents_matrix_body_lines(content: str) -> set[int]:
 
 
 def _gated_lines(path: str, content: str) -> set[int]:
-    # ⚡ Bolt: Defer splitlines() allocation to avoid O(N) memory spike on non-target files
+    line_count = len(content.splitlines())
     if path == COPILOT_INSTRUCTIONS_PATH:
         return _copilot_gated_lines(content)
     if path == AGENTS_PATH:
-        line_count = len(content.splitlines())
         return set(range(1, line_count + 1)) - _agents_matrix_body_lines(content)
     return set()
 
