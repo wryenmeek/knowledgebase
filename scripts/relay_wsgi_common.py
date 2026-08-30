@@ -52,6 +52,8 @@ def json_response(
             # SECURITY: Defense-in-depth security headers
             ("X-Content-Type-Options", "nosniff"),
             ("Content-Security-Policy", "default-src 'none'"),
+            ("X-Frame-Options", "DENY"),
+            ("Strict-Transport-Security", "max-age=31536000; includeSubDomains"),
         ],
     )
     return [body]
