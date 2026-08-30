@@ -92,3 +92,9 @@
 ## 2026-08-30 - [Performance] Defer O(N) string array allocations after path filtering
 **Learning:** In functions that process files but immediately filter by path (like pre-commit hooks), unconditionally executing expensive tokenizations (like `content.splitlines()`) at the top of the function causes unnecessary memory spikes for non-target files.
 **Action:** Defer O(N) string array allocations until after the path filtering condition is met.
+## 2026-08-31 - [Path bounds checking optimization]
+**Learning:** Using `try/except Path.relative_to()` is slower than the natively implemented string comparison under the hood of `Path.is_relative_to()` for bounds checking. This is an anti-pattern that slows down path validation logic.
+**Action:** Replace `try/except Path.relative_to()` with `Path.is_relative_to()` for performance gains across the python codebase.
+## 2026-08-31 - [Removing O(N) splitlines() array allocation]
+**Learning:** Using `splitlines()` on multiline text blocks unconditionally tokenizes the entire string into an $O(N)$ memory array, creating unnecessary allocations. Extracting lines with a `while` loop over string slices delimited by `.find('\n')` entirely eliminates this memory spike (true $O(1)$ space allocation).
+**Action:** Use `.find('\n')` with string slicing in a while loop to parse line by line without instantiating an array.
