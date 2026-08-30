@@ -270,17 +270,32 @@ def _html_comment_lines(content: str) -> set[int]:
     if "<!--" not in content and "-->" not in content:
         return comment_lines
     in_comment = False
-    for line_number, line in enumerate(content.splitlines(), start=1):
+    line_number = 1
+    start_idx = 0
+    content_len = len(content)
+
+    while start_idx < content_len:
+        newline_idx = content.find("\n", start_idx)
+        if newline_idx == -1:
+            line = content[start_idx:]
+            start_idx = content_len
+        else:
+            line = content[start_idx:newline_idx]
+            start_idx = newline_idx + 1
+
         stripped = line.strip()
         if in_comment:
             comment_lines.add(line_number)
             if "-->" in stripped:
                 in_comment = False
-            continue
-        if stripped.startswith("<!--"):
-            comment_lines.add(line_number)
-            if "-->" not in stripped:
-                in_comment = True
+        else:
+            if stripped.startswith("<!--"):
+                comment_lines.add(line_number)
+                if "-->" not in stripped:
+                    in_comment = True
+
+        line_number += 1
+
     return comment_lines
 
 

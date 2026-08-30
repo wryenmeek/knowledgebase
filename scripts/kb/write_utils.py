@@ -96,10 +96,10 @@ def _check_no_symlink_path_within_root(repo_root: Path, path: Path) -> None:
     resolved_candidate = candidate.resolve(strict=False)
     if not resolved_candidate.is_relative_to(root):
         raise OSError(f"path escapes repository root: {path}")
-    try:
-        relative = candidate.relative_to(root)
-    except ValueError as exc:
-        raise OSError(f"path is not under repository root: {path}") from exc
+    # OPTIMIZATION: Use is_relative_to instead of try/except for bounds checking
+    if not candidate.is_relative_to(root):
+        raise OSError(f"path is not under repository root: {path}")
+    relative = candidate.relative_to(root)
     current = root
     for part in relative.parts:
         current = current / part
