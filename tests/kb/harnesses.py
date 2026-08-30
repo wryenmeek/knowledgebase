@@ -175,11 +175,6 @@ class RuntimeWrapperFixtureTestCase(RuntimeWorkspaceTestCase):
         )
 
     def _init_fixture_repo(self) -> None:
-        (self.repo_root / "scripts").mkdir(parents=True, exist_ok=True)
-        shutil.copy(
-            REPO_ROOT / "scripts" / "_redaction.py",
-            self.repo_root / "scripts" / "_redaction.py",
-        )
         shutil.copytree(
             REPO_ROOT / "scripts" / "kb",
             self.repo_root / "scripts" / "kb",
