@@ -78,9 +78,7 @@ def _load_primary_source_text(
     if not source_path_part:
         return fallback_text
     candidate = (repo_root / source_path_part).resolve()
-    try:
-        candidate.relative_to(repo_root.resolve())
-    except ValueError:
+    if not candidate.is_relative_to(repo_root.resolve()):
         print(
             f"warning: source_ref path escapes repo root; falling back to source page body: {source_ref}",
             file=sys.stderr,
@@ -163,9 +161,7 @@ def _build_prompt(
         aliases_str = ", ".join(p["aliases"]) if p.get("aliases") else "no aliases"
         return f"  - {p['title']} ({aliases_str})"
 
-    entity_list = (
-        "\n".join(_page_line(e) for e in existing_entities[:30]) or "  (none)"
-    )
+    entity_list = "\n".join(_page_line(e) for e in existing_entities[:30]) or "  (none)"
     concept_list = (
         "\n".join(_page_line(c) for c in existing_concepts[:30]) or "  (none)"
     )
@@ -180,7 +176,10 @@ def _build_prompt(
 
     MAX_BODY_LEN = 3500
     if len(source_body) > MAX_BODY_LEN:
-        body_excerpt = source_body[:MAX_BODY_LEN] + "\n\n[... content truncated at 3500 chars ...]\n"
+        body_excerpt = (
+            source_body[:MAX_BODY_LEN]
+            + "\n\n[... content truncated at 3500 chars ...]\n"
+        )
     else:
         body_excerpt = source_body
 
@@ -332,8 +331,8 @@ def run(
 
     # Use env fallback when token not supplied directly (callers may pass "").
     if not github_token:
-        github_token = (
-            os.environ.get("SYNTHESIS_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
+        github_token = os.environ.get("SYNTHESIS_GITHUB_TOKEN") or os.environ.get(
+            "GITHUB_TOKEN", ""
         )
 
     # Endpoint hostname must be in the allowlist — prevent token exfiltration.
@@ -348,9 +347,7 @@ def run(
     source_path = (repo_root / source_page_path).resolve()
 
     # Boundary check — source page must be inside repo root.
-    try:
-        source_path.relative_to(repo_root.resolve())
-    except ValueError:
+    if not source_path.is_relative_to(repo_root.resolve()):
         print(
             f"error: source page path escapes repo root: {source_page_path}",
             file=sys.stderr,
@@ -358,9 +355,7 @@ def run(
         return 1
 
     if not source_path.exists():
-        print(
-            f"error: source page not found: {source_page_path}", file=sys.stderr
-        )
+        print(f"error: source page not found: {source_page_path}", file=sys.stderr)
         return 1
 
     source_content = source_path.read_text(encoding="utf-8")
@@ -395,7 +390,12 @@ def run(
         try:
             api_response = _call_models_api(prompt, github_token, endpoint)
             bundle = _parse_extraction_from_response(api_response)
-        except (urllib_error.URLError, json.JSONDecodeError, ValueError, KeyError) as exc:
+        except (
+            urllib_error.URLError,
+            json.JSONDecodeError,
+            ValueError,
+            KeyError,
+        ) as exc:
             last_errors = [f"attempt {attempt + 1} API/parse error: {exc}"]
             print(
                 f"warning: extraction attempt {attempt + 1} failed: {exc}",
@@ -427,7 +427,9 @@ def run(
 
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(extraction, indent=2, ensure_ascii=False), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(extraction, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     return 0
 
 
