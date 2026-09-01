@@ -57,3 +57,8 @@
 **Vulnerability:** HTTP endpoints didn't emit defensive headers, making the API susceptible to content MIME sniffing.
 **Learning:** API webhooks should include security headers regardless of usage context.
 **Prevention:** Apply defense-in-depth to enforce headers like X-Content-Type-Options and Content-Security-Policy on responses.
+
+## 2024-10-28 - [Incomplete Rollout of Subprocess Stderr Token Leakage Fix]
+**Vulnerability:** While fixing `subprocess.run` executions that exposed raw `stderr` in error messages, only a subset of vulnerable scripts (`check_mixed_scope.py`, `stale_generator.py`) were patched with `redact_stderr`, leaving other identically-structured scripts (`check_test_framework.py`, `check_locality_ratchet.py`, `check_approval_flag.py`) still exposing raw credentials on failure.
+**Learning:** Security fixes often apply systematically across a repository. Fixing only the first few occurrences found in grep results leads to an incomplete patch and lingering vulnerabilities.
+**Prevention:** Always perform a comprehensive codebase search (e.g., using `rg` or `grep`) for all instances of the vulnerable pattern before creating a plan, and ensure the patch systematically addresses all reachable occurrences within the allowable scope limits.
