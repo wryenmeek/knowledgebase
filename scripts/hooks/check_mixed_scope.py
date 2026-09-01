@@ -16,6 +16,10 @@ import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+if __package__ in (None, ""):
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts._redaction import redact_stderr  # noqa: E402
 
 _INBOX_PREFIX = "raw/inbox/"
 _BENIGN_PREFIXES = ("docs/", "tests/", "wiki/pages/", "wiki/sources/")
@@ -69,7 +73,7 @@ def _git_stdout(args: list[str]) -> str:
         cwd=_REPO_ROOT,
     )
     if result.returncode != 0:
-        stderr = (result.stderr or "").strip()
+        stderr = redact_stderr((result.stderr or "").strip()) if hasattr(result, 'stderr') else ""
         cmd = " ".join(["git", *args])
         raise RuntimeError(f"{cmd} failed: {stderr or f'exit {result.returncode}'}")
     return result.stdout

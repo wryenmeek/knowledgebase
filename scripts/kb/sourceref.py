@@ -408,7 +408,8 @@ def _run_git(
     except OSError as exc:
         _raise(reason_code, f"{error_message} ({exc})")
     if completed.returncode != 0:
-        stderr = (
+        from scripts._redaction import redact_stderr
+        stderr = redact_stderr(
             completed.stderr.strip()
             if isinstance(completed.stderr, str)
             else completed.stderr.decode("utf-8", errors="replace").strip()

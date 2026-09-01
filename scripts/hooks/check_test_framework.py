@@ -13,6 +13,11 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts._redaction import redact_stderr  # noqa: E402
 
 ADR_REFERENCE = "ADR-029"
 
@@ -45,7 +50,7 @@ def _run_git(*args: str) -> tuple[int, str, str]:
         text=True,
         check=False,
     )
-    return result.returncode, result.stdout, result.stderr
+    return result.returncode, result.stdout, redact_stderr(result.stderr)
 
 
 def _normalize_path(path: str) -> str:
