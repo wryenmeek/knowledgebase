@@ -98,3 +98,6 @@
 ## 2026-08-31 - [Removing O(N) splitlines() array allocation]
 **Learning:** Using `splitlines()` on multiline text blocks unconditionally tokenizes the entire string into an $O(N)$ memory array, creating unnecessary allocations. Extracting lines with a `while` loop over string slices delimited by `.find('\n')` entirely eliminates this memory spike (true $O(1)$ space allocation).
 **Action:** Use `.find('\n')` with string slicing in a while loop to parse line by line without instantiating an array.
+## 2026-09-02 - [Performance] Fast-path literal check for O(N) array allocation bypass in ratchet
+**Learning:** Checking for "## Write-surface matrix" directly before calling `splitlines()` when extracting body lines entirely avoids allocating a string array of line tokens if the matrix does not exist in the document (like older history revisions or empty documents). This gives a massive O(1) early return speedup on cold paths.
+**Action:** When searching for lines starting below a specific markdown heading, add an `if heading not in text` early return check to bypass string tokenization entirely.
