@@ -198,6 +198,10 @@ def _get_head_content(path: str) -> str:
 
 @lru_cache(maxsize=4)
 def _copilot_h2_lines(content: str) -> list[int]:
+    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
+    if "## " not in content:
+        return []
+
     lines = content.splitlines()
     return [
         line_number
