@@ -28,6 +28,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from scripts._redaction import redact_stderr
+
 COPILOT_INSTRUCTIONS_PATH = ".github/copilot-instructions.md"
 AGENTS_PATH = "AGENTS.md"
 GATED_PATHS = frozenset({COPILOT_INSTRUCTIONS_PATH, AGENTS_PATH})
@@ -47,7 +52,8 @@ def _run_git(*args: str, input_text: str | None = None) -> tuple[int, str, str]:
         text=True,
         check=False,
     )
-    return result.returncode, result.stdout, result.stderr
+    stderr = redact_stderr(result.stderr) if result.stderr else result.stderr
+    return result.returncode, result.stdout, stderr
 
 
 def _normalize_path(path: str) -> str:
