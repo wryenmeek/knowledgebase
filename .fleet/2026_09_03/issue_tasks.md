@@ -1,6 +1,6 @@
 # Issue Analysis: wryenmeek/knowledgebase
 
-> Analyzed 1 issues on 2026-09-03T04:23:09.447Z
+> Analyzed 1 issues on 2026-09-03T10:41:36.249Z
 
 ## Executive Summary
 
@@ -24,10 +24,10 @@ Introduce a new module `scripts/analysis/infigraph.py` that provides:
 1. `InfigraphRelease`: A dataclass for reproducible metadata (version, checksum, resolution date).
 2. `InfigraphStatus`: An Enum defining `analysis_complete`, `analysis_unavailable`, and `analysis_failed`.
 3. `InfigraphRuntime`: A class that:
-   - Verifies the executable exists and is valid.
-   - Runs a capability check command to verify startup status.
+   - Verifies the executable exists.
+   - Runs capability checks to distinguish between an executable that is unavailable, unsupported, or ready to analyze.
    - Executes analysis commands with timeout handling.
-   - Parses the output and handles errors (missing binary, timeouts, malformed output).
+   - Returns normalized statuses including actionable failure reasons.
 
 ```python
 # scripts/analysis/infigraph.py
@@ -92,12 +92,13 @@ class InfigraphRuntime:
 
 #### Test Plan
 
-Create `tests/analysis/test_infigraph.py` using a fake executable (e.g., via a temporary script) to verify:
+Create `tests/analysis/test_infigraph.py` using a fake executable (e.g., via a temporary script) to cover:
 1. Successful capability discovery (`analysis_complete`).
-2. Executable unavailable (`analysis_unavailable`).
-3. Command timeouts (`analysis_failed`).
-4. Malformed JSON output (`analysis_failed`).
-5. Missing binary (`analysis_unavailable`).
+2. Representative installation failure (executable not found).
+3. Capability failure (executable unsupported).
+4. Command failure (executable returns non-zero code).
+5. Command timeout (`analysis_failed`).
+6. Malformed JSON output (`analysis_failed`).
 
 ---
 
@@ -116,7 +117,4 @@ Create `tests/analysis/test_infigraph.py` using a fake executable (e.g., via a t
 
 ## Unaddressable Issues
 
-Issues that require changes outside this repository (backend API, infrastructure, product decisions):
-
-| Issue | Reason | Suggested Owner |
-|-------|--------|-----------------|
+None
