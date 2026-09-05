@@ -22,8 +22,10 @@ existing deterministic validators, or human review.
 - **Worktree:** a Git checkout that has its own files and branch state.
 - **Graph:** the indexed Infigraph representation of source files and their
   relationships.
-- **Graph freshness:** the time between the indexed commit and the current
-  commit. The implementation must define the maximum allowed age.
+- **Graph identity and age:** the indexed commit must equal the commit being
+  analyzed. Age is a separate retention/refresh constraint: the implementation
+  must define the maximum acceptable age for an otherwise commit-matching
+  index.
 - **Blast radius:** the set of symbols or files that a change can affect.
 
 The proposal combines three concerns within `knowledgebase`:
@@ -59,7 +61,8 @@ authority.
 ## Goals
 
 - Make graph-assisted discovery available through the Infigraph CLI when the
-  CLI is installed and the graph meets the freshness limit.
+  CLI is installed and the graph both matches the analyzed commit and meets the
+  separate age limit.
 - Keep the initial integration limited to `knowledgebase`; defer MCP and
   cross-repository analysis to later phases.
 - Preserve fallback to `rg`, `grep`, `find`, source reads, and existing
@@ -138,8 +141,9 @@ The initial skill procedure must be CLI-only:
 1. Check whether the approved Infigraph CLI is available and whether its
   verified command profile supports the requested task.
 2. Record the current repository, branch, commit, and worktree.
-3. Check the graph scope and compare its indexed commit with the current
-  commit.
+3. Check the graph scope, require its indexed commit to equal the current
+  commit, and evaluate the graph's age against the separate retention/refresh
+  limit.
 4. Use the CLI to find symbols, references, callers, callees, dependencies,
   or impact when the capability is supported.
 5. Read the exact implementation and the tests for the changed code.
@@ -201,9 +205,12 @@ Recommended behavior:
 
 For branch-versus-base analysis, compare the current worktree `HEAD` graph
 with a graph for the pull request base SHA supplied by the hosting platform.
-The baseline may be materialized from another checkout, but its commit must be
-recorded and verified separately from the branch graph. Never use an arbitrary
-local `main` checkout as a substitute for the authoritative PR base.
+The analyzed worktree `HEAD` SHA must equal the branch graph's indexed commit,
+and the authoritative base SHA must equal the baseline graph's indexed commit.
+The age of either graph is evaluated separately against the retention/refresh
+limit. The baseline may be materialized from another checkout, but its commit
+must be recorded and verified separately from the branch graph. Never use an
+arbitrary local `main` checkout as a substitute for the authoritative PR base.
 
 The PR head must incorporate current `main` before the complete receipt is
 produced. CI-7 then rebuilds and binds the receipt to the updated head SHA.
@@ -253,25 +260,40 @@ statuses.
 For comparative CI analysis, materialize the PR commit and the recorded base
 SHA in separate temporary directories. Give each checkout its own `.infigraph/`
 state, never share mutable graph storage between them, and remove both
-checkouts and graph directories when the job ends.
+checkouts and graph directories when the job ends. The comparative receipt
+must include the authoritative base SHA, the PR head SHA, the separately
+indexed base commit, and the separately indexed head commit. It is valid only
+when the indexed base commit equals the authoritative base SHA and the indexed
+head commit equals the PR head SHA; graph age remains a separate
+retention/refresh constraint.
 
 Initial policy:
 
 - publish review comments and artifacts as advisory results;
 - fail the CI-7 job when required Infigraph analysis cannot be executed or
   cannot produce a valid receipt; and
-- do not make CI-7 a merge-blocking check during the pilot. A failed CI-7 job
-  must still preserve the conventional source-and-test review path.
+- hand the result to the existing
+  `cross-functional-review-evidence/<head-sha>.json` receipt as an optional
+  `infigraph` section. CI-7 is not a second merge gate and remains
+  non-blocking during the pilot. A failed CI-7 job must still preserve the
+  conventional source-and-test review path.
 
 When CI-7 reports a stale or unavailable graph, fail the CI-7 job, record that
-state and the failure reason in the cross-functional review evidence receipt,
-and require conventional source and test review. Do not block the merge for
-CI-7 during the pilot. Re-evaluate this policy only after the pilot has
+state and the failure reason in the `infigraph` section of the existing
+cross-functional review evidence receipt, and require conventional source and
+test review. The merge gate must validate that the evidence receipt is bound to
+the current PR head SHA and that its `infigraph` section, when required for the
+change, is also commit-bound: its analyzed head SHA and indexed head commit
+must equal that PR head SHA. Only then may the handoff be treated as complete;
+the section's advisory findings do not need to be clean. Do not block the
+merge for CI-7 during the pilot. Re-evaluate this policy only after the pilot has
 measured availability, freshness, false positives, missed impacts, and
 reviewer usefulness against a ratified promotion threshold.
 
-For a qualifying code change, the pre-merge receipt check must require proof
-that `infigraph-code-intelligence` ran. In the pilot, qualifying changes are
+For a qualifying code change, the existing cross-functional review merge-gate
+validation must require proof that `infigraph-code-intelligence` ran and must
+validate the commit-bound `infigraph` section before treating the evidence as
+complete. In the pilot, qualifying changes are
 limited to `scripts/**/*.py`, `.github/skills/**/logic/**/*.py`, and
 `scripts/fleet/**/*.ts`. Workflow YAML and Markdown changes are excluded.
 Documentation-only, test-only, generated, lockfile, and CI-only changes are
@@ -291,14 +313,18 @@ must distinguish `analysis_complete` from `analysis_unavailable` or
 Do not create a second merge gate. CI-7 contributes a commit-bound optional
 `infigraph` section to the existing
 `cross-functional-review-evidence/<head-sha>.json` receipt, and the existing
-cross-functional review gate remains the sole merge-time authority. Run CI-7
+cross-functional review gate remains the sole merge-time authority. Its
+validation must reject an absent, stale, or SHA-mismatched section for a
+qualifying change, while CI-7 itself remains non-blocking in the pilot. Run CI-7
 on every qualifying pull-request update; only the receipt bound to the current
 head SHA is valid at merge time. Its optional `infigraph` section contains only
-the PR number, head SHA, Infigraph version and CLI command profile, qualifying
-changed-file list or hash, graph state, indexed commit when available, analysis
-timestamp and duration, summarized impacts, fallback used, and explicit
-advisory status. Do not place raw source, full graph exports, or verbose logs
-in the receipt; publish those as CI artifacts when needed.
+the PR number, authoritative base SHA, PR head SHA, separately indexed base and
+head commits, Infigraph version and CLI command profile, qualifying changed-file
+list or hash, graph state, analysis timestamp and duration, summarized impacts,
+fallback used, and explicit advisory status. The indexed base commit must equal
+the authoritative base SHA, and the indexed head commit must equal the PR head
+SHA. Do not place raw source, full graph exports, or verbose logs in the
+receipt; publish those as CI artifacts when needed.
 
 The `knowledgebase` pilot does not introduce GitHub merge queue. Before the
 valid receipt is produced, the qualifying PR head must incorporate current
@@ -336,19 +362,24 @@ design but are not evidence that Infigraph can consume them directly.
   not used. Configure context compression level (`summary` or `aggressive`)
   in `.infigraph/config.toml` only if supported by the verified release. Defer
   MCP tool verification and CLI/MCP parity.
-2. Pilot advisory PR analysis in `knowledgebase` only, including branch-versus-
+2. Add and wire the reusable CLI-only
+  `.github/skills/infigraph-code-intelligence/SKILL.md` through the
+  repository's normal skill discovery, lifecycle, intent, and `CONTEXT.md`
+  conventions. Complete this wiring before the pilot begins; the skill must
+  not depend on MCP.
+3. Pilot advisory PR analysis in `knowledgebase` only, including branch-versus-
   PR-base comparison. Use qualifying changes to `scripts/**/*.py`,
   `.github/skills/**/logic/**/*.py`, and `scripts/fleet/**/*.ts` as the pilot
   sample. Exclude workflow YAML and Markdown during this phase; do not begin
   cross-repository rollout.
-3. Measure runtime, stale-index rate, false-positive rate, missed-impact rate,
+4. Measure runtime, stale-index rate, false-positive rate, missed-impact rate,
   and developer usefulness across at least 10 PRs.
-4. Defer nightly or post-merge main-branch indexing until the pilot validates
+5. Defer nightly or post-merge main-branch indexing until the pilot validates
   value and graph-state retention requirements.
-5. Add the reusable agent skill and thin repository-specific instruction
-   sections.
-6. Add an optional lightweight local warning hook.
-7. Promote only checks that meet the agreed precision threshold to required CI
+6. Add thin repository-specific instruction sections, without adding an
+  always-on routing rule during the pilot.
+7. Add an optional lightweight local warning hook.
+8. Promote only checks that meet the agreed precision threshold to required CI
   status.
 
 The team must make an explicit post-pilot decision on whether Infigraph remains
@@ -468,19 +499,19 @@ rollout and must be revisited only if later adoption is proposed.
 
 | Repository | Source | Issue |
 |---|---|---|
-| `mct-ai-eoc` | `docs/adr/0002-module-import-dag.md` | Deferred. If `mct-ai-eoc` is considered for adoption later, confirm that graph-first discovery does not conflict with its convention-based import policy. |
+| `mct-ai-eoc` | [`docs/adr/0002-module-import-dag.md`](https://github.com/adhocteam/mct-ai-eoc/blob/381ccfa98f28dc7a069e354c8942030a0a966100/docs/adr/0002-module-import-dag.md) | Deferred. If `mct-ai-eoc` is considered for adoption later, confirm that graph-first discovery does not conflict with its convention-based import policy. |
 
 ### Deferred governance considerations
 
 | Area | Source | Issue |
 |---|---|---|
-| CLI runtime truth | `medicare-pp-cli` `SKILL.md`, `internal/cli/agent_context.go` | This repository teaches agents to treat `agent-context`, `which`, and CLI runtime discovery as authoritative. Infigraph must run beside this model, not supersede it. |
+| CLI runtime truth | [`medicare-pp-cli/SKILL.md`](https://github.com/adhocteam/medicare-pp-cli/blob/3604dbf9088a4a8424f6e7f6006ed50924810deb/SKILL.md), [`internal/cli/agent_context.go`](https://github.com/adhocteam/medicare-pp-cli/blob/3604dbf9088a4a8424f6e7f6006ed50924810deb/internal/cli/agent_context.go) | This repository teaches agents to treat `agent-context`, `which`, and CLI runtime discovery as authoritative. Infigraph must run beside this model, not supersede it. |
 | Instruction locality | `knowledgebase` ADR-028 | Every addition to always-on instruction files must follow the Locality-4 process: paired deletion or a locality justification trailer. |
-| Skill placement | `oc-mct-api`, `oc-mct-frontend`, `activate-copilot`, `mct-junebug` | These repositories use different AI-guidance models: agents, skills, templates, or no AI layer. The Infigraph skill must follow each repository's established tier structure. |
+| Skill placement | [`oc-mct-api`](https://github.com/CMSgov/oc-mct-api/tree/f77cef5a96fa7a24784c11c0b31cf07bdff1d49f), [`oc-mct-frontend`](https://github.com/CMSgov/oc-mct-frontend/tree/15a859f6c373a8485d8baec014c1e7a3e1db14e2), [`activate-copilot`](https://github.com/adhocteam/activate-copilot/tree/f8cacf1b20689c984e535bc02e6a3f9a6bc9a5c3), [`mct-junebug`](https://github.com/adhocteam/mct-junebug/tree/81c8cbbfddcfc466b7d5a3a9d1cff5e04a102692) | These repositories use different AI-guidance models: agents, skills, templates, or no AI layer. The Infigraph skill must follow each repository's established tier structure. |
 | CI ownership | `knowledgebase` ADR-004, ADR-015, ADR-016 | No current ADR defines an Infigraph CI lane, artifact schema, or exit statuses. |
 | Graph state | `knowledgebase` ADR-005, ADR-031 | Freshness, worktree isolation, storage, and lock behavior are not ratified. |
 | Security | `knowledgebase` ADR-012, ADR-021, ADR-036 | No ADR defines Infigraph authentication, storage locations, retention, or cross-repository boundaries. |
-| Cross-repository rollout | `knowledgebase` AGENTS.md, `activate-copilot` ADR-001, ADR-004 | No shared policy establishes whether guidance is copied per repository, distributed through templates, or maintained centrally. |
+| Cross-repository rollout | `knowledgebase` `AGENTS.md`, [`activate-copilot` ADR-001](https://github.com/adhocteam/activate-copilot/blob/f8cacf1b20689c984e535bc02e6a3f9a6bc9a5c3/docs/dev/adrs/ADR-001-agent-instructions-skills-files.md), [`activate-copilot` ADR-004](https://github.com/adhocteam/activate-copilot/blob/f8cacf1b20689c984e535bc02e6a3f9a6bc9a5c3/docs/dev/adrs/ADR-004-activate-sharing-structure.md) | No shared policy establishes whether guidance is copied per repository, distributed through templates, or maintained centrally. |
 
 ### Repositories without AI-guidance layers
 
@@ -499,11 +530,13 @@ guidance until these gates pass:
 3. The `knowledgebase` pilot completes at least 10 PRs with measured results.
 4. The team separately approves any future repository adoption.
 
-For `mct-ai-eoc`, the team should confirm that graph-first discovery does not
-conflict with the convention-based import DAG policy in ADR-0002.
+For [`mct-ai-eoc`'s import DAG policy](https://github.com/adhocteam/mct-ai-eoc/blob/381ccfa98f28dc7a069e354c8942030a0a966100/docs/adr/0002-module-import-dag.md),
+the team should confirm that graph-first discovery does not conflict with the
+convention-based import policy.
 
-For `medicare-pp-cli`, the team must define whether Infigraph runs before,
-after, or beside the existing CLI runtime discovery model.
+For [`medicare-pp-cli`'s runtime discovery model](https://github.com/adhocteam/medicare-pp-cli/blob/3604dbf9088a4a8424f6e7f6006ed50924810deb/internal/cli/agent_context.go),
+the team must define whether Infigraph runs before, after, or beside the
+existing CLI runtime discovery model.
 
 ## Required ADR sequence
 
@@ -523,8 +556,8 @@ Ratify these ADRs in the knowledgebase before normative adoption:
 5. **ADR: Infigraph cross-repository rollout and template distribution.**
    Define whether guidance is copied, distributed through templates, or
    maintained centrally.
-6. **Compatibility statement for `mct-ai-eoc` ADR-0002** is deferred with all
-  other cross-repository adoption work.
+6. **Compatibility statement for the pinned `mct-ai-eoc` import-DAG reference**
+  is deferred with all other cross-repository adoption work.
 
 ## Repository adoption paths
 
@@ -598,6 +631,19 @@ by Infigraph and must remain unchanged:
 - `suggest-backlinks` — wiki reciprocal link suggestions
 - `check-link-topology` — wiki page link graph, not code call graph
 
+### Citation and validator boundary
+
+External repository references in this proposal use GitHub URLs pinned to a full
+commit SHA. They are immutable references for this document; they are not
+knowledgebase `SourceRef` entries. The current local SourceRef validator
+(`scripts/hooks/check_sourceref_format.py`) only scans staged `wiki/**`
+Markdown through the pre-commit file filter, checks the shape of `repo://`
+tokens, and skips frontmatter and fenced code. It does not validate ordinary
+links in `docs/**`, resolve GitHub URLs, verify that a linked commit exists, or
+enforce that an external URL is commit-bound. Those stronger guarantees remain
+requirements for a future validator or implementation check, not behavior this
+proposal claims already exists.
+
 ## Related material
 
 - Infigraph repository: <https://github.com/intuit/infigraph>
@@ -608,6 +654,6 @@ by Infigraph and must remain unchanged:
 - MCT write concurrency guards: `docs/decisions/ADR-005-write-concurrency-guards.md`
 - MCT split CI workflow governance: `docs/decisions/ADR-004-split-ci-workflow-governance.md`
 - MCT extended CI trust model: `docs/decisions/ADR-015-extended-ci-trust-model.md`
-- `mct-ai-eoc` import DAG policy: `mct-ai-eoc/docs/adr/0002-module-import-dag.md`
-- `medicare-pp-cli` agent context: `medicare-pp-cli/internal/cli/agent_context.go`
-- `activate-copilot` instruction placement: `activate-copilot/docs/dev/adrs/ADR-001-agent-instructions-skills-files.md`
+- `mct-ai-eoc` import DAG policy: [`docs/adr/0002-module-import-dag.md`](https://github.com/adhocteam/mct-ai-eoc/blob/381ccfa98f28dc7a069e354c8942030a0a966100/docs/adr/0002-module-import-dag.md)
+- `medicare-pp-cli` agent context: [`internal/cli/agent_context.go`](https://github.com/adhocteam/medicare-pp-cli/blob/3604dbf9088a4a8424f6e7f6006ed50924810deb/internal/cli/agent_context.go)
+- `activate-copilot` instruction placement: [`docs/dev/adrs/ADR-001-agent-instructions-skills-files.md`](https://github.com/adhocteam/activate-copilot/blob/f8cacf1b20689c984e535bc02e6a3f9a6bc9a5c3/docs/dev/adrs/ADR-001-agent-instructions-skills-files.md)
