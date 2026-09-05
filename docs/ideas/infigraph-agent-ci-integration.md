@@ -269,7 +269,9 @@ retention/refresh constraint.
 
 Initial policy:
 
-- publish review comments and artifacts as advisory results;
+- publish artifacts, annotations, and job summaries as advisory results. Do not
+  have the read-only CI-7 lane publish PR comments; if PR comments are later
+  desired, use a separately trust-gated, minimally scoped publisher;
 - fail the CI-7 job when required Infigraph analysis cannot be executed or
   cannot produce a valid receipt; and
 - hand the result to the existing
@@ -284,9 +286,11 @@ cross-functional review evidence receipt, and require conventional source and
 test review. The merge gate must validate that the evidence receipt is bound to
 the current PR head SHA and that its `infigraph` section, when required for the
 change, is also commit-bound: its analyzed head SHA and indexed head commit
-must equal that PR head SHA. Only then may the handoff be treated as complete;
-the section's advisory findings do not need to be clean. Do not block the
-merge for CI-7 during the pilot. Re-evaluate this policy only after the pilot has
+must equal that PR head SHA. During the pilot, the section must be present and
+commit-bound even when its explicit state is `analysis_unavailable` or
+`analysis_failed`; that state is a complete handoff of the CI-7 result and must
+not by itself block the merge. The section's advisory findings do not need to
+be clean. Do not block the merge for CI-7 during the pilot. Re-evaluate this policy only after the pilot has
 measured availability, freshness, false positives, missed impacts, and
 reviewer usefulness against a ratified promotion threshold.
 
@@ -314,8 +318,10 @@ Do not create a second merge gate. CI-7 contributes a commit-bound optional
 `infigraph` section to the existing
 `cross-functional-review-evidence/<head-sha>.json` receipt, and the existing
 cross-functional review gate remains the sole merge-time authority. Its
-validation must reject an absent, stale, or SHA-mismatched section for a
-qualifying change, while CI-7 itself remains non-blocking in the pilot. Run CI-7
+validation must reject an absent or SHA-mismatched section for a qualifying
+change, but must accept a commit-bound section whose explicit state is
+`analysis_unavailable` or `analysis_failed` during the pilot. CI-7 itself
+remains non-blocking in the pilot. Run CI-7
 on every qualifying pull-request update; only the receipt bound to the current
 head SHA is valid at merge time. Its optional `infigraph` section contains only
 the PR number, authoritative base SHA, PR head SHA, separately indexed base and
@@ -521,8 +527,10 @@ are deferred until a future cross-repository rollout is separately approved.
 
 ## Adoption decision gates
 
-This proposal remains **Proposed**. No repository should add graph-first
-guidance until these gates pass:
+This proposal remains **Proposed**. No repository should promote graph-first
+guidance to normative adoption until these gates pass. The `knowledgebase`
+skill may be installed and wired before the pilot so the pilot can collect the
+evidence required by gate 3; other repositories remain out of scope:
 
 1. The `knowledgebase` ADR or governance document resolves CLI placement and
   pilot behavior.
