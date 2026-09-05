@@ -101,3 +101,10 @@
 ## 2026-09-02 - [Performance] Fast-path literal check for O(N) array allocation bypass in ratchet
 **Learning:** Checking for "## Write-surface matrix" directly before calling `splitlines()` when extracting body lines entirely avoids allocating a string array of line tokens if the matrix does not exist in the document (like older history revisions or empty documents). This gives a massive O(1) early return speedup on cold paths.
 **Action:** When searching for lines starting below a specific markdown heading, add an `if heading not in text` early return check to bypass string tokenization entirely.
+## 2026-09-04 - [Performance] Removing O(N) string copy and splitlines() array allocation
+**Learning:** Slicing a large string like `content[match.end():]` creates a massive O(N) copy, and chaining it with `.splitlines()` allocates yet another O(N) array of all line strings. If the logic only requires the first matching line, both allocations are completely wasted.
+**Action:** When extracting a single line from the remainder of a large string block, avoid slicing and `splitlines()`. Use a `while` loop with `.find('\n', start_idx)` to stream through the original string in O(1) memory and return early on the first match.
+
+## 2026-09-04 - [Performance] Removing sequential array allocation in rglob
+**Learning:** Sequentially populating a list from `sorted(rglob())` before filtering builds the entire raw filesystem result set in memory upfront and delays processing.
+**Action:** Yield paths lazily from `rglob()` and only sort the resulting list after all paths have been filtered to reduce peak memory usage and allow streaming processing where applicable.
