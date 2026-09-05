@@ -42,7 +42,21 @@ def _extract_status_line(content: str) -> str | None:
     match = _STATUS_HEADING_RE.search(content)
     if match is None:
         return None
-    for line in content[match.end():].splitlines():
+
+    # OPTIMIZATION: Avoid splitlines() and string copying on large text blocks
+    # to achieve O(1) memory allocation.
+    start_idx = match.end()
+    content_len = len(content)
+
+    while start_idx < content_len:
+        newline_idx = content.find("\n", start_idx)
+        if newline_idx == -1:
+            line = content[start_idx:]
+            start_idx = content_len
+        else:
+            line = content[start_idx:newline_idx]
+            start_idx = newline_idx + 1
+
         stripped = line.strip()
         if stripped:
             return stripped
@@ -57,10 +71,7 @@ def _get_staged_paths() -> set[str]:
 
 def main(argv: list[str]) -> int:
     # pre-commit passes staged file paths as argv[1:]
-    adr_files = [
-        f for f in argv[1:]
-        if re.match(r"docs/decisions/ADR-\d+-.*\.md$", f)
-    ]
+    adr_files = [f for f in argv[1:] if re.match(r"docs/decisions/ADR-\d+-.*\.md$", f)]
     if not adr_files:
         return 0
 
