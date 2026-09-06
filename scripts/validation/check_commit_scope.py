@@ -169,6 +169,9 @@ def _last_paragraph(text: str) -> str:
 def _extract_trailers(text: str) -> list[tuple[str, str]]:
     """Extract Git-style footer trailers (``Token: Value``) from a text block."""
     trailers = []
+    # ⚡ Bolt Optimization: Fast-path literal check for O(N) array allocation bypass
+    if ":" not in text:
+        return trailers
     for line in text.splitlines():
         m = _TRAILER_LINE_RE.match(line)
         if m:
