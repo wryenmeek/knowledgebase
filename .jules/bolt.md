@@ -108,3 +108,7 @@
 ## 2026-09-04 - [Performance] Removing sequential array allocation in rglob
 **Learning:** Sequentially populating a list from `sorted(rglob())` before filtering builds the entire raw filesystem result set in memory upfront and delays processing.
 **Action:** Yield paths lazily from `rglob()` and only sort the resulting list after all paths have been filtered to reduce peak memory usage and allow streaming processing where applicable.
+
+## 2024-09-05 - [Performance] Removing O(N) array allocation bypass for trailers
+**Learning:** Using `splitlines()` unconditionally tokenizes the entire string into an O(N) memory array. Bypassing it when there are no colons (and thus no trailers) avoids this allocation for the majority of commits.
+**Action:** Always add a fast-path literal string check (`if ":" not in text: return trailers`) before calling `splitlines()` when extracting trailers.
