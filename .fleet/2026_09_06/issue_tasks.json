@@ -1,0 +1,43 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-09-06T10:17:07.168Z",
+  "root_causes": [
+    {
+      "id": "rc-missing-infigraph-runtime",
+      "title": "Missing Infigraph runtime and capability contract",
+      "severity": "medium",
+      "issues": [
+        597
+      ],
+      "files": [
+        "scripts/analysis/infigraph.py"
+      ],
+      "description": "The codebase currently lacks an integration wrapper for the Infigraph CLI. There is no code path for capability checks, reproducible metadata resolution, or standardized status handling for the analysis.",
+      "solution_summary": "Introduce a new module `scripts/analysis/infigraph.py` providing `InfigraphRuntime` with methods to check capabilities and run analysis, returning normalized statuses. Add corresponding tests using a fake executable."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-add-infigraph-runtime",
+      "title": "Add reproducible Infigraph runtime and capability contract",
+      "root_cause": "rc-missing-infigraph-runtime",
+      "issues": [
+        597
+      ],
+      "files": [],
+      "new_files": [
+        "scripts/analysis/infigraph.py"
+      ],
+      "test_files": [
+        "tests/analysis/test_infigraph.py"
+      ],
+      "risk": "low",
+      "prompt": "Implement a reproducible Infigraph runtime wrapper in `scripts/analysis/infigraph.py`.\n\n### Diagnosis\nThe knowledgebase currently lacks a wrapper to invoke the Infigraph CLI. There is no code path in `scripts/analysis` (or elsewhere) that handles Infigraph metadata resolution, startup checks, or capability analysis. As a result, the integration cannot determine if the required analysis capabilities are available or execute them reproducibly.\n\n### Proposed Implementation\nIntroduce a new module `scripts/analysis/infigraph.py` that provides:\n1. `InfigraphRelease`: A dataclass for reproducible metadata (version, checksum, resolution date).\n2. `InfigraphStatus`: An Enum defining `analysis_complete`, `analysis_unavailable`, and `analysis_failed`.\n3. `InfigraphRuntime`: A class that verifies the executable exists, runs capability checks to distinguish between unavailable, unsupported, or ready to analyze, and executes analysis commands with timeout handling and actionable failure reasons.\n\n```python\n# scripts/analysis/infigraph.py\nimport subprocess\nimport json\nimport enum\nfrom dataclasses import dataclass\nfrom typing import Optional, Dict, Any\n\nclass InfigraphStatus(enum.Enum):\n    ANALYSIS_COMPLETE = \"analysis_complete\"\n    ANALYSIS_UNAVAILABLE = \"analysis_unavailable\"\n    ANALYSIS_FAILED = \"analysis_failed\"\n\n@dataclass\nclass InfigraphRelease:\n    version: str\n    checksum: str\n    resolved_at: str\n\nclass InfigraphRuntime:\n    def __init__(self, executable_path: str, release: InfigraphRelease):\n        self.executable_path = executable_path\n        self.release = release\n\n    def check_capabilities(self) -> InfigraphStatus:\n        try:\n            result = subprocess.run(\n                [self.executable_path, \"--capabilities\"],\n                capture_output=True,\n                text=True,\n                timeout=5\n            )\n            if result.returncode != 0:\n                return InfigraphStatus.ANALYSIS_UNAVAILABLE\n            return InfigraphStatus.ANALYSIS_COMPLETE\n        except FileNotFoundError:\n            return InfigraphStatus.ANALYSIS_UNAVAILABLE\n        except subprocess.TimeoutExpired:\n            return InfigraphStatus.ANALYSIS_FAILED\n        except Exception:\n            return InfigraphStatus.ANALYSIS_FAILED\n\n    def analyze(self, target_path: str) -> Dict[str, Any]:\n        try:\n            result = subprocess.run(\n                [self.executable_path, \"analyze\", target_path],\n                capture_output=True,\n                text=True,\n                timeout=30\n            )\n            if result.returncode != 0:\n                return {\"status\": InfigraphStatus.ANALYSIS_FAILED.value, \"reason\": \"Command failed\"}\n            return {\"status\": InfigraphStatus.ANALYSIS_COMPLETE.value, \"data\": json.loads(result.stdout)}\n        except FileNotFoundError:\n            return {\"status\": InfigraphStatus.ANALYSIS_UNAVAILABLE.value, \"reason\": \"Executable not found\"}\n        except subprocess.TimeoutExpired:\n            return {\"status\": InfigraphStatus.ANALYSIS_FAILED.value, \"reason\": \"Timeout\"}\n        except json.JSONDecodeError:\n            return {\"status\": InfigraphStatus.ANALYSIS_FAILED.value, \"reason\": \"Malformed output\"}\n```\n\n### Test Scenarios\nCreate `tests/analysis/test_infigraph.py` using a fake executable (e.g., via a temporary python script) to cover:\n1. Successful capability discovery (`analysis_complete`).\n2. Representative installation failure (executable not found).\n3. Capability failure (executable unsupported).\n4. Command failure (executable returns non-zero code).\n5. Command timeout (`analysis_failed`).\n6. Malformed JSON output (`analysis_failed`).\n\n### Requirements & Constraints\n- Do NOT introduce cross-repository graph storage or MCP integration.\n- `scripts/analysis/infigraph.py` provides the runtime contract.\n- `tests/analysis/test_infigraph.py` fully tests the capabilities using a fake executable.\n- The codebase enforces the normalized statuses.\n\n### File Boundary Rule\nYou may ONLY modify the files listed above (`scripts/analysis/infigraph.py`, `tests/analysis/test_infigraph.py`). Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/analysis/infigraph.py": "task-add-infigraph-runtime",
+    "tests/analysis/test_infigraph.py": "task-add-infigraph-runtime"
+  }
+}
