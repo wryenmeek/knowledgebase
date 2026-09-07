@@ -51,6 +51,11 @@ def parse_matrix_surfaces(agents_md_path: str | Path) -> set[str]:
     ``"scripts/kb/**"``). Skips header rows and separator rows.
     """
     text = Path(agents_md_path).read_text(encoding="utf-8")
+
+    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
+    if "| Surface |" not in text and "| Surface " not in text:
+        return set()
+
     surfaces: set[str] = set()
     in_matrix = False
 

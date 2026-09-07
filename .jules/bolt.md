@@ -108,3 +108,7 @@
 ## 2026-09-04 - [Performance] Removing sequential array allocation in rglob
 **Learning:** Sequentially populating a list from `sorted(rglob())` before filtering builds the entire raw filesystem result set in memory upfront and delays processing.
 **Action:** Yield paths lazily from `rglob()` and only sort the resulting list after all paths have been filtered to reduce peak memory usage and allow streaming processing where applicable.
+
+## 2026-09-06 - [Performance Optimization Boundary] Do not sacrifice readability for micro-optimizations
+**Learning:** Replacing `splitlines()` with a manual `while` loop using `.find('\n')` for parsing small configuration files (e.g., `AGENTS.md`) sacrifices code readability for an unmeasurable micro-optimization. The user persona guidelines explicitly forbid sacrificing code readability for unmeasurable micro-optimizations. Fast-path string literal checks before `splitlines()` are sufficient for these files.
+**Action:** Do not implement manual string parsing loops (like replacing `splitlines()` with `find('\n')`) on small to moderately sized strings. Prioritize code readability over micro-optimizations.
