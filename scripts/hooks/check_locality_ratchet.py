@@ -257,7 +257,7 @@ def _gated_lines(path: str, content: str) -> set[int]:
     if path == AGENTS_PATH:
         # OPTIMIZATION: Defer O(N) string array allocation until after path filtering
         # to avoid unnecessary memory spikes for non-target files.
-        line_count = len(content.splitlines())
+        line_count = content.count("\n") + (0 if content.endswith("\n") else 1) if content else 0
         return set(range(1, line_count + 1)) - _agents_matrix_body_lines(content)
     return set()
 
