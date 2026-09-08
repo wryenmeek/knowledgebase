@@ -251,6 +251,9 @@ def _call_models_api(
     ).encode("utf-8")
 
     url = f"{endpoint.rstrip('/')}/chat/completions"
+    # SECURITY: explicitly validate endpoint to prevent SSRF and unauthorized endpoint usage
+    if not _validate_endpoint(endpoint):
+        raise ValueError(f"Invalid or unauthorized endpoint: {endpoint}")
     if not url.startswith(("http://", "https://")):
         raise ValueError(f"Invalid URL scheme: {url}")
     req = request.Request(
