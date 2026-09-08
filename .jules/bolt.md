@@ -112,3 +112,7 @@
 ## 2026-09-06 - [Performance Optimization Boundary] Do not sacrifice readability for micro-optimizations
 **Learning:** Replacing `splitlines()` with a manual `while` loop using `.find('\n')` for parsing small configuration files (e.g., `AGENTS.md`) sacrifices code readability for an unmeasurable micro-optimization. The user persona guidelines explicitly forbid sacrificing code readability for unmeasurable micro-optimizations. Fast-path string literal checks before `splitlines()` are sufficient for these files.
 **Action:** Do not implement manual string parsing loops (like replacing `splitlines()` with `find('\n')`) on small to moderately sized strings. Prioritize code readability over micro-optimizations.
+
+## 2024-05-24 - [Performance] Removing O(N) array allocation when counting string lines
+**Learning:** Using `len(content.splitlines())` to count the number of lines in a multiline string unconditionally tokenizes the entire string into an $O(N)$ memory array just to return its length. This is an anti-pattern that creates unnecessary allocations and latency.
+**Action:** Always prefer `content.count('\n') + (0 if content.endswith('\n') else 1) if content else 0` when counting lines in a string without needing to iterate or extract the lines, avoiding the $O(N)$ memory spike entirely.
