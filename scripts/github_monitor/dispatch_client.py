@@ -33,8 +33,15 @@ class GitHubApiDispatchClient:
         base_url: str = _GITHUB_API_BASE,
         timeout_seconds: int = 30,
     ) -> None:
+        import re
+
         if not target_owner or not target_repo:
             raise ValueError("target_owner and target_repo are required")
+        # Security: Validate target_owner and target_repo to prevent path traversal/SSRF
+        if not re.match(r"^[A-Za-z0-9_.-]+$", target_owner):
+            raise ValueError(f"Invalid target_owner format: {target_owner}")
+        if not re.match(r"^[A-Za-z0-9_.-]+$", target_repo):
+            raise ValueError(f"Invalid target_repo format: {target_repo}")
         if not token:
             raise ValueError("token is required")
         self._target_owner = target_owner
