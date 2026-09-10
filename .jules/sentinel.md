@@ -57,3 +57,8 @@
 **Vulnerability:** HTTP endpoints didn't emit defensive headers, making the API susceptible to content MIME sniffing.
 **Learning:** API webhooks should include security headers regardless of usage context.
 **Prevention:** Apply defense-in-depth to enforce headers like X-Content-Type-Options and Content-Security-Policy on responses.
+
+## 2026-09-10 - Add missing timeouts to subprocess calls
+**Vulnerability:** `subprocess.run` calls executing `gh` CLI commands lacked `timeout` arguments.
+**Learning:** External network-dependent calls without explicit timeouts can hang indefinitely if the network stalls or the API rate-limits silently. This represents a Denial of Service (DoS) vulnerability that exhausts system resources or blocks processing pipelines.
+**Prevention:** Always include explicit `timeout=30` (or similar appropriate duration) parameters in `subprocess.run` invocations that rely on network access.
