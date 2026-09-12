@@ -448,12 +448,26 @@ def _extract_template_sections(comment_body: str) -> dict[str, str]:
 
 
 def _has_section_content(text: str) -> bool:
+    # OPTIMIZATION: Extract lines with a while loop using .find('\n') to avoid O(N) splitlines allocation
     if not text.strip():
         return False
-    for raw_line in text.splitlines():
+
+    start = 0
+    end = text.find("\n")
+    while end != -1:
+        raw_line = text[start:end]
         normalized = re.sub(r"^\s*[-*]\s*", "", raw_line).strip()
         if normalized:
             return True
+        start = end + 1
+        end = text.find("\n", start)
+
+    if start < len(text):
+        raw_line = text[start:]
+        normalized = re.sub(r"^\s*[-*]\s*", "", raw_line).strip()
+        if normalized:
+            return True
+
     return False
 
 
@@ -506,9 +520,20 @@ def _is_command_like_line(raw_line: str) -> bool:
 
 
 def _has_command_like_content(section_text: str) -> bool:
-    return any(
-        _is_command_like_line(raw_line) for raw_line in section_text.splitlines()
-    )
+    # OPTIMIZATION: Extract lines with a while loop using .find('\n') to avoid O(N) splitlines allocation
+    start = 0
+    end = section_text.find("\n")
+    while end != -1:
+        if _is_command_like_line(section_text[start:end]):
+            return True
+        start = end + 1
+        end = section_text.find("\n", start)
+
+    if start < len(section_text):
+        if _is_command_like_line(section_text[start:]):
+            return True
+
+    return False
 
 
 def evaluate_closure_evidence_comment(
