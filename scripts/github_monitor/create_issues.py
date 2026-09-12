@@ -58,16 +58,22 @@ def _search_existing_issue(dedupe_key: str) -> int | None:
 
     Returns the issue number if found, or ``None``.
     """
-    result = subprocess.run(
-        [
-            "gh", "issue", "list",
-            "--search", f'"{dedupe_key}" in:body',
-            "--json", "number",
-            "--limit", "1",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "gh", "issue", "list",
+                "--search", f'"{dedupe_key}" in:body',
+                "--json", "number",
+                "--limit", "1",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        print("::warning::Dedupe search timed out; creating issue anyway.", flush=True, file=sys.stderr)
+        return None
+
     if result.returncode != 0:
         print(
             f"::warning::Dedupe search failed; creating issue anyway. "
@@ -90,14 +96,20 @@ def _search_existing_issue(dedupe_key: str) -> int | None:
 
 def _comment_on_issue(issue_num: int, run_id: str) -> bool:
     """Add a comment to an existing issue. Returns ``True`` on success."""
-    result = subprocess.run(
-        [
-            "gh", "issue", "comment", str(issue_num),
-            "--body", f"Updated drift detected in run {run_id}.",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "gh", "issue", "comment", str(issue_num),
+                "--body", f"Updated drift detected in run {run_id}.",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"::warning::gh issue comment timed out for issue #{issue_num}.", file=sys.stderr)
+        return False
+
     if result.returncode != 0:
         print(
             f"::warning::Failed to comment on issue #{issue_num}: {_redact_stderr(result.stderr)}",
@@ -109,16 +121,22 @@ def _comment_on_issue(issue_num: int, run_id: str) -> bool:
 
 def _create_issue(title: str, body: str, labels: str) -> bool:
     """Create a new GitHub Issue. Returns ``True`` on success."""
-    result = subprocess.run(
-        [
-            "gh", "issue", "create",
-            "--title", title,
-            "--body", body,
-            "--label", labels,
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "gh", "issue", "create",
+                "--title", title,
+                "--body", body,
+                "--label", labels,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        print("ERROR: gh issue create timed out.", file=sys.stderr)
+        return False
+
     if result.returncode != 0:
         print(
             f"::error::Failed to create HITL issue: {_redact_stderr(result.stderr)}",
@@ -130,26 +148,39 @@ def _create_issue(title: str, body: str, labels: str) -> bool:
 
 def _close_issue(issue_num: int, run_id: str) -> bool:
     """Close an issue with a resolution comment. Returns ``True`` on success."""
-    comment_result = subprocess.run(
-        [
-            "gh", "issue", "comment", str(issue_num),
-            "--body", f"Resolved: applied in run {run_id}.",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if comment_result.returncode != 0:
+    try:
+        comment_result = subprocess.run(
+            [
+                "gh", "issue", "comment", str(issue_num),
+                "--body", f"Resolved: applied in run {run_id}.",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"::warning::gh issue comment timed out for issue #{issue_num} before closing.", file=sys.stderr)
+        # Proceed to close the issue anyway
+        comment_result = None
+
+    if comment_result is not None and comment_result.returncode != 0:
         print(
             f"::warning::Failed to comment on issue #{issue_num} before closing: "
             f"{_redact_stderr(comment_result.stderr)}",
             flush=True,
         )
 
-    close_result = subprocess.run(
-        ["gh", "issue", "close", str(issue_num)],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        close_result = subprocess.run(
+            ["gh", "issue", "close", str(issue_num)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"::warning::gh issue close timed out for issue #{issue_num}.", file=sys.stderr)
+        return False
+
     if close_result.returncode != 0:
         print(
             f"::warning::Failed to close issue #{issue_num}: {_redact_stderr(close_result.stderr)}",

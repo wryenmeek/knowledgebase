@@ -59,16 +59,22 @@ def _path_rules() -> dict[str, Any]:
 
 def _search_existing_issue(dedupe_key: str) -> int | None:
     """Search for an existing open issue containing *dedupe_key* in its body."""
-    result = subprocess.run(
-        [
-            "gh", "issue", "list",
-            "--search", f'"{dedupe_key}" in:body',
-            "--json", "number",
-            "--limit", "1",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "gh", "issue", "list",
+                "--search", f'"{dedupe_key}" in:body',
+                "--json", "number",
+                "--limit", "1",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        print("::warning::Dedupe search timed out; creating issue anyway.", flush=True, file=sys.stderr)
+        return None
+
     if result.returncode != 0:
         print(
             f"::warning::Dedupe search failed; creating issue anyway. "
@@ -93,7 +99,12 @@ def _create_issue(title: str, body: str, labels: list[str]) -> bool:
     for label in labels:
         cmd += ["--label", label]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        print("ERROR: gh issue create timed out.", file=sys.stderr)
+        return False
+
     if result.returncode != 0:
         print(
             f"ERROR: gh issue create failed. "
@@ -108,14 +119,20 @@ def _create_issue(title: str, body: str, labels: list[str]) -> bool:
 
 def _update_issue(issue_number: int, body_suffix: str) -> bool:
     """Append *body_suffix* to an existing issue's body via a comment."""
-    result = subprocess.run(
-        [
-            "gh", "issue", "comment", str(issue_number),
-            "--body", body_suffix,
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "gh", "issue", "comment", str(issue_number),
+                "--body", body_suffix,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"WARNING: gh issue comment timed out for issue #{issue_number}.", file=sys.stderr)
+        return False
+
     if result.returncode != 0:
         print(
             f"WARNING: Failed to add comment to issue #{issue_number}: "
