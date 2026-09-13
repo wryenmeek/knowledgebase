@@ -13,8 +13,8 @@ from typing import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT))
-from scripts.kb import checkpoint_registry, path_utils, write_utils
-from scripts.kb.repo_identity import default_repo_name
+from scripts.kb import checkpoint_registry, path_utils, write_utils  # noqa: E402
+from scripts.kb.repo_identity import default_repo_name  # noqa: E402
 
 
 REPO_OWNER = "local"
@@ -258,13 +258,11 @@ def _read_staged_repo_file(path: str) -> str:
             SyncReasonCode.INVALID_ARGUMENTS,
             f"staged source must be a regular repo file: {path}",
         )
-    try:
-        staged_path.relative_to(repo_root)
-    except ValueError as exc:
+    if not staged_path.is_relative_to(repo_root):
         raise SyncArgumentError(
             SyncReasonCode.INVALID_ARGUMENTS,
             f"staged source must stay within the repository: {path}",
-        ) from exc
+        )
     return staged_path.read_text(encoding="utf-8")
 
 
@@ -276,6 +274,7 @@ def _with_checkpoint_status(content: str) -> str:
     section = render_checkpoint_status().rstrip()
     pattern = r"(?ms)^## Checkpoint Registry\n.*?(?=^## |\Z)"
     if re.search(pattern, content):
+
         def replacement(match: re.Match[str]) -> str:
             return section + ("\n\n" if match.end() < len(content) else "\n")
 
@@ -349,7 +348,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     snapshot_write_request = resolve_snapshot_write_request(args)
     try:
         if args.append_log_entry is not None:
-            append_log_entry(args.append_log_entry, state_changed=bool(args.state_changed))
+            append_log_entry(
+                args.append_log_entry, state_changed=bool(args.state_changed)
+            )
         elif snapshot_write_request is not None:
             artifact_path, staged_source_path = snapshot_write_request
             publish_snapshot_artifact(
