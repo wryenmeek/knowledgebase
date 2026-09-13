@@ -330,17 +330,17 @@ def test_collect_cli_coerces_string_tokens_to_zero(tmp_path: Path) -> None:
     assert b.failures == 1
 
 
-def test_build_report_rejects_bool_days() -> None:
+def test_build_report_rejects_bool_days(tmp_path: Path) -> None:
     """``isinstance(True, int)`` is True; bool must be explicitly rejected.
 
     Regression: ``--days True`` (or any bool slipped past argparse via the
     Python API) would bypass ``days < 1`` because ``True == 1``. The guard
     now treats bool as invalid input.
     """
-    report = build_report(home=Path("/tmp"), days=True, include_chat=False)  # type: ignore[arg-type]
+    report = build_report(home=tmp_path, days=True, include_chat=False)  # type: ignore[arg-type]
     assert report.status == STATUS_FAIL
     assert report.reason_code == REASON_CODE_INVALID_INPUT
-    report2 = build_report(home=Path("/tmp"), days=False, include_chat=False)  # type: ignore[arg-type]
+    report2 = build_report(home=tmp_path, days=False, include_chat=False)  # type: ignore[arg-type]
     assert report2.status == STATUS_FAIL
     assert report2.reason_code == REASON_CODE_INVALID_INPUT
 
