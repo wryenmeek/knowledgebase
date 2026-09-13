@@ -29,11 +29,11 @@ MDLINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")  # group 1 = display, group 2
 
 @dataclass(frozen=True)
 class BacklinkProposal:
-    source_file: str    # page that should add the link (relative to wiki_root)
-    source_line: int    # 1-indexed line number of the unlinked mention
-    surface_text: str   # the text that appears unlinked
-    suggested_link: str # relative path to the candidate page (from wiki_root)
-    rationale: str      # e.g. "namespace:entities" or "linked-neighbor"
+    source_file: str  # page that should add the link (relative to wiki_root)
+    source_line: int  # 1-indexed line number of the unlinked mention
+    surface_text: str  # the text that appears unlinked
+    suggested_link: str  # relative path to the candidate page (from wiki_root)
+    rationale: str  # e.g. "namespace:entities" or "linked-neighbor"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -58,11 +58,10 @@ def _get_candidate_title(page_path: Path) -> str:
 
 def _get_namespace(page_path: Path, wiki_root: Path) -> str | None:
     """Return the first path segment under wiki_root (e.g. 'entities')."""
-    try:
+    if page_path.is_relative_to(wiki_root):
         parts = page_path.relative_to(wiki_root).parts
         return parts[0] if len(parts) >= 2 else None
-    except ValueError:
-        return None
+    return None
 
 
 def _get_existing_link_targets(page_path: Path) -> set[str]:
@@ -151,13 +150,13 @@ def _scan_neighbor(
     except OSError:
         return []
 
-    try:
+    if neighbor.is_relative_to(wiki_root):
         source_rel = str(neighbor.relative_to(wiki_root))
-    except ValueError:
+    else:
         source_rel = str(neighbor)
-    try:
+    if candidate_path.is_relative_to(wiki_root):
         suggested = str(candidate_path.relative_to(wiki_root))
-    except ValueError:
+    else:
         suggested = str(candidate_path)
 
     pattern = re.compile(r"\b" + re.escape(title) + r"\b", re.IGNORECASE)
@@ -172,18 +171,22 @@ def _scan_neighbor(
         if in_code_block:
             continue
         if pattern.search(line) and not _line_already_links_title(line, title):
-            proposals.append(BacklinkProposal(
-                source_file=source_rel,
-                source_line=lineno,
-                surface_text=title,
-                suggested_link=suggested,
-                rationale=rationale,
-            ))
+            proposals.append(
+                BacklinkProposal(
+                    source_file=source_rel,
+                    source_line=lineno,
+                    surface_text=title,
+                    suggested_link=suggested,
+                    rationale=rationale,
+                )
+            )
 
     return proposals
 
 
-def scan(candidate: str | Path, wiki_root: str | Path = "wiki") -> list[BacklinkProposal]:
+def scan(
+    candidate: str | Path, wiki_root: str | Path = "wiki"
+) -> list[BacklinkProposal]:
     """Scan the candidate page's neighborhood for unlinked mentions.
 
     Neighborhood:
@@ -223,7 +226,10 @@ def scan(candidate: str | Path, wiki_root: str | Path = "wiki") -> list[Backlink
                     seen.add(neighbor_r)
                     proposals.extend(
                         _scan_neighbor(
-                            neighbor, candidate_path, title, wiki_root_path,
+                            neighbor,
+                            candidate_path,
+                            title,
+                            wiki_root_path,
                             f"namespace:{namespace}",
                         )
                     )
@@ -235,7 +241,10 @@ def scan(candidate: str | Path, wiki_root: str | Path = "wiki") -> list[Backlink
             seen.add(resolved)
             proposals.extend(
                 _scan_neighbor(
-                    resolved, candidate_path, title, wiki_root_path,
+                    resolved,
+                    candidate_path,
+                    title,
+                    wiki_root_path,
                     "linked-neighbor",
                 )
             )
@@ -253,7 +262,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("candidate", help="Path to the candidate wiki page")
     parser.add_argument(
-        "--wiki-root", default="wiki", help="Path to the wiki root directory (default: wiki)"
+        "--wiki-root",
+        default="wiki",
+        help="Path to the wiki root directory (default: wiki)",
     )
     args = parser.parse_args(argv)
 
