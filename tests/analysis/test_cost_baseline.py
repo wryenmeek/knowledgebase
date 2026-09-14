@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 
 import pytest
+import tempfile
+from scripts.analysis.cost_baseline import _build_savings
 
 from scripts.analysis.cost_baseline import (
     AgentBucket,
@@ -180,9 +182,7 @@ def test_collect_cli_handles_model_none_or_missing(
     data = {"agentName": "x", "totalTokens": 1, "totalToolCalls": 1}
     if model_value != "missing":
         data["model"] = model_value
-    _write_session(
-        tmp_path, "s", [{"type": "subagent.completed", "data": data}]
-    )
+    _write_session(tmp_path, "s", [{"type": "subagent.completed", "data": data}])
     buckets, _, _, _, _ = collect_cli(tmp_path, days=30)
     bucket = next(iter(buckets))
     assert bucket.model == "?"
@@ -207,12 +207,8 @@ def test_collect_cli_skips_malformed_json_lines(tmp_path: Path) -> None:
 
 
 def test_collect_cli_skips_sessions_older_than_cutoff(tmp_path: Path) -> None:
-    fresh_path = _write_session(
-        tmp_path, "fresh", [_subagent_completed(tokens=100)]
-    )
-    old_path = _write_session(
-        tmp_path, "old", [_subagent_completed(tokens=200)]
-    )
+    _write_session(tmp_path, "fresh", [_subagent_completed(tokens=100)])
+    old_path = _write_session(tmp_path, "old", [_subagent_completed(tokens=200)])
     # Backdate the old session 60 days
     old_t = time.time() - 60 * 86400
     os.utime(old_path, (old_t, old_t))
@@ -271,13 +267,15 @@ def test_collect_cli_skips_non_dict_json_lines(tmp_path: Path) -> None:
     sess_dir = tmp_path / "session-state" / "sess-nondict"
     sess_dir.mkdir(parents=True)
     valid = json.dumps(_subagent_completed())
-    payload = "\n".join([
-        "null",
-        "[1,2,3]",
-        '"a string"',
-        "42",
-        valid,
-    ])
+    payload = "\n".join(
+        [
+            "null",
+            "[1,2,3]",
+            '"a string"',
+            "42",
+            valid,
+        ]
+    )
     (sess_dir / "events.jsonl").write_text(payload + "\n", encoding="utf-8")
     buckets, sessions, _, skipped, _ = collect_cli(tmp_path, days=30)
     assert sessions == 1
@@ -337,10 +335,14 @@ def test_build_report_rejects_bool_days() -> None:
     Python API) would bypass ``days < 1`` because ``True == 1``. The guard
     now treats bool as invalid input.
     """
-    report = build_report(home=Path("/tmp"), days=True, include_chat=False)  # type: ignore[arg-type]
+    report = build_report(
+        home=Path(tempfile.gettempdir()), days=True, include_chat=False
+    )  # type: ignore[arg-type]
     assert report.status == STATUS_FAIL
     assert report.reason_code == REASON_CODE_INVALID_INPUT
-    report2 = build_report(home=Path("/tmp"), days=False, include_chat=False)  # type: ignore[arg-type]
+    report2 = build_report(
+        home=Path(tempfile.gettempdir()), days=False, include_chat=False
+    )  # type: ignore[arg-type]
     assert report2.status == STATUS_FAIL
     assert report2.reason_code == REASON_CODE_INVALID_INPUT
 
@@ -520,8 +522,6 @@ def test_per_call_override_only_affects_matched_dispatch(tmp_path: Path) -> None
 # defensive guards (per code-review / test-engineer / security-auditor) ----
 
 
-from scripts.analysis.cost_baseline import _build_savings, AgentBucket
-from scripts.analysis.pricing import EFFORT_CAPABLE_MODELS
 
 
 # P0 (test-eng): effort-aware downgrade-candidate flip
@@ -535,9 +535,7 @@ def test_cheapest_candidate_flips_to_downgrade_when_effort_inflates_current() ->
     claude-sonnet-4.6's fixed rate — sonnet then becomes a downgrade
     candidate. This is the user-visible flip the bucket-key change enables.
     """
-    assert (
-        _cheapest_candidate("powerful", "gpt-5.4", current_effort="default") is None
-    )
+    assert _cheapest_candidate("powerful", "gpt-5.4", current_effort="default") is None
     assert (
         _cheapest_candidate("powerful", "gpt-5.4", current_effort="high")
         == "claude-sonnet-4.6"
@@ -1069,9 +1067,7 @@ def test_agent_class_maps_only_to_known_workload_classes() -> None:
 
     valid_classes = {"lightweight", "versatile", "powerful"}
     for agent, cls in AGENT_CLASS.items():
-        assert cls in valid_classes, (
-            f"agent {agent!r} mapped to unknown class {cls!r}"
-        )
+        assert cls in valid_classes, f"agent {agent!r} mapped to unknown class {cls!r}"
 
 
 def test_candidate_pool_models_are_in_pricing_table() -> None:
