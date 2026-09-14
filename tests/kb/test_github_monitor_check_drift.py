@@ -10,8 +10,7 @@ import urllib.error
 import urllib.request
 from io import StringIO
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from scripts.github_monitor._types import (
     GitHubAPIResponseError,
@@ -23,7 +22,6 @@ from scripts.github_monitor._types import (
     DRIFT_REPORT_VERSION,
 )
 from scripts.github_monitor.check_drift import (
-    SURFACE,
     _check_active_entry,
     check_drift,
     run_cli,
@@ -330,7 +328,11 @@ class MakeGitHubRequestTests(unittest.TestCase):
 
     def test_404_raises_immediately(self) -> None:
         err = urllib.error.HTTPError(
-            "url", 404, "Not Found", {}, None  # type: ignore[arg-type]
+            "url",
+            404,
+            "Not Found",
+            {},
+            None,  # type: ignore[arg-type]
         )
         with patch("urllib.request.urlopen", side_effect=err):
             with self.assertRaises(GitHubAPIRequestError) as ctx:
@@ -339,7 +341,11 @@ class MakeGitHubRequestTests(unittest.TestCase):
 
     def test_5xx_retries_then_raises(self) -> None:
         err = urllib.error.HTTPError(
-            "url", 503, "Service Unavailable", {}, None  # type: ignore[arg-type]
+            "url",
+            503,
+            "Service Unavailable",
+            {},
+            None,  # type: ignore[arg-type]
         )
         with patch("urllib.request.urlopen", side_effect=err):
             with patch("time.sleep"):  # suppress actual sleep in tests
@@ -465,12 +471,15 @@ class ValidateDriftedEntryTests(unittest.TestCase):
             "last_applied_blob_sha": "a" * 40,
             "compare_url": (
                 "https://github.com/test-org/test-repo/compare/"
-                + "c" * 7 + "..." + "d" * 7
+                + "c" * 7
+                + "..."
+                + "d" * 7
             ),
         }
 
     def _report_with(self, entry: dict) -> dict:
         from scripts.github_monitor._types import DRIFT_REPORT_VERSION
+
         return {
             "version": DRIFT_REPORT_VERSION,
             "generated_at": "2024-01-01T00:00:00+00:00",
@@ -510,7 +519,9 @@ class ValidateDriftedEntryTests(unittest.TestCase):
 
     def test_compare_url_short_sha_raises(self) -> None:
         entry = self._valid_entry()
-        entry["compare_url"] = "https://github.com/org/repo/compare/abc...def"  # 3 chars
+        entry["compare_url"] = (
+            "https://github.com/org/repo/compare/abc...def"  # 3 chars
+        )
         with self.assertRaises(ValueError):
             validate_drift_report(self._report_with(entry))
 
@@ -534,6 +545,7 @@ class CheckActiveEntryTests(unittest.TestCase):
 
     def _side_effects(self, contents_sha: str, commit_sha: str) -> list:
         """Return a side_effect list for urlopen: contents then commits."""
+
         def make_resp(body: dict) -> MagicMock:
             mock = MagicMock()
             mock.read.return_value = json.dumps(body).encode()
@@ -550,7 +562,13 @@ class CheckActiveEntryTests(unittest.TestCase):
         entry = _active_entry(last_applied_blob_sha=self._BLOB_SHA)
         side_effects = self._side_effects(self._BLOB_SHA, self._COMMIT_SHA)
         with patch("urllib.request.urlopen", side_effect=side_effects):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
+            category, data = _check_active_entry(
+                entry,
+                "test-org",
+                "test-repo",
+                "tok",
+                Path(tempfile.gettempdir()) / "nonexistent-test-root",
+            )
         self.assertEqual(category, "up_to_date")
         self.assertEqual(data["blob_sha"], self._BLOB_SHA)
 
@@ -564,7 +582,13 @@ class CheckActiveEntryTests(unittest.TestCase):
         different_commit = "e" * 40
         side_effects = self._side_effects(self._BLOB_SHA, different_commit)
         with patch("urllib.request.urlopen", side_effect=side_effects):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
+            category, data = _check_active_entry(
+                entry,
+                "test-org",
+                "test-repo",
+                "tok",
+                Path(tempfile.gettempdir()) / "nonexistent-test-root",
+            )
         self.assertEqual(category, "up_to_date")
 
     def test_drift_detected_different_blob_sha(self) -> None:
@@ -574,7 +598,13 @@ class CheckActiveEntryTests(unittest.TestCase):
         )
         side_effects = self._side_effects(self._NEW_BLOB_SHA, self._NEW_COMMIT_SHA)
         with patch("urllib.request.urlopen", side_effect=side_effects):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
+            category, data = _check_active_entry(
+                entry,
+                "test-org",
+                "test-repo",
+                "tok",
+                Path(tempfile.gettempdir()) / "nonexistent-test-root",
+            )
         self.assertEqual(category, "drifted")
         self.assertEqual(data["current_blob_sha"], self._NEW_BLOB_SHA)
         self.assertEqual(data["last_applied_blob_sha"], self._BLOB_SHA)
@@ -589,43 +619,85 @@ class CheckActiveEntryTests(unittest.TestCase):
         entry["last_applied_commit_sha"] = None
         side_effects = self._side_effects(self._NEW_BLOB_SHA, self._NEW_COMMIT_SHA)
         with patch("urllib.request.urlopen", side_effect=side_effects):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
+            category, data = _check_active_entry(
+                entry,
+                "test-org",
+                "test-repo",
+                "tok",
+                Path(tempfile.gettempdir()) / "nonexistent-test-root",
+            )
         self.assertEqual(category, "drifted")
         self.assertIsNone(data["compare_url"])
 
     def test_api_404_returns_error_unreachable(self) -> None:
         entry = _active_entry()
         http_err = urllib.error.HTTPError(
-            "url", 404, "Not Found", {}, None  # type: ignore[arg-type]
+            "url",
+            404,
+            "Not Found",
+            {},
+            None,  # type: ignore[arg-type]
         )
         with patch("urllib.request.urlopen", side_effect=http_err):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
+            category, data = _check_active_entry(
+                entry,
+                "test-org",
+                "test-repo",
+                "tok",
+                Path(tempfile.gettempdir()) / "nonexistent-test-root",
+            )
         self.assertEqual(category, "errors")
         self.assertEqual(data["reason_code"], str(GitHubMonitorReasonCode.UNREACHABLE))
 
     def test_api_403_returns_error_unreachable(self) -> None:
         entry = _active_entry()
         http_err = urllib.error.HTTPError(
-            "url", 403, "Forbidden", {}, None  # type: ignore[arg-type]
+            "url",
+            403,
+            "Forbidden",
+            {},
+            None,  # type: ignore[arg-type]
         )
         with patch("urllib.request.urlopen", side_effect=http_err):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
+            category, data = _check_active_entry(
+                entry,
+                "test-org",
+                "test-repo",
+                "tok",
+                Path(tempfile.gettempdir()) / "nonexistent-test-root",
+            )
         self.assertEqual(category, "errors")
         self.assertEqual(data["reason_code"], str(GitHubMonitorReasonCode.UNREACHABLE))
 
     def test_api_500_retries_and_returns_error_fetch_failed(self) -> None:
         entry = _active_entry()
         http_err = urllib.error.HTTPError(
-            "url", 503, "Service Unavailable", {}, None  # type: ignore[arg-type]
+            "url",
+            503,
+            "Service Unavailable",
+            {},
+            None,  # type: ignore[arg-type]
         )
         with patch("urllib.request.urlopen", side_effect=http_err):
             with patch("time.sleep"):
-                category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
+                category, data = _check_active_entry(
+                    entry,
+                    "test-org",
+                    "test-repo",
+                    "tok",
+                    Path(tempfile.gettempdir()) / "nonexistent-test-root",
+                )
         self.assertEqual(category, "errors")
 
     def test_invalid_path_in_entry_returns_error(self) -> None:
         entry = _active_entry(path="../traversal/attack.md")
-        category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
+        category, data = _check_active_entry(
+            entry,
+            "test-org",
+            "test-repo",
+            "tok",
+            Path(tempfile.gettempdir()) / "nonexistent-test-root",
+        )
         self.assertEqual(category, "errors")
         self.assertEqual(data["reason_code"], str(GitHubMonitorReasonCode.FETCH_FAILED))
 
@@ -645,7 +717,13 @@ class CheckActiveEntryTests(unittest.TestCase):
             make_resp(_commits_response(self._COMMIT_SHA)),
         ]
         with patch("urllib.request.urlopen", side_effect=side_effects):
-            category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
+            category, data = _check_active_entry(
+                entry,
+                "test-org",
+                "test-repo",
+                "tok",
+                Path(tempfile.gettempdir()) / "nonexistent-test-root",
+            )
         self.assertEqual(category, "errors")
 
     def test_commits_api_failure_returns_error(self) -> None:
@@ -659,18 +737,30 @@ class CheckActiveEntryTests(unittest.TestCase):
             return mock
 
         http_err = urllib.error.HTTPError(
-            "url", 500, "Internal Server Error", {}, None  # type: ignore[arg-type]
+            "url",
+            500,
+            "Internal Server Error",
+            {},
+            None,  # type: ignore[arg-type]
         )
         # Contents call succeeds; commits call fails 3 times (MAX_RETRIES).
         with patch(
             "urllib.request.urlopen",
             side_effect=[
                 make_resp(_contents_response("a" * 40)),
-                http_err, http_err, http_err,
+                http_err,
+                http_err,
+                http_err,
             ],
         ):
             with patch("time.sleep"):
-                category, data = _check_active_entry(entry, "test-org", "test-repo", "tok", Path("/tmp/nonexistent-test-root"))
+                category, data = _check_active_entry(
+                    entry,
+                    "test-org",
+                    "test-repo",
+                    "tok",
+                    Path(tempfile.gettempdir()) / "nonexistent-test-root",
+                )
         self.assertEqual(category, "errors")
 
 
@@ -693,9 +783,7 @@ class CheckDriftTests(unittest.TestCase):
         path.write_text(json.dumps(registry))
         return path
 
-    def _make_mock_urlopen(
-        self, contents_sha: str, commit_sha: str
-    ):
+    def _make_mock_urlopen(self, contents_sha: str, commit_sha: str):
         def make_resp(body: dict) -> MagicMock:
             mock = MagicMock()
             mock.read.return_value = json.dumps(body).encode()
@@ -747,7 +835,9 @@ class CheckDriftTests(unittest.TestCase):
             )
 
         self.assertEqual(result.status, STATUS_PASS)
-        self.assertEqual(result.reason_code, str(GitHubMonitorReasonCode.DRIFT_DETECTED))
+        self.assertEqual(
+            result.reason_code, str(GitHubMonitorReasonCode.DRIFT_DETECTED)
+        )
         self.assertTrue(result.summary["has_drift"])
         self.assertEqual(result.summary["drifted_count"], 1)
 
@@ -812,7 +902,11 @@ class CheckDriftTests(unittest.TestCase):
         p = self._write_registry("org-repo.source-registry.json", registry)
 
         http_err = urllib.error.HTTPError(
-            "url", 404, "Not Found", {}, None  # type: ignore[arg-type]
+            "url",
+            404,
+            "Not Found",
+            {},
+            None,  # type: ignore[arg-type]
         )
         with patch("urllib.request.urlopen", side_effect=http_err):
             result = check_drift(
@@ -900,7 +994,11 @@ class RunCliTests(unittest.TestCase):
         )
         registry_path.write_text(json.dumps(_make_registry([])))
         out = StringIO()
-        env = {k: v for k, v in os.environ.items() if k not in ("GITHUB_APP_TOKEN", "GITHUB_TOKEN")}
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in ("GITHUB_APP_TOKEN", "GITHUB_TOKEN")
+        }
         with patch.dict(os.environ, env, clear=True):
             exit_code = run_cli(
                 ["--repo-root", str(self._repo_root)],
