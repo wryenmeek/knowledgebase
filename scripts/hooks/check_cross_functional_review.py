@@ -157,8 +157,9 @@ def _pr_has_review_label(pr_number: int | None, cwd: Path | None) -> bool:
             text=True,
             check=False,
             cwd=str(cwd) if cwd is not None else None,
+            timeout=15,
         )
-    except (OSError, FileNotFoundError):
+    except (OSError, FileNotFoundError, subprocess.TimeoutExpired):
         return False
     if result.returncode != 0:
         return False
