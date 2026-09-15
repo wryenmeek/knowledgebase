@@ -302,7 +302,10 @@ def _read_lock_holder_details(lock_file_path: Path) -> _LockHolderDetails | None
     """
 
     try:
-        line = lock_file_path.read_text(encoding="utf-8").splitlines()[0].strip()
+        with open(lock_file_path, encoding="utf-8") as handle:
+            line = handle.readline().strip()
+            if not line:
+                raise IndexError
     except IndexError:
         return None
     except (OSError, UnicodeDecodeError):

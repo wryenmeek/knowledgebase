@@ -120,3 +120,11 @@
 ## 2026-09-09 - [Performance] Removing O(N) array allocation when counting string lines
 **Learning:** Using `len(content.splitlines())` to count the number of lines in a multiline string unconditionally tokenizes the entire string into an O(N) memory array just to return its length. This is an anti-pattern that creates unnecessary allocations and latency. However, NEVER apply this optimization in test files or on small strings (e.g., <500 lines), as replacing a readable standard method with a complex one-liner violates the rule against sacrificing readability for micro-optimizations.
 **Action:** Always prefer `content.count('\n') + (0 if content.endswith('\n') else 1) if content else 0` when counting lines in a string without needing to iterate or extract the lines, avoiding the O(N) memory spike entirely. But only apply this to production code where performance is actually constrained. Do not apply this inside tests or for very small configuration files, as this trades off readability for zero practical gain.
+
+## 2026-09-12 - [Performance] Removing O(N) array allocation for reading small parts of large files
+**Learning:** Using `Path.read_text().splitlines()` on a file just to retrieve the first line or a subset of lines unconditionally tokenizes the entire string into an $O(N)$ memory array. On cold and hot paths, this is an anti-pattern.
+**Action:** When only reading a subset of lines, always use `with open(path) as f:` and iterate or call `f.readline()`, which reads lazily and only allocates memory for what it returns. Avoid using `read_text().splitlines()` unless you need the entire file in an array.
+
+## 2026-09-12 - [Performance] Avoid dictionary view set allocations
+**Learning:** Using dict views like `payload.keys() - expected_fields` seems efficient, but it creates an intermediate set in memory during the subtraction. While dictionary views behave like sets, subtracting a set from them instantiates a new set instead of iterating directly.
+**Action:** When finding the difference between a dictionary's keys and a set (e.g., to find extra fields), use a generator expression like `(k for k in payload if k not in expected_fields)` to avoid the intermediate set allocation entirely.
