@@ -127,3 +127,7 @@
 ## 2024-09-15 - [Python memory footprint: avoid `splitlines()` for targeted regex extraction]
 **Learning:** Using `splitlines()` on a multiline string unconditionally creates an O(N) memory array of all the lines. When the goal is to extract specific patterns (like YAML frontmatter keys) across multiple lines, this creates unnecessary memory overhead.
 **Action:** Use `re.finditer` with the `re.MULTILINE` flag (e.g. `re.compile(r"^...", re.MULTILINE)`) to stream through the string in C. It extracts matches without the intermediate Python list allocation, yielding significant performance and memory improvements for large texts.
+
+## 2026-09-12 - [Python memory footprint: avoid `text.lower()` for fast-path checks]
+**Learning:** When implementing a fast-path literal string check to bypass expensive operations like `splitlines()` on large text bodies (e.g. `if title.lower() not in text.lower():`), calling `.lower()` on the large `text` string unconditionally allocates a completely new O(N) string object in memory. This defeats the memory-saving purpose of the fast path and slows down the positive case because the application pays the allocation penalty for both `.lower()` and `splitlines()`.
+**Action:** Use a pre-compiled regular expression with `re.IGNORECASE` (e.g., `pattern.search(text)`) for memory-efficient, case-insensitive fast-path checks instead of materializing a lowered string copy.
