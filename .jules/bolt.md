@@ -124,3 +124,6 @@
 ## 2024-05-18 - [Path bounds checking optimization]
 **Learning:** Using `try/except Path.relative_to()` is slower than the natively implemented string comparison under the hood of `Path.is_relative_to()` for bounds checking. This is an anti-pattern that slows down path validation logic.
 **Action:** Replace `try/except Path.relative_to()` with `Path.is_relative_to()` for performance gains across the python codebase.
+## 2024-09-15 - [Python memory footprint: avoid `splitlines()` for targeted regex extraction]
+**Learning:** Using `splitlines()` on a multiline string unconditionally creates an O(N) memory array of all the lines. When the goal is to extract specific patterns (like YAML frontmatter keys) across multiple lines, this creates unnecessary memory overhead.
+**Action:** Use `re.finditer` with the `re.MULTILINE` flag (e.g. `re.compile(r"^...", re.MULTILINE)`) to stream through the string in C. It extracts matches without the intermediate Python list allocation, yielding significant performance and memory improvements for large texts.
