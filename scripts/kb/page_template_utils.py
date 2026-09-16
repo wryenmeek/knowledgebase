@@ -16,6 +16,9 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "analysis": ("## Summary", "## Evidence", "## Open Questions"),
 }
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
+_FRONTMATTER_KEY_MULTILINE_RE = re.compile(
+    r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:", re.MULTILINE
+)
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 _FRONTMATTER_BLOCK_RE = re.compile(
     r"^[ \t]*---[ \t]*\r?\n(.*?(?:\r?\n|(?<=\n)))^[ \t]*---[ \t]*(?:\r?\n|$)",
@@ -310,12 +313,8 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
 
 def extract_frontmatter_keys(frontmatter: str) -> set[str]:
     """Return the set of top-level key names present in a YAML frontmatter block."""
-    keys: set[str] = set()
-    for line in frontmatter.splitlines():
-        match = _FRONTMATTER_KEY_RE.match(line)
-        if match:
-            keys.add(match.group(1))
-    return keys
+    # OPTIMIZATION: Avoid O(N) array allocation from splitlines() by using a multiline regex
+    return set(_FRONTMATTER_KEY_MULTILINE_RE.findall(frontmatter))
 
 
 def extract_headings(body: str) -> set[str]:

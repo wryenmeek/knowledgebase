@@ -124,3 +124,7 @@
 ## 2024-05-18 - [Path bounds checking optimization]
 **Learning:** Using `try/except Path.relative_to()` is slower than the natively implemented string comparison under the hood of `Path.is_relative_to()` for bounds checking. This is an anti-pattern that slows down path validation logic.
 **Action:** Replace `try/except Path.relative_to()` with `Path.is_relative_to()` for performance gains across the python codebase.
+
+## 2026-09-12 - [Performance] Regex findall over splitlines() loop
+**Learning:** Using a manual `for line in text.splitlines(): match = RE.match(line)` loop is significantly slower and allocates an O(N) list array. By combining `re.MULTILINE` and `re.findall(text)` on the whole string block, the entire string allocation is avoided, and string parsing is shifted entirely to the highly-optimized C regex engine.
+**Action:** Replace `splitlines()` loops that just apply a simple regex to each line with `re.findall` and `re.MULTILINE` directly on the full multiline string.
