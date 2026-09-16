@@ -146,9 +146,16 @@ def _scan_neighbor(
     if neighbor.resolve() == candidate_path.resolve():
         return []
     try:
-        lines = neighbor.read_text(encoding="utf-8").splitlines()
+        text = neighbor.read_text(encoding="utf-8")
     except OSError:
         return []
+
+    # OPTIMIZATION: Fast-path regex check to avoid O(N) splitlines allocation
+    pattern = re.compile(r"\b" + re.escape(title) + r"\b", re.IGNORECASE)
+    if not pattern.search(text):
+        return []
+
+    lines = text.splitlines()
 
     if neighbor.is_relative_to(wiki_root):
         source_rel = str(neighbor.relative_to(wiki_root))
@@ -158,8 +165,6 @@ def _scan_neighbor(
         suggested = str(candidate_path.relative_to(wiki_root))
     else:
         suggested = str(candidate_path)
-
-    pattern = re.compile(r"\b" + re.escape(title) + r"\b", re.IGNORECASE)
     proposals: list[BacklinkProposal] = []
     in_code_block = False
 
