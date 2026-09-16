@@ -17,7 +17,7 @@ TEMPLATE_SECTION_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 }
 _FRONTMATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _FRONTMATTER_KEY_MULTILINE_RE = re.compile(
-    r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:", re.MULTILINE
+    r"^([A-Za-z_][A-Za-z0-9_-]*)[ \t]*:[ \t]*(.*)$", re.MULTILINE
 )
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 _FRONTMATTER_BLOCK_RE = re.compile(
@@ -194,30 +194,13 @@ def extract_frontmatter(text: str) -> tuple[str | None, str]:
 
 
 def parse_frontmatter(frontmatter: str) -> dict[str, str]:
-    parsed: dict[str, str] = {}
-
-    # Normalize line endings: CRLF -> LF, CR -> LF to handle all variants.
     if "\r" in frontmatter:
         frontmatter = frontmatter.replace("\r\n", "\n").replace("\r", "\n")
 
-    start = 0
-    end = frontmatter.find("\n")
-
-    while end != -1:
-        line = frontmatter[start:end]
-        match = _FRONTMATTER_KEY_RE.match(line)
-        if match:
-            parsed[match.group(1)] = match.group(2).strip()
-        start = end + 1
-        end = frontmatter.find("\n", start)
-
-    if start < len(frontmatter):
-        line = frontmatter[start:]
-        match = _FRONTMATTER_KEY_RE.match(line)
-        if match:
-            parsed[match.group(1)] = match.group(2).strip()
-
-    return parsed
+    return {
+        key: value.strip()
+        for key, value in _FRONTMATTER_KEY_MULTILINE_RE.findall(frontmatter)
+    }
 
 
 def parse_page_frontmatter(text: str) -> dict[str, str]:
