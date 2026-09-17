@@ -98,6 +98,7 @@ def test_json_response_sets_status_headers_and_json_body() -> None:
     assert headers["Content-Type"] == "application/json"
     assert headers["Content-Length"] == str(len(body))
     assert headers["X-Content-Type-Options"] == "nosniff"
+    assert headers["X-Frame-Options"] == "DENY"
     assert headers["Content-Security-Policy"] == "default-src 'none'"
     assert parsed == {"a": 1, "b": 2}
 
