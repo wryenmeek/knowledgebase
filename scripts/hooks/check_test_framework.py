@@ -10,9 +10,15 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from scripts._redaction import redact_stderr
 
 ADR_REFERENCE = "ADR-029"
 
@@ -45,7 +51,8 @@ def _run_git(*args: str) -> tuple[int, str, str]:
         text=True,
         check=False,
     )
-    return result.returncode, result.stdout, result.stderr
+    stderr = redact_stderr(result.stderr) if result.stderr else result.stderr
+    return result.returncode, result.stdout, stderr
 
 
 def _normalize_path(path: str) -> str:
