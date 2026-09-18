@@ -196,18 +196,27 @@ def _get_head_content(path: str) -> str:
     return out if rc == 0 else ""
 
 
+_H2_RE = re.compile(r"^## ", re.MULTILINE)
+
+
 @lru_cache(maxsize=4)
 def _copilot_h2_lines(content: str) -> list[int]:
     # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
     if "## " not in content:
         return []
 
-    lines = content.splitlines()
-    return [
-        line_number
-        for line_number, line in enumerate(lines, start=1)
-        if line.startswith("## ")
-    ]
+    # ⚡ Bolt: Using re.finditer with re.MULTILINE avoids allocating an O(N) list from splitlines()
+    h2_lines: list[int] = []
+    last_newline_idx = -1
+    current_line = 1
+
+    for match in _H2_RE.finditer(content):
+        start = match.start()
+        current_line += content.count("\n", last_newline_idx + 1, start)
+        h2_lines.append(current_line)
+        last_newline_idx = start
+
+    return h2_lines
 
 
 def _copilot_gated_lines(content: str) -> set[int]:
@@ -225,30 +234,48 @@ def _agents_matrix_body_lines(content: str) -> set[int]:
     if "## Write-surface matrix" not in content:
         return set()
 
-    lines = content.splitlines()
-    in_matrix_section = False
-    body_started = False
-    exempt_lines: set[int] = set()
+    # ⚡ Bolt: Slice target section to avoid splitting lines for the entire file
+    start_idx = content.find("## Write-surface matrix")
+    if start_idx == -1:
+        return set()
 
-    for line_number, line in enumerate(lines, start=1):
+    line_end = content.find("\n", start_idx)
+    if line_end == -1:
+        return set()
+
+    next_h2_idx = -1
+    pos = line_end
+    while True:
+        pos = content.find("## ", pos)
+        if pos == -1:
+            break
+        if content[pos - 1] == "\n":
+            next_h2_idx = pos
+            break
+        pos += 3
+
+    if next_h2_idx == -1:
+        section = content[start_idx:]
+    else:
+        section = content[start_idx:next_h2_idx]
+
+    line_number = content.count("\n", 0, start_idx) + 1
+    exempt_lines: set[int] = set()
+    body_started = False
+
+    for line in section.splitlines():
         stripped = line.strip()
         if stripped == "## Write-surface matrix":
-            in_matrix_section = True
-            continue
-        if in_matrix_section and line.startswith("## "):
-            break
-        if not in_matrix_section:
-            continue
-
-        if not body_started:
+            pass
+        elif not body_started:
             if _MARKDOWN_TABLE_SEPARATOR_RE.fullmatch(stripped):
                 body_started = True
-            continue
-
-        if stripped.startswith("|"):
+        elif stripped.startswith("|"):
             exempt_lines.add(line_number)
         else:
             break
+
+        line_number += 1
 
     return exempt_lines
 
