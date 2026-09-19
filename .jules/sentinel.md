@@ -57,3 +57,7 @@
 **Vulnerability:** HTTP endpoints didn't emit defensive headers, making the API susceptible to content MIME sniffing.
 **Learning:** API webhooks should include security headers regardless of usage context.
 **Prevention:** Apply defense-in-depth to enforce headers like X-Content-Type-Options and Content-Security-Policy on responses.
+## 2025-02-24 - Missing Subprocess Timeouts
+**Vulnerability:** Found `subprocess.run` calling external CLI commands (e.g. `git rev-parse`) without a timeout parameter.
+**Learning:** External calls can hang indefinitely, tying up CI runners and causing a Denial of Service (DoS).
+**Prevention:** Always include a explicit `timeout=15` or `timeout=30` parameter in `subprocess.run` calls. Catch the `subprocess.TimeoutExpired` exception to fail securely.

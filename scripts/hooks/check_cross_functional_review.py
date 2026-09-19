@@ -110,8 +110,9 @@ def _head_sha(cwd: Path | None) -> str | None:
             text=True,
             check=False,
             cwd=str(cwd) if cwd is not None else None,
+            timeout=15,
         )
-    except (OSError, FileNotFoundError):
+    except (OSError, FileNotFoundError, subprocess.TimeoutExpired):
         return None
     if result.returncode != 0:
         return None
@@ -133,7 +134,9 @@ def _load_evidence(session_state: Path, head_sha: str) -> dict | None:
     Returns None if file missing or unreadable. Returns parsed dict if OK.
     Returns None (fail closed downstream) if JSON is malformed.
     """
-    evidence_path = session_state / "cross-functional-review-evidence" / f"{head_sha}.json"
+    evidence_path = (
+        session_state / "cross-functional-review-evidence" / f"{head_sha}.json"
+    )
     if not evidence_path.exists():
         return None
     try:
@@ -252,8 +255,8 @@ def main() -> int:
         "Cross-functional review required before `gh pr merge` "
         f"(PR #{pr_number if pr_number is not None else '<unknown>'}).\n"
         "\n"
-        "Per `.github/copilot-instructions.md` § \"Cross-functional review as "
-        "default post-implementation step\" (the L4 hard rule), the four "
+        'Per `.github/copilot-instructions.md` § "Cross-functional review as '
+        'default post-implementation step" (the L4 hard rule), the four '
         "review personas must be dispatched and any P0-P2 findings "
         "remediated before merge:\n"
         "  - @code-reviewer\n"
