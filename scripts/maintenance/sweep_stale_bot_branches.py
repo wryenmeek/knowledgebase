@@ -128,6 +128,7 @@ def _run(
         check=check,
         capture_output=capture,
         text=True,
+        timeout=15,
     )
 
 
