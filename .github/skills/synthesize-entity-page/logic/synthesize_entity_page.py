@@ -9,7 +9,7 @@ Soft-skipped bundles (soft_skipped: true) are accepted and produce no writes.
 
 CLI usage:
     python3 synthesize_entity_page.py \\
-        --extraction-bundle /tmp/extraction-bundle.json \\
+        --extraction-bundle bundle.json \\
         --wiki-root wiki
 """
 

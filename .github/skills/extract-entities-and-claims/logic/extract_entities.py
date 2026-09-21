@@ -12,7 +12,7 @@ CLI usage:
     python3 extract_entities.py \\
         --source-page wiki/sources/my-source.md \\
         --wiki-root wiki \\
-        --output /tmp/extraction-bundle.json
+        --output bundle.json
 """
 
 from __future__ import annotations

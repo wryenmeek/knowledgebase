@@ -7,7 +7,7 @@ entity and concept synthesis scripts run as independent processes (#115).
 
 CLI usage:
     python3 synthesize_combined.py \\
-        --extraction-bundle /tmp/extraction-bundle.json \\
+        --extraction-bundle bundle.json \\
         --wiki-root wiki
 """
 
