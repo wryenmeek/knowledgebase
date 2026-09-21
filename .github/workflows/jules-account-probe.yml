@@ -61,14 +61,14 @@ jobs:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
         run: |
           set -euo pipefail
-          bun run jules-account-probe.ts | tee /tmp/probe-output.json
+          bun run jules-account-probe.ts | tee ${{ runner.temp }}/probe-output.json
 
       - name: Upload probe results
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: jules-account-probe-${{ github.run_id }}
-          path: /tmp/probe-output.json
+          path: ${{ runner.temp }}/probe-output.json
           retention-days: 7
 
   notify:

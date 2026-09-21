@@ -40,18 +40,14 @@ _MARKDOWN_TABLE_SEPARATOR_RE = re.compile(r"^\|[\s:|-]+\|$")
 
 
 def _run_git(*args: str, input_text: str | None = None) -> tuple[int, str, str]:
-    try:
-        result = subprocess.run(
-            ["git", *args],
-            input=input_text,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=15,
-        )
-        return result.returncode, result.stdout, result.stderr
-    except subprocess.TimeoutExpired as exc:
-        return 1, "", f"git command timed out: {exc}"
+    result = subprocess.run(
+        ["git", *args],
+        input=input_text,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode, result.stdout, result.stderr
 
 
 def _normalize_path(path: str) -> str:
@@ -200,27 +196,18 @@ def _get_head_content(path: str) -> str:
     return out if rc == 0 else ""
 
 
-_H2_RE = re.compile(r"^## ", re.MULTILINE)
-
-
 @lru_cache(maxsize=4)
 def _copilot_h2_lines(content: str) -> list[int]:
     # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
     if "## " not in content:
         return []
 
-    # ⚡ Bolt: Using re.finditer with re.MULTILINE avoids allocating an O(N) list from splitlines()
-    h2_lines: list[int] = []
-    last_newline_idx = -1
-    current_line = 1
-
-    for match in _H2_RE.finditer(content):
-        start = match.start()
-        current_line += content.count("\n", last_newline_idx + 1, start)
-        h2_lines.append(current_line)
-        last_newline_idx = start
-
-    return h2_lines
+    lines = content.splitlines()
+    return [
+        line_number
+        for line_number, line in enumerate(lines, start=1)
+        if line.startswith("## ")
+    ]
 
 
 def _copilot_gated_lines(content: str) -> set[int]:
@@ -238,48 +225,30 @@ def _agents_matrix_body_lines(content: str) -> set[int]:
     if "## Write-surface matrix" not in content:
         return set()
 
-    # ⚡ Bolt: Slice target section to avoid splitting lines for the entire file
-    start_idx = content.find("## Write-surface matrix")
-    if start_idx == -1:
-        return set()
-
-    line_end = content.find("\n", start_idx)
-    if line_end == -1:
-        return set()
-
-    next_h2_idx = -1
-    pos = line_end
-    while True:
-        pos = content.find("## ", pos)
-        if pos == -1:
-            break
-        if content[pos - 1] == "\n":
-            next_h2_idx = pos
-            break
-        pos += 3
-
-    if next_h2_idx == -1:
-        section = content[start_idx:]
-    else:
-        section = content[start_idx:next_h2_idx]
-
-    line_number = content.count("\n", 0, start_idx) + 1
-    exempt_lines: set[int] = set()
+    lines = content.splitlines()
+    in_matrix_section = False
     body_started = False
+    exempt_lines: set[int] = set()
 
-    for line in section.splitlines():
+    for line_number, line in enumerate(lines, start=1):
         stripped = line.strip()
         if stripped == "## Write-surface matrix":
-            pass
-        elif not body_started:
+            in_matrix_section = True
+            continue
+        if in_matrix_section and line.startswith("## "):
+            break
+        if not in_matrix_section:
+            continue
+
+        if not body_started:
             if _MARKDOWN_TABLE_SEPARATOR_RE.fullmatch(stripped):
                 body_started = True
-        elif stripped.startswith("|"):
+            continue
+
+        if stripped.startswith("|"):
             exempt_lines.add(line_number)
         else:
             break
-
-        line_number += 1
 
     return exempt_lines
 

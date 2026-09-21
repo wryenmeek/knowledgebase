@@ -823,7 +823,7 @@ class Ci3WorkflowContractTests(unittest.TestCase):
             "reject:path_filter:sensitive_control_plane_path:",
             "reject:trusted_trigger_model:manual_dispatch_sensitive_paths_present",
             'dispatch_merge_base="$(git merge-base "origin/${DEFAULT_BRANCH}" "${DISPATCH_SHA}" 2>/dev/null)"',
-            'git diff --name-only -z "${PUSH_BEFORE_SHA}" "${PUSH_SHA}" > /tmp/push_diff 2>/dev/null',
+            'git diff --name-only -z "${PUSH_BEFORE_SHA}" "${PUSH_SHA}" > "${RUNNER_TEMP:-/tmp}/push_diff" 2>/dev/null',
             'git diff --name-only -z "${dispatch_merge_base}" "${DISPATCH_SHA}" > "${dispatch_diff_file}" 2>/dev/null',
             "while IFS= read -r -d '' changed_path || [[ -n \"${changed_path:-}\" ]]; do",
             ".github/workflows/*|.github/skills/*|.github/agents/*|.github/extensions/*|scripts/*|schema/*|AGENTS.md|pyproject.toml)",

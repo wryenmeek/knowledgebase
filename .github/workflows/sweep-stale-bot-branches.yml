@@ -90,6 +90,6 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: sweep-stale-bot-branches-${{ github.run_id }}
-          path: /tmp/sweep-summary.md
+          path: ${{ runner.temp }}/sweep-summary.md
           if-no-files-found: ignore
           retention-days: 30
