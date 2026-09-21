@@ -40,14 +40,18 @@ _MARKDOWN_TABLE_SEPARATOR_RE = re.compile(r"^\|[\s:|-]+\|$")
 
 
 def _run_git(*args: str, input_text: str | None = None) -> tuple[int, str, str]:
-    result = subprocess.run(
-        ["git", *args],
-        input=input_text,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.returncode, result.stdout, result.stderr
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            input=input_text,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired as exc:
+        return 1, "", f"git command timed out: {exc}"
 
 
 def _normalize_path(path: str) -> str:
