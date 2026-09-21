@@ -120,12 +120,12 @@ jobs:
           if [ "$INPUT_APPLY" = "true" ]; then
             ARGS+=(--apply)
           fi
-          bun run archive-stale-sessions.ts "${ARGS[@]}" | tee /tmp/archive-output.json
+          bun run archive-stale-sessions.ts "${ARGS[@]}" | tee ${{ runner.temp }}/archive-output.json
 
       - name: Upload archive results
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: jules-archive-stale-${{ github.run_id }}
-          path: /tmp/archive-output.json
+          path: ${{ runner.temp }}/archive-output.json
           retention-days: 7

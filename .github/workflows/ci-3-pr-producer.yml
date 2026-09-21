@@ -116,7 +116,7 @@ jobs:
             if [[ -z "${PUSH_BEFORE_SHA}" ]] || [[ "${PUSH_BEFORE_SHA}" == "0000000000000000000000000000000000000000" ]] || [[ -z "${PUSH_SHA}" ]] || [[ "${PUSH_SHA}" == "0000000000000000000000000000000000000000" ]]; then
               push_diff_exit=1
             else
-              git diff --name-only -z "${PUSH_BEFORE_SHA}" "${PUSH_SHA}" > /tmp/push_diff 2>/dev/null
+              git diff --name-only -z "${PUSH_BEFORE_SHA}" "${PUSH_SHA}" > "${RUNNER_TEMP:-/tmp}/push_diff" 2>/dev/null
               push_diff_exit=$?
             fi
             set -e
@@ -127,7 +127,7 @@ jobs:
               push_changed_paths=()
               while IFS= read -r -d '' changed_path || [[ -n "${changed_path:-}" ]]; do
                 [[ -n "${changed_path}" ]] && push_changed_paths+=("${changed_path}")
-              done < /tmp/push_diff
+              done < "${RUNNER_TEMP:-/tmp}/push_diff"
               mapfile -t push_changed_paths < <(printf '%s\n' "${push_changed_paths[@]}" | sed '/^$/d' | sort -u)
                 
               if [[ "${#push_changed_paths[@]}" -eq 0 ]]; then
@@ -154,7 +154,7 @@ jobs:
                 prereq_trusted_trigger_model="FAIL"
               fi
             fi
-            rm -f /tmp/push_diff || true
+            rm -f "${RUNNER_TEMP:-/tmp}/push_diff" || true
           elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             if [[ "${MANUAL_APPROVED}" != "true" ]]; then
               reason_list+=("reject:trusted_trigger_model:manual_approval_required")
