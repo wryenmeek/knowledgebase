@@ -228,29 +228,46 @@ def extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
     and multi-line list form (``key:\n  - item``).
     """
     key_prefix = f"{key}:"
-    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
+    # OPTIMIZATION: Fast-path literal check
     if key_prefix not in frontmatter_str:
         return []
 
-    lines = frontmatter_str.splitlines()
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped.startswith(key_prefix):
-            continue
-        inline = stripped[len(key_prefix) :].strip()
-        if inline == "[]":
-            return []
-        if inline:
-            return [inline.strip('"').strip("'")]
-        items: list[str] = []
-        for raw in lines[index + 1 :]:
-            if not raw.startswith("  "):
-                break
-            item = raw.strip()
-            if item.startswith("- "):
-                items.append(item[2:].strip().strip('"').strip("'"))
-        return items
-    return []
+    # OPTIMIZATION: Avoid O(N) splitlines allocation by finding the key with re
+    # and streaming through subsequent lines with find('\n').
+    match = re.search(
+        r"^[ \t]*" + re.escape(key_prefix) + r"(.*?)$", frontmatter_str, re.MULTILINE
+    )
+    if not match:
+        return []
+
+    inline = match.group(1).strip()
+    if inline == "[]":
+        return []
+    if inline:
+        return [inline.strip('"').strip("'")]
+
+    items: list[str] = []
+    start_idx = match.end()
+    if start_idx < len(frontmatter_str) and frontmatter_str[start_idx] == "\r":
+        start_idx += 1
+    if start_idx < len(frontmatter_str) and frontmatter_str[start_idx] == "\n":
+        start_idx += 1
+
+    while start_idx < len(frontmatter_str):
+        next_nl = frontmatter_str.find("\n", start_idx)
+        if next_nl == -1:
+            raw_line = frontmatter_str[start_idx:]
+            start_idx = len(frontmatter_str)
+        else:
+            raw_line = frontmatter_str[start_idx:next_nl]
+            start_idx = next_nl + 1
+
+        if not raw_line.startswith("  "):
+            break
+        item = raw_line.strip()
+        if item.startswith("- "):
+            items.append(item[2:].strip().strip('"').strip("'"))
+    return items
 
 
 def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
@@ -269,29 +286,44 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
     Returns an empty list when the ``sources:`` key is absent.
     Quotes are stripped from each value using :func:`strip_quotes`.
     """
-    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
+    # OPTIMIZATION: Fast-path literal check
     if "sources:" not in frontmatter:
         return []
 
-    lines = frontmatter.splitlines()
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped.startswith("sources:"):
-            continue
-        inline_value = stripped[len("sources:") :].strip()
-        if inline_value == "[]":
-            return []
-        if inline_value:
-            return [strip_quotes(inline_value)]
-        sources: list[str] = []
-        for raw_line in lines[index + 1 :]:
-            if not raw_line.startswith("  "):
-                break
-            item = raw_line.strip()
-            if item.startswith("- "):
-                sources.append(strip_quotes(item[2:].strip()))
-        return sources
-    return []
+    # OPTIMIZATION: Avoid O(N) splitlines allocation by finding the key with re
+    # and streaming through subsequent lines with find('\n').
+    match = re.search(r"^[ \t]*sources:(.*?)$", frontmatter, re.MULTILINE)
+    if not match:
+        return []
+
+    inline_value = match.group(1).strip()
+    if inline_value == "[]":
+        return []
+    if inline_value:
+        return [strip_quotes(inline_value)]
+
+    sources: list[str] = []
+    start_idx = match.end()
+    if start_idx < len(frontmatter) and frontmatter[start_idx] == "\r":
+        start_idx += 1
+    if start_idx < len(frontmatter) and frontmatter[start_idx] == "\n":
+        start_idx += 1
+
+    while start_idx < len(frontmatter):
+        next_nl = frontmatter.find("\n", start_idx)
+        if next_nl == -1:
+            raw_line = frontmatter[start_idx:]
+            start_idx = len(frontmatter)
+        else:
+            raw_line = frontmatter[start_idx:next_nl]
+            start_idx = next_nl + 1
+
+        if not raw_line.startswith("  "):
+            break
+        item = raw_line.strip()
+        if item.startswith("- "):
+            sources.append(strip_quotes(item[2:].strip()))
+    return sources
 
 
 def extract_frontmatter_keys(frontmatter: str) -> set[str]:
