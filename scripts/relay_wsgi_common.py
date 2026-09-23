@@ -51,6 +51,7 @@ def json_response(
             ("Content-Length", str(len(body))),
             # SECURITY: Defense-in-depth security headers
             ("X-Content-Type-Options", "nosniff"),
+            ("X-Frame-Options", "DENY"),
             ("Content-Security-Policy", "default-src 'none'"),
         ],
     )
