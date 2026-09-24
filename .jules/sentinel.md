@@ -62,3 +62,8 @@
 **Vulnerability:** WSGI API endpoints were lacking comprehensive defense-in-depth HTTP security headers (specifically `X-Frame-Options` and `Strict-Transport-Security`), leaving the endpoints theoretically vulnerable to clickjacking and relying on standard routing for HTTPS enforcement without explicit HSTS directives.
 **Learning:** Even internal or API-focused endpoints (like JSON responses) should enforce standard security headers as a best practice to protect against unforeseen browser interactions and enforce strict transport security policies.
 **Prevention:** Always include `X-Frame-Options: DENY` and `Strict-Transport-Security: max-age=31536000; includeSubDomains` alongside existing headers (like `X-Content-Type-Options` and `Content-Security-Policy`) in standard response utilities to ensure they are consistently applied across all HTTP responses.
+
+## 2026-09-24 - [Missing Subprocess Timeout]
+**Vulnerability:** External CLI executions (`subprocess.run`) in hook scripts like `check_cross_functional_review.py` did not explicitly define a `timeout`, risking unbounded hangs and DoS if the external command stalls.
+**Learning:** `subprocess.run` by default has no timeout, making scripts vulnerable to infinite waits.
+**Prevention:** Always explicitly define a `timeout` argument (e.g., `timeout=15`) in `subprocess.run` and catch `subprocess.TimeoutExpired` to fail securely.
