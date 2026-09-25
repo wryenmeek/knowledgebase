@@ -152,8 +152,8 @@ def run_snapshot(
         )
     previous_map = {item["path"]: item["sha256"] for item in previous_items}
     current_map = {item["path"]: item["sha256"] for item in captured}
-    added = sorted(path for path in current_map if path not in previous_map)
-    removed = sorted(path for path in previous_map if path not in current_map)
+    added = sorted(current_map.keys() - previous_map.keys())
+    removed = sorted(previous_map.keys() - current_map.keys())
     changed = sorted(path for path in current_map if previous_map.get(path) not in {None, current_map[path]})
     return SurfaceResult(
         surface=SURFACE,
