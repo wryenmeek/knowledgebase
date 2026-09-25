@@ -67,3 +67,8 @@
 **Vulnerability:** External CLI executions (`subprocess.run`) in hook scripts like `check_cross_functional_review.py` did not explicitly define a `timeout`, risking unbounded hangs and DoS if the external command stalls.
 **Learning:** `subprocess.run` by default has no timeout, making scripts vulnerable to infinite waits.
 **Prevention:** Always explicitly define a `timeout` argument (e.g., `timeout=15`) in `subprocess.run` and catch `subprocess.TimeoutExpired` to fail securely.
+
+## 2024-10-29 - [Missing Subprocess Timeout in check_test_framework.py]
+**Vulnerability:** External CLI executions (`subprocess.run`) in `scripts/hooks/check_test_framework.py` did not explicitly define a `timeout`, risking unbounded hangs and DoS if the external command stalls.
+**Learning:** `subprocess.run` by default has no timeout, making scripts vulnerable to infinite waits.
+**Prevention:** Always explicitly define a `timeout` argument (e.g., `timeout=15`) in `subprocess.run` and catch `subprocess.TimeoutExpired` to fail securely.
