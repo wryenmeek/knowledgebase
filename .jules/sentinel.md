@@ -57,3 +57,7 @@
 **Vulnerability:** HTTP endpoints didn't emit defensive headers, making the API susceptible to content MIME sniffing.
 **Learning:** API webhooks should include security headers regardless of usage context.
 **Prevention:** Apply defense-in-depth to enforce headers like X-Content-Type-Options and Content-Security-Policy on responses.
+## 2026-08-25 - [Missing Security Headers]
+**Vulnerability:** WSGI HTTP endpoints didn't emit defensive headers (`X-Frame-Options` and `Strict-Transport-Security`), making the API susceptible to clickjacking attacks and protocol downgrades.
+**Learning:** API webhooks should include comprehensive security headers regardless of their intended usage context to ensure defense in depth. `json_response` only had partial headers.
+**Prevention:** Apply defense-in-depth to enforce headers like `X-Frame-Options: DENY` and `Strict-Transport-Security` alongside `X-Content-Type-Options` and `Content-Security-Policy` on all WSGI responses.
