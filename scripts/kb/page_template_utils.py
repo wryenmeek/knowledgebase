@@ -286,44 +286,7 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
     Returns an empty list when the ``sources:`` key is absent.
     Quotes are stripped from each value using :func:`strip_quotes`.
     """
-    # OPTIMIZATION: Fast-path literal check
-    if "sources:" not in frontmatter:
-        return []
-
-    # OPTIMIZATION: Avoid O(N) splitlines allocation by finding the key with re
-    # and streaming through subsequent lines with find('\n').
-    match = re.search(r"^[ \t]*sources:(.*?)$", frontmatter, re.MULTILINE)
-    if not match:
-        return []
-
-    inline_value = match.group(1).strip()
-    if inline_value == "[]":
-        return []
-    if inline_value:
-        return [strip_quotes(inline_value)]
-
-    sources: list[str] = []
-    start_idx = match.end()
-    if start_idx < len(frontmatter) and frontmatter[start_idx] == "\r":
-        start_idx += 1
-    if start_idx < len(frontmatter) and frontmatter[start_idx] == "\n":
-        start_idx += 1
-
-    while start_idx < len(frontmatter):
-        next_nl = frontmatter.find("\n", start_idx)
-        if next_nl == -1:
-            raw_line = frontmatter[start_idx:]
-            start_idx = len(frontmatter)
-        else:
-            raw_line = frontmatter[start_idx:next_nl]
-            start_idx = next_nl + 1
-
-        if not raw_line.startswith("  "):
-            break
-        item = raw_line.strip()
-        if item.startswith("- "):
-            sources.append(strip_quotes(item[2:].strip()))
-    return sources
+    return extract_yaml_list(frontmatter, "sources")
 
 
 def extract_frontmatter_keys(frontmatter: str) -> set[str]:
