@@ -21,8 +21,14 @@ _STATUS_HEADING_RE = re.compile(r"^## Status\s*$", re.MULTILINE)
 
 
 def _run_git(*args: str) -> tuple[int, str]:
-    result = subprocess.run(["git", *args], capture_output=True, text=True)
-    return result.returncode, result.stdout
+    try:
+        result = subprocess.run(
+            ["git", *args], capture_output=True, text=True, timeout=15
+        )
+        return result.returncode, result.stdout
+    except subprocess.TimeoutExpired:
+        print("ERROR: git command timed out", file=sys.stderr)
+        sys.exit(1)
 
 
 def _get_staged_content(path: str) -> str | None:
