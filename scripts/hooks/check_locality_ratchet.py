@@ -198,18 +198,26 @@ def _get_head_content(path: str) -> str:
     return out if rc == 0 else ""
 
 
+_H2_RE = re.compile(r"^## ", re.MULTILINE)
+
+
 @lru_cache(maxsize=4)
 def _copilot_h2_lines(content: str) -> list[int]:
     # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
     if "## " not in content:
         return []
 
-    lines = content.splitlines()
-    return [
-        line_number
-        for line_number, line in enumerate(lines, start=1)
-        if line.startswith("## ")
-    ]
+    lines: list[int] = []
+    current_line = 1
+    last_index = 0
+
+    for match in _H2_RE.finditer(content):
+        start = match.start()
+        current_line += content.count("\n", last_index, start)
+        lines.append(current_line)
+        last_index = start
+
+    return lines
 
 
 def _copilot_gated_lines(content: str) -> set[int]:
@@ -284,19 +292,8 @@ def _html_comment_lines(content: str) -> set[int]:
     if "<!--" not in content and "-->" not in content:
         return comment_lines
     in_comment = False
-    line_number = 1
-    start_idx = 0
-    content_len = len(content)
 
-    while start_idx < content_len:
-        newline_idx = content.find("\n", start_idx)
-        if newline_idx == -1:
-            line = content[start_idx:]
-            start_idx = content_len
-        else:
-            line = content[start_idx:newline_idx]
-            start_idx = newline_idx + 1
-
+    for line_number, line in enumerate(content.splitlines(), start=1):
         stripped = line.strip()
         if in_comment:
             comment_lines.add(line_number)
@@ -307,8 +304,6 @@ def _html_comment_lines(content: str) -> set[int]:
                 comment_lines.add(line_number)
                 if "-->" not in stripped:
                     in_comment = True
-
-        line_number += 1
 
     return comment_lines
 
