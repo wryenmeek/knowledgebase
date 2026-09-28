@@ -48,6 +48,7 @@ def _run_git(*args: str, input_text: str | None = None) -> tuple[int, str, str]:
         capture_output=True,
         text=True,
         check=False,
+        timeout=15,
     )
     return result.returncode, result.stdout, redact_stderr(result.stderr or "")
 

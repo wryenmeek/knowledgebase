@@ -203,8 +203,8 @@ def run_context_management(
         staged_status_rel,
     ]
     try:
-        subprocess.run(command, cwd=normalized_repo_root, check=True)
-    except subprocess.CalledProcessError as exc:
+        subprocess.run(command, cwd=normalized_repo_root, check=True, timeout=60)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         return SurfaceResult(
             surface=SURFACE,
             mode=mode,

@@ -48,6 +48,7 @@ def _has_head() -> bool:
         ["git", "rev-parse", "--verify", "HEAD"],
         capture_output=True,
         cwd=_REPO_ROOT,
+        timeout=15,
     )
     return result.returncode == 0
 
@@ -58,6 +59,7 @@ def _is_new_file(repo_rel: str) -> bool:
         ["git", "cat-file", "-e", f"HEAD:{repo_rel}"],
         capture_output=True,
         cwd=_REPO_ROOT,
+        timeout=15,
     )
     return result.returncode != 0
 

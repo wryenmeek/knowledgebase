@@ -94,6 +94,7 @@ def run_validators(selected_names: Sequence[str]) -> tuple[str, ...]:
             validator.to_command(),
             cwd=REPO_ROOT,
             check=True,
+            timeout=30,
         )
     return tuple(validator.name for validator in validator_specs)
 

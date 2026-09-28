@@ -132,6 +132,7 @@ def _resolve_git_ref(repo_root: Path, git_ref: str) -> str:
         check=False,
         capture_output=True,
         text=True,
+        timeout=15,
     )
     if completed.returncode != 0:
         raise SourceRefCitationError(
@@ -152,6 +153,7 @@ def _read_revision_bytes(repo_root: Path, *, resolved_git_sha: str, source_path:
         ["git", "-C", str(repo_root), "show", f"{resolved_git_sha}:{source_path}"],
         check=False,
         capture_output=True,
+        timeout=15,
     )
     if completed.returncode != 0:
         raise SourceRefCitationError(

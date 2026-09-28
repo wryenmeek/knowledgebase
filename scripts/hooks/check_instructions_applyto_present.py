@@ -59,7 +59,7 @@ def _get_instruction_paths(paths: list[str]) -> tuple[list[str], list[str]]:
 def _get_staged_content(path: str) -> str | None:
     """Read the staged (index) version of a file."""
     result = subprocess.run(
-        ["git", "show", f":{path}"], capture_output=True, text=True
+        ["git", "show", f":{path}"], capture_output=True, text=True, timeout=15
     )
     return result.stdout if result.returncode == 0 else None
 
@@ -135,7 +135,7 @@ def _is_path_in_index(path: str) -> bool:
     lets the hook skip deletions instead of blocking the commit.
     """
     result = subprocess.run(
-        ["git", "ls-files", "--", path], capture_output=True, text=True
+        ["git", "ls-files", "--", path], capture_output=True, text=True, timeout=15
     )
     return bool(result.stdout.strip())
 
