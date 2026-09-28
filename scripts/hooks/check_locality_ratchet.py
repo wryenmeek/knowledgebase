@@ -286,24 +286,44 @@ def _is_substantive_deleted_line(line: str) -> bool:
     return bool(stripped) and not stripped.startswith("<!--")
 
 
+_HTML_COMMENT_START_RE = re.compile(r"^[ \t]*<!--", re.MULTILINE)
+
+
 def _html_comment_lines(content: str) -> set[int]:
     comment_lines: set[int] = set()
     # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
     if "<!--" not in content and "-->" not in content:
         return comment_lines
-    in_comment = False
 
-    for line_number, line in enumerate(content.splitlines(), start=1):
-        stripped = line.strip()
-        if in_comment:
-            comment_lines.add(line_number)
-            if "-->" in stripped:
-                in_comment = False
+    # ⚡ Bolt: Using re.finditer to avoid allocating an O(N) list from splitlines()
+    last_index = 0
+    current_line = 1
+
+    for match in _HTML_COMMENT_START_RE.finditer(content):
+        if match.start() < last_index:
+            continue
+
+        current_line += content.count("\n", last_index, match.start())
+        last_index = match.start()
+
+        end_idx = content.find("-->", match.end())
+
+        if end_idx == -1:
+            match_lines = content.count("\n", match.start())
+            for i in range(match_lines + 1):
+                comment_lines.add(current_line + i)
+            break
         else:
-            if stripped.startswith("<!--"):
-                comment_lines.add(line_number)
-                if "-->" not in stripped:
-                    in_comment = True
+            end_line_idx = content.find("\n", end_idx)
+            if end_line_idx == -1:
+                end_line_idx = len(content)
+
+            match_lines = content.count("\n", match.start(), end_line_idx)
+            for i in range(match_lines + 1):
+                comment_lines.add(current_line + i)
+
+            last_index = end_line_idx
+            current_line += match_lines
 
     return comment_lines
 
