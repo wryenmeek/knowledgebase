@@ -72,3 +72,7 @@
 **Vulnerability:** External CLI executions (`subprocess.run`) in `scripts/hooks/check_test_framework.py` did not explicitly define a `timeout`, risking unbounded hangs and DoS if the external command stalls.
 **Learning:** `subprocess.run` by default has no timeout, making scripts vulnerable to infinite waits.
 **Prevention:** Always explicitly define a `timeout` argument (e.g., `timeout=15`) in `subprocess.run` and catch `subprocess.TimeoutExpired` to fail securely.
+## 2025-02-27 - [Fix Missing Subprocess Timeout in check_mixed_scope]
+**Vulnerability:** External CLI executions (`subprocess.run` calling `git`) in `scripts/hooks/check_mixed_scope.py` did not explicitly define a `timeout`.
+**Learning:** `subprocess.run` by default has no timeout, making scripts vulnerable to unbounded execution and Denial of Service (DoS) if the underlying command stalls.
+**Prevention:** Always explicitly define a `timeout` argument (e.g., `timeout=15`) in `subprocess.run` and catch `subprocess.TimeoutExpired` to fail securely.
