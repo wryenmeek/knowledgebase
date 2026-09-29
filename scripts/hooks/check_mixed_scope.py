@@ -67,12 +67,17 @@ def _is_mixed_scope(paths: set[str]) -> bool:
 
 
 def _git_stdout(args: list[str]) -> str:
-    result = subprocess.run(
-        ["git", *args],
-        capture_output=True,
-        text=True,
-        cwd=_REPO_ROOT,
-    )
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            cwd=_REPO_ROOT,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        cmd = " ".join(["git", *args])
+        raise RuntimeError(f"{cmd} failed: timeout expired after 15s")
     if result.returncode != 0:
         stderr = redact_stderr(result.stderr or "")
         cmd = " ".join(["git", *args])
@@ -85,35 +90,47 @@ def _git_lines(args: list[str]) -> set[str]:
 
 
 def _has_head_commit() -> bool:
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", "HEAD"],
-        capture_output=True,
-        text=True,
-        cwd=_REPO_ROOT,
-    )
-    return result.returncode == 0
-
-
-def _resolve_default_base_ref() -> str:
-    result = subprocess.run(
-        ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
-        capture_output=True,
-        text=True,
-        cwd=_REPO_ROOT,
-    )
-    ref = result.stdout.strip()
-    if result.returncode == 0 and ref:
-        return ref
-
-    for candidate in ("origin/main", "origin/master", "main", "master"):
-        exists = subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", candidate],
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", "HEAD"],
             capture_output=True,
             text=True,
             cwd=_REPO_ROOT,
+            timeout=15,
         )
-        if exists.returncode == 0:
-            return candidate
+        return result.returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
+
+
+def _resolve_default_base_ref() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=_REPO_ROOT,
+            timeout=15,
+        )
+        ref = result.stdout.strip()
+        if result.returncode == 0 and ref:
+            return ref
+    except subprocess.TimeoutExpired:
+        pass
+
+    for candidate in ("origin/main", "origin/master", "main", "master"):
+        try:
+            exists = subprocess.run(
+                ["git", "rev-parse", "--verify", "--quiet", candidate],
+                capture_output=True,
+                text=True,
+                cwd=_REPO_ROOT,
+                timeout=15,
+            )
+            if exists.returncode == 0:
+                return candidate
+        except subprocess.TimeoutExpired:
+            continue
 
     raise RuntimeError("unable to resolve default-branch reference (origin/main or main)")
 
