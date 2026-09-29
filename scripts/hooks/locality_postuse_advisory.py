@@ -158,7 +158,7 @@ def _normalize_path(raw_path: str, cwd: str) -> str:
 
     effective_cwd = cwd or os.getcwd().replace("\\", "/").rstrip("/")
     if path == effective_cwd or path.startswith(f"{effective_cwd}/"):
-        path = path[len(effective_cwd):].lstrip("/")
+        path = path[len(effective_cwd) :].lstrip("/")
 
     while path.startswith("./"):
         path = path[2:]
@@ -254,7 +254,9 @@ def _is_write_tool(payload: Mapping[str, Any]) -> bool:
 
 
 def _warning_record(path: str) -> dict[str, object]:
-    rationale = "Edits to this file load every turn — see ADR-028 for locality ladder guidance."
+    rationale = (
+        "Edits to this file load every turn — see ADR-028 for locality ladder guidance."
+    )
     redirect = (
         "Use `/chronicle improve` to route through `audit-knowledgebase-workspace` "
         "skill for paired-deletion or trailer-escape."
@@ -286,7 +288,9 @@ def main() -> int:
         ):
             return 0
 
-        cwd = _normalize_cwd(payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR", ""))
+        cwd = _normalize_cwd(
+            payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR", "")
+        )
         for path in _matched_locality4_paths(_payload_paths(payload), cwd):
             print(json.dumps(_warning_record(path), sort_keys=True))
     except Exception:
