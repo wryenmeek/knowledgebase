@@ -338,6 +338,7 @@ def _validate_revision_artifact_path(
             capture_output=True,
             text=True,
             check=False,
+            timeout=15,
         )
     except OSError as exc:
         _raise(
@@ -404,6 +405,7 @@ def _run_git(
             capture_output=True,
             text=capture_text,
             check=False,
+            timeout=15,
         )
     except OSError as exc:
         _raise(reason_code, f"{error_message} ({exc})")

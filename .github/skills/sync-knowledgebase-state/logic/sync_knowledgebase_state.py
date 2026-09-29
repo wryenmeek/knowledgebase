@@ -216,6 +216,7 @@ def run_prechecks(*, write_index: bool) -> None:
             command_spec.to_command(),
             cwd=REPO_ROOT,
             check=True,
+            timeout=30,
         )
 
 
@@ -334,6 +335,7 @@ def run_sync(*, artifact: str, write_index: bool) -> None:
             WRITE_INDEX_COMMAND.to_command(),
             cwd=REPO_ROOT,
             check=True,
+            timeout=30,
         )
         for command_spec in WRITE_POSTCHECKS:
             subprocess.run(

@@ -386,7 +386,7 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
         module = _load_module("sync_knowledgebase_state_check", SYNC_WRAPPER_PATH)
         calls: list[list[str]] = []
 
-        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+        def fake_run(command: list[str], *, cwd: Path, check: bool, timeout: int = 30) -> None:
             calls.append(command)
 
         with patch.object(module.subprocess, "run", side_effect=fake_run):
@@ -514,7 +514,7 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
         module = _load_module("sync_knowledgebase_state_apply", SYNC_WRAPPER_PATH)
         calls: list[list[str]] = []
 
-        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+        def fake_run(command: list[str], *, cwd: Path, check: bool, timeout: int = 30) -> None:
             calls.append(command)
 
         with patch.object(module.subprocess, "run", side_effect=fake_run):
@@ -571,7 +571,7 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
         module = _load_module("sync_knowledgebase_state_stale_index", SYNC_WRAPPER_PATH)
         calls: list[list[str]] = []
 
-        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+        def fake_run(command: list[str], *, cwd: Path, check: bool, timeout: int = 30) -> None:
             calls.append(command)
             if command[1].endswith("update_index.py") and "--check" in command:
                 raise AssertionError("write mode must not block on stale index drift")
@@ -608,7 +608,7 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
         module = _load_module("sync_knowledgebase_state_fail", SYNC_WRAPPER_PATH)
         calls: list[list[str]] = []
 
-        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+        def fake_run(command: list[str], *, cwd: Path, check: bool, timeout: int = 30) -> None:
             calls.append(command)
             if command[1].endswith("lint_wiki.py"):
                 raise module.subprocess.CalledProcessError(returncode=1, cmd=command)
@@ -624,7 +624,7 @@ class SyncKnowledgebaseStateWrapperTests(HarnessAssertionsTestCase):
         module = _load_module("sync_knowledgebase_state_write_fail", SYNC_WRAPPER_PATH)
         calls: list[list[str]] = []
 
-        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+        def fake_run(command: list[str], *, cwd: Path, check: bool, timeout: int = 30) -> None:
             calls.append(command)
             if command[-1] == "--write":
                 raise module.subprocess.CalledProcessError(returncode=9, cmd=command)
@@ -1094,7 +1094,7 @@ class RunDeterministicValidatorsWrapperTests(HarnessAssertionsTestCase):
         module = _load_module("run_deterministic_validators_subset", VALIDATOR_WRAPPER_PATH)
         calls: list[list[str]] = []
 
-        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+        def fake_run(command: list[str], *, cwd: Path, check: bool, timeout: int = 30) -> None:
             calls.append(command)
 
         with patch.object(module.subprocess, "run", side_effect=fake_run):
@@ -1137,7 +1137,7 @@ class RunDeterministicValidatorsWrapperTests(HarnessAssertionsTestCase):
     def test_wrapper_emits_failure_payload_for_validator_errors(self) -> None:
         module = _load_module("run_deterministic_validators_failure", VALIDATOR_WRAPPER_PATH)
 
-        def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+        def fake_run(command: list[str], *, cwd: Path, check: bool, timeout: int = 30) -> None:
             raise module.subprocess.CalledProcessError(returncode=7, cmd=command)
 
         with patch.object(module.subprocess, "run", side_effect=fake_run), patch.object(module, "print") as print_mock:

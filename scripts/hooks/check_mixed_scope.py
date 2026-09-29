@@ -71,6 +71,7 @@ def _git_stdout(args: list[str]) -> str:
         ["git", *args],
         capture_output=True,
         text=True,
+        timeout=15,
         cwd=_REPO_ROOT,
     )
     if result.returncode != 0:
@@ -89,6 +90,7 @@ def _has_head_commit() -> bool:
         ["git", "rev-parse", "--verify", "--quiet", "HEAD"],
         capture_output=True,
         text=True,
+        timeout=15,
         cwd=_REPO_ROOT,
     )
     return result.returncode == 0
@@ -99,6 +101,7 @@ def _resolve_default_base_ref() -> str:
         ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
         capture_output=True,
         text=True,
+        timeout=15,
         cwd=_REPO_ROOT,
     )
     ref = result.stdout.strip()

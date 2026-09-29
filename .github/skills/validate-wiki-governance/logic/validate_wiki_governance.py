@@ -475,7 +475,7 @@ def _validate_freshness_threshold(repo_root: Path, target_paths: Sequence[str]) 
         # intentional: the freshness validator is wiki-only; non-wiki paths are ignored.
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(repo_root))
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(repo_root), timeout=15)
     except OSError as exc:
         return [
             ValidationFinding(
