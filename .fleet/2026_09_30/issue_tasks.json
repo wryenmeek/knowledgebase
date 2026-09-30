@@ -1,0 +1,33 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-09-30T11:56:39.654Z",
+  "root_causes": [
+    {
+      "id": "rc-infigraph-cli-wrapper",
+      "title": "Missing Infigraph CLI wrapper",
+      "severity": "medium",
+      "issues": [597],
+      "files": ["scripts/analysis/infigraph.py"],
+      "description": "The knowledgebase integration needs a way to invoke a pinned, reproducibly resolved Infigraph CLI and report whether the required analysis capabilities are available.",
+      "solution_summary": "Create a wrapper script that resolves the `infigraph` CLI executable and executes it, with proper error handling for missing/unsupported/misconfigured states."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-add-infigraph-cli-wrapper",
+      "title": "Add Infigraph CLI wrapper",
+      "root_cause": "rc-infigraph-cli-wrapper",
+      "issues": [597],
+      "files": [],
+      "new_files": ["scripts/analysis/infigraph.py"],
+      "test_files": ["tests/analysis/test_infigraph.py"],
+      "risk": "low",
+      "prompt": "You need to build a wrapper for the Infigraph CLI to integrate it into the knowledgebase. \n\n**Files to create:** `scripts/analysis/infigraph.py`, `tests/analysis/test_infigraph.py`\n\n**Requirements:**\n- The wrapper must define normalized statuses for `analysis_complete`, `analysis_unavailable`, and `analysis_failed`, including actionable failure reasons.\n- The selected Infigraph release and resolution metadata are recorded reproducibly.\n- Startup checks distinguish an executable that is unavailable, unsupported, or misconfigured from one that is ready to analyze.\n- Tests use a fake executable (or mocked `subprocess.run`) to cover successful capability discovery and representative installation, capability, command, timeout, and malformed-output failures.\n- No cross-repository graph storage or MCP integration is introduced.\n\n**Proposed Implementation (`scripts/analysis/infigraph.py`):**\n```python\nimport json\nimport os\nimport subprocess\nfrom dataclasses import dataclass\nfrom typing import Literal\n\n# The pinned version metadata\nINFIGRAPH_PINNED_VERSION = \"1.2.0\"\n\nStatus = Literal[\"analysis_complete\", \"analysis_unavailable\", \"analysis_failed\"]\n\n@dataclass\nclass InfigraphStatus:\n    status: Status\n    reason: str | None = None\n    capabilities: list[str] | None = None\n\ndef _resolve_executable() -> str | None:\n    # Check INFIGRAPH_BIN environment variable first\n    env_bin = os.environ.get(\"INFIGRAPH_BIN\")\n    if env_bin and os.path.isfile(env_bin) and os.access(env_bin, os.X_OK):\n        return env_bin\n    \n    # Check path\n    import shutil\n    return shutil.which(\"infigraph\")\n\ndef check_capabilities() -> InfigraphStatus:\n    executable = _resolve_executable()\n    if not executable:\n        return InfigraphStatus(\"analysis_unavailable\", \"Infigraph CLI executable not found.\")\n        \n    try:\n        # Run infigraph --capabilities to get JSON output\n        result = subprocess.run(\n            [executable, \"--capabilities\"], \n            capture_output=True, \n            text=True, \n            timeout=10,\n            check=True\n        )\n    except subprocess.TimeoutExpired:\n        return InfigraphStatus(\"analysis_failed\", \"Infigraph CLI execution timed out.\")\n    except subprocess.CalledProcessError as e:\n        return InfigraphStatus(\"analysis_failed\", f\"Infigraph CLI execution failed: {e.stderr.strip()}\")\n    except Exception as e:\n         return InfigraphStatus(\"analysis_failed\", f\"Unexpected error running Infigraph CLI: {e}\")\n         \n    try:\n        data = json.loads(result.stdout)\n        capabilities = data.get(\"capabilities\", [])\n        return InfigraphStatus(\"analysis_complete\", capabilities=capabilities)\n    except json.JSONDecodeError:\n        return InfigraphStatus(\"analysis_failed\", \"Malformed output from Infigraph CLI (invalid JSON).\")\n```\n\n**Test Scenarios (`tests/analysis/test_infigraph.py`):**\n1. Missing executable: Mock `_resolve_executable` to return None, ensure status is `analysis_unavailable`.\n2. Executable timeout: Mock `subprocess.run` to raise `TimeoutExpired`, ensure status is `analysis_failed`.\n3. Executable error: Mock `subprocess.run` to raise `CalledProcessError`, ensure status is `analysis_failed`.\n4. Executable malformed output: Mock `subprocess.run` to return invalid JSON, ensure status is `analysis_failed`.\n5. Successful execution: Mock `subprocess.run` to return valid JSON with capabilities, ensure status is `analysis_complete` and capabilities match.\n\n**FILE BOUNDARY RULE:** You may ONLY modify the files listed above (`scripts/analysis/infigraph.py`, `tests/analysis/test_infigraph.py`). If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/analysis/infigraph.py": "task-add-infigraph-cli-wrapper",
+    "tests/analysis/test_infigraph.py": "task-add-infigraph-cli-wrapper"
+  }
+}
