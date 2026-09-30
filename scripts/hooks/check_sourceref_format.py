@@ -16,6 +16,7 @@ in a single pass.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -35,13 +36,23 @@ def _check_file(path_str: str) -> list[str]:
     if "repo://" not in text:
         return errors
 
-    lines = text.splitlines()
+    # ⚡ Bolt: Using re.finditer with re.MULTILINE avoids allocating an O(N) list from splitlines()
     in_frontmatter = False
     frontmatter_done = False
     in_fence = False
     fence_char: str = ""
 
-    for lineno, line in enumerate(lines, start=1):
+    lineno = 1
+    last_idx = 0
+
+    for match in re.finditer(
+        r"^([ \t]*(?:---|```|~~~|\.\.\.).*|.*repo://.*)$", text, re.MULTILINE
+    ):
+        start_idx = match.start()
+        lineno += text.count("\n", last_idx, start_idx)
+        last_idx = start_idx
+
+        line = match.group(1)
         stripped = line.strip()
 
         # YAML frontmatter detection (leading --- block).

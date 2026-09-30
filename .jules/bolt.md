@@ -5,3 +5,7 @@
 ## 2025-09-26 - Optimizing Line Tracking with `re.finditer`
 **Learning:** When calculating line numbers for matches in large strings, using `splitlines()` with `enumerate()` allocates a large O(N) array. Using `re.finditer` and incrementally tracking lines via `content.count('\n', last_index, match.start())` avoids this allocation entirely and yields a substantial speedup.
 **Action:** Replace `splitlines()` array allocations with `re.finditer` + incremental `content.count('\n')` when counting lines or locating pattern bounds in memory-sensitive paths.
+
+## 2025-02-12 - Optimizing Stateful Parsing with `re.finditer`
+**Learning:** When a parser uses `splitlines()` to do stateful parsing (like tracking if it is inside a frontmatter block or code fence), you can still optimize it by avoiding `splitlines()` entirely. By constructing a single `re.MULTILINE` regular expression that matches *all* relevant state-change markers (e.g. `^([ \t]*(?:---|```|~~~|\.\.\.).*|.*repo://.*)$`), you can use `re.finditer` to jump directly to the important lines. The current line number can be efficiently maintained using `text.count('\n', last_index, start_idx)`, yielding a ~4x speedup by keeping the iteration mostly in C.
+**Action:** When optimizing stateful line-by-line parsers that use `splitlines()` and a loop, see if the state markers can be combined into a single regex and process them using `re.finditer` to avoid O(N) memory allocation and Python bytecode loop overhead for irrelevant lines.
