@@ -44,22 +44,32 @@ def _is_covered(repo_rel: str, matrix_surfaces: set[str]) -> bool:
 
 
 def _has_head() -> bool:
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", "HEAD"],
-        capture_output=True,
-        cwd=_REPO_ROOT,
-    )
-    return result.returncode == 0
+    try:
+        # SECURITY: Add timeout to prevent unbounded hangs
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            capture_output=True,
+            cwd=_REPO_ROOT,
+            timeout=15,
+        )
+        return result.returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
 
 
 def _is_new_file(repo_rel: str) -> bool:
     """Return True if *repo_rel* does not exist in HEAD (i.e., newly added)."""
-    result = subprocess.run(
-        ["git", "cat-file", "-e", f"HEAD:{repo_rel}"],
-        capture_output=True,
-        cwd=_REPO_ROOT,
-    )
-    return result.returncode != 0
+    try:
+        # SECURITY: Add timeout to prevent unbounded hangs
+        result = subprocess.run(
+            ["git", "cat-file", "-e", f"HEAD:{repo_rel}"],
+            capture_output=True,
+            cwd=_REPO_ROOT,
+            timeout=15,
+        )
+        return result.returncode != 0
+    except subprocess.TimeoutExpired:
+        return True
 
 
 def _normalize(path_str: str) -> str | None:
