@@ -58,10 +58,14 @@ def _get_instruction_paths(paths: list[str]) -> tuple[list[str], list[str]]:
 
 def _get_staged_content(path: str) -> str | None:
     """Read the staged (index) version of a file."""
-    result = subprocess.run(
-        ["git", "show", f":{path}"], capture_output=True, text=True
-    )
-    return result.stdout if result.returncode == 0 else None
+    try:
+        # SECURITY: Add timeout to prevent unbounded hangs
+        result = subprocess.run(
+            ["git", "show", f":{path}"], capture_output=True, text=True, timeout=15
+        )
+        return result.stdout if result.returncode == 0 else None
+    except subprocess.TimeoutExpired:
+        return None
 
 
 def _is_quoted_scalar(value: str) -> bool:
@@ -134,10 +138,14 @@ def _is_path_in_index(path: str) -> bool:
     in that case. Distinguishing a staged deletion from an unreadable file
     lets the hook skip deletions instead of blocking the commit.
     """
-    result = subprocess.run(
-        ["git", "ls-files", "--", path], capture_output=True, text=True
-    )
-    return bool(result.stdout.strip())
+    try:
+        # SECURITY: Add timeout to prevent unbounded hangs
+        result = subprocess.run(
+            ["git", "ls-files", "--", path], capture_output=True, text=True, timeout=15
+        )
+        return bool(result.stdout.strip())
+    except subprocess.TimeoutExpired:
+        return False
 
 
 def main(argv: list[str] | None = None) -> int:

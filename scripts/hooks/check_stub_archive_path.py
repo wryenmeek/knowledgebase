@@ -28,10 +28,14 @@ _ARCHIVE_PTR_RE = re.compile(r"Archived to `((raw/inbox|wiki/sources)/[^`]+)`")
 
 def _get_staged_content(path: str) -> str | None:
     """Read the staged (index) version of a file."""
-    result = subprocess.run(
-        ["git", "show", f":{path}"], capture_output=True, text=True
-    )
-    return result.stdout if result.returncode == 0 else None
+    try:
+        # SECURITY: Add timeout to prevent unbounded hangs
+        result = subprocess.run(
+            ["git", "show", f":{path}"], capture_output=True, text=True, timeout=15
+        )
+        return result.stdout if result.returncode == 0 else None
+    except subprocess.TimeoutExpired:
+        return None
 
 
 def main(argv: list[str]) -> int:
