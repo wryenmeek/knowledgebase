@@ -79,13 +79,17 @@ class StagedScriptPath:
 
 
 def _run_git(*args: str) -> tuple[int, str, str]:
-    result = subprocess.run(
-        ["git", *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.returncode, result.stdout, redact_stderr(result.stderr or "")
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+        return result.returncode, result.stdout, redact_stderr(result.stderr or "")
+    except subprocess.TimeoutExpired:
+        return 1, "", "git command timed out"
 
 
 def _normalize_path(path: str) -> str:
