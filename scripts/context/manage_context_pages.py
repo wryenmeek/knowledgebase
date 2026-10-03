@@ -203,14 +203,15 @@ def run_context_management(
         staged_status_rel,
     ]
     try:
-        subprocess.run(command, cwd=normalized_repo_root, check=True)
-    except subprocess.CalledProcessError as exc:
+        subprocess.run(command, cwd=normalized_repo_root, check=True, timeout=15)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        rc = getattr(exc, "returncode", -1)
         return SurfaceResult(
             surface=SURFACE,
             mode=mode,
             status=STATUS_FAIL,
             reason_code="delegated_write_failed",
-            message=f"delegated governed write failed with exit code {exc.returncode}",
+            message=f"delegated governed write failed with exit code {rc}",
             approval=approval,
             lock_path=LOCK_PATH,
             lock_required=True,

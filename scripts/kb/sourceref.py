@@ -338,8 +338,9 @@ def _validate_revision_artifact_path(
             capture_output=True,
             text=True,
             check=False,
+            timeout=15,
         )
-    except OSError as exc:
+    except (OSError, subprocess.TimeoutExpired) as exc:
         _raise(
             SourceRefReasonCode.GIT_OPERATION_FAILED,
             f"Unable to inspect authoritative SourceRef path at the referenced revision ({exc})",
@@ -404,8 +405,9 @@ def _run_git(
             capture_output=True,
             text=capture_text,
             check=False,
+            timeout=15,
         )
-    except OSError as exc:
+    except (OSError, subprocess.TimeoutExpired) as exc:
         _raise(reason_code, f"{error_message} ({exc})")
     if completed.returncode != 0:
         stderr = (

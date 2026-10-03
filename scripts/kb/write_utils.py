@@ -246,6 +246,7 @@ def _darwin_pid_start_time_unix_seconds(pid: int) -> float | None:
             capture_output=True,
             text=True,
             env=ps_env,
+            timeout=15,
         )
     except (OSError, subprocess.SubprocessError):
         return None
