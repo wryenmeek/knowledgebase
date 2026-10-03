@@ -44,6 +44,7 @@ def resolve_ingest_git_sha(repo_root: Path) -> tuple[str, str]:
             capture_output=True,
             text=True,
             check=False,
+            timeout=15,
         )
         if result.returncode == 0:
             head_sha = result.stdout.strip().lower()
