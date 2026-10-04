@@ -450,9 +450,9 @@ def _extract_template_sections(comment_body: str) -> dict[str, str]:
 def _has_section_content(text: str) -> bool:
     if not text.strip():
         return False
-    for raw_line in text.splitlines():
-        normalized = re.sub(r"^\s*[-*]\s*", "", raw_line).strip()
-        if normalized:
+    # ⚡ Bolt: Using re.finditer to lazily yield lines avoids unconditional O(N) array allocation from splitlines(), offering immense speedups on early returns.
+    for match in re.finditer(r"^\s*[-*]?\s*(.*?)$", text, re.MULTILINE):
+        if match.group(1).strip():
             return True
     return False
 
@@ -506,8 +506,10 @@ def _is_command_like_line(raw_line: str) -> bool:
 
 
 def _has_command_like_content(section_text: str) -> bool:
+    # ⚡ Bolt: Using re.finditer avoids unconditional O(N) array allocation from splitlines().
     return any(
-        _is_command_like_line(raw_line) for raw_line in section_text.splitlines()
+        _is_command_like_line(match.group(1))
+        for match in re.finditer(r"^(.*?)$", section_text, re.MULTILINE)
     )
 
 
