@@ -432,14 +432,9 @@ def _extract_template_sections(comment_body: str) -> dict[str, str]:
         if current_section is not None:
             sections[current_section].append(raw_line.strip())
 
-    start = 0
-    end = comment_body.find("\n")
-    while end != -1:
-        _process_line(comment_body[start:end])
-        start = end + 1
-        end = comment_body.find("\n", start)
-    if start < len(comment_body):
-        _process_line(comment_body[start:])
+    # ⚡ Bolt: Using C-optimized splitlines() is significantly faster than a manual Python find() loop
+    for raw_line in comment_body.splitlines():
+        _process_line(raw_line)
 
     return {
         key: "\n".join(line for line in lines if line.strip()).strip()

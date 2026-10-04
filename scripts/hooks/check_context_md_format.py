@@ -15,6 +15,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import re
+
 from scripts.kb.page_template_utils import parse_frontmatter
 
 REQUIRED_SECTIONS = ("## Terms", "## Invariants", "## File Roles")
@@ -31,15 +33,17 @@ def _check_file(path_str: str) -> list[str]:
         return [f"{path_str}: cannot read file: {exc}"]
 
     if not text.strip():
-        errors.append(f"{path_str}: empty file — CONTEXT.md requires frontmatter and sections")
+        errors.append(
+            f"{path_str}: empty file — CONTEXT.md requires frontmatter and sections"
+        )
         return errors
 
-    lines = text.splitlines()
-
     # Line count check.
-    if len(lines) > MAX_LINES:
+    # OPTIMIZATION: Avoid allocating O(N) line array via splitlines().
+    line_count = text.count("\n") + (1 if text and not text.endswith("\n") else 0)
+    if line_count > MAX_LINES:
         errors.append(
-            f"{path_str}: file has {len(lines)} lines; maximum is {MAX_LINES}"
+            f"{path_str}: file has {line_count} lines; maximum is {MAX_LINES}"
         )
 
     # Frontmatter check.
@@ -53,23 +57,27 @@ def _check_file(path_str: str) -> list[str]:
     else:
         for field in REQUIRED_FRONTMATTER:
             if field not in frontmatter:
-                errors.append(f"{path_str}: missing required frontmatter field '{field}'")
+                errors.append(
+                    f"{path_str}: missing required frontmatter field '{field}'"
+                )
             elif not frontmatter[field] and frontmatter[field] != 0:
                 errors.append(f"{path_str}: frontmatter field '{field}' is empty")
 
     # Section heading check — skip headings inside fenced code blocks.
     found_sections: set[str] = set()
     in_fence = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
+
+    # ⚡ Bolt: Using re.finditer with re.MULTILINE avoids allocating an O(N) list from splitlines()
+    sections_pattern = "|".join(
+        re.escape(section) + r"(?: |$)" for section in REQUIRED_SECTIONS
+    )
+    pattern = re.compile(rf"^[ \t]*(```|~~~|{sections_pattern})", re.MULTILINE)
+    for match in pattern.finditer(text):
+        token = match.group(1)
+        if token.startswith("```") or token.startswith("~~~"):
             in_fence = not in_fence
-        if in_fence:
-            continue
-        # Check exact heading match (case-sensitive, strip trailing whitespace).
-        for section in REQUIRED_SECTIONS:
-            if stripped == section or stripped.startswith(section + " "):
-                found_sections.add(section)
+        elif not in_fence:
+            found_sections.add(token.strip())
 
     for section in REQUIRED_SECTIONS:
         if section not in found_sections:
