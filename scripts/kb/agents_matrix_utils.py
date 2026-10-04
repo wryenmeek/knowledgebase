@@ -57,35 +57,39 @@ def parse_matrix_surfaces(agents_md_path: str | Path) -> set[str]:
         return set()
 
     surfaces: set[str] = set()
-    in_matrix = False
 
-    for line in text.splitlines():
-        stripped = line.strip()
+    # ⚡ Bolt: Isolate the table using find() before running re.finditer to avoid
+    # O(N) splitlines allocation and Python loop overhead.
+    start_idx = text.find("| Surface ")
+    if start_idx == -1:
+        start_idx = text.find("| Surface |")
 
-        # Detect the write-surface matrix table start.
-        if "| Surface |" in stripped or "| Surface " in stripped:
-            in_matrix = True
+    if start_idx == -1:
+        return set()
+
+    # Find the end of the matrix
+    end_idx = text.find("\n\n", start_idx)
+    if end_idx == -1:
+        end_idx = text.find("\r\n\r\n", start_idx)
+        if end_idx == -1:
+            end_idx = len(text)
+
+    _ROW_MULTILINE_RE = re.compile(r"^\|([^|\n]+)\|", re.MULTILINE)
+
+    for match in _ROW_MULTILINE_RE.finditer(text, start_idx, end_idx):
+        raw = match.group(1).strip()
+
+        if (
+            raw == "Surface"
+            or raw.startswith("---")
+            or raw.startswith(":-")
+            or raw.startswith("-:")
+        ):
             continue
 
-        if not in_matrix:
-            continue
+        surface = _strip_surface_text(raw)
 
-        # Stop at a blank line or non-table line after the matrix starts.
-        if not stripped.startswith("|"):
-            if stripped == "" or not stripped:
-                in_matrix = False
-            continue
-
-        # Skip separator rows (---|---).
-        if re.match(r"^\|[-| :]+\|$", stripped):
-            continue
-
-        match = _ROW_RE.match(stripped)
-        if not match:
-            continue
-
-        surface = _strip_surface_text(match.group(1))
-        if surface and surface != "Surface":
+        if surface:
             surfaces.add(surface)
 
     return surfaces
