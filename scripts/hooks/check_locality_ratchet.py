@@ -235,13 +235,19 @@ def _agents_matrix_body_lines(content: str) -> set[int]:
     if "## Write-surface matrix" not in content:
         return set()
 
-    lines = content.splitlines()
+    # ⚡ Bolt: Use re.finditer to track line numbers efficiently without O(N) list allocation
+    exempt_lines: set[int] = set()
+    current_line = 1
+    last_index = 0
     in_matrix_section = False
     body_started = False
-    exempt_lines: set[int] = set()
 
-    for line_number, line in enumerate(lines, start=1):
-        stripped = line.strip()
+    for match in re.finditer(r"^[ \t]*(.*?)[ \t]*\r?$", content, re.MULTILINE):
+        line = match.group(1)
+        current_line += content.count("\n", last_index, match.start())
+        last_index = match.start()
+        stripped = line
+
         if stripped == "## Write-surface matrix":
             in_matrix_section = True
             continue
@@ -256,7 +262,7 @@ def _agents_matrix_body_lines(content: str) -> set[int]:
             continue
 
         if stripped.startswith("|"):
-            exempt_lines.add(line_number)
+            exempt_lines.add(current_line)
         else:
             break
 
@@ -347,7 +353,9 @@ def _line_delta_from_diff(
     old_line: int | None = None
     new_line: int | None = None
 
-    for line in diff.splitlines():
+    # ⚡ Bolt: Iterate via re.finditer to avoid allocating an O(N) array of lines from diff.splitlines()
+    for match in re.finditer(r"^(.*?)\r?$", diff, re.MULTILINE):
+        line = match.group(1)
         hunk_match = _HUNK_RE.match(line)
         if hunk_match is not None:
             old_line = int(hunk_match.group(1))
@@ -502,7 +510,12 @@ def _recent_gated_commit_deltas(
         commits_to_skip.add(skip_commit)
 
     commits: list[tuple[str, tuple[int, int]]] = []
-    for commit in out.splitlines():
+    # ⚡ Bolt: Fast-path skip and limit memory allocation by avoiding splitlines() if possible,
+    # or iterate via finditer if out is massive, but typically git log -H output is moderate.
+    for match in re.finditer(r"^[ \t]*(.*?)[ \t]*\r?$", out, re.MULTILINE):
+        commit = match.group(1)
+        if not commit:
+            continue
         if commit in commits_to_skip:
             continue
         delta = _historical_line_delta_for_commit(path, commit)
