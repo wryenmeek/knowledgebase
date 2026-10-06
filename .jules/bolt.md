@@ -12,3 +12,6 @@
 ## 2025-10-09 - Optimizing Markdown Table Extraction
 **Learning:** When extracting data from a specific Markdown table within a very large document (e.g., AGENTS.md), using `splitlines()` over the whole file introduces substantial O(N) memory allocation and Python bytecode overhead.
 **Action:** Isolate the table block using `str.find()` index boundaries and parse rows directly with `re.finditer` and a `MULTILINE` regex to provide a massive, measurable speedup.
+## 2024-10-06 - Replacing string slicing loops with compiled regexes in Python
+**Learning:** Manual string slicing loops (e.g., using `find('\n')` in a `while` loop to stream through multiline strings without allocating lists via `splitlines()`) incur significant Python bytecode execution overhead.
+**Action:** Replace manual string-slicing loops with highly optimized, C-level regular expressions evaluated via `re.finditer` and `re.MULTILINE`. For stateful parsing (like tracking markdown fenced code blocks), combine the boundary markers and the target patterns into a single alternation regex (`|`) to evaluate everything in one fast pass. Ensure to account for original `strip()` behavior in the regex (e.g., using `^[ \t]*`).
