@@ -52,39 +52,36 @@ def parse_matrix_surfaces(agents_md_path: str | Path) -> set[str]:
     """
     text = Path(agents_md_path).read_text(encoding="utf-8")
 
-    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
-    if "| Surface |" not in text and "| Surface " not in text:
-        return set()
+    # ⚡ Bolt: Isolate the table block using str.find() and parse rows directly with re.finditer to avoid O(N) allocation from splitlines() on large Markdown files
+    start_idx = text.find("| Surface ")
+    if start_idx == -1:
+        start_idx = text.find("| Surface |")
+        if start_idx == -1:
+            return set()
+
+    # Find start of that line
+    line_start = text.rfind("\n", 0, start_idx)
+    line_start = 0 if line_start == -1 else line_start + 1
+
+    # Tables in markdown end with a blank line or EOF
+    end_idx = text.find("\n\n", line_start)
+    block = text[line_start:] if end_idx == -1 else text[line_start:end_idx]
 
     surfaces: set[str] = set()
-    in_matrix = False
 
-    for line in text.splitlines():
-        stripped = line.strip()
-
-        # Detect the write-surface matrix table start.
-        if "| Surface |" in stripped or "| Surface " in stripped:
-            in_matrix = True
-            continue
-
-        if not in_matrix:
-            continue
-
-        # Stop at a blank line or non-table line after the matrix starts.
-        if not stripped.startswith("|"):
-            if stripped == "" or not stripped:
-                in_matrix = False
-            continue
+    # Only iterate through lines in the table block
+    for match in re.finditer(r"^([ \t]*\|.*)$", block, re.MULTILINE):
+        stripped = match.group(1).strip()
 
         # Skip separator rows (---|---).
         if re.match(r"^\|[-| :]+\|$", stripped):
             continue
 
-        match = _ROW_RE.match(stripped)
-        if not match:
+        row_match = _ROW_RE.match(stripped)
+        if not row_match:
             continue
 
-        surface = _strip_surface_text(match.group(1))
+        surface = _strip_surface_text(row_match.group(1))
         if surface and surface != "Surface":
             surfaces.add(surface)
 
