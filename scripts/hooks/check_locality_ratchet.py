@@ -235,23 +235,43 @@ def _copilot_gated_lines(content: str) -> set[int]:
 
 
 def _agents_matrix_body_lines(content: str) -> set[int]:
-    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
+    # ⚡ Bolt: Isolate the matrix section block using precise regex matching and apply splitlines() only
+    # to this small subset, rather than allocating an O(N) array for the entire large Markdown file.
     if "## Write-surface matrix" not in content:
         return set()
 
-    lines = content.splitlines()
-    in_matrix_section = False
+    # Safely find the start of the section
+    start_match = re.search(
+        r"^[ \t]*## Write-surface matrix[ \t]*$", content, re.MULTILINE
+    )
+    if not start_match:
+        return set()
+
+    start_idx = start_match.start()
+
+    # Find next section or end of file
+    end_match = re.search(r"^[ \t]*## ", content[start_match.end() :], re.MULTILINE)
+
+    if not end_match:
+        block = content[start_idx:]
+    else:
+        end_idx = start_match.end() + end_match.start()
+        block = content[start_idx:end_idx]
+
+    # Pre-calculate the starting line number using fast C-optimized counting
+    line_offset = content.count("\n", 0, start_idx)
+
+    # Use splitlines on the much smaller block
+    lines = block.splitlines()
+
     body_started = False
     exempt_lines: set[int] = set()
 
-    for line_number, line in enumerate(lines, start=1):
+    for i, line in enumerate(lines, start=1):
         stripped = line.strip()
-        if stripped == "## Write-surface matrix":
-            in_matrix_section = True
-            continue
-        if in_matrix_section and line.startswith("## "):
-            break
-        if not in_matrix_section:
+
+        # We don't need to match the section header again because we sliced right at it
+        if i == 1:
             continue
 
         if not body_started:
@@ -260,8 +280,8 @@ def _agents_matrix_body_lines(content: str) -> set[int]:
             continue
 
         if stripped.startswith("|"):
-            exempt_lines.add(line_number)
-        else:
+            exempt_lines.add(line_offset + i)
+        elif body_started:
             break
 
     return exempt_lines
