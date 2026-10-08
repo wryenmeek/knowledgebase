@@ -232,36 +232,26 @@ def extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
     if key_prefix not in frontmatter_str:
         return []
 
-    # OPTIMIZATION: Avoid O(N) splitlines allocation by finding the key with re
-    # and streaming through subsequent lines with find('\n').
+    # OPTIMIZATION: Avoid O(N) splitlines allocation over the entire document by
+    # matching the targeted indented block with re, then parsing it with the C-optimized splitlines().
     match = re.search(
-        r"^[ \t]*" + re.escape(key_prefix) + r"(.*?)$", frontmatter_str, re.MULTILINE
+        r"^[ \t]*" + re.escape(key_prefix) + r"[ \t]*([^\r\n]*)(?:\r?\n((?:^[ \t]+.*(?:\r?\n|$))*))?", frontmatter_str, re.MULTILINE
     )
     if not match:
         return []
 
-    inline = match.group(1).strip()
+    inline = match.group(1).strip() if match.group(1) else ""
     if inline == "[]":
         return []
     if inline:
         return [inline.strip('"').strip("'")]
 
+    block = match.group(2)
+    if not block:
+        return []
+
     items: list[str] = []
-    start_idx = match.end()
-    if start_idx < len(frontmatter_str) and frontmatter_str[start_idx] == "\r":
-        start_idx += 1
-    if start_idx < len(frontmatter_str) and frontmatter_str[start_idx] == "\n":
-        start_idx += 1
-
-    while start_idx < len(frontmatter_str):
-        next_nl = frontmatter_str.find("\n", start_idx)
-        if next_nl == -1:
-            raw_line = frontmatter_str[start_idx:]
-            start_idx = len(frontmatter_str)
-        else:
-            raw_line = frontmatter_str[start_idx:next_nl]
-            start_idx = next_nl + 1
-
+    for raw_line in block.splitlines():
         if not raw_line.startswith("  "):
             break
         item = raw_line.strip()
@@ -290,34 +280,24 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
     if "sources:" not in frontmatter:
         return []
 
-    # OPTIMIZATION: Avoid O(N) splitlines allocation by finding the key with re
-    # and streaming through subsequent lines with find('\n').
-    match = re.search(r"^[ \t]*sources:(.*?)$", frontmatter, re.MULTILINE)
+    # OPTIMIZATION: Avoid O(N) splitlines allocation over the entire document by
+    # matching the targeted indented block with re, then parsing it with the C-optimized splitlines().
+    match = re.search(r"^[ \t]*sources:[ \t]*([^\r\n]*)(?:\r?\n((?:^[ \t]+.*(?:\r?\n|$))*))?", frontmatter, re.MULTILINE)
     if not match:
         return []
 
-    inline_value = match.group(1).strip()
+    inline_value = match.group(1).strip() if match.group(1) else ""
     if inline_value == "[]":
         return []
     if inline_value:
         return [strip_quotes(inline_value)]
 
+    block = match.group(2)
+    if not block:
+        return []
+
     sources: list[str] = []
-    start_idx = match.end()
-    if start_idx < len(frontmatter) and frontmatter[start_idx] == "\r":
-        start_idx += 1
-    if start_idx < len(frontmatter) and frontmatter[start_idx] == "\n":
-        start_idx += 1
-
-    while start_idx < len(frontmatter):
-        next_nl = frontmatter.find("\n", start_idx)
-        if next_nl == -1:
-            raw_line = frontmatter[start_idx:]
-            start_idx = len(frontmatter)
-        else:
-            raw_line = frontmatter[start_idx:next_nl]
-            start_idx = next_nl + 1
-
+    for raw_line in block.splitlines():
         if not raw_line.startswith("  "):
             break
         item = raw_line.strip()
