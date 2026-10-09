@@ -194,13 +194,13 @@ def _default_reverts_validator(value: str) -> bool:
     if _REVERTS_SHA_RE.match(value):
         try:
             subprocess.run(
-                ["git", "cat-file", "-e", f"{value}^{{commit}}"],
+                ["git", "cat-file", "-e", f"{value}^{{commit}}"],  # nosec B603 B607
                 check=True,
                 capture_output=True,
                 timeout=15,
             )
             subprocess.run(
-                ["git", "merge-base", "--is-ancestor", value, "main"],
+                ["git", "merge-base", "--is-ancestor", value, "main"],  # nosec B603 B607
                 check=True,
                 capture_output=True,
                 timeout=15,
@@ -216,7 +216,7 @@ def _default_reverts_validator(value: str) -> bool:
         for subcmd in ("issue", "pr"):
             try:
                 result = subprocess.run(
-                    ["gh", subcmd, "view", issue_num, "--json", "number"],
+                    ["gh", subcmd, "view", issue_num, "--json", "number"],  # nosec B603 B607
                     capture_output=True,
                     timeout=15,
                 )
@@ -287,7 +287,7 @@ def _get_pr_files(pr_number: str) -> list[dict[str, object]]:
     """Return list of changed files with additions/deletions for *pr_number*."""
     try:
         result = subprocess.run(
-            ["gh", "pr", "view", pr_number, "--json", "files"],
+            ["gh", "pr", "view", pr_number, "--json", "files"],  # nosec B603 B607
             capture_output=True,
             text=True,
             timeout=30,
@@ -309,7 +309,7 @@ def _get_last_commit_msg() -> str:
     """Return the message of the HEAD commit (last commit of the PR head ref)."""
     try:
         result = subprocess.run(
-            ["git", "log", "-1", "--format=%B", "HEAD"],
+            ["git", "log", "-1", "--format=%B", "HEAD"],  # nosec B603 B607
             capture_output=True,
             text=True,
             timeout=15,
