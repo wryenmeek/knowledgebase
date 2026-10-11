@@ -166,14 +166,19 @@ def _last_paragraph(text: str) -> str:
     return paragraphs[-1].strip() if paragraphs else ""
 
 
+# Git footer trailer: ``Token: Value`` at the start of a line, multiline version
+_TRAILER_FINDITER_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):\s+(.+)$", re.MULTILINE)
+
+
 def _extract_trailers(text: str) -> list[tuple[str, str]]:
     """Extract Git-style footer trailers (``Token: Value``) from a text block."""
-    trailers = []
-    for line in text.splitlines():
-        m = _TRAILER_LINE_RE.match(line)
-        if m:
-            trailers.append((m.group(1), m.group(2).strip()))
-    return trailers
+    # OPTIMIZATION: Fast-path literal check to avoid O(N) splitlines allocation
+    if ":" not in text:
+        return []
+    # ⚡ Bolt: Using re.finditer with re.MULTILINE avoids allocating an O(N) list from splitlines()
+    return [
+        (m.group(1), m.group(2).strip()) for m in _TRAILER_FINDITER_RE.finditer(text)
+    ]
 
 
 def _trailers_in_last_paragraph(text: str) -> list[tuple[str, str]]:
