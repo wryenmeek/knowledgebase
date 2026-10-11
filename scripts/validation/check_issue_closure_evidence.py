@@ -442,14 +442,15 @@ def _extract_template_sections(comment_body: str) -> dict[str, str]:
     }
 
 
+_SECTION_CONTENT_RE = re.compile(r"^[ \t]*(?:[-*][ \t]*\S|[^-*\s])", re.MULTILINE)
+
+
 def _has_section_content(text: str) -> bool:
     if not text.strip():
         return False
-    for raw_line in text.splitlines():
-        normalized = re.sub(r"^\s*[-*]\s*", "", raw_line).strip()
-        if normalized:
-            return True
-    return False
+    # ⚡ Bolt: Using a single regex search with re.MULTILINE avoids allocating an O(N) list from splitlines()
+    # and executing a Python loop.
+    return bool(_SECTION_CONTENT_RE.search(text))
 
 
 def _normalize_validation_command_line(raw_line: str) -> str:

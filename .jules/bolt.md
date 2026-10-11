@@ -24,3 +24,6 @@
 ## 2026-10-11 - Optimizing `_extract_trailers` with `re.finditer`
 **Learning:** Extracting data line-by-line via `text.splitlines()` and `re.match` in a loop allocates a massive O(N) lines array for large git commit messages or PR bodies, resulting in unnecessary memory overhead and Python bytecode execution overhead.
 **Action:** Replace the `splitlines()` loop with a fast-path literal string check (e.g., `if ':' not in text:`) and a single C-optimized `re.MULTILINE` search using `re.finditer`. This significantly cuts down allocation and provides a highly-measurable speedup on large text inputs.
+## 2026-10-12 - Optimizing Section Content Checks with a Single Regex Search
+**Learning:** Replacing a Python iteration loop that maps over a list of strings generated from `splitlines()` and calls `re.sub` sequentially, with a single, highly-optimized `re.MULTILINE` search (e.g. `re.search(r"^[ \t]*(?:[-*][ \t]*\S|[^-*\s])", text, re.MULTILINE)`) avoids O(N) memory allocation and Python bytecode overhead.
+**Action:** When determining if any line in a multiline string matches a specific state or formatting constraint, prefer consolidating the parsing logic into a single regex search rather than splitting the lines and inspecting them iteratively in Python.
