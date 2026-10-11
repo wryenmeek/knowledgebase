@@ -49,23 +49,11 @@ def _extract_status_line(content: str) -> str | None:
     if match is None:
         return None
 
-    # OPTIMIZATION: Avoid splitlines() and string copying on large text blocks
-    # to achieve O(1) memory allocation.
-    start_idx = match.end()
-    content_len = len(content)
-
-    while start_idx < content_len:
-        newline_idx = content.find("\n", start_idx)
-        if newline_idx == -1:
-            line = content[start_idx:]
-            start_idx = content_len
-        else:
-            line = content[start_idx:newline_idx]
-            start_idx = newline_idx + 1
-
-        stripped = line.strip()
-        if stripped:
-            return stripped
+    # ⚡ Bolt: Using re.search with re.MULTILINE avoids slow Python bytecode
+    # execution in a manual find('\n') loop and O(N) splitlines allocation.
+    next_line_match = re.search(r"^[ \t]*(\S.*)$", content[match.end() :], re.MULTILINE)
+    if next_line_match:
+        return next_line_match.group(1).strip()
     return None
 
 
