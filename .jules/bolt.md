@@ -21,3 +21,6 @@
 ## 2026-10-08 - Optimizing YAML List Extraction
 **Learning:** When extracting a specific multi-line block (like YAML lists) from large multiline strings, avoid using `splitlines()` on the entire document to prevent O(N) memory allocation. Additionally, trying to optimize this by using a manual python `while` loop with `str.find('\n')` is a Python performance anti-pattern that runs slowly due to bytecode overhead.
 **Action:** Use `re.search(pattern, text, re.MULTILINE)` to capture the entire target block as a regex group, and then use the C-optimized `.splitlines()` strictly on that smaller matched block. This is significantly faster and cleaner than manually streaming with `.find('\n')`.
+## 2026-10-11 - Optimizing `_extract_trailers` with `re.finditer`
+**Learning:** Extracting data line-by-line via `text.splitlines()` and `re.match` in a loop allocates a massive O(N) lines array for large git commit messages or PR bodies, resulting in unnecessary memory overhead and Python bytecode execution overhead.
+**Action:** Replace the `splitlines()` loop with a fast-path literal string check (e.g., `if ':' not in text:`) and a single C-optimized `re.MULTILINE` search using `re.finditer`. This significantly cuts down allocation and provides a highly-measurable speedup on large text inputs.
