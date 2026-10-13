@@ -27,3 +27,7 @@
 ## 2026-10-12 - Optimizing Section Content Checks with a Single Regex Search
 **Learning:** Replacing a Python iteration loop that maps over a list of strings generated from `splitlines()` and calls `re.sub` sequentially, with a single, highly-optimized `re.MULTILINE` search (e.g. `re.search(r"^[ \t]*(?:[-*][ \t]*\S|[^-*\s])", text, re.MULTILINE)`) avoids O(N) memory allocation and Python bytecode overhead.
 **Action:** When determining if any line in a multiline string matches a specific state or formatting constraint, prefer consolidating the parsing logic into a single regex search rather than splitting the lines and inspecting them iteratively in Python.
+
+## 2026-10-14 - Optimizing Section Extraction with `re.finditer`
+**Learning:** Parsing markdown template sections line-by-line via `text.splitlines()` in a loop allocates a massive O(N) lines array and executes slow Python bytecode for every single line, even irrelevant ones.
+**Action:** Replace the `splitlines()` loop with a fast-path literal string check and a C-optimized `re.MULTILINE` search using `re.finditer` to jump directly to section headers. Then, use `splitlines()` only on the smaller isolated blocks. This significantly cuts down allocation and Python loop overhead, providing a measurable speedup.

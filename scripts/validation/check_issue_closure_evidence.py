@@ -112,6 +112,19 @@ _SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
 }
 
+_SECTION_COMBINED_RE = re.compile(
+    r"^[ \t]*(?:[-*][ \t]*)?(?:\*\*)?(?P<key>Implementation reference|Key files/surfaces changed|Validation commands|Pass/fail summary|Exemption rationale)(?:\*\*)?[ \t]*:[ \t]*(?P<inline>[^\r\n]*)$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+_KEY_MAP = {
+    "implementation reference": "implementation_reference",
+    "key files/surfaces changed": "key_files_surfaces_changed",
+    "validation commands": "validation_commands",
+    "pass/fail summary": "pass_fail_summary",
+    "exemption rationale": "exemption_rationale",
+}
+
 
 class _IssueListTruncationError(RuntimeError):
     pass
@@ -412,34 +425,37 @@ def _load_recent_closed_issues_from_gh(
 
 
 def _extract_template_sections(comment_body: str) -> dict[str, str]:
-    sections: dict[str, list[str]] = {key: [] for key in _SECTION_PATTERNS}
-    current_section: str | None = None
+    # OPTIMIZATION: Fast-path literal string check to avoid processing if no sections exist.
+    if ":" not in comment_body:
+        return {key: "" for key in _SECTION_PATTERNS}
 
-    def _process_line(raw_line: str) -> None:
-        nonlocal current_section
-        matched_section: str | None = None
-        for section_key, pattern in _SECTION_PATTERNS.items():
-            match = pattern.match(raw_line)
-            if match is None:
-                continue
-            matched_section = section_key
-            current_section = section_key
-            inline_value = match.group(1).strip()
-            sections[section_key] = [inline_value] if inline_value else []
-            break
-        if matched_section is not None:
-            return
-        if current_section is not None:
-            sections[current_section].append(raw_line.strip())
+    # ⚡ Bolt: Using a single re.finditer call avoids allocating an O(N) list from splitlines()
+    # over the entire comment body and executing a slow Python loop for every single line.
+    matches = list(_SECTION_COMBINED_RE.finditer(comment_body))
+    if not matches:
+        return {key: "" for key in _SECTION_PATTERNS}
 
-    # ⚡ Bolt: Using C-optimized splitlines() is significantly faster than a manual Python find() loop
-    for raw_line in comment_body.splitlines():
-        _process_line(raw_line)
+    sections: dict[str, str] = {key: "" for key in _SECTION_PATTERNS}
 
-    return {
-        key: "\n".join(line for line in lines if line.strip()).strip()
-        for key, lines in sections.items()
-    }
+    for i, match in enumerate(matches):
+        key = _KEY_MAP[match.group("key").lower()]
+        inline = match.group("inline").strip()
+
+        start_idx = match.end()
+        end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(comment_body)
+
+        block = comment_body[start_idx:end_idx]
+
+        lines = [inline] if inline else []
+        if block:
+            for raw_line in block.splitlines():
+                stripped = raw_line.strip()
+                if stripped:
+                    lines.append(stripped)
+
+        sections[key] = "\n".join(lines).strip()
+
+    return sections
 
 
 _SECTION_CONTENT_RE = re.compile(r"^[ \t]*(?:[-*][ \t]*\S|[^-*\s])", re.MULTILINE)
