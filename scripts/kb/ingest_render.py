@@ -50,6 +50,8 @@ def resolve_ingest_git_sha(repo_root: Path) -> tuple[str, str]:
             head_sha = result.stdout.strip().lower()
             if _SHA_RE.match(head_sha):
                 return head_sha, "head_sha"
+    except subprocess.TimeoutExpired:
+        pass
     except OSError:
         pass
 

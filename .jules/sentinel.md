@@ -84,3 +84,7 @@
 **Vulnerability:** External CLI executions (`subprocess.run` calling `git`) in `scripts/hooks/check_locality_ratchet.py` and `scripts/hooks/check_approval_flag.py` did not explicitly define a `timeout`.
 **Learning:** `subprocess.run` by default has no timeout, making scripts vulnerable to unbounded execution and Denial of Service (DoS) if the underlying command stalls.
 **Prevention:** Always explicitly define a `timeout` argument (e.g., `timeout=15`) in `subprocess.run` and catch `subprocess.TimeoutExpired` to fail securely.
+## 2026-10-03 - [Fix Missing Subprocess Timeout in scripts/kb tools]
+**Vulnerability:** External CLI executions (`subprocess.run` calling `git` and `ps`) in `scripts/kb/ingest_render.py`, `scripts/kb/repo_identity.py`, and `scripts/kb/write_utils.py` did not explicitly catch `subprocess.TimeoutExpired` while having a timeout defined, which could lead to unexpected crashes or information leakage upon timeouts.
+**Learning:** `subprocess.run` with a `timeout` argument will throw a `subprocess.TimeoutExpired` exception if it stalls. When external tools (like `git` or `ps`) hang, bubbling up these exceptions without proper catch mechanisms is an unhandled risk.
+**Prevention:** Always catch `subprocess.TimeoutExpired` when executing `subprocess.run` with a `timeout` argument, especially for external CLI calls, to fail securely.
