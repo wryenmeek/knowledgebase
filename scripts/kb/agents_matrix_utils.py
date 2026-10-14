@@ -24,6 +24,7 @@ from pathlib import Path
 # Matches a table row whose first non-whitespace column contains a path pattern.
 # The Surface column is column 1 (index 0 after splitting on ``|``).
 _ROW_RE = re.compile(r"^\|([^|]+)\|")
+_SEPARATOR_ROW_RE = re.compile(r"^\|[-| :]+\|$")
 
 __all__ = ["parse_matrix_surfaces"]
 
@@ -74,7 +75,7 @@ def parse_matrix_surfaces(agents_md_path: str | Path) -> set[str]:
         stripped = match.group(1).strip()
 
         # Skip separator rows (---|---).
-        if re.match(r"^\|[-| :]+\|$", stripped):
+        if _SEPARATOR_ROW_RE.match(stripped):
             continue
 
         row_match = _ROW_RE.match(stripped)
