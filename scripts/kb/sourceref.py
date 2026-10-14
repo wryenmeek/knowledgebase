@@ -409,6 +409,8 @@ def _run_git(
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         _raise(reason_code, f"{error_message} ({exc})")
+    except subprocess.TimeoutExpired:
+        _raise(reason_code, f"{error_message} (timed out)")
     if completed.returncode != 0:
         stderr = (
             completed.stderr.strip()
