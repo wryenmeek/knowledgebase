@@ -31,3 +31,6 @@
 ## 2026-10-14 - Optimizing Section Extraction with `re.finditer`
 **Learning:** Parsing markdown template sections line-by-line via `text.splitlines()` in a loop allocates a massive O(N) lines array and executes slow Python bytecode for every single line, even irrelevant ones.
 **Action:** Replace the `splitlines()` loop with a fast-path literal string check and a C-optimized `re.MULTILINE` search using `re.finditer` to jump directly to section headers. Then, use `splitlines()` only on the smaller isolated blocks. This significantly cuts down allocation and Python loop overhead, providing a measurable speedup.
+## 2025-10-15 - Optimizing Subsequent Line Searching with Regex
+**Learning:** Replacing a manual string-slicing `while` loop that uses `.find('\n')` to locate the first non-empty line after a match with a single `re.search(..., re.MULTILINE)` provides roughly a 10x speedup in Python. The regex approach operates mostly in highly optimized C code, avoiding slow Python bytecode execution overhead.
+**Action:** When searching for specific subsequent lines (like the first non-empty line after a heading), avoid manual `while` loops using `.find('\n')`. Instead, use a single `re.search()` call with `re.MULTILINE` to capture the target line, starting from the end index of the previous match.
