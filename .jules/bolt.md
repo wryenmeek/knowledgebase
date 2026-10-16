@@ -27,3 +27,11 @@
 ## 2026-10-12 - Optimizing Section Content Checks with a Single Regex Search
 **Learning:** Replacing a Python iteration loop that maps over a list of strings generated from `splitlines()` and calls `re.sub` sequentially, with a single, highly-optimized `re.MULTILINE` search (e.g. `re.search(r"^[ \t]*(?:[-*][ \t]*\S|[^-*\s])", text, re.MULTILINE)`) avoids O(N) memory allocation and Python bytecode overhead.
 **Action:** When determining if any line in a multiline string matches a specific state or formatting constraint, prefer consolidating the parsing logic into a single regex search rather than splitting the lines and inspecting them iteratively in Python.
+
+## 2026-10-13 - Python Performance Anti-Pattern: `re.finditer` over `splitlines()`
+**Learning:** Replacing `splitlines()` loops with `re.finditer` (e.g., to avoid list allocation) is a false optimization that degrades performance. `splitlines()` is implemented in highly optimized C code, whereas `re.finditer` allocates a heavy Python `Match` object for every line, slowing down execution due to regex engine overhead and memory allocation.
+**Action:** Do not replace standard `splitlines()` operations with multiline regex replacements in an attempt to avoid list allocation.
+
+## 2026-10-13 - Optimizing Path String Validation
+**Learning:** When validating path strings in a loop, avoiding intermediate array allocations via `path.split('/')` yields a measurable performance gain.
+**Action:** Replace array inclusion checks (e.g., `'__pycache__' not in parts`) with fast-path literal substring checks (e.g., `'/__pycache__/' not in path`, `'/../' not in path`, `'//' not in path`). This retains exact path validation rules without `O(N)` list allocation and traversal overhead.

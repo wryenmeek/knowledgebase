@@ -66,13 +66,14 @@ def _has_control_characters(path: str) -> bool:
 
 
 def _is_test_python_path(path: str) -> bool:
-    parts = path.split("/")
+    # ⚡ Bolt: Fast-path literal checks avoid allocating an O(N) list from split("/")
+    # and iterating over the array in a Python loop.
     return (
         path.startswith("tests/")
         and path.endswith(".py")
-        and "__pycache__" not in parts
-        and ".." not in parts
-        and "" not in parts
+        and "/__pycache__/" not in path
+        and "/../" not in path
+        and "//" not in path
     )
 
 
