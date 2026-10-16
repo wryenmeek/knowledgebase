@@ -34,3 +34,7 @@
 ## 2025-10-15 - Optimizing Subsequent Line Searching with Regex
 **Learning:** Replacing a manual string-slicing `while` loop that uses `.find('\n')` to locate the first non-empty line after a match with a single `re.search(..., re.MULTILINE)` provides roughly a 10x speedup in Python. The regex approach operates mostly in highly optimized C code, avoiding slow Python bytecode execution overhead.
 **Action:** When searching for specific subsequent lines (like the first non-empty line after a heading), avoid manual `while` loops using `.find('\n')`. Instead, use a single `re.search()` call with `re.MULTILINE` to capture the target line, starting from the end index of the previous match.
+
+## 2026-10-16 - Optimizing Path Validation by Avoiding `split('/')` Array Allocation
+**Learning:** When validating path strings in a loop, avoid allocating intermediate arrays via `path.split('/')`. Using string inclusion checks on padded paths (e.g., `'/../' in f'/{path}/'`) avoids O(N) list allocation overhead and slow python iteration, yielding a measurable speedup in paths processing.
+**Action:** Replace `split('/')` based array validation with fast-path literal substring checks to retain exact path validation rules without list allocation and traversal overhead.
