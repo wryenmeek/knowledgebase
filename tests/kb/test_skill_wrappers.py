@@ -220,6 +220,24 @@ class ValidateWikiGovernanceWrapperTests(HarnessAssertionsTestCase):
         self.assertEqual(findings[0].status, "fail")
         self.assertEqual(findings[0].message, "1 stale page found")
 
+    def test_freshness_threshold_subprocess_timeout_fails_closed(self) -> None:
+        module = _load_module("validate_wiki_governance_freshness_timeout", VALIDATE_WRAPPER_PATH)
+        import tempfile, pathlib
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = pathlib.Path(tmp)
+            script = repo_root / "scripts" / "validation" / "check_doc_freshness.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("# stub\n")
+
+            with patch.object(module.subprocess, "run", side_effect=module.subprocess.TimeoutExpired(cmd=["test"], timeout=15)):
+                findings = module._validate_freshness_threshold(repo_root, [])
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].status, "fail")
+        self.assertEqual(findings[0].reason_code, "validation_failed")
+        self.assertIn("subprocess timed out", findings[0].message)
+
     def test_freshness_threshold_oserror_starting_subprocess_fails_closed(self) -> None:
         module = _load_module("validate_wiki_governance_freshness_oserror", VALIDATE_WRAPPER_PATH)
         import tempfile, pathlib
