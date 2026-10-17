@@ -28,10 +28,11 @@ def try_normalize_repo_relative_path(
     if not raw_path or raw_path.startswith("/") or "\\" in raw_path or "//" in raw_path:
         return raw_path, ERROR_KIND_INVALID_PATH
 
-    parts = raw_path.split("/")
-    if any(part in {"", "."} for part in parts):
+    # OPTIMIZATION: Avoid split("/") allocation for validating paths.
+    padded = f"/{raw_path}/"
+    if "/./" in padded or raw_path.endswith("/"):
         return raw_path, ERROR_KIND_INVALID_PATH
-    if any(part == ".." for part in parts):
+    if "/../" in padded:
         return raw_path, ERROR_KIND_PATH_TRAVERSAL
 
     return PurePosixPath(raw_path).as_posix(), None
