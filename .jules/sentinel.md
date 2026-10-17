@@ -84,3 +84,7 @@
 **Vulnerability:** External CLI executions (`subprocess.run` calling `git`) in `scripts/hooks/check_locality_ratchet.py` and `scripts/hooks/check_approval_flag.py` did not explicitly define a `timeout`.
 **Learning:** `subprocess.run` by default has no timeout, making scripts vulnerable to unbounded execution and Denial of Service (DoS) if the underlying command stalls.
 **Prevention:** Always explicitly define a `timeout` argument (e.g., `timeout=15`) in `subprocess.run` and catch `subprocess.TimeoutExpired` to fail securely.
+## 2026-10-14 - [Resolve Bandit B608 False Positives]
+**Vulnerability:** String-based query construction triggered Bandit B608 warnings in `friction_queries.py`, though the parameters were correctly validated via regex and type-checks.
+**Learning:** Resolving security scanner false positives by explicitly applying `# nosec` annotations improves the signal-to-noise ratio and maintains developer trust in security tools.
+**Prevention:** Use `# nosec B608` when safe string interpolation is explicitly proven by strict preceding validation layers, ensuring Bandit logs remain actionable for genuine issues.
