@@ -72,6 +72,7 @@ def build_fixture_repo(
         ["git", "init", "--bare", "-b", initial_branch, str(origin_bare)],
         check=True,
         capture_output=True,
+        timeout=15,
     )
 
     repo = tmp_path / "repo"
@@ -134,6 +135,7 @@ def _run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         check=True,
+        timeout=15,
     )
 
 
