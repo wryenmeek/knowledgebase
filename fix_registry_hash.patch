@@ -1,0 +1,11 @@
+--- raw/wiki-processing/wiki-processing-checkpoint-registry.json
++++ raw/wiki-processing/wiki-processing-checkpoint-registry.json
+@@ -4,7 +4,7 @@
+   "items": [
+     {
+       "artifact_type": "wiki_concept_page",
+-      "dependency_fingerprint": "f90be38ead23ae1131f1a723874f1e96ff88f884736c7dae3d41ddb5ce390f47",
++      "dependency_fingerprint": "f90be38ead23ae1131f1a723874f1e96ff88f884736c7dae3d41ddb5ce390f47", // pragma: allowlist secret
+       "item_key": "wiki_concept_page:approval-gating",
+       "last_attempted_at": null,
+       "last_error": null,

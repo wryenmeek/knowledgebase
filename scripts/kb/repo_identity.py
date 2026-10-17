@@ -45,6 +45,8 @@ def _remote_origin_repo_name(repo_root: Path) -> str:
             text=True,
             timeout=5,
         )
+    except subprocess.TimeoutExpired:
+        return ""
     except (OSError, subprocess.SubprocessError):
         return ""
     if completed.returncode != 0:

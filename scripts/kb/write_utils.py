@@ -248,6 +248,8 @@ def _darwin_pid_start_time_unix_seconds(pid: int) -> float | None:
             env=ps_env,
             timeout=15,
         )
+    except subprocess.TimeoutExpired:
+        return None
     except (OSError, subprocess.SubprocessError):
         return None
     lstart_text = completed.stdout.strip()
