@@ -34,3 +34,7 @@
 ## 2025-10-15 - Optimizing Subsequent Line Searching with Regex
 **Learning:** Replacing a manual string-slicing `while` loop that uses `.find('\n')` to locate the first non-empty line after a match with a single `re.search(..., re.MULTILINE)` provides roughly a 10x speedup in Python. The regex approach operates mostly in highly optimized C code, avoiding slow Python bytecode execution overhead.
 **Action:** When searching for specific subsequent lines (like the first non-empty line after a heading), avoid manual `while` loops using `.find('\n')`. Instead, use a single `re.search()` call with `re.MULTILINE` to capture the target line, starting from the end index of the previous match.
+
+## 2024-10-18 - [Optimize file loading]
+**Learning:** Using `read_text().splitlines()` allocates the entire file into memory as a string and as a list of lines.
+**Action:** When iterating over lines from a file, use lazy file reading `with file_path.open() as f: for line in f:` to avoid loading the entire file into memory.
