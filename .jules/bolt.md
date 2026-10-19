@@ -38,3 +38,6 @@
 ## 2024-10-18 - [Optimize file loading]
 **Learning:** Using `read_text().splitlines()` allocates the entire file into memory as a string and as a list of lines.
 **Action:** When iterating over lines from a file, use lazy file reading `with file_path.open() as f: for line in f:` to avoid loading the entire file into memory.
+## 2024-05-15 - Optimizing Scalar Extraction with re.search
+**Learning:** Extracting a single scalar value like a `sha256:` string by calling `splitlines()` on a file and looping over the results causes an O(N) list allocation and slow Python bytecode execution overhead.
+**Action:** Use a fast-path C-optimized `re.search(pattern, text, re.MULTILINE)` to extract scalar values directly from large multiline strings instead of `splitlines()` loops.

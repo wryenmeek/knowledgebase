@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import re
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -68,12 +67,26 @@ def _yaml_quote(val: str) -> str:
     """
     needs_quoting = any(
         c in val
-        for c in (":", "#", "\n", "\r", "\t", '"', "'", "{", "}", "[", "]", "&", "*", "!")
+        for c in (
+            ":",
+            "#",
+            "\n",
+            "\r",
+            "\t",
+            '"',
+            "'",
+            "{",
+            "}",
+            "[",
+            "]",
+            "&",
+            "*",
+            "!",
+        )
     )
     if needs_quoting:
         escaped = (
-            val
-            .replace("\\", "\\\\")
+            val.replace("\\", "\\\\")
             .replace('"', '\\"')
             .replace("\n", "\\n")
             .replace("\r", "\\r")
@@ -93,9 +106,7 @@ def _sanitize_markdown(val: str) -> str:
     val = val[:_MAX_FIELD_LEN]
     val = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", val)
     lines = val.splitlines()
-    sanitized = [
-        ("\\-\\-\\-" if line.strip() == "---" else line) for line in lines
-    ]
+    sanitized = [("\\-\\-\\-" if line.strip() == "---" else line) for line in lines]
     return "\n".join(sanitized)
 
 
@@ -116,11 +127,11 @@ def _scan_existing_sha256(rejected_dir: Path) -> set[str]:
             text = f.read_text(encoding="utf-8")
         except OSError:
             continue
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("sha256:"):
-                sha256s.add(stripped[len("sha256:"):].strip())
-                break
+
+        # OPTIMIZATION: Avoid O(N) splitlines allocation by using a single re.search
+        match = re.search(r"^[ \t]*sha256:[ \t]*(.*)", text, re.MULTILINE)
+        if match:
+            sha256s.add(match.group(1).strip())
     return sha256s
 
 
@@ -297,12 +308,11 @@ def log_rejection(
 
 
 def _build_parser() -> JsonArgumentParser:
-    parser = JsonArgumentParser(
-        description="Log a rejected source to raw/rejected/."
-    )
+    parser = JsonArgumentParser(description="Log a rejected source to raw/rejected/.")
     parser.add_argument("--repo-root", default=".", help="Repository root.")
-    parser.add_argument("--approval", default="none",
-                        help="Approval gate (must be 'approved').")
+    parser.add_argument(
+        "--approval", default="none", help="Approval gate (must be 'approved')."
+    )
     parser.add_argument("--slug", required=True)
     parser.add_argument("--sha256", required=True)
     parser.add_argument("--rejected-date", required=True)
