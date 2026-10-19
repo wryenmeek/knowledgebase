@@ -78,7 +78,7 @@ def _search_existing_issue(dedupe_key: str) -> int | None:
     if result.returncode != 0:
         print(
             f"::warning::Dedupe search failed; creating issue anyway. "
-            f"stderr: {_redact_stderr(result.stderr)}",
+            f"stderr: {_redact_stderr(result.stderr or '')}",
             flush=True,
         )
         return None
@@ -108,7 +108,7 @@ def _create_issue(title: str, body: str, labels: list[str]) -> bool:
     if result.returncode != 0:
         print(
             f"ERROR: gh issue create failed. "
-            f"stderr: {_redact_stderr(result.stderr, 400)}",
+            f"stderr: {_redact_stderr(result.stderr or '', 400)}",
             file=sys.stderr,
         )
         return False
@@ -136,7 +136,7 @@ def _update_issue(issue_number: int, body_suffix: str) -> bool:
     if result.returncode != 0:
         print(
             f"WARNING: Failed to add comment to issue #{issue_number}: "
-            f"{_redact_stderr(result.stderr)}",
+            f"{_redact_stderr(result.stderr or '')}",
             file=sys.stderr,
         )
         return False

@@ -77,7 +77,7 @@ def _search_existing_issue(dedupe_key: str) -> int | None:
     if result.returncode != 0:
         print(
             f"::warning::Dedupe search failed; creating issue anyway. "
-            f"stderr: {_redact_stderr(result.stderr)}",
+            f"stderr: {_redact_stderr(result.stderr or '')}",
             flush=True,
         )
         return None
@@ -112,7 +112,7 @@ def _comment_on_issue(issue_num: int, run_id: str) -> bool:
 
     if result.returncode != 0:
         print(
-            f"::warning::Failed to comment on issue #{issue_num}: {_redact_stderr(result.stderr)}",
+            f"::warning::Failed to comment on issue #{issue_num}: {_redact_stderr(result.stderr or '')}",
             flush=True,
         )
         return False
@@ -139,7 +139,7 @@ def _create_issue(title: str, body: str, labels: str) -> bool:
 
     if result.returncode != 0:
         print(
-            f"::error::Failed to create HITL issue: {_redact_stderr(result.stderr)}",
+            f"::error::Failed to create HITL issue: {_redact_stderr(result.stderr or '')}",
             flush=True,
         )
         return False
@@ -166,7 +166,7 @@ def _close_issue(issue_num: int, run_id: str) -> bool:
     if comment_result is not None and comment_result.returncode != 0:
         print(
             f"::warning::Failed to comment on issue #{issue_num} before closing: "
-            f"{_redact_stderr(comment_result.stderr)}",
+            f"{_redact_stderr(comment_result.stderr or '')}",
             flush=True,
         )
 
@@ -183,7 +183,7 @@ def _close_issue(issue_num: int, run_id: str) -> bool:
 
     if close_result.returncode != 0:
         print(
-            f"::warning::Failed to close issue #{issue_num}: {_redact_stderr(close_result.stderr)}",
+            f"::warning::Failed to close issue #{issue_num}: {_redact_stderr(close_result.stderr or '')}",
             flush=True,
         )
         return False
