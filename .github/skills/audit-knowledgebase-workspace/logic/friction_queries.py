@@ -269,7 +269,7 @@ WHERE sr.ref_type = 'commit'
 {repo_clause}GROUP BY sr.session_id, COALESCE(s.repository, ''), sr.ref_value, sr.created_at
 ORDER BY sr.created_at DESC
 LIMIT {DEFAULT_LIMIT}
-"""
+"""  # nosec B608
 
 
 def _repeated_user_prompts_sql(*, repo_filter: str | None, interval: str) -> str:
@@ -292,7 +292,7 @@ WHERE t.timestamp > {interval}
 HAVING COUNT(*) > 1
 ORDER BY repeat_count DESC, last_prompt_at DESC
 LIMIT {DEFAULT_LIMIT}
-"""
+"""  # nosec B608
 
 
 def _repeated_context_loads_sql(*, repo_filter: str | None, interval: str) -> str:
@@ -319,7 +319,7 @@ WHERE e.type = 'tool.execution_complete'
 HAVING COUNT(*) > 1
 ORDER BY invocation_count DESC, last_invoked_at DESC
 LIMIT {DEFAULT_LIMIT}
-"""
+"""  # nosec B608
 
 
 def _hook_bypasses_sql(*, repo_filter: str | None, interval: str) -> str:
@@ -379,7 +379,7 @@ FROM bypass_mentions b
 GROUP BY session_id, repository, commit_sha, commit_recorded_at
 ORDER BY commit_recorded_at DESC
 LIMIT {DEFAULT_LIMIT}
-"""
+"""  # nosec B608
 
 
 def _retry_loops_sql(*, repo_filter: str | None, interval: str) -> str:
@@ -439,7 +439,7 @@ SELECT
 FROM retry_matches
 ORDER BY retry_count DESC, retried_at DESC
 LIMIT {DEFAULT_LIMIT}
-"""
+"""  # nosec B608
 
 
 def _repo_filter_clause(repo_filter: str | None) -> str:
