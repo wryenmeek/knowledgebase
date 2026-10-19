@@ -310,7 +310,9 @@ def _is_substantive_deleted_line(line: str) -> bool:
     return bool(stripped) and not stripped.startswith("<!--")
 
 
-_HTML_COMMENT_START_RE = re.compile(r"^[ \t]*<!--", re.MULTILINE)
+_HTML_COMMENT_RE = re.compile(
+    r"^[ \t]*<!--(?:.*?-->[^\n]*|\s*.*$)", re.MULTILINE | re.DOTALL
+)
 
 
 def _html_comment_lines(content: str) -> set[int]:
@@ -323,31 +325,19 @@ def _html_comment_lines(content: str) -> set[int]:
     last_index = 0
     current_line = 1
 
-    for match in _HTML_COMMENT_START_RE.finditer(content):
+    for match in _HTML_COMMENT_RE.finditer(content):
         if match.start() < last_index:
             continue
 
         current_line += content.count("\n", last_index, match.start())
         last_index = match.start()
 
-        end_idx = content.find("-->", match.end())
+        match_lines = content.count("\n", match.start(), match.end())
+        for i in range(match_lines + 1):
+            comment_lines.add(current_line + i)
 
-        if end_idx == -1:
-            match_lines = content.count("\n", match.start())
-            for i in range(match_lines + 1):
-                comment_lines.add(current_line + i)
-            break
-        else:
-            end_line_idx = content.find("\n", end_idx)
-            if end_line_idx == -1:
-                end_line_idx = len(content)
-
-            match_lines = content.count("\n", match.start(), end_line_idx)
-            for i in range(match_lines + 1):
-                comment_lines.add(current_line + i)
-
-            last_index = end_line_idx
-            current_line += match_lines
+        last_index = match.end()
+        current_line += match_lines
 
     return comment_lines
 

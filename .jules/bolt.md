@@ -34,3 +34,7 @@
 ## 2025-10-15 - Optimizing Subsequent Line Searching with Regex
 **Learning:** Replacing a manual string-slicing `while` loop that uses `.find('\n')` to locate the first non-empty line after a match with a single `re.search(..., re.MULTILINE)` provides roughly a 10x speedup in Python. The regex approach operates mostly in highly optimized C code, avoiding slow Python bytecode execution overhead.
 **Action:** When searching for specific subsequent lines (like the first non-empty line after a heading), avoid manual `while` loops using `.find('\n')`. Instead, use a single `re.search()` call with `re.MULTILINE` to capture the target line, starting from the end index of the previous match.
+
+## 2025-10-16 - Optimizing Stateful Parsing with `re.DOTALL`
+**Learning:** When using `re.finditer` to locate the start of a block (like an HTML comment `<!--`), falling back to manual `content.find()` calls to locate the end marker (`-->`) and subsequent newlines can be slower than using a single, comprehensive `re.DOTALL` regex that matches the entire block in C.
+**Action:** Replace `re.finditer` + `str.find()` combinations for multiline block extraction with a single `re.DOTALL` regex to track start and end boundaries more efficiently and concisely.
