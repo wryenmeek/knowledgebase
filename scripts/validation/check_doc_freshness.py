@@ -335,7 +335,7 @@ def _check_file(path: Path, *, repo_root: Path, as_of_date: date, max_age_days: 
             path=relative_path,
             status=STATUS_FAIL,
             reason_code=REASON_CODE_STALE_DOCUMENT,
-            message=f"document reaches or exceeds freshness threshold ({age_days}d >= {max_age_days}d). FIX: update page content and set updated_at: <today's date> in the YAML frontmatter.",
+            message=f"document reaches or exceeds freshness threshold ({age_days}d >= {max_age_days}d). FIX: update page content and set updated_at: <today's date> in the YAML frontmatter.",  # nosec B608
             updated_at=updated_at_date.isoformat(),
             age_days=age_days,
         )
@@ -344,7 +344,7 @@ def _check_file(path: Path, *, repo_root: Path, as_of_date: date, max_age_days: 
             path=relative_path,
             status=STATUS_FAIL,
             reason_code=REASON_CODE_NEAR_EXPIRY,
-            message=f"document is approaching freshness threshold ({age_days}d old, expires in {max_age_days - age_days}d). PROACTIVE FIX: update page content and set updated_at: <today's date>.",
+            message=f"document is approaching freshness threshold ({age_days}d old, expires in {max_age_days - age_days}d). PROACTIVE FIX: update page content and set updated_at: <today's date>.",  # nosec B608
             updated_at=updated_at_date.isoformat(),
             age_days=age_days,
         )
