@@ -72,7 +72,7 @@ _JWT_RE = re.compile(
 )
 
 
-def redact_stderr(stderr: str, max_len: int = 200) -> str:
+def redact_stderr(stderr: str | None, max_len: int = 200) -> str:
     """Redact then truncate stderr before logging.
 
     Order matters: redaction runs first so a token that straddles the
@@ -88,7 +88,7 @@ def redact_stderr(stderr: str, max_len: int = 200) -> str:
     All patterns are linear-time (no nested quantifiers); no ReDoS risk
     on plausible stderr sizes from the ``gh`` CLI or Google APIs.
     """
-    redacted = stderr
+    redacted = stderr or ''
     redacted = _GITHUB_TOKEN_RE.sub("[REDACTED]", redacted)
     redacted = _GITHUB_PAT_RE.sub("[REDACTED]", redacted)
     redacted = _SHA_OR_TOKEN_HEX_RE.sub("<redacted>", redacted)
