@@ -41,3 +41,6 @@
 ## 2024-05-15 - Optimizing Scalar Extraction with re.search
 **Learning:** Extracting a single scalar value like a `sha256:` string by calling `splitlines()` on a file and looping over the results causes an O(N) list allocation and slow Python bytecode execution overhead.
 **Action:** Use a fast-path C-optimized `re.search(pattern, text, re.MULTILINE)` to extract scalar values directly from large multiline strings instead of `splitlines()` loops.
+## 2026-10-16 - Optimizing redundant strip() in comprehensions
+**Learning:** In generator expressions and comprehensions filtering and transforming strings from `splitlines()`, performing `line.strip()` in both the condition and the yield/return (e.g. `[line.strip() for line in lines if line.strip()]`) creates redundant string allocations and function calls.
+**Action:** Use the walrus operator (`:=`) to capture the stripped result in the condition and reuse it for the output (e.g. `[stripped for line in lines if (stripped := line.strip())]`) to eliminate the duplicate string allocation overhead.
