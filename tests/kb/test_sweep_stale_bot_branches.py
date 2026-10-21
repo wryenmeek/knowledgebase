@@ -228,3 +228,20 @@ def test_include_regex_requires_trailing_slash() -> None:
         assert not branch_matches_include(bare), (
             f"Bare prefix '{bare}' (no trailing slash) must not match include regex"
         )
+
+def test_run_fails_closed_on_timeout(monkeypatch) -> None:
+    from scripts.maintenance import sweep_stale_bot_branches as sweep
+    import pytest
+    import subprocess
+    def _raise_timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(
+            cmd=["git", "for-each-ref"],
+            timeout=15,
+        )
+
+    monkeypatch.setattr(sweep.subprocess, "run", _raise_timeout)
+    with pytest.raises(
+        RuntimeError,
+        match="Command timed out after 15 seconds",
+    ):
+        sweep._run(["git", "for-each-ref"])

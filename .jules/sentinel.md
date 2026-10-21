@@ -84,3 +84,8 @@
 **Vulnerability:** External CLI executions (`subprocess.run` calling `git`) in `scripts/hooks/check_locality_ratchet.py` and `scripts/hooks/check_approval_flag.py` did not explicitly define a `timeout`.
 **Learning:** `subprocess.run` by default has no timeout, making scripts vulnerable to unbounded execution and Denial of Service (DoS) if the underlying command stalls.
 **Prevention:** Always explicitly define a `timeout` argument (e.g., `timeout=15`) in `subprocess.run` and catch `subprocess.TimeoutExpired` to fail securely.
+
+## 2026-10-05 - [Fix Unhandled Subprocess Timeout in sweep_stale_bot_branches]
+**Vulnerability:** External CLI executions (`subprocess.run`) in `scripts/maintenance/sweep_stale_bot_branches.py` defined a `timeout` but did not catch `subprocess.TimeoutExpired`, resulting in unhandled exceptions that could expose raw diagnostic text to stderr logs if the external git/gh commands stalled.
+**Learning:** Providing a `timeout` argument to `subprocess.run` is necessary to prevent infinite hangs, but it raises a `subprocess.TimeoutExpired` exception when triggered. If uncaught, this exception bubbles up and can leak sensitive context or credentials embedded in the subprocess state to system logs.
+**Prevention:** Always catch `subprocess.TimeoutExpired` when using the `timeout` parameter in `subprocess.run`, and ensure the error is handled securely without leaking raw execution state.
