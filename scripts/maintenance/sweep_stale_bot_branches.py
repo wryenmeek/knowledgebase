@@ -123,13 +123,16 @@ def filter_branches(
 def _run(
     cmd: list[str], check: bool = True, capture: bool = True
 ) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        cmd,
-        check=check,
-        capture_output=capture,
-        text=True,
-        timeout=15,
-    )
+    try:
+        return subprocess.run(
+            cmd,
+            check=check,
+            capture_output=capture,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Command timed out after 15 seconds") from None
 
 
 def enumerate_remote_branches() -> list[tuple[str, float]]:
