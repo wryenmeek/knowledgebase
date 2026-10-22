@@ -1,0 +1,47 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-10-22T11:10:35.919Z",
+  "root_causes": [
+    {
+      "id": "rc-missing-infigraph-contract",
+      "title": "Missing Infigraph CLI Wrapper and Capability Contract",
+      "severity": "medium",
+      "issues": [
+        597
+      ],
+      "files": [
+        "scripts/analysis/infigraph.py",
+        "scripts/analysis/__init__.py"
+      ],
+      "description": "The repository lacks the required wrapper and contract to invoke a pinned Infigraph CLI and perform capability checks as described in issue #597.",
+      "solution_summary": "Implement `scripts/analysis/infigraph.py` containing an `InfigraphWrapper` that uses `subprocess.run` with a timeout, handles `FileNotFoundError` for unavailability, and normalizes output into `InfigraphStatus`. Export this in `scripts/analysis/__init__.py` and add unit tests."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-add-infigraph-runtime",
+      "title": "Add reproducible Infigraph runtime and capability contract",
+      "root_cause": "rc-missing-infigraph-contract",
+      "issues": [
+        597
+      ],
+      "files": [
+        "scripts/analysis/__init__.py"
+      ],
+      "new_files": [
+        "scripts/analysis/infigraph.py"
+      ],
+      "test_files": [
+        "tests/analysis/test_infigraph.py"
+      ],
+      "risk": "low",
+      "prompt": "You are assigned to implement issue #597: Add reproducible Infigraph runtime and capability contract.\n\n### Requirements\n1. The selected Infigraph release and resolution metadata must be recorded reproducibly and can be verified in CI.\n2. Startup checks must distinguish an executable that is unavailable, unsupported, or misconfigured from one that is ready to analyze.\n3. The wrapper must define normalized statuses for `ANALYSIS_COMPLETE`, `ANALYSIS_UNAVAILABLE`, and `ANALYSIS_FAILED`, including actionable failure reasons.\n4. Tests must use a fake executable to cover successful capability discovery and representative installation, capability, command, timeout, and malformed-output failures.\n5. No cross-repository graph storage or MCP integration is introduced.\n\n### Proposed Implementation\n\nCreate `scripts/analysis/infigraph.py`:\n\n```python\n\"\"\"Infigraph CLI wrapper and capability contract.\"\"\"\n\nimport json\nimport logging\nimport subprocess\nfrom dataclasses import dataclass\nfrom enum import Enum\nfrom typing import Any, List, Optional\n\nlogger = logging.getLogger(__name__)\n\n# Pinned release and resolution metadata for CI reproducibility\nINFIGRAPH_VERSION = \"v0.4.2\"\nINFIGRAPH_SHA256 = \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n\nclass InfigraphStatus(str, Enum):\n    \"\"\"Normalized statuses for Infigraph analysis outcomes.\"\"\"\n    ANALYSIS_COMPLETE = \"analysis_complete\"\n    ANALYSIS_UNAVAILABLE = \"analysis_unavailable\"\n    ANALYSIS_FAILED = \"analysis_failed\"\n\n@dataclass(frozen=True, slots=True)\nclass InfigraphResult:\n    \"\"\"Result envelope for Infigraph CLI invocations.\"\"\"\n    status: InfigraphStatus\n    reason: str\n    capabilities: Optional[List[str]] = None\n    output: Optional[str] = None\n\nclass InfigraphWrapper:\n    \"\"\"Wrapper for invoking the Infigraph CLI.\"\"\"\n    def __init__(self, executable_path: str = \"infigraph\"):\n        self.executable_path = executable_path\n\n    def check_capabilities(self) -> InfigraphResult:\n        try:\n            result = subprocess.run(\n                [self.executable_path, \"capabilities\", \"--format=json\"],\n                capture_output=True,\n                text=True,\n                check=False,\n                timeout=15,\n            )\n        except FileNotFoundError:\n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_UNAVAILABLE,\n                reason=\"Executable not found\",\n            )\n        except subprocess.TimeoutExpired:\n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_FAILED,\n                reason=\"Command timed out\",\n            )\n        except Exception as e:\n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_FAILED,\n                reason=f\"Execution error: {str(e)}\",\n            )\n\n        if result.returncode != 0:\n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_FAILED,\n                reason=f\"Command failed with exit code {result.returncode}\",\n                output=result.stderr,\n            )\n\n        try:\n            data = json.loads(result.stdout)\n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_COMPLETE,\n                reason=\"Capabilities resolved\",\n                capabilities=data.get(\"capabilities\", []),\n            )\n        except json.JSONDecodeError:\n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_FAILED,\n                reason=\"Malformed output: invalid JSON\",\n                output=result.stdout,\n            )\n```\n\n### Integration (Before/After Diffs)\n\nModify `scripts/analysis/__init__.py` to export the new classes:\n\n```diff\n<<<<<<< SEARCH\n\"\"\"Analysis utilities for repo-local Copilot CLI / Chat telemetry.\n\nRead-only host-data analyzers. Surfaces in this package MUST NOT write to any\nrepository path. See ``AGENTS.md`` write-surface matrix entry for\n``scripts/analysis/**`` for the binding contract.\n\"\"\"\n=======\n\"\"\"Analysis utilities for repo-local Copilot CLI / Chat telemetry.\n\nRead-only host-data analyzers. Surfaces in this package MUST NOT write to any\nrepository path. See ``AGENTS.md`` write-surface matrix entry for\n``scripts/analysis/**`` for the binding contract.\n\"\"\"\n\nfrom .infigraph import InfigraphResult, InfigraphStatus, InfigraphWrapper\n\n__all__ = [\n    \"InfigraphResult\",\n    \"InfigraphStatus\",\n    \"InfigraphWrapper\",\n]\n>>>>>>> REPLACE\n```\n\n### Test Implementation\n\nCreate `tests/analysis/test_infigraph.py` using `unittest.mock.patch` to verify the different branches, simulating successful capability discovery, `FileNotFoundError`, `TimeoutExpired`, command failures, and malformed JSON.\n\n### FILE BOUNDARY RULE\nYou may ONLY modify the files listed above: `scripts/analysis/__init__.py`, `scripts/analysis/infigraph.py`, `tests/analysis/test_infigraph.py`. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/analysis/__init__.py": "task-add-infigraph-runtime",
+    "scripts/analysis/infigraph.py": "task-add-infigraph-runtime",
+    "tests/analysis/test_infigraph.py": "task-add-infigraph-runtime"
+  }
+}
