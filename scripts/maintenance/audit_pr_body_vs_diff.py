@@ -297,10 +297,10 @@ def _run_gh(
         )
     except FileNotFoundError as exc:
         raise GhCommandError("gh CLI is required but not installed") from exc
-    except subprocess.TimeoutExpired as exc:
+    except subprocess.TimeoutExpired:
         raise GhCommandError(
             f"gh command timed out after {GH_COMMAND_TIMEOUT_SECONDS} seconds"
-        ) from exc
+        ) from None
     if completed.returncode != 0:
         stderr = redact_stderr(completed.stderr).strip().splitlines()
         stderr_snippet = stderr[0] if stderr else "unknown gh error"
