@@ -247,10 +247,10 @@ def _run_gh_json(command: Sequence[str], *, repo_root: Path) -> Any:
         )
     except FileNotFoundError as exc:
         raise RuntimeError("gh CLI is required but not installed") from exc
-    except subprocess.TimeoutExpired as exc:
+    except subprocess.TimeoutExpired:
         raise RuntimeError(
             f"gh command timed out after {GH_COMMAND_TIMEOUT_SECONDS} seconds"
-        ) from exc
+        ) from None
     if completed.returncode != 0:
         redacted = redact_stderr(completed.stderr)
         raise RuntimeError(f"gh command failed: {redacted}")
