@@ -179,20 +179,14 @@ def _extract_skill_entry(skill_path: Path, mtime_ns: int) -> SkillCorpusEntry:
     }
 
 
+import re
+_FIRST_PARAGRAPH_RE = re.compile(r"^[ \t]*[^#\s].*(?:\n[ \t]*\S.*)*", re.MULTILINE)
+
 def _extract_first_paragraph(body: str) -> str:
     """Return the first non-heading prose paragraph from a skill body."""
-
-    paragraph_lines: list[str] = []
-    for line in body.splitlines():
-        stripped = line.strip()
-        if not paragraph_lines and not stripped:
-            continue
-        if not paragraph_lines and stripped.startswith("#"):
-            continue
-        if paragraph_lines and not stripped:
-            break
-        paragraph_lines.append(line)
-    return "\n".join(paragraph_lines)
+    # ⚡ Bolt: Using re.search avoids allocating an O(N) list from splitlines()
+    match = _FIRST_PARAGRAPH_RE.search(body)
+    return match.group(0) if match else ""
 
 
 def _cached_entry_is_fresh(entry: SkillCorpusEntry | None, *, mtime_ns: int) -> bool:
