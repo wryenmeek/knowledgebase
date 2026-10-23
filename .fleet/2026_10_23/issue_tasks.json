@@ -1,0 +1,46 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-10-23T11:02:14.072Z",
+  "root_causes": [
+    {
+      "id": "rc-missing-infigraph-runtime",
+      "title": "Missing Infigraph CLI runtime and capability contract",
+      "severity": "high",
+      "issues": [
+        597
+      ],
+      "files": [
+        "scripts/kb/contracts.py"
+      ],
+      "description": "The repository lacks integration with the Infigraph CLI, which is necessary for future analysis capabilities.",
+      "solution_summary": "Create `scripts/kb/infigraph_runtime.py` with a robust `subprocess` wrapper for the Infigraph CLI, define statuses in `scripts/kb/contracts.py`, and test thoroughly."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-implement-infigraph-runtime",
+      "title": "Implement reproducible Infigraph runtime and capability contract",
+      "root_cause": "rc-missing-infigraph-runtime",
+      "issues": [
+        597
+      ],
+      "files": [
+        "scripts/kb/contracts.py"
+      ],
+      "new_files": [
+        "scripts/kb/infigraph_runtime.py"
+      ],
+      "test_files": [
+        "tests/kb/test_infigraph_runtime.py"
+      ],
+      "risk": "medium",
+      "prompt": "A highly detailed, code-rich, self-contained prompt for a coding agent.\n\n## Objective\nImplement the knowledgebase integration to invoke a pinned, reproducibly resolved Infigraph CLI and report whether required analysis capabilities are available. (Issue #597)\n\n## Files to modify and create\n1. Modify `scripts/kb/contracts.py` to add `InfigraphAnalysisStatus`.\n2. Create `scripts/kb/infigraph_runtime.py` containing the wrapper logic.\n3. Create `tests/kb/test_infigraph_runtime.py` with test coverage.\n\n## Implementation Details\n\n### 1. `scripts/kb/contracts.py` (Before/After)\nAdd the normalized status enum before `PolicyId`.\n\n```diff\n--- a/scripts/kb/contracts.py\n+++ b/scripts/kb/contracts.py\n@@ -10,6 +10,12 @@\n from typing import Any\n \n \n+class InfigraphAnalysisStatus(StrEnum):\n+    \"\"\"Normalized statuses for Infigraph CLI capability checks.\"\"\"\n+    ANALYSIS_COMPLETE = \"analysis_complete\"\n+    ANALYSIS_UNAVAILABLE = \"analysis_unavailable\"\n+    ANALYSIS_FAILED = \"analysis_failed\"\n+\n class PolicyId(StrEnum):\n     \"\"\"Canonical policy identifiers from SPEC.md.\"\"\"\n```\n\n### 2. `scripts/kb/infigraph_runtime.py`\nImplement the wrapper exactly as follows to handle timeouts, malformed output, and missing executables:\n\n```python\nimport json\nimport subprocess\nfrom dataclasses import dataclass\nfrom typing import Any\nfrom pathlib import Path\nfrom scripts.kb.contracts import InfigraphAnalysisStatus\n\nPINNED_INFIGRAPH_VERSION = \"1.0.0\"\n\n@dataclass\nclass InfigraphCapabilityReport:\n    status: InfigraphAnalysisStatus\n    reason: str | None = None\n    capabilities: dict[str, Any] | None = None\n\ndef check_infigraph_capabilities(executable_path: str, timeout: int = 15) -> InfigraphCapabilityReport:\n    \"\"\"Invokes the Infigraph CLI to report available capabilities.\"\"\"\n    path = Path(executable_path)\n    if not path.is_file():\n        return InfigraphCapabilityReport(InfigraphAnalysisStatus.ANALYSIS_UNAVAILABLE, \"Executable not found\")\n        \n    try:\n        completed = subprocess.run(\n            [executable_path, \"--capabilities\"],\n            capture_output=True,\n            text=True,\n            timeout=timeout\n        )\n    except subprocess.TimeoutExpired:\n        # Security Standard: Suppress original exception context\n        raise RuntimeError(\"Command timed out\") from None\n    except (OSError, subprocess.SubprocessError) as e:\n        return InfigraphCapabilityReport(InfigraphAnalysisStatus.ANALYSIS_UNAVAILABLE, \"Execution failed\")\n\n    if completed.returncode != 0:\n        return InfigraphCapabilityReport(InfigraphAnalysisStatus.ANALYSIS_FAILED, f\"Command failed: {completed.stderr.strip()}\")\n        \n    try:\n        data = json.loads(completed.stdout)\n        return InfigraphCapabilityReport(InfigraphAnalysisStatus.ANALYSIS_COMPLETE, capabilities=data)\n    except json.JSONDecodeError:\n        return InfigraphCapabilityReport(InfigraphAnalysisStatus.ANALYSIS_FAILED, \"Malformed output\")\n```\n(Ensure no cross-repository graph storage or MCP integration is introduced).\n\n### 3. Test Scenarios (`tests/kb/test_infigraph_runtime.py`)\nUse a fake executable (e.g., via `tmp_path`) to cover:\n1. Successful capability discovery (returns valid JSON).\n2. Installation failure (executable not found or not executable).\n3. Capability failure (executable runs but exits non-zero).\n4. Command timeout (fake executable sleeps > 15s).\n5. Malformed output (fake executable returns invalid JSON).\n\n## FILE BOUNDARY RULE\nYou may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.\n"
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/kb/contracts.py": "task-implement-infigraph-runtime",
+    "scripts/kb/infigraph_runtime.py": "task-implement-infigraph-runtime",
+    "tests/kb/test_infigraph_runtime.py": "task-implement-infigraph-runtime"
+  }
+}
