@@ -44,3 +44,7 @@
 ## 2026-10-16 - Optimizing redundant strip() in comprehensions
 **Learning:** In generator expressions and comprehensions filtering and transforming strings from `splitlines()`, performing `line.strip()` in both the condition and the yield/return (e.g. `[line.strip() for line in lines if line.strip()]`) creates redundant string allocations and function calls.
 **Action:** Use the walrus operator (`:=`) to capture the stripped result in the condition and reuse it for the output (e.g. `[stripped for line in lines if (stripped := line.strip())]`) to eliminate the duplicate string allocation overhead.
+
+## 2025-05-18 - Python Performance Anti-Pattern: List Comprehension in `str.join()`
+**Learning:** Using a list comprehension inside `str.join()` (e.g., `"\n".join([line.rstrip() for line in lines])`) instead of a generator expression is a micro-optimization that has no measurable performance benefit in practice for small files, and actually increases memory usage by instantiating the entire list in memory before joining it. While `join()` can be slightly faster in CPython micro-benchmarks with a list because it can pre-calculate the required string allocation size, it violates the persona's explicit constraints against micro-optimizations.
+**Action:** Do not replace generator expressions with list comprehensions inside `str.join()` calls. Stick to finding measurable algorithm, structure, or allocation optimizations.
