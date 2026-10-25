@@ -381,8 +381,10 @@ class _AuthorizationStrippingRedirectHandler(request.HTTPRedirectHandler):
 
 
 def _urlopen_with_safe_redirects(req: request.Request, *, timeout: int) -> Any:
+    if not req.full_url.startswith(("http://", "https://")):
+        raise ValueError(f"Invalid URL scheme: {req.full_url}")
     opener = request.build_opener(_AuthorizationStrippingRedirectHandler)
-    return opener.open(req, timeout=timeout)
+    return opener.open(req, timeout=timeout)  # nosec B310
 
 
 def _strip_authorization_header(req: request.Request) -> None:
