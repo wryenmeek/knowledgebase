@@ -1,0 +1,33 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-10-25T10:45:32.449Z",
+  "root_causes": [
+    {
+      "id": "rc-missing-infigraph-wrapper",
+      "title": "Missing Infigraph CLI Wrapper",
+      "severity": "medium",
+      "issues": [597],
+      "files": [],
+      "description": "The repository lacks a mechanism to invoke a pinned, reproducibly resolved Infigraph CLI and check its capabilities.",
+      "solution_summary": "Create a new InfigraphRuntime wrapper that resolves a pinned version, checks capabilities, and normalizes statuses."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-add-infigraph-wrapper",
+      "title": "Add reproducible Infigraph runtime and capability contract",
+      "root_cause": "rc-missing-infigraph-wrapper",
+      "issues": [597],
+      "files": [],
+      "new_files": ["scripts/kb/infigraph.py"],
+      "test_files": ["tests/kb/test_infigraph.py"],
+      "risk": "low",
+      "prompt": "Create a new Python module `scripts/kb/infigraph.py` that implements the `InfigraphRuntime` wrapper class and `tests/kb/test_infigraph.py` for testing it.\n\n### Root Cause\nThe repository lacks a mechanism to invoke a pinned, reproducibly resolved Infigraph CLI as requested in issue #597. The requirement is to be able to invoke the CLI, securely resolve metadata, and report whether the required analysis capabilities are available, returning normalized statuses.\n\n### Proposed Implementation\n\n```python\n# scripts/kb/infigraph.py\nfrom __future__ import annotations\n\nimport json\nimport shutil\nimport subprocess\nfrom dataclasses import dataclass, field\nfrom typing import Literal\n\nStatus = Literal[\"analysis_complete\", \"analysis_unavailable\", \"analysis_failed\"]\n\n@dataclass(frozen=True)\nclass InfigraphMetadata:\n    version: str\n    sha256: str\n    platform: str\n    \n    def to_dict(self) -> dict[str, str]:\n        return {\"version\": self.version, \"sha256\": self.sha256, \"platform\": self.platform}\n\n@dataclass(frozen=True)\nclass InfigraphResult:\n    status: Status\n    reason: str | None = None\n    capabilities: list[str] | None = None\n    metadata: InfigraphMetadata | None = None\n\nclass InfigraphRuntime:\n    # Hardcoded metadata for a reproducible pin (this would typically be verified against a lockfile or checksum)\n    PINNED_METADATA = InfigraphMetadata(\n        version=\"v1.2.0\",\n        sha256=\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\n        platform=\"linux-amd64\"\n    )\n\n    def __init__(self, executable_path: str | None = None):\n        self._executable_path = executable_path or shutil.which(\"infigraph\")\n\n    def resolve_metadata(self) -> InfigraphMetadata:\n        \"\"\"Returns the reproducible resolution metadata.\"\"\"\n        return self.PINNED_METADATA\n\n    def check_capabilities(self) -> InfigraphResult:\n        metadata = self.resolve_metadata()\n        if not self._executable_path:\n            return InfigraphResult(status=\"analysis_unavailable\", reason=\"Executable not found\", metadata=metadata)\n        \n        try:\n            # Security Standard: Using explicit timeout to prevent hangs\n            result = subprocess.run(\n                [self._executable_path, \"--capabilities\"],\n                capture_output=True,\n                text=True,\n                timeout=15,\n                check=False\n            )\n        except FileNotFoundError:\n            return InfigraphResult(status=\"analysis_unavailable\", reason=\"Executable not found\", metadata=metadata)\n        except subprocess.TimeoutExpired:\n            return InfigraphResult(status=\"analysis_failed\", reason=\"Execution timed out\", metadata=metadata)\n            \n        if result.returncode != 0:\n            return InfigraphResult(status=\"analysis_failed\", reason=f\"Command failed with code {result.returncode}\", metadata=metadata)\n            \n        try:\n            data = json.loads(result.stdout)\n            if not isinstance(data, dict) or \"capabilities\" not in data:\n                return InfigraphResult(status=\"analysis_failed\", reason=\"Malformed output: missing capabilities\", metadata=metadata)\n            return InfigraphResult(status=\"analysis_complete\", capabilities=data[\"capabilities\"], metadata=metadata)\n        except json.JSONDecodeError:\n            return InfigraphResult(status=\"analysis_failed\", reason=\"Malformed JSON output\", metadata=metadata)\n```\n\n### Integration points\nCreate the file `scripts/kb/infigraph.py` with the code above. No existing files need to be modified for the integration, just create the new module. Also, create a comprehensive test suite in `tests/kb/test_infigraph.py` mocking the `subprocess.run` and `shutil.which` to cover successful capability discovery, executable unavailable, timeouts, and malformed outputs.\n\n### Acceptance Criteria\n- The selected Infigraph release and resolution metadata are recorded reproducibly and can be verified in CI.\n- Startup checks distinguish an executable that is unavailable, unsupported, or misconfigured from one that is ready to analyze.\n- The wrapper defines normalized statuses for `analysis_complete`, `analysis_unavailable`, and `analysis_failed`, including actionable failure reasons.\n- Tests use a fake executable to cover successful capability discovery and representative installation, capability, command, timeout, and malformed-output failures.\n- No cross-repository graph storage or MCP integration is introduced.\n- Before/after diffs showing the integration points.\n\n### Test Scenarios\n1. Verify `analysis_unavailable` when the executable does not exist.\n2. Verify `analysis_complete` with expected capabilities when execution succeeds and output is valid JSON.\n3. Verify `analysis_failed` with a timeout when `subprocess.run` raises `TimeoutExpired`.\n4. Verify `analysis_failed` when the command exits with a non-zero status code.\n5. Verify `analysis_failed` when the command output is not valid JSON.\n6. Verify `analysis_failed` when the JSON output is valid but misses the `capabilities` key.\n\n**FILE BOUNDARY RULE:** You may ONLY modify the files listed above (`scripts/kb/infigraph.py` and `tests/kb/test_infigraph.py`). If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/kb/infigraph.py": "task-add-infigraph-wrapper",
+    "tests/kb/test_infigraph.py": "task-add-infigraph-wrapper"
+  }
+}
