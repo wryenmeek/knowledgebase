@@ -387,7 +387,8 @@ def _resolve_source_inputs(args: argparse.Namespace, repo_root: Path) -> list[st
         # OPTIMIZATION: Use lazy file reading instead of read_text().splitlines()
         # to avoid loading/allocating the entire manifest file into memory.
         with manifest_path.open(encoding="utf-8") as f:
-            entries = [line.strip() for line in f if line.strip()]
+            # ⚡ Bolt: Eliminate redundant string allocations by reusing line.strip() via the walrus operator.
+            entries = [stripped for line in f if (stripped := line.strip())]
     except OSError as exc:
         raise IngestError(
             contracts.ReasonCode.INVALID_INPUT.value,
