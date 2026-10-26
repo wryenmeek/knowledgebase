@@ -1,0 +1,34 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-10-26T12:16:57.954Z",
+  "root_causes": [
+    {
+      "id": "rc-missing-infigraph-wrapper",
+      "title": "Missing Infigraph Runtime Wrapper",
+      "severity": "medium",
+      "issues": [597],
+      "files": [],
+      "description": "The knowledgebase lacks a reproducible and verifiable integration with the Infigraph CLI. There is no code path or wrapper that can resolve the pinned CLI, verify its execution, and define standard capability/status contracts.",
+      "solution_summary": "Implement a new `infigraph_runtime.py` wrapper that performs reproducible execution using pinned metadata, and handles capability discovery, exposing normalized statuses."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-add-infigraph-runtime",
+      "title": "Add reproducible Infigraph runtime and capability contract",
+      "root_cause": "rc-missing-infigraph-wrapper",
+      "issues": [597],
+      "files": [],
+      "new_files": ["scripts/kb/infigraph_runtime.py", "scripts/kb/infigraph_metadata.json"],
+      "test_files": ["tests/kb/test_infigraph_runtime.py"],
+      "risk": "low",
+      "prompt": "You need to implement a reproducible Infigraph CLI runtime wrapper to fulfill issue #597.\n\n### Requirements & Acceptance Criteria\n- The selected Infigraph release and resolution metadata are recorded reproducibly and can be verified in CI.\n- Startup checks distinguish an executable that is unavailable, unsupported, or misconfigured from one that is ready to analyze.\n- The wrapper defines normalized statuses for `analysis_complete`, `analysis_unavailable`, and `analysis_failed`, including actionable failure reasons.\n- Tests use a fake executable to cover successful capability discovery and representative installation, capability, command, timeout, and malformed-output failures.\n- No cross-repository graph storage or MCP integration is introduced.\n- Before/after diffs showing the integration points for any existing files you modify (though here you are mostly creating new files, explicitly document how this fits in).\n\n### Proposed Implementation\nCreate `scripts/kb/infigraph_metadata.json` to pin the release:\n```json\n{\n  \"version\": \"1.0.0\",\n  \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n}\n```\n\nCreate `scripts/kb/infigraph_runtime.py` with the following implementation (or similar):\n\n```python\nimport subprocess\nimport shutil\nimport json\nfrom pathlib import Path\nfrom enum import Enum\nfrom dataclasses import dataclass\nfrom typing import Optional, Dict, Any\n\nclass InfigraphStatus(Enum):\n    ANALYSIS_COMPLETE = \"analysis_complete\"\n    ANALYSIS_UNAVAILABLE = \"analysis_unavailable\"\n    ANALYSIS_FAILED = \"analysis_failed\"\n\n@dataclass\nclass InfigraphResult:\n    status: InfigraphStatus\n    reason: Optional[str] = None\n    output: Optional[str] = None\n\nclass InfigraphRuntime:\n    def __init__(self, executable_path: str = \"infigraph\", metadata_path: str = \"scripts/kb/infigraph_metadata.json\"):\n        self.executable_path = executable_path\n        self.metadata_path = Path(metadata_path)\n        \n    def load_metadata(self) -> Dict[str, Any]:\n        if not self.metadata_path.exists():\n            return {}\n        try:\n            with open(self.metadata_path, 'r') as f:\n                return json.load(f)\n        except Exception:\n            return {}\n\n    def check_availability(self) -> InfigraphResult:\n        metadata = self.load_metadata()\n        if not metadata.get(\"version\") or not metadata.get(\"sha256\"):\n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_UNAVAILABLE,\n                reason=\"Resolution metadata is missing or invalid. Infigraph release must be pinned.\"\n            )\n            \n        if not shutil.which(self.executable_path):\n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_UNAVAILABLE,\n                reason=\"Executable not found in PATH\"\n            )\n            \n        try:\n            # Capability discovery contract check\n            result = subprocess.run(\n                [self.executable_path, \"--capabilities\"],\n                capture_output=True,\n                text=True,\n                timeout=5\n            )\n            if result.returncode != 0:\n                return InfigraphResult(\n                    status=InfigraphStatus.ANALYSIS_UNAVAILABLE,\n                    reason=f\"Capability check failed: {result.stderr.strip() or 'Unknown error'}\"\n                )\n            \n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_COMPLETE,\n                output=result.stdout.strip()\n            )\n        except subprocess.TimeoutExpired:\n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_FAILED,\n                reason=\"Capability check timed out\"\n            )\n        except Exception as e:\n            return InfigraphResult(\n                status=InfigraphStatus.ANALYSIS_FAILED,\n                reason=f\"Execution error: {str(e)}\"\n            )\n```\n\n### Test Requirements\nCreate `tests/kb/test_infigraph_runtime.py` using `unittest.mock.patch` to cover:\n1. Metadata missing or malformed (returns ANALYSIS_UNAVAILABLE)\n2. Executable not found (returns ANALYSIS_UNAVAILABLE)\n3. Successful capability discovery (returns ANALYSIS_COMPLETE)\n4. Capability check timeout (returns ANALYSIS_FAILED)\n5. Capability check non-zero return code (returns ANALYSIS_UNAVAILABLE)\n6. Malformed CLI output during capability check (returns ANALYSIS_FAILED)\n7. Representative installation or command failures handled gracefully.\n\n**FILE BOUNDARY RULE:** You may ONLY modify the files listed above (`scripts/kb/infigraph_runtime.py`, `scripts/kb/infigraph_metadata.json`, and `tests/kb/test_infigraph_runtime.py`). If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/kb/infigraph_runtime.py": "task-add-infigraph-runtime",
+    "scripts/kb/infigraph_metadata.json": "task-add-infigraph-runtime",
+    "tests/kb/test_infigraph_runtime.py": "task-add-infigraph-runtime"
+  }
+}
