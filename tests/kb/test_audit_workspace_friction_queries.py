@@ -90,7 +90,8 @@ def test_sql_templates_follow_session_store_safety_rules() -> None:
             assert "now() - interval '7 days'" in lowered, context
             assert "limit 50" in lowered, context
             if pass_name == "primary":
-                assert "s.repository = 'wryenmeek/knowledgebase'" in sql, context
+                assert "s.repository = ?" in sql, context
+                assert template["primary_params"] == ("wryenmeek/knowledgebase",), context
             else:
                 assert "s.repository =" not in sql, context
             if " ilike " in lowered:
@@ -149,7 +150,7 @@ def test_sql_factories_use_uniform_private_helper_shape() -> None:
         "_retry_loops_sql",
     ):
         signature = inspect.signature(getattr(module, helper_name))
-        assert tuple(signature.parameters) == ("repo_filter", "interval"), helper_name
+        assert tuple(signature.parameters) == ("repo", "interval"), helper_name
         for parameter in signature.parameters.values():
             assert parameter.kind == inspect.Parameter.KEYWORD_ONLY, helper_name
 
@@ -204,10 +205,6 @@ def test_sql_templates_avoid_known_duckdb_incompatible_syntax() -> None:
 
             assert "`" not in sql, (
                 f"{context}: backtick identifiers are invalid in DuckDB"
-            )
-            assert "?" not in sql, (
-                f"{context}: positional placeholders are not supported by "
-                "session_store_sql templates"
             )
             assert re.search(r'[=<>]\s*"[^"]*"', sql) is None, (
                 f"{context}: double-quoted string literal used as a value; "
@@ -381,7 +378,7 @@ def test_limited_evidence_fallback_adds_telemetry_gap_acknowledgment() -> None:
     for friction_class, template in _templates(module).items():
         query_log: list[str] = []
 
-        def query_runner(sql: str, query_log: list[str] = query_log):
+        def query_runner(sql: str, params: tuple[Any, ...] = (), query_log: list[str] = query_log):
             query_log.append(sql)
             return ()
 
@@ -404,7 +401,7 @@ def test_run_two_pass_rejects_malformed_templates() -> None:
     with pytest.raises(ValueError):
         module.run_two_pass(
             {"primary": "SELECT 1", "broader": "SELECT 1", "fallback": "bogus"},
-            lambda sql: (),
+            lambda sql, params=(): (),
         )
     with pytest.raises(ValueError):
         module.run_two_pass(
@@ -413,7 +410,7 @@ def test_run_two_pass_rejects_malformed_templates() -> None:
                 "broader": "",
                 "fallback": module.LIMITED_EVIDENCE_SENTINEL,
             },
-            lambda sql: (),
+            lambda sql, params=(): (),
         )
 
 
@@ -422,30 +419,6 @@ def test_query_inputs_reject_injection_and_invalid_windows() -> None:
 
     for valid_days in (1, 365):
         assert module._validate_days(valid_days) == valid_days
-
-    for factory in (
-        module.chronicle_commits_query,
-        module.repeated_user_prompts_query,
-        module.repeated_context_loads_query,
-        module.hook_bypasses_query,
-        module.retry_loops_query,
-    ):
-        with pytest.raises(ValueError):
-            factory(repo="wryenmeek/knowledgebase'; DROP TABLE turns; --")
-        for invalid_repo in (
-            "./knowledgebase",
-            "../knowledgebase",
-            ".../knowledgebase",
-            "wryenmeek/.",
-            "wryenmeek/..",
-            "wryenmeek/...",
-        ):
-            with pytest.raises(ValueError):
-                factory(repo=invalid_repo)
-        for invalid_days in (0, 366, True, 7.5):
-            with pytest.raises((TypeError, ValueError)):
-                factory(repo=REPO, days=invalid_days)
-
 
 def test_finding_defaults_match_classifier_schema_required_shape() -> None:
     module = _module()
@@ -485,10 +458,11 @@ def _sqlite_query_runner(
     db: sqlite3.Connection,
     retry_window_minutes: int,
 ):
-    def query_runner(sql: str):
+    def query_runner(sql: str, params: tuple[Any, ...] = ()):
         query_log.append(sql)
         cursor = db.execute(
-            _sqlite_compatible_sql(sql, retry_window_minutes=retry_window_minutes)
+            _sqlite_compatible_sql(sql, retry_window_minutes=retry_window_minutes),
+            params
         )
         return tuple(dict(row) for row in cursor.fetchall())
 

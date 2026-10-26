@@ -88,3 +88,7 @@
 **Vulnerability:** Bandit B608 flags string-based SQL query construction as a potential SQL injection vector.
 **Learning:** These are false positives because the interpolated variables are safely validated via regex (e.g., _REPO_PATTERN) and type checks.
 **Prevention:** Apply # nosec B608 to the end of the closing triple quotes of the multiline f-string to suppress the warning.
+## 2026-10-25 - [Fix String-based SQL Injection Vulnerability]
+**Vulnerability:** String-interpolated SQL queries in `.github/skills/audit-knowledgebase-workspace/logic/friction_queries.py` were suppressed using `# nosec B608`, violating security coding standards.
+**Learning:** Suppressing Bandit B608 with `# nosec` is security theater. The underlying function signature for the `QueryRunner` was limited to `Callable[[str], QueryRows]`, forcing string interpolation. When fixing these issues, we must refactor the type signatures and test harnesses to accept and pass parameter tuples.
+**Prevention:** Always refactor the `QueryRunner` type signature to accept parameters (e.g., `Callable[[str, tuple[Any, ...]], QueryRows]`) and update the associated test harnesses (like `_sqlite_query_runner`) to pass these parameters to `db.execute(sql, params)` using `?` placeholders.
