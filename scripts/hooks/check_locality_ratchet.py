@@ -166,11 +166,17 @@ def _justification_trailer_value(message: str | None) -> str | None:
         return None
 
     rc, out, _ = _run_git("interpret-trailers", "--parse", input_text=message)
-    trailer_lines = out.splitlines() if rc == 0 else message.splitlines()
-    for line in trailer_lines:
-        key, separator, value = line.partition(":")
-        if separator and key.lower() == TRAILER.lower() and value.strip():
-            return value.strip()
+    target_text = out if rc == 0 else message
+
+    # ⚡ Bolt: Fast-path literal check and re.finditer avoids O(N) memory allocation from splitlines() on large commits
+    if ":" not in target_text:
+        return None
+
+    for match in re.finditer(r"^([^:]+):\s*(.+)$", target_text, re.MULTILINE):
+        if match.group(1).lower() == TRAILER.lower():
+            val = match.group(2).strip()
+            if val:
+                return val
     return None
 
 
