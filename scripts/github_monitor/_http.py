@@ -73,6 +73,8 @@ def _make_github_request(url: str, token: str) -> Any:
         },
     )
     last_exc: Exception | None = None
+    if not req.full_url.startswith(("http://", "https://")):
+        raise ValueError("Invalid URL scheme")
     for attempt in range(_MAX_RETRIES):
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310

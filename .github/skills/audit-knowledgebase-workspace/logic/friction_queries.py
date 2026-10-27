@@ -42,7 +42,7 @@ _REPO_PATTERN = re.compile(r"^(?!\.+/)(?![^/]+/\.+$)[A-Za-z0-9_.-]+/[A-Za-z0-9_.
 
 FrictionQueryTemplate = dict[str, Any]
 QueryRows = Sequence[Mapping[str, Any]]
-QueryRunner = Callable[[str, tuple[Any, ...]], QueryRows]
+QueryRunner = Callable[..., QueryRows]
 
 
 def chronicle_commits_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQueryTemplate:
@@ -50,6 +50,7 @@ def chronicle_commits_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQ
 
     _repo_literal(repo)
     interval = _interval(days)
+    _repo_literal(repo)
     primary, primary_params = _chronicle_commits_sql(repo=repo, interval=interval)
     broader, broader_params = _chronicle_commits_sql(repo=None, interval=interval)
     return _template(
@@ -76,6 +77,7 @@ def repeated_user_prompts_query(*, repo: str, days: int = DEFAULT_DAYS) -> Frict
 
     _repo_literal(repo)
     interval = _interval(days)
+    _repo_literal(repo)
     primary, primary_params = _repeated_user_prompts_sql(repo=repo, interval=interval)
     broader, broader_params = _repeated_user_prompts_sql(repo=None, interval=interval)
     return _template(
@@ -101,6 +103,7 @@ def repeated_context_loads_query(*, repo: str, days: int = DEFAULT_DAYS) -> Fric
 
     _repo_literal(repo)
     interval = _interval(days)
+    _repo_literal(repo)
     primary, primary_params = _repeated_context_loads_sql(repo=repo, interval=interval)
     broader, broader_params = _repeated_context_loads_sql(repo=None, interval=interval)
     return _template(
@@ -127,6 +130,7 @@ def hook_bypasses_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQuery
 
     _repo_literal(repo)
     interval = _interval(days)
+    _repo_literal(repo)
     primary, primary_params = _hook_bypasses_sql(repo=repo, interval=interval)
     broader, broader_params = _hook_bypasses_sql(repo=None, interval=interval)
     return _template(
@@ -152,6 +156,7 @@ def retry_loops_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQueryTe
 
     _repo_literal(repo)
     interval = _interval(days)
+    _repo_literal(repo)
     primary, primary_params = _retry_loops_sql(repo=repo, interval=interval)
     broader, broader_params = _retry_loops_sql(repo=None, interval=interval)
     return _template(
@@ -190,18 +195,36 @@ def run_two_pass(template: Mapping[str, Any], query_runner: QueryRunner) -> dict
     """Execute primary then broader SQL, falling back to limited-evidence mode."""
 
     primary_sql = _required_sql(template, "primary")
-    primary_params = template["primary_params"]
+    primary_params = template.get("primary_params", ())
     broader_sql = _required_sql(template, "broader")
-    broader_params = template["broader_params"]
+    broader_params = template.get("broader_params", ())
     fallback = template.get("fallback")
     if fallback != LIMITED_EVIDENCE_SENTINEL:
         raise ValueError("template fallback must be LIMITED_EVIDENCE")
 
-    primary_rows = tuple(query_runner(primary_sql, primary_params))
+    import inspect
+    sig = inspect.signature(query_runner)
+    wants_params = len(sig.parameters) >= 2 or any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in sig.parameters.values())
+
+    if not wants_params:
+        interpolated_primary = primary_sql
+        for p in primary_params:
+            interpolated_primary = interpolated_primary.replace("?", f"'{p}'", 1)
+        primary_rows = tuple(query_runner(interpolated_primary))
+    else:
+        primary_rows = tuple(query_runner(primary_sql, primary_params))
+
     if primary_rows:
         return _query_result("primary", primary_sql, primary_rows)
 
-    broader_rows = tuple(query_runner(broader_sql, broader_params))
+    if not wants_params:
+        interpolated_broader = broader_sql
+        for p in broader_params:
+            interpolated_broader = interpolated_broader.replace("?", f"'{p}'", 1)
+        broader_rows = tuple(query_runner(interpolated_broader))
+    else:
+        broader_rows = tuple(query_runner(broader_sql, broader_params))
+
     if broader_rows:
         return _query_result("broader", broader_sql, broader_rows)
 
@@ -270,31 +293,26 @@ def _chronicle_commits_sql(*, repo: str | None, interval: str) -> tuple[str, tup
         params.append(repo)
     # Loose temporal coupling: any matching /chronicle improve prompt within the
     # time window before the commit counts; not a tight cause-effect link.
-    sql = (
-        "\n"
-        "SELECT\n"
-        "  sr.session_id,\n"
-        "  COALESCE(s.repository, '') AS repository,\n"
-        "  sr.ref_value AS commit_sha,\n"
-        "  sr.created_at AS commit_recorded_at,\n"
-        "  MAX(t.timestamp) AS chronicle_prompt_at,\n"
-        "  'chronicle_commits' AS friction_class\n"
-        "FROM session_refs sr\n"
-        "JOIN turns t ON t.session_id = sr.session_id\n"
-        "JOIN sessions s ON s.id = sr.session_id\n"
-        "WHERE sr.ref_type = 'commit'\n"
-        "  AND sr.created_at > __INTERVAL__\n"
-        "  AND t.timestamp > __INTERVAL__\n"
-        "  AND t.timestamp <= sr.created_at\n"
-        "  AND COALESCE(t.user_message, '') ILIKE '%/chronicle improve%'\n"
-        "__REPO_CLAUSE__"
-        "GROUP BY sr.session_id, COALESCE(s.repository, ''), sr.ref_value, sr.created_at\n"
-        "ORDER BY sr.created_at DESC\n"
-        "LIMIT __DEFAULT_LIMIT__\n"
-    )
-    sql = sql.replace("__INTERVAL__", interval)
-    sql = sql.replace("__REPO_CLAUSE__", repo_clause)
-    sql = sql.replace("__DEFAULT_LIMIT__", str(DEFAULT_LIMIT))
+    sql = f"""
+SELECT
+  sr.session_id,
+  COALESCE(s.repository, '') AS repository,
+  sr.ref_value AS commit_sha,
+  sr.created_at AS commit_recorded_at,
+  MAX(t.timestamp) AS chronicle_prompt_at,
+  'chronicle_commits' AS friction_class
+FROM session_refs sr
+JOIN turns t ON t.session_id = sr.session_id
+JOIN sessions s ON s.id = sr.session_id
+WHERE sr.ref_type = 'commit'
+  AND sr.created_at > {interval}
+  AND t.timestamp > {interval}
+  AND t.timestamp <= sr.created_at
+  AND COALESCE(t.user_message, '') ILIKE '%/chronicle improve%'
+{repo_clause}GROUP BY sr.session_id, COALESCE(s.repository, ''), sr.ref_value, sr.created_at
+ORDER BY sr.created_at DESC
+LIMIT {DEFAULT_LIMIT}
+"""
     return sql, tuple(params)
 
 
@@ -304,30 +322,25 @@ def _repeated_user_prompts_sql(*, repo: str | None, interval: str) -> tuple[str,
     if repo is not None:
         repo_clause = "  AND s.repository = ?\n"
         params.append(repo)
-    sql = (
-        "\n"
-        "SELECT\n"
-        "  t.session_id,\n"
-        "  COALESCE(s.repository, '') AS repository,\n"
-        "  md5(COALESCE(t.user_message, '')) AS prompt_fingerprint,\n"
-        "  length(COALESCE(t.user_message, '')) AS prompt_length,\n"
-        "  COUNT(*) AS repeat_count,\n"
-        "  MIN(t.timestamp) AS first_prompt_at,\n"
-        "  MAX(t.timestamp) AS last_prompt_at,\n"
-        "  'repeated_user_prompts' AS friction_class\n"
-        "FROM turns t\n"
-        "JOIN sessions s ON s.id = t.session_id\n"
-        "WHERE t.timestamp > __INTERVAL__\n"
-        "  AND COALESCE(t.user_message, '') <> ''\n"
-        "__REPO_CLAUSE__"
-        "GROUP BY t.session_id, COALESCE(s.repository, ''), COALESCE(t.user_message, '')\n"
-        "HAVING COUNT(*) > 1\n"
-        "ORDER BY repeat_count DESC, last_prompt_at DESC\n"
-        "LIMIT __DEFAULT_LIMIT__\n"
-    )
-    sql = sql.replace("__INTERVAL__", interval)
-    sql = sql.replace("__REPO_CLAUSE__", repo_clause)
-    sql = sql.replace("__DEFAULT_LIMIT__", str(DEFAULT_LIMIT))
+    sql = f"""
+SELECT
+  t.session_id,
+  COALESCE(s.repository, '') AS repository,
+  md5(COALESCE(t.user_message, '')) AS prompt_fingerprint,
+  length(COALESCE(t.user_message, '')) AS prompt_length,
+  COUNT(*) AS repeat_count,
+  MIN(t.timestamp) AS first_prompt_at,
+  MAX(t.timestamp) AS last_prompt_at,
+  'repeated_user_prompts' AS friction_class
+FROM turns t
+JOIN sessions s ON s.id = t.session_id
+WHERE t.timestamp > {interval}
+  AND COALESCE(t.user_message, '') <> ''
+{repo_clause}GROUP BY t.session_id, COALESCE(s.repository, ''), COALESCE(t.user_message, '')
+HAVING COUNT(*) > 1
+ORDER BY repeat_count DESC, last_prompt_at DESC
+LIMIT {DEFAULT_LIMIT}
+"""
     return sql, tuple(params)
 
 
@@ -338,34 +351,28 @@ def _repeated_context_loads_sql(*, repo: str | None, interval: str) -> tuple[str
         repo_clause = "  AND s.repository = ?\n"
         params.append(repo)
     skill_expr = _skill_name_expression()
-    sql = (
-        "\n"
-        "SELECT\n"
-        "  e.session_id,\n"
-        "  COALESCE(s.repository, '') AS repository,\n"
-        "  __SKILL_EXPR__ AS skill_name,\n"
-        "  COUNT(*) AS invocation_count,\n"
-        "  MIN(e.timestamp) AS first_invoked_at,\n"
-        "  MAX(e.timestamp) AS last_invoked_at,\n"
-        "  'repeated_context_loads' AS friction_class\n"
-        "FROM events e\n"
-        "JOIN sessions s ON s.id = e.session_id\n"
-        "JOIN tool_requests tr\n"
-        "  ON tr.session_id = e.session_id\n"
-        " AND tr.tool_call_id = e.tool_complete_call_id\n"
-        "WHERE e.type = 'tool.execution_complete'\n"
-        "  AND e.tool_start_name = 'skill'\n"
-        "  AND e.timestamp > __INTERVAL__\n"
-        "__REPO_CLAUSE__"
-        "GROUP BY e.session_id, COALESCE(s.repository, ''), __SKILL_EXPR__\n"
-        "HAVING COUNT(*) > 1\n"
-        "ORDER BY invocation_count DESC, last_invoked_at DESC\n"
-        "LIMIT __DEFAULT_LIMIT__\n"
-    )
-    sql = sql.replace("__INTERVAL__", interval)
-    sql = sql.replace("__REPO_CLAUSE__", repo_clause)
-    sql = sql.replace("__SKILL_EXPR__", skill_expr)
-    sql = sql.replace("__DEFAULT_LIMIT__", str(DEFAULT_LIMIT))
+    sql = f"""
+SELECT
+  e.session_id,
+  COALESCE(s.repository, '') AS repository,
+  {skill_expr} AS skill_name,
+  COUNT(*) AS invocation_count,
+  MIN(e.timestamp) AS first_invoked_at,
+  MAX(e.timestamp) AS last_invoked_at,
+  'repeated_context_loads' AS friction_class
+FROM events e
+JOIN sessions s ON s.id = e.session_id
+JOIN tool_requests tr
+  ON tr.session_id = e.session_id
+ AND tr.tool_call_id = e.tool_complete_call_id
+WHERE e.type = 'tool.execution_complete'
+  AND e.tool_start_name = 'skill'
+  AND e.timestamp > {interval}
+{repo_clause}GROUP BY e.session_id, COALESCE(s.repository, ''), {skill_expr}
+HAVING COUNT(*) > 1
+ORDER BY invocation_count DESC, last_invoked_at DESC
+LIMIT {DEFAULT_LIMIT}
+"""
     return sql, tuple(params)
 
 
@@ -377,67 +384,60 @@ def _hook_bypasses_sql(*, repo: str | None, interval: str) -> tuple[str, tuple[A
         params.append(repo)
     turn_predicate = _hook_bypass_predicate("COALESCE(t.user_message, '')")
     tool_predicate = _hook_bypass_predicate("COALESCE(tr.arguments_json, '')")
-    sql = (
-        "\n"
-        "WITH candidate_commits AS (\n"
-        "  SELECT\n"
-        "    sr.session_id,\n"
-        "    COALESCE(s.repository, '') AS repository,\n"
-        "    sr.ref_value AS commit_sha,\n"
-        "    sr.created_at AS commit_recorded_at\n"
-        "  FROM session_refs sr\n"
-        "  JOIN sessions s ON s.id = sr.session_id\n"
-        "  WHERE sr.ref_type = 'commit'\n"
-        "    AND sr.created_at > __INTERVAL__\n"
-        "__REPO_CLAUSE__"
-        "),\n"
-        "bypass_mentions AS (\n"
-        "  SELECT\n"
-        "    c.session_id,\n"
-        "    c.repository,\n"
-        "    c.commit_sha,\n"
-        "    c.commit_recorded_at,\n"
-        "    t.timestamp AS bypass_mentioned_at\n"
-        "  FROM candidate_commits c\n"
-        "  JOIN turns t ON t.session_id = c.session_id\n"
-        "  WHERE t.timestamp > __INTERVAL__\n"
-        "    AND t.timestamp <= c.commit_recorded_at\n"
-        "    AND (__TURN_PREDICATE__)\n"
-        "  UNION ALL\n"
-        "  SELECT\n"
-        "    c.session_id,\n"
-        "    c.repository,\n"
-        "    c.commit_sha,\n"
-        "    c.commit_recorded_at,\n"
-        "    e.timestamp AS bypass_mentioned_at\n"
-        "  FROM candidate_commits c\n"
-        "  JOIN events e ON e.session_id = c.session_id\n"
-        "  JOIN tool_requests tr\n"
-        "    ON tr.session_id = e.session_id\n"
-        "   AND tr.tool_call_id = e.tool_complete_call_id\n"
-        "  WHERE e.type = 'tool.execution_complete'\n"
-        "    AND e.tool_start_name = 'bash'\n"
-        "    AND e.timestamp > __INTERVAL__\n"
-        "    AND e.timestamp <= c.commit_recorded_at\n"
-        "    AND (__TOOL_PREDICATE__)\n"
-        ")\n"
-        "SELECT\n"
-        "  session_id,\n"
-        "  repository,\n"
-        "  commit_sha,\n"
-        "  commit_recorded_at,\n"
-        "  MAX(b.bypass_mentioned_at) AS bypass_mentioned_at,\n"
-        "  'hook_bypasses' AS friction_class\n"
-        "FROM bypass_mentions b\n"
-        "GROUP BY session_id, repository, commit_sha, commit_recorded_at\n"
-        "ORDER BY commit_recorded_at DESC\n"
-        "LIMIT __DEFAULT_LIMIT__\n"
-    )
-    sql = sql.replace("__INTERVAL__", interval)
-    sql = sql.replace("__REPO_CLAUSE__", repo_clause)
-    sql = sql.replace("__TURN_PREDICATE__", turn_predicate)
-    sql = sql.replace("__TOOL_PREDICATE__", tool_predicate)
-    sql = sql.replace("__DEFAULT_LIMIT__", str(DEFAULT_LIMIT))
+    sql = f"""
+WITH candidate_commits AS (
+  SELECT
+    sr.session_id,
+    COALESCE(s.repository, '') AS repository,
+    sr.ref_value AS commit_sha,
+    sr.created_at AS commit_recorded_at
+  FROM session_refs sr
+  JOIN sessions s ON s.id = sr.session_id
+  WHERE sr.ref_type = 'commit'
+    AND sr.created_at > {interval}
+{repo_clause}),
+bypass_mentions AS (
+  SELECT
+    c.session_id,
+    c.repository,
+    c.commit_sha,
+    c.commit_recorded_at,
+    t.timestamp AS bypass_mentioned_at
+  FROM candidate_commits c
+  JOIN turns t ON t.session_id = c.session_id
+  WHERE t.timestamp > {interval}
+    AND t.timestamp <= c.commit_recorded_at
+    AND ({turn_predicate})
+  UNION ALL
+  SELECT
+    c.session_id,
+    c.repository,
+    c.commit_sha,
+    c.commit_recorded_at,
+    e.timestamp AS bypass_mentioned_at
+  FROM candidate_commits c
+  JOIN events e ON e.session_id = c.session_id
+  JOIN tool_requests tr
+    ON tr.session_id = e.session_id
+   AND tr.tool_call_id = e.tool_complete_call_id
+  WHERE e.type = 'tool.execution_complete'
+    AND e.tool_start_name = 'bash'
+    AND e.timestamp > {interval}
+    AND e.timestamp <= c.commit_recorded_at
+    AND ({tool_predicate})
+)
+SELECT
+  session_id,
+  repository,
+  commit_sha,
+  commit_recorded_at,
+  MAX(b.bypass_mentioned_at) AS bypass_mentioned_at,
+  'hook_bypasses' AS friction_class
+FROM bypass_mentions b
+GROUP BY session_id, repository, commit_sha, commit_recorded_at
+ORDER BY commit_recorded_at DESC
+LIMIT {DEFAULT_LIMIT}
+"""
     return sql, tuple(params)
 
 
@@ -447,68 +447,62 @@ def _retry_loops_sql(*, repo: str | None, interval: str) -> tuple[str, tuple[Any
     if repo is not None:
         repo_clause = "  AND s.repository = ?\n"
         params.append(repo)
-    sql = (
-        "\n"
-        "WITH failed_tools AS (\n"
-        "  SELECT\n"
-        "    e.session_id,\n"
-        "    COALESCE(s.repository, '') AS repository,\n"
-        "    e.tool_start_name AS tool_name,\n"
-        "    e.timestamp AS failed_at,\n"
-        "    COALESCE(tr.arguments_json, '') AS arguments_json\n"
-        "  FROM events e\n"
-        "  JOIN sessions s ON s.id = e.session_id\n"
-        "  JOIN tool_requests tr\n"
-        "    ON tr.session_id = e.session_id\n"
-        "   AND tr.tool_call_id = e.tool_complete_call_id\n"
-        "  WHERE e.type = 'tool.execution_complete'\n"
-        "    AND e.tool_complete_success = false\n"
-        "    AND e.tool_start_name IS NOT NULL\n"
-        "    AND e.timestamp > __INTERVAL__\n"
-        "__REPO_CLAUSE__"
-        "),\n"
-        "retry_matches AS (\n"
-        "  SELECT\n"
-        "    f.session_id,\n"
-        "    f.repository,\n"
-        "    f.tool_name,\n"
-        "    f.failed_at,\n"
-        "    md5(f.arguments_json) AS request_fingerprint,\n"
-        "    length(f.arguments_json) AS request_length,\n"
-        "    MIN(r.timestamp) AS retried_at,\n"
-        "    COUNT(*) AS retry_count\n"
-        "  FROM failed_tools f\n"
-        "  JOIN events r\n"
-        "    ON r.session_id = f.session_id\n"
-        "   AND r.type = 'tool.execution_complete'\n"
-        "   AND r.tool_start_name = f.tool_name\n"
-        "   AND r.timestamp > f.failed_at\n"
-        "   AND r.timestamp <= f.failed_at + INTERVAL '__RETRY_WINDOW_MINUTES__ minutes'\n"
-        "   AND r.timestamp > __INTERVAL__\n"
-        "  JOIN tool_requests rr\n"
-        "    ON rr.session_id = r.session_id\n"
-        "   AND rr.tool_call_id = r.tool_complete_call_id\n"
-        "   AND COALESCE(rr.arguments_json, '') = f.arguments_json\n"
-        "  GROUP BY f.session_id, f.repository, f.tool_name, f.failed_at, f.arguments_json\n"
-        ")\n"
-        "SELECT\n"
-        "  session_id,\n"
-        "  repository,\n"
-        "  tool_name,\n"
-        "  failed_at,\n"
-        "  request_fingerprint,\n"
-        "  request_length,\n"
-        "  retried_at,\n"
-        "  retry_count,\n"
-        "  'retry_loops' AS friction_class\n"
-        "FROM retry_matches\n"
-        "ORDER BY retry_count DESC, retried_at DESC\n"
-        "LIMIT __DEFAULT_LIMIT__\n"
-    )
-    sql = sql.replace("__INTERVAL__", interval)
-    sql = sql.replace("__REPO_CLAUSE__", repo_clause)
-    sql = sql.replace("__RETRY_WINDOW_MINUTES__", str(RETRY_WINDOW_MINUTES))
-    sql = sql.replace("__DEFAULT_LIMIT__", str(DEFAULT_LIMIT))
+    sql = f"""
+WITH failed_tools AS (
+  SELECT
+    e.session_id,
+    COALESCE(s.repository, '') AS repository,
+    e.tool_start_name AS tool_name,
+    e.timestamp AS failed_at,
+    COALESCE(tr.arguments_json, '') AS arguments_json
+  FROM events e
+  JOIN sessions s ON s.id = e.session_id
+  JOIN tool_requests tr
+    ON tr.session_id = e.session_id
+   AND tr.tool_call_id = e.tool_complete_call_id
+  WHERE e.type = 'tool.execution_complete'
+    AND e.tool_complete_success = false
+    AND e.tool_start_name IS NOT NULL
+    AND e.timestamp > {interval}
+{repo_clause}),
+retry_matches AS (
+  SELECT
+    f.session_id,
+    f.repository,
+    f.tool_name,
+    f.failed_at,
+    md5(f.arguments_json) AS request_fingerprint,
+    length(f.arguments_json) AS request_length,
+    MIN(r.timestamp) AS retried_at,
+    COUNT(*) AS retry_count
+  FROM failed_tools f
+  JOIN events r
+    ON r.session_id = f.session_id
+   AND r.type = 'tool.execution_complete'
+   AND r.tool_start_name = f.tool_name
+   AND r.timestamp > f.failed_at
+   AND r.timestamp <= f.failed_at + INTERVAL '{RETRY_WINDOW_MINUTES} minutes'
+   AND r.timestamp > {interval}
+  JOIN tool_requests rr
+    ON rr.session_id = r.session_id
+   AND rr.tool_call_id = r.tool_complete_call_id
+   AND COALESCE(rr.arguments_json, '') = f.arguments_json
+  GROUP BY f.session_id, f.repository, f.tool_name, f.failed_at, f.arguments_json
+)
+SELECT
+  session_id,
+  repository,
+  tool_name,
+  failed_at,
+  request_fingerprint,
+  request_length,
+  retried_at,
+  retry_count,
+  'retry_loops' AS friction_class
+FROM retry_matches
+ORDER BY retry_count DESC, retried_at DESC
+LIMIT {DEFAULT_LIMIT}
+"""
     return sql, tuple(params)
 
 
@@ -585,6 +579,11 @@ __all__ = [
     "retry_loops_query",
     "run_two_pass",
 ]
+
+def _repo_literal(repo: str) -> str:
+    if not _REPO_PATTERN.fullmatch(repo):
+        raise ValueError("repo must be in owner/name form")
+    return f"'{repo}'"
 
 def _repo_literal(repo: str) -> str:
     if not _REPO_PATTERN.fullmatch(repo):

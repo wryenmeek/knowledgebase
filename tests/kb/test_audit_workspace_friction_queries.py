@@ -205,7 +205,7 @@ def test_sql_templates_avoid_known_duckdb_incompatible_syntax() -> None:
             assert "`" not in sql, (
                 f"{context}: backtick identifiers are invalid in DuckDB"
             )
-            # Positional parameters (?) are now used for proper parameter binding.
+            # Removed positional placeholder check as they are now strictly required by security standards
             assert re.search(r'[=<>]\s*"[^"]*"', sql) is None, (
                 f"{context}: double-quoted string literal used as a value; "
                 "DuckDB treats double quotes as identifiers, not string literals"

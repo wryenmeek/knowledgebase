@@ -75,6 +75,8 @@ class GitHubApiDispatchClient:
                 "User-Agent": "knowledgebase-webhook-relay/1",
             },
         )
+        if not request.full_url.startswith(("http://", "https://")):
+            raise ValueError("Invalid URL scheme")
         try:
             with urllib.request.urlopen(  # nosec B310
                 request, timeout=self._timeout_seconds
