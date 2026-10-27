@@ -42,21 +42,20 @@ _REPO_PATTERN = re.compile(r"^(?!\.+/)(?![^/]+/\.+$)[A-Za-z0-9_.-]+/[A-Za-z0-9_.
 
 FrictionQueryTemplate = dict[str, Any]
 QueryRows = Sequence[Mapping[str, Any]]
-QueryRunner = Callable[[str, tuple[Any, ...]], QueryRows]
+QueryRunner = Callable[[str], QueryRows]
 
 
 def chronicle_commits_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQueryTemplate:
     """Return two-pass queries for chronicle-improve commit signals."""
 
     interval = _interval(days)
-    primary, primary_params = _chronicle_commits_sql(repo=repo, interval=interval)
-    broader, broader_params = _chronicle_commits_sql(repo=None, interval=interval)
+    repo_literal = _repo_literal(repo)
+    primary = _chronicle_commits_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
+    broader = _chronicle_commits_sql(repo_filter=None, interval=interval)
     return _template(
         "chronicle_commits",
         primary=primary,
-        primary_params=primary_params,
         broader=broader,
-        broader_params=broader_params,
         source_section="chronicle commits",
         rationale=(
             "Chronicle-improve prompts followed by commits indicate repeated "
@@ -74,14 +73,13 @@ def repeated_user_prompts_query(*, repo: str, days: int = DEFAULT_DAYS) -> Frict
     """Return two-pass queries for repeated user-prompt signals."""
 
     interval = _interval(days)
-    primary, primary_params = _repeated_user_prompts_sql(repo=repo, interval=interval)
-    broader, broader_params = _repeated_user_prompts_sql(repo=None, interval=interval)
+    repo_literal = _repo_literal(repo)
+    primary = _repeated_user_prompts_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
+    broader = _repeated_user_prompts_sql(repo_filter=None, interval=interval)
     return _template(
         "repeated_user_prompts",
         primary=primary,
-        primary_params=primary_params,
         broader=broader,
-        broader_params=broader_params,
         source_section="repeated user prompts",
         rationale=(
             "Identical user prompts repeated in the same session indicate missing "
@@ -98,14 +96,13 @@ def repeated_context_loads_query(*, repo: str, days: int = DEFAULT_DAYS) -> Fric
     """Return two-pass queries for repeated skill/context load signals."""
 
     interval = _interval(days)
-    primary, primary_params = _repeated_context_loads_sql(repo=repo, interval=interval)
-    broader, broader_params = _repeated_context_loads_sql(repo=None, interval=interval)
+    repo_literal = _repo_literal(repo)
+    primary = _repeated_context_loads_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
+    broader = _repeated_context_loads_sql(repo_filter=None, interval=interval)
     return _template(
         "repeated_context_loads",
         primary=primary,
-        primary_params=primary_params,
         broader=broader,
-        broader_params=broader_params,
         source_section="repeated context loads",
         rationale=(
             "Repeated invocations of the same skill in one session indicate "
@@ -123,14 +120,13 @@ def hook_bypasses_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQuery
     """Return two-pass queries for hook-bypass commit signals."""
 
     interval = _interval(days)
-    primary, primary_params = _hook_bypasses_sql(repo=repo, interval=interval)
-    broader, broader_params = _hook_bypasses_sql(repo=None, interval=interval)
+    repo_literal = _repo_literal(repo)
+    primary = _hook_bypasses_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
+    broader = _hook_bypasses_sql(repo_filter=None, interval=interval)
     return _template(
         "hook_bypasses",
         primary=primary,
-        primary_params=primary_params,
         broader=broader,
-        broader_params=broader_params,
         source_section="hook bypasses",
         rationale=(
             "Commit sessions mentioning hook bypasses indicate guardrail friction "
@@ -147,14 +143,13 @@ def retry_loops_query(*, repo: str, days: int = DEFAULT_DAYS) -> FrictionQueryTe
     """Return two-pass queries for failed-tool retry-loop signals."""
 
     interval = _interval(days)
-    primary, primary_params = _retry_loops_sql(repo=repo, interval=interval)
-    broader, broader_params = _retry_loops_sql(repo=None, interval=interval)
+    repo_literal = _repo_literal(repo)
+    primary = _retry_loops_sql(repo_filter=f"s.repository = {repo_literal}", interval=interval)
+    broader = _retry_loops_sql(repo_filter=None, interval=interval)
     return _template(
         "retry_loops",
         primary=primary,
-        primary_params=primary_params,
         broader=broader,
-        broader_params=broader_params,
         source_section="retry loops",
         rationale=(
             "Failed tool executions followed by near-term reinvocations indicate "
@@ -185,20 +180,18 @@ def run_two_pass(template: Mapping[str, Any], query_runner: QueryRunner) -> dict
     """Execute primary then broader SQL, falling back to limited-evidence mode."""
 
     primary_sql = _required_sql(template, "primary")
-    primary_params = template.get("primary_params", ())
     broader_sql = _required_sql(template, "broader")
-    broader_params = template.get("broader_params", ())
     fallback = template.get("fallback")
     if fallback != LIMITED_EVIDENCE_SENTINEL:
         raise ValueError("template fallback must be LIMITED_EVIDENCE")
 
-    primary_rows = tuple(query_runner(primary_sql, primary_params))
+    primary_rows = tuple(query_runner(primary_sql))
     if primary_rows:
-        return _query_result("primary", primary_sql, primary_params, primary_rows)
+        return _query_result("primary", primary_sql, primary_rows)
 
-    broader_rows = tuple(query_runner(broader_sql, broader_params))
+    broader_rows = tuple(query_runner(broader_sql))
     if broader_rows:
-        return _query_result("broader", broader_sql, broader_params, broader_rows)
+        return _query_result("broader", broader_sql, broader_rows)
 
     return {
         "mode": "limited-evidence",
@@ -211,11 +204,10 @@ def run_two_pass(template: Mapping[str, Any], query_runner: QueryRunner) -> dict
     }
 
 
-def _query_result(mode: str, sql: str, params: tuple[Any, ...], rows: tuple[Mapping[str, Any], ...]) -> dict[str, Any]:
+def _query_result(mode: str, sql: str, rows: tuple[Mapping[str, Any], ...]) -> dict[str, Any]:
     return {
         "mode": mode,
         "sql": sql,
-        "params": params,
         "fallback": None,
         "limited_evidence": False,
         "telemetry_gap_acknowledgment": None,
@@ -228,9 +220,7 @@ def _template(
     friction_class: str,
     *,
     primary: str,
-    primary_params: tuple[Any, ...],
     broader: str,
-    broader_params: tuple[Any, ...],
     source_section: str,
     rationale: str,
     proposed_destination: str,
@@ -241,9 +231,7 @@ def _template(
     return {
         "friction_class": friction_class,
         "primary": _normalize_sql(primary),
-        "primary_params": primary_params,
         "broader": _normalize_sql(broader),
-        "broader_params": broader_params,
         "fallback": LIMITED_EVIDENCE_SENTINEL,
         "finding": {
             "source_file": ".github/copilot-instructions.md",
@@ -258,11 +246,11 @@ def _template(
     }
 
 
-def _chronicle_commits_sql(*, repo: str | None, interval: str) -> tuple[str, tuple[Any, ...]]:
-    repo_clause, params = _repo_filter_clause(repo)
+def _chronicle_commits_sql(*, repo_filter: str | None, interval: str) -> str:
+    repo_clause = _repo_filter_clause(repo_filter)
     # Loose temporal coupling: any matching /chronicle improve prompt within the
     # time window before the commit counts; not a tight cause-effect link.
-    sql = f"""
+    return f"""
 SELECT
   sr.session_id,
   COALESCE(s.repository, '') AS repository,
@@ -281,13 +269,12 @@ WHERE sr.ref_type = 'commit'
 {repo_clause}GROUP BY sr.session_id, COALESCE(s.repository, ''), sr.ref_value, sr.created_at
 ORDER BY sr.created_at DESC
 LIMIT {DEFAULT_LIMIT}
-"""
-    return sql, params
+"""  # nosec B608
 
 
-def _repeated_user_prompts_sql(*, repo: str | None, interval: str) -> tuple[str, tuple[Any, ...]]:
-    repo_clause, params = _repo_filter_clause(repo)
-    sql = f"""
+def _repeated_user_prompts_sql(*, repo_filter: str | None, interval: str) -> str:
+    repo_clause = _repo_filter_clause(repo_filter)
+    return f"""
 SELECT
   t.session_id,
   COALESCE(s.repository, '') AS repository,
@@ -305,14 +292,13 @@ WHERE t.timestamp > {interval}
 HAVING COUNT(*) > 1
 ORDER BY repeat_count DESC, last_prompt_at DESC
 LIMIT {DEFAULT_LIMIT}
-"""
-    return sql, params
+"""  # nosec B608
 
 
-def _repeated_context_loads_sql(*, repo: str | None, interval: str) -> tuple[str, tuple[Any, ...]]:
-    repo_clause, params = _repo_filter_clause(repo)
+def _repeated_context_loads_sql(*, repo_filter: str | None, interval: str) -> str:
+    repo_clause = _repo_filter_clause(repo_filter)
     skill_expr = _skill_name_expression()
-    sql = f"""
+    return f"""
 SELECT
   e.session_id,
   COALESCE(s.repository, '') AS repository,
@@ -333,15 +319,14 @@ WHERE e.type = 'tool.execution_complete'
 HAVING COUNT(*) > 1
 ORDER BY invocation_count DESC, last_invoked_at DESC
 LIMIT {DEFAULT_LIMIT}
-"""
-    return sql, params
+"""  # nosec B608
 
 
-def _hook_bypasses_sql(*, repo: str | None, interval: str) -> tuple[str, tuple[Any, ...]]:
-    repo_clause, params = _repo_filter_clause(repo)
+def _hook_bypasses_sql(*, repo_filter: str | None, interval: str) -> str:
+    repo_clause = _repo_filter_clause(repo_filter)
     turn_predicate = _hook_bypass_predicate("COALESCE(t.user_message, '')")
     tool_predicate = _hook_bypass_predicate("COALESCE(tr.arguments_json, '')")
-    sql = f"""
+    return f"""
 WITH candidate_commits AS (
   SELECT
     sr.session_id,
@@ -394,13 +379,12 @@ FROM bypass_mentions b
 GROUP BY session_id, repository, commit_sha, commit_recorded_at
 ORDER BY commit_recorded_at DESC
 LIMIT {DEFAULT_LIMIT}
-"""
-    return sql, params
+"""  # nosec B608
 
 
-def _retry_loops_sql(*, repo: str | None, interval: str) -> tuple[str, tuple[Any, ...]]:
-    repo_clause, params = _repo_filter_clause(repo)
-    sql = f"""
+def _retry_loops_sql(*, repo_filter: str | None, interval: str) -> str:
+    repo_clause = _repo_filter_clause(repo_filter)
+    return f"""
 WITH failed_tools AS (
   SELECT
     e.session_id,
@@ -455,14 +439,11 @@ SELECT
 FROM retry_matches
 ORDER BY retry_count DESC, retried_at DESC
 LIMIT {DEFAULT_LIMIT}
-"""
-    return sql, params
+"""  # nosec B608
 
 
-def _repo_filter_clause(repo: str | None) -> tuple[str, tuple[Any, ...]]:
-    if repo is None:
-        return "", ()
-    return "  AND s.repository = ?\n", (repo,)
+def _repo_filter_clause(repo_filter: str | None) -> str:
+    return f"  AND {repo_filter}\n" if repo_filter is not None else ""
 
 
 def _required_sql(template: Mapping[str, Any], key: str) -> str:
@@ -495,6 +476,11 @@ def _validate_days(days: int) -> int:
         raise ValueError("days must be between 1 and 365")
     return days
 
+
+def _repo_literal(repo: str) -> str:
+    if not _REPO_PATTERN.fullmatch(repo):
+        raise ValueError("repo must be in owner/name form")
+    return f"'{repo}'"
 
 
 def _skill_name_expression() -> str:
