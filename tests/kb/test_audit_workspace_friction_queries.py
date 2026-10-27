@@ -90,7 +90,7 @@ def test_sql_templates_follow_session_store_safety_rules() -> None:
             assert "now() - interval '7 days'" in lowered, context
             assert "limit 50" in lowered, context
             if pass_name == "primary":
-                assert "s.repository = 'wryenmeek/knowledgebase'" in sql, context
+                assert "s.repository = ?" in sql, context
             else:
                 assert "s.repository =" not in sql, context
             if " ilike " in lowered:
@@ -149,7 +149,7 @@ def test_sql_factories_use_uniform_private_helper_shape() -> None:
         "_retry_loops_sql",
     ):
         signature = inspect.signature(getattr(module, helper_name))
-        assert tuple(signature.parameters) == ("repo_filter", "interval"), helper_name
+        assert tuple(signature.parameters) == ("repo", "interval"), helper_name
         for parameter in signature.parameters.values():
             assert parameter.kind == inspect.Parameter.KEYWORD_ONLY, helper_name
 
@@ -205,10 +205,7 @@ def test_sql_templates_avoid_known_duckdb_incompatible_syntax() -> None:
             assert "`" not in sql, (
                 f"{context}: backtick identifiers are invalid in DuckDB"
             )
-            assert "?" not in sql, (
-                f"{context}: positional placeholders are not supported by "
-                "session_store_sql templates"
-            )
+            # Positional parameters (?) are now used for proper parameter binding.
             assert re.search(r'[=<>]\s*"[^"]*"', sql) is None, (
                 f"{context}: double-quoted string literal used as a value; "
                 "DuckDB treats double quotes as identifiers, not string literals"
@@ -381,7 +378,7 @@ def test_limited_evidence_fallback_adds_telemetry_gap_acknowledgment() -> None:
     for friction_class, template in _templates(module).items():
         query_log: list[str] = []
 
-        def query_runner(sql: str, query_log: list[str] = query_log):
+        def query_runner(sql: str, params: tuple = (), query_log: list[str] = query_log):
             query_log.append(sql)
             return ()
 
@@ -403,7 +400,7 @@ def test_run_two_pass_rejects_malformed_templates() -> None:
 
     with pytest.raises(ValueError):
         module.run_two_pass(
-            {"primary": "SELECT 1", "broader": "SELECT 1", "fallback": "bogus"},
+            {"primary": "SELECT 1", "primary_params": (), "broader": "SELECT 1", "broader_params": (), "fallback": "bogus"},
             lambda sql: (),
         )
     with pytest.raises(ValueError):
@@ -485,10 +482,11 @@ def _sqlite_query_runner(
     db: sqlite3.Connection,
     retry_window_minutes: int,
 ):
-    def query_runner(sql: str):
+    def query_runner(sql: str, params: tuple[Any, ...] = ()):
         query_log.append(sql)
         cursor = db.execute(
-            _sqlite_compatible_sql(sql, retry_window_minutes=retry_window_minutes)
+            _sqlite_compatible_sql(sql, retry_window_minutes=retry_window_minutes),
+            params
         )
         return tuple(dict(row) for row in cursor.fetchall())
 
