@@ -1,0 +1,33 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-10-27T11:37:26.445Z",
+  "root_causes": [
+    {
+      "id": "rc-missing-infigraph-runtime",
+      "title": "Missing Infigraph Runtime Wrapper and Contract",
+      "severity": "medium",
+      "issues": [597],
+      "files": [],
+      "description": "The repository currently lacks a wrapper to invoke the Infigraph CLI for analysis capabilities.",
+      "solution_summary": "Create a new `scripts/kb/infigraph_runtime.py` file providing the capability contract, a normalized status wrapper, and reproducible metadata pinning."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-add-infigraph-runtime",
+      "title": "Add reproducible Infigraph runtime and capability contract",
+      "root_cause": "rc-missing-infigraph-runtime",
+      "issues": [597],
+      "files": [],
+      "new_files": ["scripts/kb/infigraph_runtime.py"],
+      "test_files": ["tests/kb/test_infigraph_runtime.py"],
+      "risk": "low",
+      "prompt": "Create a new `scripts/kb/infigraph_runtime.py` file and its corresponding test file `tests/kb/test_infigraph_runtime.py` to implement the Infigraph runtime capability contract as described in issue #597.\n\n1. Modify `scripts/kb/infigraph_runtime.py` and `tests/kb/test_infigraph_runtime.py`.\n2. Create these test files to ensure code quality.\n3. Root cause: The repository lacks an Infigraph wrapper. A new module is required to verify the executable's capabilities deterministically, record its version metadata reproducibly for CI verification, and prevent cross-repository graph storage or MCP integration.\n4. Proposed implementation:\n```python\nimport dataclasses, json, subprocess\nfrom typing import Literal\n\nSTATUS_ANALYSIS_COMPLETE = \"analysis_complete\"\nSTATUS_ANALYSIS_UNAVAILABLE = \"analysis_unavailable\"\nSTATUS_ANALYSIS_FAILED = \"analysis_failed\"\n\n@dataclasses.dataclass(frozen=True, slots=True)\nclass CapabilityReport:\n    status: Literal[\"analysis_complete\", \"analysis_unavailable\", \"analysis_failed\"]\n    version: str | None = None\n    capabilities: tuple[str, ...] = ()\n    reason: str | None = None\n\ndef check_capabilities(executable: str = \"infigraph\", timeout: int = 15) -> CapabilityReport:\n    try:\n        result = subprocess.run([executable, \"capabilities\", \"--format=json\"], capture_output=True, text=True, timeout=timeout, check=False)\n    except FileNotFoundError:\n        return CapabilityReport(status=STATUS_ANALYSIS_UNAVAILABLE, reason=\"executable not found\")\n    except subprocess.TimeoutExpired:\n        return CapabilityReport(status=STATUS_ANALYSIS_FAILED, reason=\"command timed out\")\n    except Exception as e:\n        return CapabilityReport(status=STATUS_ANALYSIS_FAILED, reason=f\"execution error: {e}\")\n\n    if result.returncode != 0:\n        return CapabilityReport(status=STATUS_ANALYSIS_FAILED, reason=f\"command failed with code {result.returncode}\")\n\n    try:\n        data = json.loads(result.stdout)\n        return CapabilityReport(status=STATUS_ANALYSIS_COMPLETE, version=data.get(\"version\"), capabilities=tuple(data.get(\"capabilities\", [])))\n    except json.JSONDecodeError:\n        return CapabilityReport(status=STATUS_ANALYSIS_FAILED, reason=\"malformed output\")\n\ndef record_resolution_metadata(executable: str = \"infigraph\", output_file: str = \"infigraph_resolution.json\", timeout: int = 15) -> bool:\n    report = check_capabilities(executable=executable, timeout=timeout)\n    if report.status != STATUS_ANALYSIS_COMPLETE:\n        return False\n    metadata = {\"executable\": executable, \"version\": report.version, \"capabilities\": report.capabilities, \"resolved_at_status\": \"pinned\"}\n    try:\n        with open(output_file, \"w\") as f:\n            json.dump(metadata, f, indent=2)\n        return True\n    except IOError:\n        return False\n\ndef invoke_analysis(target_path: str, executable: str = \"infigraph\", timeout: int = 30) -> dict[str, str]:\n    if \"..\" in target_path or target_path.startswith(\"/\") or \"mcp\" in target_path.lower():\n        return {\"status\": STATUS_ANALYSIS_FAILED, \"reason\": \"invalid target path\"}\n\n    try:\n        result = subprocess.run([executable, \"analyze\", target_path, \"--format=json\"], capture_output=True, text=True, timeout=timeout, check=False)\n    except FileNotFoundError:\n        return {\"status\": STATUS_ANALYSIS_UNAVAILABLE, \"reason\": \"executable not found\"}\n    except subprocess.TimeoutExpired:\n        return {\"status\": STATUS_ANALYSIS_FAILED, \"reason\": \"command timed out\"}\n\n    if result.returncode != 0:\n        return {\"status\": STATUS_ANALYSIS_FAILED, \"reason\": f\"command failed: {result.stderr.strip()}\"}\n\n    return {\"status\": STATUS_ANALYSIS_COMPLETE, \"output\": result.stdout.strip()}\n```\n5. Integration points: `scripts/kb/infigraph_runtime.py` provides standalone deterministic functions. No existing files are modified.\n6. Test scenarios: Mock `subprocess.run` to cover successful capability discovery (valid JSON returned), command timeout (raises `subprocess.TimeoutExpired`), missing executable (raises `FileNotFoundError`), and malformed JSON output. Also test `invoke_analysis` boundary conditions (`..`, `/`, `mcp`) and `record_resolution_metadata` success.\n7. Acceptance Criteria: The wrapper must define normalized statuses for analysis_complete, analysis_unavailable, and analysis_failed. It must record release and resolution metadata reproducibly for CI. Tests must cover successful capability discovery and representative installation/capability/command failures. Ensure no cross-repository graph storage or MCP integration is introduced.\n8. FILE BOUNDARY: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/kb/infigraph_runtime.py": "task-add-infigraph-runtime",
+    "tests/kb/test_infigraph_runtime.py": "task-add-infigraph-runtime"
+  }
+}
