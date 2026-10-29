@@ -1,0 +1,43 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-10-29T12:18:52.378Z",
+  "root_causes": [
+    {
+      "id": "rc-missing-infigraph-runtime",
+      "title": "Missing Infigraph Runtime Integration",
+      "severity": "high",
+      "issues": [
+        597
+      ],
+      "files": [
+        "scripts/analysis/infigraph.py"
+      ],
+      "description": "The knowledgebase lacks a wrapper to invoke the Infigraph CLI and report analysis capabilities.",
+      "solution_summary": "Create a new Python module in scripts/analysis to act as a wrapper for the Infigraph CLI, including reproducible version pinning and robust capability status reporting."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-add-infigraph-runtime",
+      "title": "Add reproducible Infigraph runtime and capability contract",
+      "root_cause": "rc-missing-infigraph-runtime",
+      "issues": [
+        597
+      ],
+      "files": [],
+      "new_files": [
+        "scripts/analysis/infigraph.py"
+      ],
+      "test_files": [
+        "tests/analysis/test_infigraph.py"
+      ],
+      "risk": "low",
+      "prompt": "A highly detailed, code-rich, self-contained prompt for a coding agent. This prompt must include:\n\n1. The exact files to modify and create: `scripts/analysis/infigraph.py`.\n2. The exact test files to modify: `tests/analysis/test_infigraph.py`.\n3. The root cause explanation: The knowledgebase lacks a wrapper to invoke the Infigraph CLI. Issue #597 requests a capability contract and reproducible runtime for Infigraph. Since this is a new feature, no existing code path causes a failure. Rather, the absence of an Infigraph wrapper prevents the knowledgebase from successfully determining analysis readiness.\n4. Proposed implementation with full code examples:\n```python\n# NEW: scripts/analysis/infigraph.py\nimport subprocess\nimport shutil\nfrom dataclasses import dataclass\nfrom enum import Enum\nfrom typing import Optional, Dict, Any\nimport json\n\nclass AnalysisState(Enum):\n    COMPLETE = 'analysis_complete'\n    UNAVAILABLE = 'analysis_unavailable'\n    FAILED = 'analysis_failed'\n\n@dataclass\nclass InfigraphStatus:\n    state: AnalysisState\n    reason: Optional[str] = None\n    capabilities: Optional[Dict[str, Any]] = None\n\nINFIGRAPH_VERSION = '1.2.0'\n\ndef check_infigraph_status(executable_path: str = 'infigraph') -> InfigraphStatus:\n    if not shutil.which(executable_path):\n        return InfigraphStatus(state=AnalysisState.UNAVAILABLE, reason='Executable not found.')\n    \n    try:\n        result = subprocess.run(\n            [executable_path, 'capabilities'], \n            capture_output=True, \n            text=True, \n            timeout=10\n        )\n        \n        if result.returncode != 0:\n             return InfigraphStatus(state=AnalysisState.FAILED, reason=f'Command failed: {result.stderr}')\n             \n        try:\n             capabilities = json.loads(result.stdout)\n             return InfigraphStatus(state=AnalysisState.COMPLETE, capabilities=capabilities)\n        except json.JSONDecodeError:\n             return InfigraphStatus(state=AnalysisState.FAILED, reason='Malformed output from executable.')\n             \n    except subprocess.TimeoutExpired:\n        return InfigraphStatus(state=AnalysisState.FAILED, reason='Command timed out.')\n    except Exception as e:\n        return InfigraphStatus(state=AnalysisState.FAILED, reason=str(e))\n```\n5. Before/after diffs showing the integration: Not applicable as this is a new file.\n6. Test scenarios: Mock `subprocess.run` and `shutil.which` to test successful capability discovery, missing executable, command failure, timeout failure, and malformed JSON output.\n7. Acceptance criteria: The selected Infigraph release is recorded reproducibly. Startup checks distinguish unavailable/unsupported/misconfigured states. Normalized statuses are defined (analysis_complete, analysis_unavailable, analysis_failed). Tests cover success and various failure modes using a fake executable. No cross-repo graph storage or MCP integration is introduced.\n8. FILE BOUNDARY: 'You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.'"
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/analysis/infigraph.py": "task-add-infigraph-runtime",
+    "tests/analysis/test_infigraph.py": "task-add-infigraph-runtime"
+  }
+}
