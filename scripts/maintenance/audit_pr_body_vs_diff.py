@@ -286,7 +286,7 @@ def _run_gh(
     command: Sequence[str], *, repo_root: Path, input_text: str | None = None
 ) -> str:
     try:
-        completed = subprocess.run(
+        completed = subprocess.run(timeout=15,
             list(command),
             check=False,
             capture_output=True,

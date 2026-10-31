@@ -39,7 +39,7 @@ def resolve_ingest_git_sha(repo_root: Path) -> tuple[str, str]:
         return env_sha, "ci_commit_sha"
 
     try:
-        result = subprocess.run(
+        result = subprocess.run(timeout=15,
             ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
             capture_output=True,
             text=True,

@@ -120,7 +120,7 @@ def _create_issue(title: str, body: str, labels: list[str]) -> bool:
 def _update_issue(issue_number: int, body_suffix: str) -> bool:
     """Append *body_suffix* to an existing issue's body via a comment."""
     try:
-        result = subprocess.run(
+        result = subprocess.run(timeout=15,
             [
                 "gh", "issue", "comment", str(issue_number),
                 "--body", body_suffix,
