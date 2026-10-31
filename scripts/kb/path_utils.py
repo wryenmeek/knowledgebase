@@ -25,13 +25,14 @@ def try_normalize_repo_relative_path(
     ``"invalid_path"`` otherwise. On failure ``normalized`` is the raw input.
     """
     raw_path = path.as_posix() if isinstance(path, Path) else str(path)
-    if not raw_path or raw_path.startswith("/") or "\\" in raw_path or "//" in raw_path:
+    if not raw_path or raw_path.startswith("/") or raw_path.endswith("/") or "\\" in raw_path or "//" in raw_path:
         return raw_path, ERROR_KIND_INVALID_PATH
 
-    parts = raw_path.split("/")
-    if any(part in {"", "."} for part in parts):
+    # ⚡ Bolt: Replace array inclusion checks (O(N) allocation via split) with fast-path literal checks.
+    # This avoids allocating list components when validating paths in a hot loop.
+    if raw_path == "." or raw_path.startswith("./") or raw_path.endswith("/.") or "/./" in raw_path:
         return raw_path, ERROR_KIND_INVALID_PATH
-    if any(part == ".." for part in parts):
+    if raw_path == ".." or raw_path.startswith("../") or raw_path.endswith("/..") or "/../" in raw_path:
         return raw_path, ERROR_KIND_PATH_TRAVERSAL
 
     return PurePosixPath(raw_path).as_posix(), None

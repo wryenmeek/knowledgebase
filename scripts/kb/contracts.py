@@ -327,7 +327,9 @@ def governed_artifact_contract_by_pattern(path: str) -> GovernedArtifactContract
         and path[0].isalpha()
     ):
         return None  # Reject drive-prefixed paths (e.g., C:foo or C:/foo)
-    if any(component == ".." for component in path.split("/") if component):
+    # ⚡ Bolt: Replace array inclusion checks (O(N) allocation via split) with fast-path literal checks.
+    # This avoids allocating list components when validating paths in a hot loop.
+    if path == ".." or path.startswith("../") or path.endswith("/..") or "/../" in path:
         return None  # Reject traversal paths
     exact = _GOVERNED_ARTIFACTS_BY_PATH.get(path)
     if exact is not None:
