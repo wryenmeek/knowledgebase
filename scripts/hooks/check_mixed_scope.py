@@ -77,11 +77,11 @@ def _git_stdout(args: list[str]) -> str:
         )
     except subprocess.TimeoutExpired:
         cmd = " ".join(["git", *args])
-        raise RuntimeError(f"{cmd} failed: timeout expired after 15s")
+        raise RuntimeError(f"{cmd} failed: timeout expired after 15s") from None
     if result.returncode != 0:
         stderr = redact_stderr(result.stderr or "")
         cmd = " ".join(["git", *args])
-        raise RuntimeError(f"{cmd} failed: {stderr or f'exit {result.returncode}'}")
+        raise RuntimeError(f"{cmd} failed: {stderr or f'exit {result.returncode}'}") from None
     return result.stdout
 
 
@@ -132,7 +132,7 @@ def _resolve_default_base_ref() -> str:
         except subprocess.TimeoutExpired:
             continue
 
-    raise RuntimeError("unable to resolve default-branch reference (origin/main or main)")
+    raise RuntimeError("unable to resolve default-branch reference (origin/main or main)") from None
 
 
 def _current_branch_paths() -> set[str]:
@@ -142,7 +142,7 @@ def _current_branch_paths() -> set[str]:
     base_ref = _resolve_default_base_ref()
     merge_base = _git_stdout(["merge-base", "HEAD", base_ref]).strip()
     if not merge_base:
-        raise RuntimeError(f"git merge-base returned no output for HEAD and {base_ref}")
+        raise RuntimeError(f"git merge-base returned no output for HEAD and {base_ref}") from None
     return _git_lines(["diff", "--name-only", merge_base, "HEAD"])
 
 

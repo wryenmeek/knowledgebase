@@ -88,3 +88,7 @@
 **Vulnerability:** Bandit B608 flags string-based SQL query construction as a potential SQL injection vector.
 **Learning:** These are false positives because the interpolated variables are safely validated via regex (e.g., _REPO_PATTERN) and type checks.
 **Prevention:** Apply # nosec B608 to the end of the closing triple quotes of the multiline f-string to suppress the warning.
+## 2026-10-23 - [Prevent Stack Trace Leakage on Subprocess Errors]
+**Vulnerability:** Subprocess wrapper scripts raised exceptions (e.g., `RuntimeError`) based on timeout or failure of internal tools without explicitly suppressing the inner stack trace (e.g., `subprocess.TimeoutExpired`). This can inadvertently leak command arguments, execution states, and underlying system configurations.
+**Learning:** Python automatically chains exceptions (via `__cause__` or `__context__`). If a high-level `RuntimeError` is raised while an underlying error is active, the resulting stack trace exposes both, potentially leaking sensitive parameters from the underlying execution context.
+**Prevention:** Always use the `from None` syntax when wrapping or transforming exceptions (e.g., `raise RuntimeError(...) from None`) to securely suppress internal traceback contexts and fail securely.
