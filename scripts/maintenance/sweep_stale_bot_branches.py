@@ -150,7 +150,7 @@ def enumerate_remote_branches() -> list[tuple[str, float]]:
         )
     except subprocess.CalledProcessError as exc:
         print(
-            f"[{SURFACE}] ERROR: git for-each-ref failed: {redact_stderr(exc.stderr)}",
+            f"[{SURFACE}] ERROR: git for-each-ref failed: {redact_stderr(exc.stderr or '')}",
             file=sys.stderr,
         )
         return []
@@ -215,7 +215,7 @@ def delete_branch(branch_name: str) -> bool:
         return True
     except subprocess.CalledProcessError as exc:
         print(
-            f"[{SURFACE}] ERROR deleting {branch_name}: {redact_stderr(exc.stderr)}",
+            f"[{SURFACE}] ERROR deleting {branch_name}: {redact_stderr(exc.stderr or '')}",
             file=sys.stderr,
         )
         return False
