@@ -88,3 +88,7 @@
 **Vulnerability:** Bandit B608 flags string-based SQL query construction as a potential SQL injection vector.
 **Learning:** These are false positives because the interpolated variables are safely validated via regex (e.g., _REPO_PATTERN) and type checks.
 **Prevention:** Apply # nosec B608 to the end of the closing triple quotes of the multiline f-string to suppress the warning.
+## 2024-10-30 - [Fix Subprocess TypeError in redact_stderr]
+**Vulnerability:** Subprocess CLI executions in maintenance scripts passed `completed.stderr` or `exc.stderr` directly to `redact_stderr`, which crashes with a `TypeError` if `stderr` is `None` (which can happen when subprocess external tools fail before returning stderr, such as command not found).
+**Learning:** `redact_stderr` string redaction utilities must gracefully handle `None` inputs, or we must provide safe default strings like `stderr or ''`. Unhandled exceptions can crash the script and undermine defensive logging mechanisms meant for security operations.
+**Prevention:** Always use safe defaults like `redact_stderr(stderr or '')` or explicitly handle `None` checking inside the redaction function itself when working with subprocess output.
