@@ -237,7 +237,7 @@ def _resolve_repo_json_path(repo_root: Path, raw_path: str) -> Path:
 
 def _run_gh_json(command: Sequence[str], *, repo_root: Path) -> Any:
     try:
-        completed = subprocess.run(
+        completed = subprocess.run(timeout=15,
             list(command),
             check=False,
             capture_output=True,

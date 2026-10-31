@@ -38,7 +38,7 @@ def default_repo_name(repo_root: Path) -> str:
 
 def _remote_origin_repo_name(repo_root: Path) -> str:
     try:
-        completed = subprocess.run(
+        completed = subprocess.run(timeout=15,
             ["git", "-C", str(repo_root), "config", "--get", "remote.origin.url"],
             check=False,
             capture_output=True,

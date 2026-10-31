@@ -240,7 +240,7 @@ def _darwin_pid_start_time_unix_seconds(pid: int) -> float | None:
     try:
         ps_env = dict(os.environ)
         ps_env["LC_TIME"] = "C"
-        completed = subprocess.run(
+        completed = subprocess.run(timeout=15,
             ["/bin/ps", "-o", "lstart=", "-p", str(pid)],
             check=True,
             capture_output=True,

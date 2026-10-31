@@ -97,7 +97,7 @@ def _search_existing_issue(dedupe_key: str) -> int | None:
 def _comment_on_issue(issue_num: int, run_id: str) -> bool:
     """Add a comment to an existing issue. Returns ``True`` on success."""
     try:
-        result = subprocess.run(
+        result = subprocess.run(timeout=15,
             [
                 "gh", "issue", "comment", str(issue_num),
                 "--body", f"Updated drift detected in run {run_id}.",
@@ -149,7 +149,7 @@ def _create_issue(title: str, body: str, labels: str) -> bool:
 def _close_issue(issue_num: int, run_id: str) -> bool:
     """Close an issue with a resolution comment. Returns ``True`` on success."""
     try:
-        comment_result = subprocess.run(
+        comment_result = subprocess.run(timeout=15,
             [
                 "gh", "issue", "comment", str(issue_num),
                 "--body", f"Resolved: applied in run {run_id}.",
@@ -171,7 +171,7 @@ def _close_issue(issue_num: int, run_id: str) -> bool:
         )
 
     try:
-        close_result = subprocess.run(
+        close_result = subprocess.run(timeout=15,
             ["gh", "issue", "close", str(issue_num)],
             capture_output=True,
             text=True,

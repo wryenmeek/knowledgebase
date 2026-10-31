@@ -104,7 +104,7 @@ def _session_state_dir() -> Path | None:
 
 def _head_sha(cwd: Path | None) -> str | None:
     try:
-        result = subprocess.run(
+        result = subprocess.run(timeout=15,
             ["git", "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
@@ -154,7 +154,7 @@ def _pr_has_review_label(pr_number: int | None, cwd: Path | None) -> bool:
     if pr_number is None:
         return False
     try:
-        result = subprocess.run(
+        result = subprocess.run(timeout=15,
             ["gh", "pr", "view", str(pr_number), "--json", "labels"],
             capture_output=True,
             text=True,
