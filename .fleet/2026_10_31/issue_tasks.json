@@ -1,0 +1,37 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-10-31T11:42:25.922Z",
+  "root_causes": [
+    {
+      "id": "rc-missing-infigraph",
+      "title": "Missing Infigraph Runtime Wrapper",
+      "severity": "medium",
+      "issues": [597],
+      "files": [],
+      "description": "The knowledgebase currently has no integration to invoke the Infigraph CLI or check its capabilities.",
+      "solution_summary": "Create a new script `scripts/analysis/infigraph.py` providing an `InfigraphRuntime` class that invokes the CLI, handles errors/timeouts, parses JSON output, and returns normalized statuses with reproducible metadata."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-infigraph-runtime",
+      "title": "Add reproducible Infigraph runtime and capability contract",
+      "root_cause": "rc-missing-infigraph",
+      "issues": [597],
+      "files": [],
+      "new_files": [
+        "scripts/analysis/infigraph.py"
+      ],
+      "test_files": [
+        "tests/analysis/test_infigraph.py"
+      ],
+      "risk": "low",
+      "prompt": "You are building a wrapper for the Infigraph CLI to satisfy issue #597.\n\nCreate a new file `scripts/analysis/infigraph.py` that contains an `InfigraphRuntime` class. It must be able to invoke a given executable (e.g. `infigraph capabilities --format=json`), parse the output, and return a `CapabilityReport`.\n\nThe wrapper defines normalized statuses for `analysis_complete`, `analysis_unavailable`, and `analysis_failed`, including actionable failure reasons. The selected Infigraph release and resolution metadata (version, resolved_path, checksum) must be recorded reproducibly.\n\nExample Implementation for `scripts/analysis/infigraph.py`:\n\n```python\nimport json\nimport subprocess\nfrom dataclasses import dataclass\nfrom typing import Literal\n\n@dataclass(frozen=True)\nclass InfigraphMetadata:\n    version: str\n    resolved_path: str\n    checksum: str\n\n@dataclass(frozen=True)\nclass CapabilityReport:\n    status: Literal[\"analysis_complete\", \"analysis_unavailable\", \"analysis_failed\"]\n    reason: str\n    metadata: InfigraphMetadata | None = None\n\nclass InfigraphRuntime:\n    def __init__(self, executable_path: str = \"infigraph\"):\n        self.executable_path = executable_path\n\n    def check_capabilities(self, timeout: float = 5.0) -> CapabilityReport:\n        try:\n            result = subprocess.run(\n                [self.executable_path, \"capabilities\", \"--format=json\"],\n                capture_output=True,\n                text=True,\n                timeout=timeout,\n                check=True\n            )\n            data = json.loads(result.stdout)\n            \n            metadata = InfigraphMetadata(\n                version=data.get(\"version\", \"unknown\"),\n                resolved_path=self.executable_path,\n                checksum=data.get(\"checksum\", \"unknown\")\n            )\n            \n            if data.get(\"ready_for_analysis\") is True:\n                return CapabilityReport(\n                    status=\"analysis_complete\",\n                    reason=\"Capabilities are fully supported and ready.\",\n                    metadata=metadata\n                )\n            else:\n                return CapabilityReport(\n                    status=\"analysis_unavailable\",\n                    reason=\"Executable found but required capabilities are missing.\",\n                    metadata=metadata\n                )\n\n        except FileNotFoundError:\n            return CapabilityReport(\n                status=\"analysis_unavailable\",\n                reason=f\"Executable '{self.executable_path}' not found.\"\n            )\n        except subprocess.TimeoutExpired:\n            # SECURITY: Do not leak exception context\n            return CapabilityReport(\n                status=\"analysis_failed\",\n                reason=\"Command timed out while checking capabilities.\"\n            )\n        except subprocess.CalledProcessError as e:\n            return CapabilityReport(\n                status=\"analysis_failed\",\n                reason=f\"Command failed with exit code {e.returncode}.\"\n            )\n        except json.JSONDecodeError:\n            return CapabilityReport(\n                status=\"analysis_failed\",\n                reason=\"Malformed JSON output from executable.\"\n            )\n```\n\nCreate a new test file `tests/analysis/test_infigraph.py` using `unittest.mock` and `unittest.TestCase` that covers the following scenarios:\n1. Successful capability discovery (status: `analysis_complete`)\n2. Successful invocation but capabilities missing (`ready_for_analysis: false`) -> `analysis_unavailable`\n3. Executable not found (`FileNotFoundError`) -> `analysis_unavailable`\n4. Command timeout (`subprocess.TimeoutExpired`) -> `analysis_failed`\n5. Command failure (`subprocess.CalledProcessError`) -> `analysis_failed`\n6. Malformed JSON output (`json.JSONDecodeError`) -> `analysis_failed`\n\nEnsure tests use a fake executable path to verify capability discovery, and mock `subprocess.run` to cover all scenarios.\n\n**FILE BOUNDARY RULE**: You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/analysis/infigraph.py": "task-infigraph-runtime",
+    "tests/analysis/test_infigraph.py": "task-infigraph-runtime"
+  }
+}
