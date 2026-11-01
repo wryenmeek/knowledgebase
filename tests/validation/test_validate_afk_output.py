@@ -9,7 +9,7 @@ import pytest
 
 from scripts.validation.validate_afk_output import (
     _AFK_ALLOWED_FIELDS,
-    _normalize_yaml_whitespace,
+    _normalized_yaml_lines,
     _parse_frontmatter,
     validate_afk_output,
 )
@@ -47,7 +47,7 @@ class TestParserFrontmatter:
 
 class TestNormalizeWhitespace:
     def test_trailing_whitespace_stripped(self) -> None:
-        assert _normalize_yaml_whitespace("a  \nb  ") == "a\nb"
+        assert _normalized_yaml_lines("a  \nb  ") == ["a", "b"]
 
 
 class TestBodyUnchanged:

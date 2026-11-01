@@ -60,3 +60,6 @@
 ## 2026-10-31 - Optimizing normalized path string comparison
 **Learning:** When validating path strings in a loop, avoid allocating intermediate arrays via `path.split('/')`.
 **Action:** Replace array inclusion checks (e.g., `'__pycache__' not in parts`) with fast-path literal substring checks (e.g., `'/__pycache__/' not in path`, `'/../' not in path`, `'//' not in path`). This retains exact path validation rules without `O(N)` list allocation and traversal overhead.
+## 2025-10-32 - Optimizing string equality check
+**Learning:** When checking if two multiline strings would be identical after line-by-line normalization (e.g., stripping whitespace or removing empty lines), compare the intermediate list comprehensions directly (e.g., `[stripped for line in a.splitlines() if ...] != [stripped for line in b.splitlines() if ...]`). Do not join them back into strings (`'\n'.join(...) != '\n'.join(...)`) just to evaluate equality, as this needlessly allocates memory for two large joined strings.
+**Action:** Compare the intermediate list comprehensions directly when checking if two multiline strings are identical after normalization.

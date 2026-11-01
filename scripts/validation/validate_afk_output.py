@@ -77,10 +77,9 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     return fields, body
 
 
-def _normalize_yaml_whitespace(text: str) -> str:
-    """Normalize YAML-insignificant whitespace for comparison."""
-    lines = text.splitlines()
-    return "\n".join(line.rstrip() for line in lines)
+def _normalized_yaml_lines(text: str) -> list[str]:
+    """Return a list of YAML lines with trailing whitespace removed."""
+    return [line.rstrip() for line in text.splitlines()]
 
 
 def validate_afk_output(
@@ -139,9 +138,8 @@ def validate_afk_output(
     })
 
     # Check 2: No body text changes (after YAML whitespace normalization).
-    orig_normalized = _normalize_yaml_whitespace(orig_body)
-    prop_normalized = _normalize_yaml_whitespace(prop_body)
-    body_unchanged = orig_normalized == prop_normalized
+    # ⚡ Bolt: Compare intermediate list comprehensions directly instead of joining them back into large strings
+    body_unchanged = _normalized_yaml_lines(orig_body) == _normalized_yaml_lines(prop_body)
     checks.append({
         "check": "body_unchanged",
         "pass": body_unchanged,
