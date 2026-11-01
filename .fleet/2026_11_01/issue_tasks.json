@@ -1,0 +1,41 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-11-01T12:41:48.912Z",
+  "root_causes": [
+    {
+      "id": "rc-missing-infigraph-wrapper",
+      "title": "Missing Infigraph runtime wrapper and capability discovery",
+      "severity": "medium",
+      "issues": [
+        597
+      ],
+      "files": [],
+      "description": "The knowledgebase lacks integration with the Infigraph CLI, requiring a new wrapper for reproducible execution and capability discovery.",
+      "solution_summary": "Create a new module `scripts/kb/infigraph.py` with pinned metadata and a `check_capabilities` function that robustly handles execution, timeouts, and malformed outputs."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-add-infigraph-wrapper",
+      "title": "Add reproducible Infigraph runtime wrapper",
+      "root_cause": "rc-missing-infigraph-wrapper",
+      "issues": [
+        597
+      ],
+      "files": [],
+      "new_files": [
+        "scripts/kb/infigraph.py"
+      ],
+      "test_files": [
+        "tests/kb/test_infigraph.py"
+      ],
+      "risk": "low",
+      "prompt": "Create a new module `scripts/kb/infigraph.py` and its test `tests/kb/test_infigraph.py` to implement a reproducible Infigraph runtime and capability contract.\n\n**1. Files to create:** `scripts/kb/infigraph.py`\n**2. Test files to create:** `tests/kb/test_infigraph.py`\n\n**3. Root Cause Explanation:**\nWe need to integrate with an Infigraph CLI. We must define a pinned version for reproducibility, invoke the CLI to discover capabilities, and handle errors gracefully with normalized statuses.\n\n**4. Proposed Implementation:**\n\n```python\n# scripts/kb/infigraph.py\nimport dataclasses\nimport json\nimport subprocess\nfrom typing import Literal, Optional\n\nINFIGRAPH_MANIFEST = {\n    \"version\": \"1.0.0\",\n    \"sha256\": \"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890\",\n    \"url\": \"https://example.com/infigraph/v1.0.0/infigraph-linux-amd64\"\n}\n\n@dataclasses.dataclass\nclass InfigraphResult:\n    status: Literal[\"analysis_complete\", \"analysis_unavailable\", \"analysis_failed\"]\n    reason: Optional[str] = None\n    capabilities: list[str] = dataclasses.field(default_factory=list)\n\ndef check_capabilities(executable_path: str) -> InfigraphResult:\n    try:\n        result = subprocess.run(\n            [executable_path, \"capabilities\", \"--format=json\"],\n            capture_output=True,\n            text=True,\n            timeout=5\n        )\n    except FileNotFoundError:\n        return InfigraphResult(status=\"analysis_unavailable\", reason=\"Executable not found\")\n    except subprocess.TimeoutExpired:\n        return InfigraphResult(status=\"analysis_failed\", reason=\"Command timed out\")\n    except Exception as e:\n        return InfigraphResult(status=\"analysis_failed\", reason=str(e))\n\n    if result.returncode != 0:\n        return InfigraphResult(\n            status=\"analysis_unavailable\",\n            reason=f\"Executable failed (code {result.returncode}): {result.stderr.strip() if result.stderr else 'Unknown error'}\"\n        )\n\n    try:\n        data = json.loads(result.stdout)\n        return InfigraphResult(\n            status=\"analysis_complete\",\n            capabilities=data.get(\"capabilities\", [])\n        )\n    except json.JSONDecodeError:\n        return InfigraphResult(status=\"analysis_failed\", reason=\"Malformed JSON output\")\n```\n\n**5. Before/after diffs showing the integration:**\nN/A - this is a greenfield addition. No existing files are modified.\n\n**6. Test Scenarios:**\nIn `tests/kb/test_infigraph.py`, write tests using `unittest.mock.patch` on `subprocess.run`:\n- `test_successful_capability_discovery`: mock returns `returncode=0`, `stdout='{\"capabilities\":[\"graph_analysis\"]}'`. Assert status is `analysis_complete` and capabilities matched.\n- `test_executable_not_found`: mock raises `FileNotFoundError`. Assert status is `analysis_unavailable`.\n- `test_command_timeout`: mock raises `subprocess.TimeoutExpired(cmd=\"\", timeout=5)`. Assert status is `analysis_failed`.\n- `test_malformed_output`: mock returns `returncode=0`, `stdout='invalid json'`. Assert status is `analysis_failed`.\n- `test_execution_failure`: mock returns `returncode=1`, `stderr='error'`. Assert status is `analysis_unavailable`.\n\n**7. Acceptance Criteria:**\n- CI verified pinned release manifest.\n- Wrapper normalizes statuses (`analysis_complete`, `analysis_unavailable`, `analysis_failed`).\n- Tests cover capability discovery and representative failures using fake executables (via mocking or actual scripts).\n- No cross-repository graph storage or MCP integration is introduced.\n\n**8. FILE BOUNDARY RULE:**\nYou may ONLY modify the files listed above (`scripts/kb/infigraph.py`, `tests/kb/test_infigraph.py`). If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary."
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/kb/infigraph.py": "task-add-infigraph-wrapper",
+    "tests/kb/test_infigraph.py": "task-add-infigraph-wrapper"
+  }
+}
