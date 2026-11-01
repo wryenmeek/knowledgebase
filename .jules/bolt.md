@@ -56,3 +56,7 @@
 ## 2025-10-28 - Optimizing Whitespace-Agnostic String Comparison
 **Learning:** When normalizing strings to compare their contents while ignoring all whitespace (including newlines and indentation), using `.splitlines()` combined with `.strip()` in a comprehension forces Python to execute a slow loop and allocate multiple objects per line.
 **Action:** Use `.split()` without arguments, which natively splits on all arbitrary whitespace and discards empty strings entirely within highly-optimized C code. This avoids the O(N) line iteration in Python and yields a ~3-4x measurable speedup.
+
+## 2025-02-27 - Fast-path literal checks avoid array allocations
+**Learning:** Validating path strings by using `path.split("/")` allocates an intermediate `O(N)` array of strings. For functions evaluated in loops, this introduces unnecessary memory allocation overhead.
+**Action:** Replace array inclusion checks (e.g., `'__pycache__' not in parts`) with fast-path literal substring checks (e.g., `'/__pycache__/' not in path`, `'/../' not in path`, `'//' not in path`). This retains exact path validation rules while bypassing list allocation.
