@@ -60,3 +60,6 @@
 ## 2026-10-31 - Optimizing normalized path string comparison
 **Learning:** When validating path strings in a loop, avoid allocating intermediate arrays via `path.split('/')`.
 **Action:** Replace array inclusion checks (e.g., `'__pycache__' not in parts`) with fast-path literal substring checks (e.g., `'/__pycache__/' not in path`, `'/../' not in path`, `'//' not in path`). This retains exact path validation rules without `O(N)` list allocation and traversal overhead.
+## 2024-11-01 - Optimizing YAML List Extraction parsing with re.finditer
+**Learning:** Using `block.splitlines()` in a loop to extract YAML list items line-by-line creates unnecessary O(N) list allocations and Python bytecode execution overhead.
+**Action:** Replace the `splitlines()` loops with highly-optimized C-level regular expressions evaluated via `re.finditer` and `re.MULTILINE` (e.g. `re.finditer(r"^ {2}- (.*)$", block, re.MULTILINE)`). This avoids allocating memory for lists of lines and provides a highly-measurable speedup.
