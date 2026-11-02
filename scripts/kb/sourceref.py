@@ -441,7 +441,7 @@ def _path_has_symlink_component(path: Path, *, stop_at: Path) -> bool:
 
 
 def _raise(reason_code: SourceRefReasonCode, message: str) -> None:
-    raise SourceRefValidationError(reason_code, message)
+    raise SourceRefValidationError(reason_code, message) from None
 
 
 # Exported regex for matching SourceRef citations in markdown content.
