@@ -274,7 +274,7 @@ def _load_pr_from_fixture(
     try:
         payload = json.loads(resolved.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"could not parse --issues-json fixture: {exc}") from exc
+        raise ValueError(f"could not parse --issues-json fixture: {exc}") from None
     prs = _parse_pr_fixture_payload(payload)
     for pr in prs:
         if pr["number"] == pr_number:
@@ -296,7 +296,7 @@ def _run_gh(
             cwd=repo_root,
         )
     except FileNotFoundError as exc:
-        raise GhCommandError("gh CLI is required but not installed") from exc
+        raise GhCommandError("gh CLI is required but not installed") from None
     except subprocess.TimeoutExpired:
         raise GhCommandError(
             f"gh command timed out after {GH_COMMAND_TIMEOUT_SECONDS} seconds"
@@ -332,7 +332,7 @@ def _load_pr_from_gh(
     try:
         view_payload = json.loads(raw_view)
     except json.JSONDecodeError as exc:
-        raise GhCommandError("gh pr view returned malformed JSON") from exc
+        raise GhCommandError("gh pr view returned malformed JSON") from None
     pr = _normalize_pr_payload({**view_payload, "files": []})
 
     diff_command = _append_repo_flag(

@@ -92,3 +92,8 @@
 **Vulnerability:** Subprocess wrapper scripts raised exceptions (e.g., `RuntimeError`) based on timeout or failure of internal tools without explicitly suppressing the inner stack trace (e.g., `subprocess.TimeoutExpired`). This can inadvertently leak command arguments, execution states, and underlying system configurations.
 **Learning:** Python automatically chains exceptions (via `__cause__` or `__context__`). If a high-level `RuntimeError` is raised while an underlying error is active, the resulting stack trace exposes both, potentially leaking sensitive parameters from the underlying execution context.
 **Prevention:** Always use the `from None` syntax when wrapping or transforming exceptions (e.g., `raise RuntimeError(...) from None`) to securely suppress internal traceback contexts and fail securely.
+
+## 2026-10-24 - [Prevent Context Leakage on JSON/File Errors from Subprocesses]
+**Vulnerability:** Subprocess wrapper scripts raised exceptions with `from exc` after catching `json.JSONDecodeError` or `FileNotFoundError` from external command failures (e.g., `gh` or `git`). This can inadvertently leak command outputs (via `JSONDecodeError.doc`) or execution details.
+**Learning:** Python's exception chaining (via `from exc`) exposes the inner exception object. For `JSONDecodeError`, this includes the `.doc` attribute containing the raw output, which may contain sensitive context.
+**Prevention:** Always use the `from None` syntax when wrapping exceptions derived from external tool executions (like `raise GhCommandError(...) from None`) to securely suppress internal traceback contexts and prevent unintended information leakage.

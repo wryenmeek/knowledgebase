@@ -205,7 +205,7 @@ def _parse_iso_datetime(raw: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
-        raise ValueError(f"invalid ISO datetime: {raw}") from exc
+        raise ValueError(f"invalid ISO datetime: {raw}") from None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
@@ -246,7 +246,7 @@ def _run_gh_json(command: Sequence[str], *, repo_root: Path) -> Any:
             cwd=repo_root,
         )
     except FileNotFoundError as exc:
-        raise RuntimeError("gh CLI is required but not installed") from exc
+        raise RuntimeError("gh CLI is required but not installed") from None
     except subprocess.TimeoutExpired:
         raise RuntimeError(
             f"gh command timed out after {GH_COMMAND_TIMEOUT_SECONDS} seconds"
@@ -257,7 +257,7 @@ def _run_gh_json(command: Sequence[str], *, repo_root: Path) -> Any:
     try:
         return json.loads(completed.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("gh command returned malformed JSON") from exc
+        raise RuntimeError("gh command returned malformed JSON") from None
 
 
 def _extract_issue_labels(raw_labels: Any) -> tuple[str, ...]:
