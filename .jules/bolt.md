@@ -63,3 +63,7 @@
 ## 2025-10-32 - Optimizing string equality check
 **Learning:** When checking if two multiline strings would be identical after line-by-line normalization (e.g., stripping whitespace or removing empty lines), compare the intermediate list comprehensions directly (e.g., `[stripped for line in a.splitlines() if ...] != [stripped for line in b.splitlines() if ...]`). Do not join them back into strings (`'\n'.join(...) != '\n'.join(...)`) just to evaluate equality, as this needlessly allocates memory for two large joined strings.
 **Action:** Compare the intermediate list comprehensions directly when checking if two multiline strings are identical after normalization.
+
+## 2026-11-03 - Optimizing simple whitespace splitting
+**Learning:** Using `re.split(r"\s+", text)` incurs significant regex engine overhead for a simple whitespace split operation.
+**Action:** Use Python's native `text.split()` without arguments, which natively splits on all arbitrary whitespace and discards empty strings entirely within highly-optimized C code, avoiding regex compilation and execution overhead.
