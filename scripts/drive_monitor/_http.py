@@ -73,7 +73,7 @@ def _load_credentials(credential_secret_name: str = "GDRIVE_SA_KEY") -> Any:
     except json.JSONDecodeError as exc:
         raise DriveAPIRequestError(
             detail=f"Failed to parse service account JSON from {credential_secret_name!r}: {exc}"
-        ) from exc
+        ) from None
 
     try:
         creds = service_account.Credentials.from_service_account_info(

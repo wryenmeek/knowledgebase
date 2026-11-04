@@ -97,3 +97,8 @@
 **Vulnerability:** Subprocess wrapper scripts raised exceptions with `from exc` after catching `json.JSONDecodeError` or `FileNotFoundError` from external command failures (e.g., `gh` or `git`). This can inadvertently leak command outputs (via `JSONDecodeError.doc`) or execution details.
 **Learning:** Python's exception chaining (via `from exc`) exposes the inner exception object. For `JSONDecodeError`, this includes the `.doc` attribute containing the raw output, which may contain sensitive context.
 **Prevention:** Always use the `from None` syntax when wrapping exceptions derived from external tool executions (like `raise GhCommandError(...) from None`) to securely suppress internal traceback contexts and prevent unintended information leakage.
+
+## 2026-10-25 - [Prevent Context Leakage on JSON Errors]
+**Vulnerability:** Subprocess wrapper scripts raised exceptions with `from exc` after catching `json.JSONDecodeError` from external command failures (e.g., `gh` or `git`). This can inadvertently leak command outputs (via `JSONDecodeError.doc`) or execution details.
+**Learning:** Python's exception chaining (via `from exc`) exposes the inner exception object. For `JSONDecodeError`, this includes the `.doc` attribute containing the raw output, which may contain sensitive context.
+**Prevention:** Always use the `from None` syntax when wrapping exceptions derived from external tool executions to securely suppress internal traceback contexts and prevent unintended information leakage.

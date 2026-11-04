@@ -96,7 +96,7 @@ def update_last_fetched(
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise OSError(
                 f"Failed to read/validate registry {registry_path}: {exc}"
-            ) from exc
+            ) from None
 
         updated = False
         for entry in registry["entries"]:
@@ -145,7 +145,7 @@ def update_last_applied(
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise OSError(
                 f"Failed to read/validate registry {registry_path}: {exc}"
-            ) from exc
+            ) from None
 
         updated = False
         for entry in registry["entries"]:
