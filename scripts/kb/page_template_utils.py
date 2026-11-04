@@ -250,12 +250,12 @@ def extract_yaml_list(frontmatter_str: str, key: str) -> list[str]:
     if not block:
         return []
 
+    # ⚡ Bolt: Eliminate redundant string allocations by reusing item = raw_line.strip() via the walrus operator.
     items: list[str] = []
     for raw_line in block.splitlines():
         if not raw_line.startswith("  "):
             break
-        item = raw_line.strip()
-        if item.startswith("- "):
+        if (item := raw_line.strip()).startswith("- "):
             items.append(item[2:].strip().strip('"').strip("'"))
     return items
 
@@ -296,12 +296,12 @@ def extract_sources_from_frontmatter(frontmatter: str) -> list[str]:
     if not block:
         return []
 
+    # ⚡ Bolt: Eliminate redundant string allocations by reusing item = raw_line.strip() via the walrus operator.
     sources: list[str] = []
     for raw_line in block.splitlines():
         if not raw_line.startswith("  "):
             break
-        item = raw_line.strip()
-        if item.startswith("- "):
+        if (item := raw_line.strip()).startswith("- "):
             sources.append(strip_quotes(item[2:].strip()))
     return sources
 

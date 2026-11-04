@@ -213,7 +213,7 @@ def _parse_iso_datetime(raw: str) -> datetime:
 
 def _normalize_target_labels(raw_target_labels: Sequence[str]) -> tuple[str, ...]:
     normalized = tuple(
-        sorted({label.strip().lower() for label in raw_target_labels if label.strip()})
+        sorted({stripped.lower() for label in raw_target_labels if (stripped := label.strip())})
     )
     return normalized if normalized else DEFAULT_TARGET_LABELS
 
@@ -517,10 +517,12 @@ def _is_command_like_line(raw_line: str) -> bool:
     return _is_allowlisted_short_command(tokens)
 
 
+_NON_EMPTY_LINE_RE = re.compile(r'^[ \t]*[^\s\n].*', re.MULTILINE)
+
 def _has_command_like_content(section_text: str) -> bool:
-    return any(
-        _is_command_like_line(raw_line) for raw_line in section_text.splitlines()
-    )
+    # ⚡ Bolt: A fast-path loop to find newline characters using `str.find('\n')` is anti-pattern,
+    # but we can use re.finditer with a regex matching non-empty lines to avoid allocating an O(N) list from splitlines().
+    return any(_is_command_like_line(match.group(0)) for match in _NON_EMPTY_LINE_RE.finditer(section_text))
 
 
 def evaluate_closure_evidence_comment(
@@ -530,9 +532,9 @@ def evaluate_closure_evidence_comment(
 ) -> dict[str, Any]:
     sections = _extract_template_sections(comment_body)
     normalized_issue_labels = {
-        label.strip().lower()
+        stripped.lower()
         for label in (issue_labels or ())
-        if isinstance(label, str) and label.strip()
+        if isinstance(label, str) and (stripped := label.strip())
     }
 
     def _evaluate_closure_evidence_template() -> dict[str, Any]:

@@ -79,7 +79,8 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
 
 def _normalized_yaml_lines(text: str) -> list[str]:
     """Return a list of YAML lines with trailing whitespace removed."""
-    return [line.rstrip() for line in text.splitlines()]
+    # ⚡ Bolt: Eliminate redundant string allocations by reusing line.rstrip() via the walrus operator.
+    return [stripped for line in text.splitlines() if (stripped := line.rstrip()) or True]
 
 
 def validate_afk_output(
