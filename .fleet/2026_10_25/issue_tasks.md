@@ -54,7 +54,7 @@ class InfigraphRuntime:
     # Hardcoded metadata for a reproducible pin (this would typically be verified against a lockfile or checksum)
     PINNED_METADATA = InfigraphMetadata(
         version="v1.2.0",
-        sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", # pragma: allowlist secret",
         platform="linux-amd64"
     )
 

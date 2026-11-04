@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # Pinned metadata for CI verification
 INFIGRAPH_MANIFEST = {
     "version": "1.0.0",
-    "sha256": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+    "sha256": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", // pragma: allowlist secret",
     "url": "https://example.com/infigraph/v1.0.0/infigraph-linux-amd64"
 }
 

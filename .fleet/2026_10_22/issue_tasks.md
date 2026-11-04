@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Pinned release and resolution metadata for CI reproducibility
 INFIGRAPH_VERSION = "v0.4.2"
-INFIGRAPH_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+INFIGRAPH_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret"
 
 class InfigraphStatus(str, Enum):
     """Normalized statuses for Infigraph analysis outcomes."""
