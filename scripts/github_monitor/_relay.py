@@ -195,7 +195,7 @@ def parse_github_push_event(
     try:
         payload = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RelayValidationError(f"invalid webhook JSON body: {exc}") from exc
+        raise RelayValidationError(f"invalid webhook JSON body: {exc}") from None
 
     if not isinstance(payload, dict):
         raise RelayValidationError("webhook JSON body must be an object")
@@ -495,7 +495,7 @@ def plan_upstream_source_dispatches(
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise RelayValidationError(
                 f"registry file is unreadable/invalid: {registry_file}: {exc}"
-            ) from exc
+            ) from None
         if (
             registry.get("owner") != push_event.owner
             or registry.get("repo") != push_event.repo

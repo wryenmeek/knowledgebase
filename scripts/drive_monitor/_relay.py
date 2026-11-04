@@ -330,7 +330,7 @@ def parse_drive_channel_token(
         decoded = _decode_b64url(encoded_context).decode("utf-8")
         raw_context = json.loads(decoded)
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RelayValidationError(f"invalid Drive channel token payload: {exc}") from exc
+        raise RelayValidationError(f"invalid Drive channel token payload: {exc}") from None
 
     if not isinstance(raw_context, dict):
         raise RelayValidationError("Drive channel token payload must be an object")
@@ -547,7 +547,7 @@ def validate_drive_registry_context(*, repo_root: Path, notification: DriveNotif
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         raise RelayValidationError(
             f"registry_path is unreadable/invalid: {notification.registry_path}: {exc}"
-        ) from exc
+        ) from None
 
     if registry.get("alias") != notification.alias:
         raise RelayValidationError(

@@ -152,7 +152,7 @@ def update_last_fetched(
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise OSError(
                 f"Failed to read/validate registry {registry_path}: {exc}"
-            ) from exc
+            ) from None
 
         updated = False
         for entry in registry["file_entries"]:
@@ -231,7 +231,7 @@ def update_last_applied(
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise OSError(
                 f"Failed to read/validate registry {registry_path}: {exc}"
-            ) from exc
+            ) from None
 
         updated = False
         for entry in registry["file_entries"]:
@@ -296,7 +296,7 @@ def update_changes_cursor(
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise OSError(
                 f"Failed to read/validate registry {registry_path}: {exc}"
-            ) from exc
+            ) from None
 
         registry["changes_page_token"] = new_page_token  # type: ignore[typeddict-item]
         _atomic_replace_registry(registry_path, registry)
@@ -377,7 +377,7 @@ def add_file_entry(
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise OSError(
                 f"Failed to read/validate registry {registry_path}: {exc}"
-            ) from exc
+            ) from None
 
         # Deduplication: don't add if file_id already present
         existing_ids = {e.get("file_id") for e in registry["file_entries"]}
