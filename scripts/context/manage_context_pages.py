@@ -149,7 +149,7 @@ def run_context_management(
             summary={"selected_count": len(items), "lock_required_modes": list(LOCK_REQUIRED_MODES)},
         )
     if mode == "plan-fill":
-        changed = {path.strip() for path in (changed_paths or ()) if path.strip()}
+        changed = {stripped for path in (changed_paths or ()) if (stripped := path.strip())}
         planned = tuple(
             item
             for item in items
