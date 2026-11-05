@@ -1,0 +1,50 @@
+{
+  "repo": "wryenmeek/knowledgebase",
+  "analyzed_at": "2026-11-05T13:59:51Z",
+  "root_causes": [
+    {
+      "id": "rc-infigraph-wrapper",
+      "title": "Missing Infigraph Wrapper",
+      "severity": "high",
+      "issues": [
+        597
+      ],
+      "files": [
+        "scripts/kb/infigraph.py",
+        "scripts/kb/__init__.py",
+        "scripts/kb/contracts.py"
+      ],
+      "description": "The knowledgebase currently lacks a module to reproducibly invoke the Infigraph CLI and report capabilities.",
+      "solution_summary": "Create an InfigraphRuntime wrapper in `scripts/kb/infigraph.py` to handle execution, capabilities, and errors with normalized statuses."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-infigraph-wrapper",
+      "title": "Add reproducible Infigraph runtime and capability contract",
+      "root_cause": "rc-infigraph-wrapper",
+      "issues": [
+        597
+      ],
+      "files": [
+        "scripts/kb/__init__.py",
+        "scripts/kb/contracts.py"
+      ],
+      "new_files": [
+        "scripts/kb/infigraph.py"
+      ],
+      "test_files": [
+        "tests/kb/test_infigraph.py"
+      ],
+      "risk": "low",
+      "prompt": "Create an `InfigraphRuntime` wrapper in `scripts/kb/infigraph.py` to reproducibly resolve and invoke the `infigraph` CLI. Provide capability discovery and distinct startup checks for unavailability, unsupported/misconfigured executables, and readiness. Export status constants `analysis_complete`, `analysis_unavailable`, and `analysis_failed`. \n\nRoot Cause Explanation:\nThe knowledgebase currently lacks an integration point for invoking the Infigraph CLI. There is no code path or standardized wrapper that resolves a pinned executable or checks capabilities.\n\nProposed Implementation:\n```python\n# NEW: scripts/kb/infigraph.py\nimport json\nimport subprocess\nfrom dataclasses import dataclass\nfrom typing import Any\nfrom .contracts import InfigraphReasonCode\n\n@dataclass(frozen=True)\nclass CapabilityReport:\n    status: InfigraphReasonCode\n    reason: str\n    capabilities: dict[str, Any]\n\nclass InfigraphRuntime:\n    def __init__(self, executable_path: str, version_pin: str):\n        self.executable_path = executable_path\n        self.version_pin = version_pin\n\n    def check_capabilities(self) -> CapabilityReport:\n        try:\n            result = subprocess.run(\n                [self.executable_path, \"--capabilities\"],\n                capture_output=True,\n                text=True,\n                timeout=5.0\n            )\n        except FileNotFoundError:\n            return CapabilityReport(InfigraphReasonCode.ANALYSIS_UNAVAILABLE, \"Executable not found\", {})\n        except subprocess.TimeoutExpired:\n            return CapabilityReport(InfigraphReasonCode.ANALYSIS_FAILED, \"Timeout executing Infigraph\", {})\n            \n        if result.returncode != 0:\n            return CapabilityReport(\n                InfigraphReasonCode.ANALYSIS_FAILED, \n                f\"Command failed (exit {result.returncode}): {result.stderr.strip()}\", \n                {}\n            )\n            \n        try:\n            caps = json.loads(result.stdout)\n            return CapabilityReport(InfigraphReasonCode.ANALYSIS_COMPLETE, \"ok\", caps)\n        except json.JSONDecodeError as exc:\n            return CapabilityReport(InfigraphReasonCode.ANALYSIS_FAILED, \"Malformed capabilities output\", {})\n```\n\nIntegration: Import the new module in `scripts/kb/__init__.py` and add `InfigraphReasonCode` to `scripts/kb/contracts.py` (before `ResultEnvelope`). \n\nBefore/after diffs showing the integration:\n```python\n# scripts/kb/__init__.py\n- from . import contracts, qmd_preflight\n- __all__ = [\"contracts\", \"qmd_preflight\"]\n+ from . import contracts, qmd_preflight, infigraph\n+ __all__ = [\"contracts\", \"qmd_preflight\", \"infigraph\"]\n```\n```python\n# scripts/kb/contracts.py\n+ class InfigraphReasonCode(StrEnum):\n+     ANALYSIS_COMPLETE = \"analysis_complete\"\n+     ANALYSIS_UNAVAILABLE = \"analysis_unavailable\"\n+     ANALYSIS_FAILED = \"analysis_failed\"\n```\n\nEnsure no cross-repository graph storage or MCP integration is introduced.\nTests: Write `tests/kb/test_infigraph.py` using a fake executable (via `subprocess` mocking) covering successful capability discovery, installation failures, timeouts, command failures, and malformed outputs.\n\nAcceptance Criteria:\n- The selected Infigraph release and resolution metadata are recorded reproducibly and can be verified in CI.\n- Startup checks distinguish an executable that is unavailable, unsupported, or misconfigured from one that is ready to analyze.\n- The wrapper defines normalized statuses for analysis_complete, analysis_unavailable, and analysis_failed, including actionable failure reasons.\n- Tests use a fake executable to cover successful capability discovery and representative installation, capability, command, timeout, and malformed-output failures.\n- No cross-repository graph storage or MCP integration is introduced.\n\nFILE BOUNDARY rule: 'You may ONLY modify the files listed above. If a test file outside your boundary fails, you must make your source changes backward-compatible so the existing test passes unmodified. Do NOT rename, move, or delete any files outside your boundary.'"
+    }
+  ],
+  "unaddressable": [],
+  "file_ownership": {
+    "scripts/kb/__init__.py": "task-infigraph-wrapper",
+    "scripts/kb/contracts.py": "task-infigraph-wrapper",
+    "scripts/kb/infigraph.py": "task-infigraph-wrapper",
+    "tests/kb/test_infigraph.py": "task-infigraph-wrapper"
+  }
+}
