@@ -124,6 +124,10 @@ def test_redact_strips_40_hex_strings() -> None:
 # ---------- Truncation contract ----------
 
 
+def test_redact_stderr_handles_none() -> None:
+    assert redact_stderr(None) == ""
+
+
 def test_redact_respects_max_len() -> None:
     redacted = redact_stderr("y" * 1000, max_len=50)
     assert len(redacted) <= 50
