@@ -531,10 +531,10 @@ def _run_command(
             check=False,
             timeout=timeout_seconds,
         )
-    except FileNotFoundError as exc:
-        raise RuntimeError(f"{command[0]} CLI is required but not installed") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"{command[0]} command timed out after {timeout_seconds} seconds") from exc
+    except FileNotFoundError:
+        raise RuntimeError(f"{command[0]} CLI is required but not installed") from None
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"{command[0]} command timed out after {timeout_seconds} seconds") from None
 
 
 def _finding(
