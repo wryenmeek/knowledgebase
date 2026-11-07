@@ -46,7 +46,7 @@ class InfigraphResolution:
 # Reproducibly recorded resolution metadata
 CURRENT_RESOLUTION = InfigraphResolution(
     version="1.0.0",
-    sha256="db3b2c93049b4c6e9441113b2c4e2079036a4be760ed712ef7e06ff4c7d0d04c", # Verified in CI
+    sha256="db3b2c93049b4c6e9441113b2c4e2079036a4be760ed712ef7e06ff4c7d0d04c", # Explicit hash verified in CI
     platform="linux-amd64"
 )
 
