@@ -20,7 +20,7 @@ The project requires integration with an Infigraph CLI to perform analysis, but 
 
 #### Proposed Solution
 
-Create a self-contained wrapper `scripts/kb/infigraph.py` that records resolution metadata, discovers the executable, and runs capability checks with strict timeout and JSON parsing.
+Create a self-contained Python wrapper `scripts/kb/infigraph.py` that records resolution metadata, discovers the executable, and runs capability checks with strict timeout and JSON parsing.
 
 **Implementation:**
 
@@ -101,7 +101,7 @@ def check_capabilities(executable_path: str | None) -> InfigraphResult:
 #### Test Plan
 
 1. Verify successful capability discovery by mocking a fake executable that returns `{"capabilities": ["graph"]}`.
-2. Verify timeout failures result in `ANALYSIS_FAILED`.
+2. Verify timeout failures result in `ANALYSIS_FAILED` using a fake executable that sleeps.
 3. Verify malformed output returns `ANALYSIS_FAILED` without throwing exceptions.
 4. Verify non-existent executable returns `ANALYSIS_UNAVAILABLE`.
 5. Verify command failures (non-zero exit code) return `ANALYSIS_FAILED`.
