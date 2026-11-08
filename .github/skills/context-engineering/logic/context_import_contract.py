@@ -193,10 +193,10 @@ def load_context_import_document(
         raise ContextImportContractError(
             ContextImportReasonCode.INVALID_DOCUMENT,
             f'context import manifest does not exist: {normalized_path}',
-        ) from exc
+        ) from None
     except json.JSONDecodeError as exc:
         raise ContextImportContractError(
             ContextImportReasonCode.INVALID_DOCUMENT,
             f'context import manifest is not valid JSON: {normalized_path}',
-        ) from exc
+        ) from None
     return normalized_path, normalize_context_import_document(raw_document)
