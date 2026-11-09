@@ -448,10 +448,10 @@ def _extract_template_sections(comment_body: str) -> dict[str, str]:
 
         lines = [inline] if inline else []
         if block:
-            for raw_line in block.splitlines():
-                stripped = raw_line.strip()
-                if stripped:
-                    lines.append(stripped)
+            lines.extend(
+                stripped for raw_line in block.splitlines()
+                if (stripped := raw_line.strip())
+            )
 
         sections[key] = "\n".join(lines).strip()
 
@@ -517,10 +517,31 @@ def _is_command_like_line(raw_line: str) -> bool:
     return _is_allowlisted_short_command(tokens)
 
 
+_COMMAND_LIKE_RE = re.compile(
+    r"^[ \t]*(?:[-*][ \t]*)?[`$]?[ \t]*(?!(?:this|the|a|an|for|if|and|or)(?:[ \t]|$))([a-zA-Z0-9_-]+)(?:[ \t]+([^`\n]*))?`?[ \t]*$",
+    re.MULTILINE | re.IGNORECASE
+)
+
+
 def _has_command_like_content(section_text: str) -> bool:
-    return any(
-        _is_command_like_line(raw_line) for raw_line in section_text.splitlines()
-    )
+    # ⚡ Bolt: Fast-path literal check combined with a single re.finditer call avoids O(N) list allocation from splitlines()
+    # and executes mostly in highly optimized C-code rather than a slow Python string mapping loop.
+    if not any(indicator in section_text for indicator in ("-", "=", ":")) and not any(tool in section_text.lower() for tool in _SHORT_COMMAND_TOOL_ALLOWLIST):
+        return False
+
+    for match in _COMMAND_LIKE_RE.finditer(section_text):
+        first_token = match.group(1).lower()
+        trailing = match.group(2)
+
+        if trailing:
+            trailing = trailing.strip()
+            if "-" in trailing or "=" in trailing or ":" in trailing:
+                return True
+
+        if _is_command_like_line(match.group(0)):
+            return True
+
+    return False
 
 
 def evaluate_closure_evidence_comment(

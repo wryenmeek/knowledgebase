@@ -63,3 +63,7 @@
 ## 2025-10-32 - Optimizing string equality check
 **Learning:** When checking if two multiline strings would be identical after line-by-line normalization (e.g., stripping whitespace or removing empty lines), compare the intermediate list comprehensions directly (e.g., `[stripped for line in a.splitlines() if ...] != [stripped for line in b.splitlines() if ...]`). Do not join them back into strings (`'\n'.join(...) != '\n'.join(...)`) just to evaluate equality, as this needlessly allocates memory for two large joined strings.
 **Action:** Compare the intermediate list comprehensions directly when checking if two multiline strings are identical after normalization.
+
+## 2026-11-09 - Optimize _has_command_like_content and redundant strips
+**Learning:** Checking line-by-line formatting constraints inside multiline strings using `splitlines()` loop (with nested strip and string parsing) creates massive O(N) array allocation overhead and slow execution.
+**Action:** Isolate these patterns using a single regex (`re.finditer` with `MULTILINE`), combined with an early fast-path exit literal string check (like `if '-' not in text`), to prevent parsing overhead for text chunks completely missing necessary indicators. Additionally, replace standard iteration loops containing duplicate `strip()` calls with generator expressions utilizing the walrus operator (`:=`).
