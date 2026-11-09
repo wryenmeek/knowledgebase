@@ -63,3 +63,7 @@
 ## 2025-10-32 - Optimizing string equality check
 **Learning:** When checking if two multiline strings would be identical after line-by-line normalization (e.g., stripping whitespace or removing empty lines), compare the intermediate list comprehensions directly (e.g., `[stripped for line in a.splitlines() if ...] != [stripped for line in b.splitlines() if ...]`). Do not join them back into strings (`'\n'.join(...) != '\n'.join(...)`) just to evaluate equality, as this needlessly allocates memory for two large joined strings.
 **Action:** Compare the intermediate list comprehensions directly when checking if two multiline strings are identical after normalization.
+
+## 2026-10-33 - Optimizing normalized path string comparison (Boundary Edge Cases)
+**Learning:** When validating path strings in a loop by replacing `path.split('/')` allocations with fast-path literal checks, relying solely on `"/../" in path` or `"//" in path` is insufficient and introduces severe path traversal security bugs. It fails to match edge cases where the invalid components are at the exact beginning or end of the string (e.g. `"../file"`, `"dir/.."`).
+**Action:** When avoiding `.split("/")` array allocations for path validation, you must explicitly check all boundary conditions. For instance, to exactly match `".." in parts`, you must use: `"/../" in path or path.startswith("../") or path.endswith("/..") or path == ".."`.
