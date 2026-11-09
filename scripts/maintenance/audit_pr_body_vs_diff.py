@@ -302,8 +302,9 @@ def _run_gh(
             f"gh command timed out after {GH_COMMAND_TIMEOUT_SECONDS} seconds"
         ) from None
     if completed.returncode != 0:
-        stderr = redact_stderr(completed.stderr).strip().splitlines()
-        stderr_snippet = stderr[0] if stderr else "unknown gh error"
+        # ⚡ Bolt: Use partition on the first newline to extract the snippet, avoiding O(N) lines allocation from splitlines
+        stderr = redact_stderr(completed.stderr).strip()
+        stderr_snippet = stderr.partition('\n')[0] if stderr else "unknown gh error"
         raise GhCommandError(f"gh command failed: {stderr_snippet}")
     return completed.stdout
 

@@ -63,3 +63,7 @@
 ## 2025-10-32 - Optimizing string equality check
 **Learning:** When checking if two multiline strings would be identical after line-by-line normalization (e.g., stripping whitespace or removing empty lines), compare the intermediate list comprehensions directly (e.g., `[stripped for line in a.splitlines() if ...] != [stripped for line in b.splitlines() if ...]`). Do not join them back into strings (`'\n'.join(...) != '\n'.join(...)`) just to evaluate equality, as this needlessly allocates memory for two large joined strings.
 **Action:** Compare the intermediate list comprehensions directly when checking if two multiline strings are identical after normalization.
+
+## 2026-11-06 - Optimizing scalar extraction from first line without splitlines()
+**Learning:** Extracting a single scalar value from the first line of a string by calling `splitlines()[0]` allocates an O(N) list containing every line of the document, resulting in unnecessary memory usage and Python bytecode overhead.
+**Action:** When extracting only the first line of a multiline string, use `text.partition('\n')[0]` instead of `splitlines()[0]`. This avoids the O(N) list allocation and operates purely in highly optimized C string methods, yielding a measurable speedup.
