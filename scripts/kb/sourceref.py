@@ -28,6 +28,7 @@ _ALLOWED_PREFIXES: tuple[tuple[str, str], ...] = (
     ("raw", "processed"),
     ("raw", "assets"),
 )
+_ALLOWED_PREFIX_STRS = tuple(f"{p1}/{p2}/" for p1, p2 in _ALLOWED_PREFIXES)
 
 
 class SourceRefReasonCode(StrEnum):
@@ -204,21 +205,29 @@ def _parse_locator(locator: str) -> tuple[str, str, str]:
 
 
 def _validate_source_path(source_path: str) -> None:
+    if not source_path:
+        _raise(SourceRefReasonCode.INVALID_PATH, "Path contains empty segments")
+
     if source_path.startswith("/") or source_path.endswith("/") or "\\" in source_path:
         _raise(
             SourceRefReasonCode.INVALID_PATH,
             "Path must be a repository-relative POSIX path",
         )
 
-    segments = source_path.split("/")
-    if any(segment == "" for segment in segments):
+    # ⚡ Bolt: Fast-path literal checks eliminate O(N) allocation from split("/")
+    if "//" in source_path:
         _raise(SourceRefReasonCode.INVALID_PATH, "Path contains empty segments")
-    if any(segment in {".", ".."} for segment in segments):
+
+    if (
+        "/../" in source_path or source_path.startswith("../") or source_path.endswith("/..") or source_path == ".." or
+        "/./" in source_path or source_path.startswith("./") or source_path.endswith("/.") or source_path == "."
+    ):
         _raise(
             SourceRefReasonCode.PATH_TRAVERSAL,
             "Path traversal segments are not allowed",
         )
-    if len(segments) < 3 or tuple(segments[:2]) not in _ALLOWED_PREFIXES:
+
+    if not source_path.startswith(_ALLOWED_PREFIX_STRS):
         _raise(
             SourceRefReasonCode.PATH_NOT_ALLOWLISTED,
             "Path must resolve under raw/inbox/**, raw/processed/**, or raw/assets/**",
