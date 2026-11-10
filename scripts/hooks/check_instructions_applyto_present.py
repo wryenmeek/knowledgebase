@@ -38,7 +38,10 @@ def _normalize_path(path: str) -> str:
 def _has_invalid_path_components(path: str) -> bool:
     # ⚡ Bolt: Fast-path literal substring checks avoid O(N) array allocation from path.split('/')
     # Micro-benchmarks show this provides a ~3x speedup while retaining exact validation rules.
-    return path.startswith("/") or "\\" in path or "/../" in path or "//" in path
+    return (
+        path.startswith("/") or "\\" in path or "//" in path or
+        "/../" in path or path.startswith("../") or path.endswith("/..") or path == ".."
+    )
 
 
 def _get_instruction_paths(paths: list[str]) -> tuple[list[str], list[str]]:
