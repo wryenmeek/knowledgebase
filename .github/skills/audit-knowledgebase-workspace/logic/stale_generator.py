@@ -83,7 +83,7 @@ ISSUE_REFERENCE_RE = re.compile(
     rf"(?<![A-Za-z0-9])#([0-9]{{1,{MAX_ISSUE_REFERENCE_DIGITS}}})\b"
 )
 ADR_REFERENCE_RE = re.compile(r"\bADR-([0-9]{1,4})\b", re.IGNORECASE)
-STATUS_HEADING_RE = re.compile(r"^#{2,3}\s+status\b", re.IGNORECASE)
+STATUS_HEADING_RE = re.compile(r"^#{2,3}\s+status\b.*$", re.IGNORECASE | re.MULTILINE)
 SCHEMELESS_URL_PATH_RE = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/")
 SYMBOL_BACKTICK_REFERENCE_RE = re.compile(
     r"\b(?:function|func|method|class|symbol|helper)\s+`([A-Za-z_][A-Za-z0-9_]*)`(?:\(\))?",
@@ -586,18 +586,18 @@ def _adr_id_for_path(adr_path: Path) -> str | None:
 
 
 def _extract_status_line(markdown_text: str) -> str | None:
-    lines = markdown_text.splitlines()
-    for index, line in enumerate(lines):
-        # Historical ADRs use H2/H3 Status headings and some include a trailing colon.
-        if not STATUS_HEADING_RE.match(line.strip().rstrip(":")):
-            continue
-        for status_line in lines[index + 1 :]:
-            stripped = status_line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("#"):
-                return None
-            return stripped
+    match = STATUS_HEADING_RE.search(markdown_text)
+    if match is None:
+        return None
+
+    # ⚡ Bolt: Use a single regex search with re.MULTILINE to find the first non-empty
+    # line. This avoids O(N) allocation from splitlines() and avoids the slow Python loop.
+    non_empty_match = re.search(r"^[ \t]*(\S.*)$", markdown_text[match.end():], re.MULTILINE)
+    if non_empty_match:
+        stripped = non_empty_match.group(1).rstrip()
+        if stripped.startswith("#"):
+            return None
+        return stripped
     return None
 
 
